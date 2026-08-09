@@ -1,0 +1,24 @@
+党建智办 PartyOps 1.4.2 更新说明
+
+版本：1.4.2
+数据库：0017（本次无新增迁移）
+状态：源码候选；正式发布门禁尚未通过
+
+一、文件中心阅读
+1. 接入 Firecrawl AnyDoc 官方 WebAssembly，支持 Word、Excel、PowerPoint、OpenDocument、RTF、EPUB、CSV 和常见文本的结构化阅读。
+2. 接入 Firecrawl pdf-inspector 官方 WebAssembly，提供 PDF 页数、类型、布局、表格/分栏和结构化文字阅读，并保留原始 PDF 预览。
+3. 文档在浏览器本地的一次性 Worker 中解析，不把正文上传给 Firecrawl 或外部服务。
+4. 禁用 Markdown HTML、外部图片和危险协议；HTML、XML、SVG 不开放可能联网的原始内联预览；结构化解析限制为 64 MiB 和 200 万字符，超限时安全降级。
+
+二、跨机器协同
+1. 主机文件直接读取；协同机文件按需经主机中转，完成分块、源变化检查、SHA-256 和最终权限复核后打开阅读视图。
+2. 支持浏览器另存为、下载到当前协同机接收目录、发送到其他协同机及既有固化/关联能力。
+3. 修复目录撤权后已完成传输仍可读取、最后分块过早完成、同根并发扫描冲突和索引计数错误。
+
+三、验证
+1. 后端 201 项、前端 41 项、Sites 4 项测试通过。
+2. Playwright 在 Windows 11 上使用真实主机与协同 Agent 验证主机 DOCX/PDF/CSV 和远端 DOCX/PDF 阅读，2 项通过。
+3. 后端覆盖率 73.87%，前端行覆盖率 5.44%，未达到正式门槛 90%。
+4. Windows 10、UOS amd64/arm64、20GB、24 小时和正式签名尚未完成，因此当前不得作为稳定正式版发布。
+
+完整说明见 README.md、docs/upgrade-1.4.2.md、docs/acceptance-1.4.2.md 和 docs/release-readiness-1.4.2.md。
