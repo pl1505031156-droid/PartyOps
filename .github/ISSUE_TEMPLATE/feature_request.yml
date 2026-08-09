@@ -1,0 +1,31 @@
+name: 功能建议
+description: 提出可验证的基层协同改进
+title: "[建议] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 实际工作场景
+      description: 哪类用户在什么设备上完成什么工作？
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 当前痛点
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 请给出可以重复验证的完成条件和权限/数据边界。
+    validations:
+      required: true

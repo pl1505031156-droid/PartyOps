@@ -1,0 +1,12 @@
+{
+  "host_url": "https://192.168.10.20:18765",
+  "agent_url": "https://192.168.10.20:18766",
+  "device_id": "首次入网后自动写入",
+  "device_token": "首次入网后自动写入，不要手工传播",
+  "backup_dir": "~/PartyOps-灾备副本",
+  "receive_dir": "~/PartyOps-接收文件",
+  "shared_roots": [],
+  "open_browser": true,
+  "interval_seconds": 600,
+  "scan_interval_seconds": 600
+}

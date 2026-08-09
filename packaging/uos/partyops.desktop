@@ -1,0 +1,22 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=党建智办
+GenericName=基层党建工作闭环协同系统
+Comment=基层党建工作闭环协同系统
+Exec=/opt/partyops/desktop-launcher.sh
+TryExec=/opt/partyops/desktop-launcher.sh
+Icon=partyops
+Terminal=false
+StartupNotify=true
+Categories=Office;ProjectManagement;
+Keywords=党建;任务;材料;协同;PartyOps;
+Actions=Configure;ManageFolders;
+
+[Desktop Action Configure]
+Name=重新配置主机或协同终端
+Exec=/opt/partyops/partyops-wizard
+
+[Desktop Action ManageFolders]
+Name=管理本机共享文件夹
+Exec=/opt/partyops/partyops-wizard --manage-shared-roots

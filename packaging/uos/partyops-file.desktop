@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=党建智办文件打开助手
+Comment=使用系统默认程序打开党建智办已纳管的主机原文件
+Exec=/opt/partyops/open-local-file.sh "%u"
+TryExec=/opt/partyops/open-local-file.sh
+NoDisplay=true
+Terminal=false
+StartupNotify=false
+MimeType=x-scheme-handler/partyops-file;
+Categories=Office;
