@@ -18,7 +18,7 @@
 三、验证
 1. 后端 201 项、前端 41 项、Sites 4 项测试通过。
 2. Playwright 在 Windows 11 上使用真实主机与协同 Agent 验证主机 DOCX/PDF/CSV 和远端 DOCX/PDF 阅读，2 项通过。
-3. 后端覆盖率 73.87%，前端行覆盖率 5.44%，未达到正式门槛 90%。
+3. 后端覆盖率 73.86%，前端行覆盖率 5.48%，未达到正式门槛 90%。
 4. Windows 10、UOS amd64/arm64、20GB、24 小时和正式签名尚未完成，因此当前不得作为稳定正式版发布。
 
 完整说明见 README.md、docs/upgrade-1.4.2.md、docs/acceptance-1.4.2.md 和 docs/release-readiness-1.4.2.md。
