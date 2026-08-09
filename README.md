@@ -1,41 +1,117 @@
+<div align="center">
+
 # 党建智办 PartyOps
 
-面向基层党建工作的本地优先、局域网协同办公系统。PartyOps 将事项办理、重要档案、原始文件、迎检材料、通知评论和工作留痕放在同一套可审计闭环中；业务数据库和受管附件保留在单位主机，协同电脑通过受控 Agent 发布目录、浏览团队文件、阅读和下载内容。
+### 面向基层党建工作的本地优先协同工作台
 
-> 当前源码版本：`1.4.2`；数据库模式：`0017`。代码与 Windows 11 浏览器/协同 Agent 候选验证已经完成，但覆盖率、Windows 10、UOS 双架构、20GB、24 小时长稳和正式签名门禁尚未全部关闭，因此本仓库暂不把任何安装器标注为“稳定正式版”。详见[发布就绪判定](docs/release-readiness-1.4.2.md)。
+把事项办理、跨机文件、重要档案、迎检材料、通知评论和工作留痕，收进一套真正能落地的局域网协同闭环。
 
-## 界面预览
+[![Release](https://img.shields.io/badge/release-v1.4.2--rc.1-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.2-rc.1)
+[![License](https://img.shields.io/badge/license-GPL--3.0-292520?style=for-the-badge)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20UOS-c17b17?style=for-the-badge)](#安装教程)
+[![Local first](https://img.shields.io/badge/data-local--first-2f7d57?style=for-the-badge)](#安全与隐私)
+[![GitHub stars](https://img.shields.io/github/stars/pl1505031156-droid/PartyOps?style=for-the-badge&color=b42318)](https://github.com/pl1505031156-droid/PartyOps/stargazers)
 
-### Office 文档结构化阅读
+[下载安装](#下载) · [界面实景](#系统主界面实景) · [核心亮点](#partyops-的亮点) · [安装教程](#安装教程) · [更新记录](CHANGELOG.md) · [参与共建](#参与共建)
 
-![PartyOps 文件中心 Office 文档预览](docs/images/file-center-office-preview.png)
+</div>
 
-### PDF 版面阅读
+> [!IMPORTANT]
+> 当前源码版本为 `1.4.2`，数据库模式为 `0017`。最新可下载版本是 **v1.4.2-rc.1 测试候选**。Windows 11 浏览器与真实协同 Agent 候选验证已完成，但覆盖率、Windows 10、UOS 双架构、20GB、24 小时长稳和正式签名门禁尚未全部关闭，因此当前安装器不能标注为稳定正式版。详见[发布就绪判定](docs/release-readiness-1.4.2.md)。
 
-![PartyOps 文件中心 PDF 文档预览](docs/images/file-center-pdf-preview.png)
+## 30 秒了解 PartyOps
 
-### 跨协同电脑文件阅读
+PartyOps 不是一套把表单搬到浏览器里的系统。它解决的是基层办公最常见的断点：事项散落在聊天记录里，材料留在不同电脑上，档案与办理过程彼此脱节，迎检时再临时拼接。
 
-![PartyOps 跨机器 Office 文档预览](docs/images/cross-device-office-preview.png)
+系统以一台单位主机保存权威数据库和受管附件，Windows 或 UOS 协同电脑通过受控 Agent 接入。团队成员可以发布自己电脑上的真实文件夹，在权限范围内互相浏览、阅读、下载和转发；事项、材料、档案、评论、通知与审计记录始终沿同一条责任链关联。
 
-## 为什么选择 PartyOps
+## 系统主界面实景
 
-- **真正的局域网协同**：已入网用户可以发布本机真实文件夹，按团队或指定人员授权浏览、下载和转发；设备间文件继续由主机中转，不开放 SMB、匿名共享或设备直连。
-- **文件可以直接读**：PDF、Word、Excel、PowerPoint、OpenDocument、RTF、EPUB、CSV 和常见文本可在文件中心打开；主机文件直接读取，协同机文件先经过分块传输、源变化检查、SHA-256 校验和最终权限复核。
-- **党建业务闭环**：事项、审核、评论提及、通知、“我的工作”、重要档案、知识、工作日志、报告和迎检包相互关联。
-- **本地数据边界**：浏览器中的文档解析不会把正文上传给 Firecrawl 或外部服务；本地 AI 也是管理员离线导入、按能力启停。
-- **跨平台部署目标**：同一业务能力面向 Windows 10/11 x64、UOS V20 amd64 和 arm64，主机或协同机角色由首次向导明确选择。
-- **可恢复、可追溯**：SQLite 在线快照、版本化备份、哈希清单、原子恢复、更新前备份、审计记录和设备隔离共同保护数据。
+下面全部来自 PartyOps 1.4.2 的真实浏览器流程和演示数据，不是设计稿。
 
-## 核心能力
+### 今日工作台：一周工作，一处看清
 
-| 工作域 | 能力 |
+<img src="docs/images/partyops-workbench-overview.png" alt="PartyOps 今日工作台，展示本周完成、下周计划、风险提醒和工作状态" width="100%">
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/partyops-task-collaboration.png" alt="PartyOps 事项与清单界面" width="100%"><br>
+      <strong>事项与清单</strong><br>
+      表格、看板、日历和时间轴共享同一份事项数据，主办、协办、审核、截止时间和材料完整度一起呈现。
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/partyops-my-work.png" alt="PartyOps 我的工作界面" width="100%"><br>
+      <strong>我的工作</strong><br>
+      只显示当前账号真正需要处理的主办、协办、审核和步骤分派，普通协同人员不会看到空白管理页。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/partyops-file-center-overview.png" alt="PartyOps 原始文件中心界面" width="100%"><br>
+      <strong>原始文件中心</strong><br>
+      主机文件、协同机共享和本机共享统一显示，原文件保持原位，按权限完成索引、阅读、下载、转发和固化。
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/partyops-important-archives.png" alt="PartyOps 重要档案中心界面" width="100%"><br>
+      <strong>重要档案中心</strong><br>
+      年度目录、档案类别、扫描件、OCR、业务关联和权限贡献形成完整档案闭环。
+    </td>
+  </tr>
+</table>
+
+<details>
+<summary><strong>展开查看：跨机器文件与离线文档阅读实景</strong></summary>
+<br>
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/file-center-office-preview.png" alt="PartyOps Office 文档结构化阅读" width="100%"><br><strong>Office 文档结构化阅读</strong></td>
+    <td width="50%"><img src="docs/images/file-center-pdf-preview.png" alt="PartyOps PDF 版面阅读" width="100%"><br><strong>PDF 原始版面与结构检查</strong></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/images/cross-device-office-preview.png" alt="PartyOps 跨协同电脑文件阅读" width="100%"><br><strong>协同机文件经主机中转、哈希校验后直接阅读</strong></td>
+  </tr>
+</table>
+</details>
+
+## PartyOps 的亮点
+
+| 真协同文件网 | 一条责任链 | 档案不是孤岛 |
+| --- | --- | --- |
+| 已入网用户可以发布本机真实文件夹，按团队或指定人员授权浏览、下载和转发。设备间仍由主机中转，不开放 SMB、匿名共享或设备直连。 | 事项的主办、协办、审核、步骤、材料、评论、提及和通知围绕同一业务对象推进，减少重复建表和版本漂移。 | 重要档案支持年度目录、类别权限、协同贡献、扫描件、OCR、版本历史、业务关联、作废与恢复。 |
+| **文件打开就能读** | **本地数据边界** | **失败可恢复、过程可追溯** |
+| PDF、Word、Excel、PowerPoint、OpenDocument、RTF、EPUB、CSV 和常见文本可在文件中心打开，远端内容先完成分块传输与 SHA-256 校验。 | 文档正文不上传 Firecrawl 或外部服务；本地 AI 由管理员离线导入并按向量、LLM 两种能力启停。 | SQLite 在线快照、版本化备份、更新前备份、原子恢复、断点续传、哈希失败隔离、审计记录和设备隔离共同守住数据。 |
+
+## 五大工作域
+
+| 工作域 | 面向谁 | 主要能力 |
+| --- | --- | --- |
+| **今日** | 所有人 | 一周总览、临期风险、必须办理、日历节点和周期汇总 |
+| **工作** | 主办、协办、审核人 | 事项与清单、我的工作、通知、日历、收件箱、报告、日志和专题空间 |
+| **资料** | 档案与材料经办人 | 原始文件中心、跨机共享、重要档案、迎检归档、知识库、文档比较与查重 |
+| **协同** | 主机与协同机用户 | 设备入网、共享目录、接收箱、三种传输、目录与人员授权 |
+| **管理** | 有效能力对应的管理员 | 周期模板、自动归档、报告模板、本地 AI、更新、备份、诊断与帮助 |
+
+## 主机与协同机的界面差异
+
+前端不靠零散的 `role === admin` 决定按钮，而是读取后端返回的有效能力。用户只看见自己能完成的真实操作。
+
+| 使用位置与账号 | 可以操作的内容 |
 | --- | --- |
-| 今日与工作 | 快速/标准/项目事项，主办、协办、审核、步骤分派，表格/看板/月历/时间轴，周期任务与工作日历 |
-| 资料 | 原始文件中心、跨机共享、结构化阅读、重要档案、知识库、文档比较、重复检测、年度归档包 |
-| 协同 | 本机目录发布、团队/指定成员授权、三种设备传输、通知评论、提及回复、接收箱和“我的工作” |
-| 管理 | 用户与设备、目录审批、备份恢复、更新编排、审计、运行诊断、本地 AI 模型包 |
-| 稳定性 | 乐观锁冲突草稿、SSE 续传与轮询降级、传输断点续传、哈希失败隔离、磁盘与临时数据保留策略 |
+| 主机管理员 | 主机目录纳管、团队文件、设备/目录/人员授权、档案类别、更新、备份、诊断和 AI 管理 |
+| 主机普通用户 | 团队文件浏览下载、业务关联、自己的事项和传输；隐藏系统管理入口 |
+| 协同机管理员 | 发布本机目录、团队文件双通道下载，同时保留获授权的全局管理能力 |
+| 协同机普通用户 | 发布和管理自己的本机目录、浏览团队目录、阅读下载文件、处理自己的传输与工作 |
+
+## 版本演进
+
+| 版本 | 这一阶段解决了什么 | 发布状态 |
+| --- | --- | --- |
+| `1.4.0` | 重要档案贡献权限、通知评论、我的工作、共享目录审批和跨平台更新适配 | 内部候选 |
+| `1.4.1` | 普通用户发布共享目录、团队/指定成员授权、双通道下载和本地 AI 分能力激活 | 内部候选 |
+| `1.4.2-rc.1` | AnyDoc / pdf-inspector 离线文档阅读、跨机文件直接阅读、权限撤销复核和发布链路收口 | 当前 Pre-release |
+
+完整变更、修复与安全说明见 [CHANGELOG.md](CHANGELOG.md)。PartyOps 不会为了看起来“已发布”而隐藏未完成门禁，版本证据、制品哈希和已知限制都会随 Release 一起公开。
 
 ## 跨机器文件如何工作
 
@@ -211,14 +287,17 @@ corepack pnpm --dir frontend install --frozen-lockfile
 - 不要提交私钥、模型权重、生产备份、用户数据、QA 配置或未脱敏日志。
 - 发现安全问题请先通过仓库维护者提供的私密渠道报告，不要在公开 Issue 附带真实数据或凭据。
 
-## 参与贡献
+## 参与共建
 
-欢迎下载试用、提交问题、补充测试和提出更适合基层工作的创新方案：
+PartyOps 希望把“基层真正怎么办公”变成可以持续改进的开源产品。如果它对你有启发，欢迎点击右上角 **Star**，让更多需要本地协同、国产系统适配和党建业务闭环的团队看到它。
 
-1. 先阅读[贡献指南](CONTRIBUTING.md)和现有 [Issues](https://github.com/pl1505031156-droid/PartyOps/issues)。
-2. 新功能请说明使用场景、账号/设备角色、数据边界和验收步骤。
-3. 缺陷请提供版本、系统、复现步骤、期望/实际结果和已脱敏日志。
-4. 提交代码前运行 `scripts/test.ps1`，并为修复补充可重复的回归测试。
+- **想直接体验**：从 [v1.4.2-rc.1 Release](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.2-rc.1) 下载候选安装器，先阅读已知限制并校验 SHA-256。
+- **发现问题**：在 [Issues](https://github.com/pl1505031156-droid/PartyOps/issues) 提交版本、系统、主机/协同机角色、复现步骤、期望/实际结果和已脱敏日志。
+- **有产品建议**：在 [Discussions](https://github.com/pl1505031156-droid/PartyOps/discussions) 讲清真实工作场景、现在怎么做、卡在哪里、哪些角色会受益。
+- **愿意贡献代码**：先阅读[贡献指南](CONTRIBUTING.md)，从 `main` 创建短分支，为修复补充回归测试，并运行 `scripts/test.ps1`。
+- **能提供真机环境**：Windows 10、UOS amd64/arm64、20GB 大文件和 24 小时长稳测试反馈最有价值。
+
+建议不必宏大。一个按钮命名不清、一种档案字段不好录、一台协同电脑断线后不好恢复，都是值得解决的真实问题。请不要在公开 Issue 或 Discussion 上传真实档案、账号、密钥、内部文件或未脱敏日志。
 
 ## 许可证与致谢
 
