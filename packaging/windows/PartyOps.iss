@@ -1,0 +1,132 @@
+#define MyAppName "党建智办 PartyOps"
+#define MyAppVersion "1.4.2"
+#define MyAppPublisher "PartyOps Local"
+#define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
+#define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
+
+[Setup]
+AppId={{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+DefaultDirName={autopf}\PartyOps
+DefaultGroupName=党建智办
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+PrivilegesRequired=admin
+OutputDir={#OutputRoot}
+OutputBaseFilename=PartyOps_1.4.2_windows_amd64
+Compression=lzma2/ultra64
+SolidCompression=yes
+WizardStyle=modern
+SetupLogging=yes
+UninstallDisplayIcon={app}\PartyOpsLauncher.exe
+
+[Dirs]
+Name: "{commonappdata}\PartyOps"; Permissions: users-modify
+Name: "{localappdata}\PartyOps"; Permissions: users-modify
+
+[Files]
+Source: "{#BuildRoot}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+
+[Icons]
+Name: "{group}\党建智办"; Filename: "{app}\PartyOpsLauncher.exe"
+Name: "{group}\管理本机共享文件夹"; Filename: "{app}\PartyOpsWizard.exe"; Parameters: "--manage-shared-roots"
+Name: "{commondesktop}\党建智办"; Filename: "{app}\PartyOpsLauncher.exe"
+
+[Registry]
+Root: HKCR; Subkey: "partyops-file"; ValueType: string; ValueName: ""; ValueData: "URL:PartyOps File Protocol"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "partyops-file"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCR; Subkey: "partyops-file\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PartyOpsFileOpen.exe"" ""%1"""
+Root: HKCR; Subkey: "partyops-client"; ValueType: string; ValueName: ""; ValueData: "URL:PartyOps Client Protocol"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "partyops-client"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCR; Subkey: "partyops-client\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PartyOpsWizard.exe"" --manage-shared-roots --action-uri ""%1"""
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "PartyOpsAgent"; ValueData: """{app}\PartyOpsAgent.exe"" --config ""{localappdata}\PartyOps\client.json"" --no-open-browser"; Flags: uninsdeletevalue
+
+[Run]
+Filename: "{app}\PartyOpsLauncher.exe"; Description: "启动党建智办配置向导"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+Filename: "{app}\PartyOpsService.exe"; Parameters: "--wait=30 stop"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "StopHostService"
+Filename: "{app}\PartyOpsService.exe"; Parameters: "remove"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "RemoveHostService"
+Filename: "{app}\PartyOpsUpdaterService.exe"; Parameters: "--wait=30 stop"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "StopUpdateService"
+Filename: "{app}\PartyOpsUpdaterService.exe"; Parameters: "remove"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "RemoveUpdateService"
+Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""党建智办主机"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveFirewallRule"
+
+[Code]
+var
+  ServiceSetupFailed: Boolean;
+
+procedure RunChecked(FileName, Parameters, Description: String);
+var
+  ResultCode: Integer;
+begin
+  if (not Exec(FileName, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or
+     (ResultCode <> 0) then
+  begin
+    ServiceSetupFailed := True;
+    RaiseException(Description + '失败，退出码：' + IntToStr(ResultCode));
+  end;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  if ServiceSetupFailed then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+function ServiceInstallAction(ServiceName: String): String;
+var
+  ResultCode: Integer;
+begin
+  if Exec(ExpandConstant('{sys}\sc.exe'), 'query ' + ServiceName, '', SW_HIDE,
+      ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+    Result := 'update'
+  else
+    Result := 'install';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep <> ssPostInstall then
+    exit;
+  RunChecked(
+    ExpandConstant('{app}\PartyOpsService.exe'),
+    '--startup auto ' + ServiceInstallAction('PartyOpsHost'),
+    '安装 PartyOps 主机服务'
+  );
+  RunChecked(
+    ExpandConstant('{sys}\sc.exe'),
+    'failure PartyOpsHost reset= 86400 actions= restart/5000/restart/15000/',
+    '配置 PartyOps 主机服务恢复策略'
+  );
+  RunChecked(
+    ExpandConstant('{app}\PartyOpsUpdaterService.exe'),
+    '--startup auto ' + ServiceInstallAction('PartyOpsUpdateService'),
+    '安装 PartyOps 更新服务'
+  );
+  RunChecked(
+    ExpandConstant('{sys}\sc.exe'),
+    'failure PartyOpsUpdateService reset= 86400 actions= restart/5000/restart/15000/',
+    '配置 PartyOps 更新服务恢复策略'
+  );
+  RunChecked(
+    ExpandConstant('{sys}\sc.exe'),
+    'start PartyOpsUpdateService',
+    '启动 PartyOps 更新服务'
+  );
+  Exec(
+    ExpandConstant('{sys}\netsh.exe'),
+    'advfirewall firewall delete rule name="党建智办主机"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+  );
+  RunChecked(
+    ExpandConstant('{sys}\netsh.exe'),
+    'advfirewall firewall add rule name="党建智办主机" dir=in action=allow protocol=TCP localport=18765,18766 profile=private program="' + ExpandConstant('{app}\PartyOps.exe') + '"',
+    '配置专用网络防火墙规则'
+  );
+end;

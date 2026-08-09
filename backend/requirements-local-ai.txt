@@ -1,0 +1,8 @@
+# PartyOps 本地中文语义检索的可选运行依赖。
+# 基础业务不得引用本文件；仅在对应架构离线 wheelhouse 完整时安装。
+numpy==2.2.6
+onnxruntime==1.22.1
+tokenizers==0.21.4
+# huggingface-hub 对不同处理器使用条件依赖；跨平台下载时 pip 可能漏算，
+# 因此显式锁定，确保 amd64 与 ARM64 的离线闭包一致。
+hf-xet==1.5.2

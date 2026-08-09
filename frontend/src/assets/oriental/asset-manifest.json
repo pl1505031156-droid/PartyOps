@@ -1,0 +1,569 @@
+{
+  "version": "1.3.3",
+  "seasons": {
+    "spring": {
+      "bytes": 1072648,
+      "assets": [
+        {
+          "file": "spring-header-landscape.webp",
+          "width": 1800,
+          "height": 360,
+          "bytes": 102200,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "spring-lower-scroll.webp",
+          "width": 2200,
+          "height": 360,
+          "bytes": 76384,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "spring-corner-accent.webp",
+          "width": 720,
+          "height": 274,
+          "bytes": 36262,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "spring-empty-center.webp",
+          "width": 720,
+          "height": 520,
+          "bytes": 64322,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "spring-section-divider.webp",
+          "width": 1440,
+          "height": 164,
+          "bytes": 57964,
+          "green_spill_rate": 0.0
+        }
+      ],
+      "scene_variants": [
+        {
+          "file": "scene-tasks-spring.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 89758,
+          "green_spill_rate": 0.0,
+          "scene": "tasks"
+        },
+        {
+          "file": "scene-inbox-spring.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 74886,
+          "green_spill_rate": 0.0,
+          "scene": "inbox"
+        },
+        {
+          "file": "scene-reports-spring.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 116538,
+          "green_spill_rate": 0.0,
+          "scene": "reports"
+        },
+        {
+          "file": "scene-journal-spring.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 78014,
+          "green_spill_rate": 0.0,
+          "scene": "journal"
+        },
+        {
+          "file": "scene-topic-spring.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 187794,
+          "green_spill_rate": 0.0,
+          "scene": "topic"
+        },
+        {
+          "file": "scene-knowledge-spring.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 70624,
+          "green_spill_rate": 0.0,
+          "scene": "knowledge"
+        },
+        {
+          "file": "scene-collaboration-spring.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 63806,
+          "green_spill_rate": 0.0,
+          "scene": "collaboration"
+        },
+        {
+          "file": "scene-transfer-spring.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 54096,
+          "green_spill_rate": 0.0,
+          "scene": "transfer"
+        }
+      ]
+    },
+    "summer": {
+      "bytes": 1130628,
+      "assets": [
+        {
+          "file": "summer-header-landscape.webp",
+          "width": 1800,
+          "height": 360,
+          "bytes": 112164,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "summer-lower-scroll.webp",
+          "width": 2200,
+          "height": 360,
+          "bytes": 99078,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "summer-corner-accent.webp",
+          "width": 720,
+          "height": 274,
+          "bytes": 49106,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "summer-empty-center.webp",
+          "width": 720,
+          "height": 520,
+          "bytes": 86136,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "summer-section-divider.webp",
+          "width": 1440,
+          "height": 164,
+          "bytes": 70298,
+          "green_spill_rate": 0.0
+        }
+      ],
+      "scene_variants": [
+        {
+          "file": "scene-tasks-summer.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 86724,
+          "green_spill_rate": 0.0,
+          "scene": "tasks"
+        },
+        {
+          "file": "scene-inbox-summer.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 72338,
+          "green_spill_rate": 0.0,
+          "scene": "inbox"
+        },
+        {
+          "file": "scene-reports-summer.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 112810,
+          "green_spill_rate": 0.0,
+          "scene": "reports"
+        },
+        {
+          "file": "scene-journal-summer.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 75482,
+          "green_spill_rate": 0.0,
+          "scene": "journal"
+        },
+        {
+          "file": "scene-topic-summer.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 183930,
+          "green_spill_rate": 0.0,
+          "scene": "topic"
+        },
+        {
+          "file": "scene-knowledge-summer.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 68404,
+          "green_spill_rate": 0.0,
+          "scene": "knowledge"
+        },
+        {
+          "file": "scene-collaboration-summer.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 61980,
+          "green_spill_rate": 0.0,
+          "scene": "collaboration"
+        },
+        {
+          "file": "scene-transfer-summer.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 52178,
+          "green_spill_rate": 0.0,
+          "scene": "transfer"
+        }
+      ]
+    },
+    "autumn": {
+      "bytes": 1073516,
+      "assets": [
+        {
+          "file": "autumn-header-landscape.webp",
+          "width": 1800,
+          "height": 360,
+          "bytes": 78500,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "autumn-lower-scroll.webp",
+          "width": 2200,
+          "height": 360,
+          "bytes": 88460,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "autumn-corner-accent.webp",
+          "width": 720,
+          "height": 274,
+          "bytes": 46630,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "autumn-empty-center.webp",
+          "width": 720,
+          "height": 520,
+          "bytes": 57702,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "autumn-section-divider.webp",
+          "width": 1440,
+          "height": 164,
+          "bytes": 58130,
+          "green_spill_rate": 0.0
+        }
+      ],
+      "scene_variants": [
+        {
+          "file": "scene-tasks-autumn.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 90226,
+          "green_spill_rate": 0.0,
+          "scene": "tasks"
+        },
+        {
+          "file": "scene-inbox-autumn.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 76008,
+          "green_spill_rate": 0.0,
+          "scene": "inbox"
+        },
+        {
+          "file": "scene-reports-autumn.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 117928,
+          "green_spill_rate": 0.0,
+          "scene": "reports"
+        },
+        {
+          "file": "scene-journal-autumn.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 78856,
+          "green_spill_rate": 0.0,
+          "scene": "journal"
+        },
+        {
+          "file": "scene-topic-autumn.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 190678,
+          "green_spill_rate": 0.0,
+          "scene": "topic"
+        },
+        {
+          "file": "scene-knowledge-autumn.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 71234,
+          "green_spill_rate": 0.0,
+          "scene": "knowledge"
+        },
+        {
+          "file": "scene-collaboration-autumn.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 64422,
+          "green_spill_rate": 0.0,
+          "scene": "collaboration"
+        },
+        {
+          "file": "scene-transfer-autumn.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 54742,
+          "green_spill_rate": 0.0,
+          "scene": "transfer"
+        }
+      ]
+    },
+    "winter": {
+      "bytes": 1038424,
+      "assets": [
+        {
+          "file": "winter-header-landscape.webp",
+          "width": 1800,
+          "height": 360,
+          "bytes": 99826,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "winter-lower-scroll.webp",
+          "width": 2200,
+          "height": 360,
+          "bytes": 81184,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "winter-corner-accent.webp",
+          "width": 720,
+          "height": 274,
+          "bytes": 36074,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "winter-empty-center.webp",
+          "width": 720,
+          "height": 520,
+          "bytes": 47964,
+          "green_spill_rate": 0.0
+        },
+        {
+          "file": "winter-section-divider.webp",
+          "width": 1440,
+          "height": 164,
+          "bytes": 66210,
+          "green_spill_rate": 0.0
+        }
+      ],
+      "scene_variants": [
+        {
+          "file": "scene-tasks-winter.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 85740,
+          "green_spill_rate": 0.0,
+          "scene": "tasks"
+        },
+        {
+          "file": "scene-inbox-winter.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 71624,
+          "green_spill_rate": 0.0,
+          "scene": "inbox"
+        },
+        {
+          "file": "scene-reports-winter.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 110918,
+          "green_spill_rate": 0.0,
+          "scene": "reports"
+        },
+        {
+          "file": "scene-journal-winter.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 74902,
+          "green_spill_rate": 0.0,
+          "scene": "journal"
+        },
+        {
+          "file": "scene-topic-winter.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 183112,
+          "green_spill_rate": 0.0,
+          "scene": "topic"
+        },
+        {
+          "file": "scene-knowledge-winter.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 67824,
+          "green_spill_rate": 0.0,
+          "scene": "knowledge"
+        },
+        {
+          "file": "scene-collaboration-winter.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 61530,
+          "green_spill_rate": 0.0,
+          "scene": "collaboration"
+        },
+        {
+          "file": "scene-transfer-winter.webp",
+          "width": 1800,
+          "height": 1010,
+          "bytes": 51516,
+          "green_spill_rate": 0.0,
+          "scene": "transfer"
+        }
+      ]
+    }
+  },
+  "scenes": [
+    {
+      "file": "scene-archive-accent.webp",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 258550,
+      "green_spill_rate": 0.0,
+      "scene": "archive"
+    },
+    {
+      "file": "scene-relay-accent.webp",
+      "width": 1774,
+      "height": 887,
+      "bytes": 208218,
+      "green_spill_rate": 0.0,
+      "scene": "relay-legacy"
+    },
+    {
+      "file": "scene-scholar-accent.webp",
+      "width": 1690,
+      "height": 931,
+      "bytes": 181286,
+      "green_spill_rate": 0.0,
+      "scene": "scholar"
+    },
+    {
+      "file": "scene-water-accent.webp",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 224578,
+      "green_spill_rate": 0.0,
+      "scene": "water"
+    },
+    {
+      "file": "scene-tasks-art.webp",
+      "width": 1800,
+      "height": 1010,
+      "bytes": 115150,
+      "green_spill_rate": 0.0,
+      "scene": "tasks"
+    },
+    {
+      "file": "scene-inbox-art.webp",
+      "width": 1800,
+      "height": 1010,
+      "bytes": 92958,
+      "green_spill_rate": 0.0,
+      "scene": "inbox"
+    },
+    {
+      "file": "scene-reports-art.webp",
+      "width": 1800,
+      "height": 1010,
+      "bytes": 145344,
+      "green_spill_rate": 0.0,
+      "scene": "reports"
+    },
+    {
+      "file": "scene-journal-art.webp",
+      "width": 1800,
+      "height": 1010,
+      "bytes": 95800,
+      "green_spill_rate": 0.0,
+      "scene": "journal"
+    },
+    {
+      "file": "scene-topic-art.webp",
+      "width": 1800,
+      "height": 1010,
+      "bytes": 206050,
+      "green_spill_rate": 0.0,
+      "scene": "topic"
+    },
+    {
+      "file": "scene-knowledge-art.webp",
+      "width": 1800,
+      "height": 1010,
+      "bytes": 87892,
+      "green_spill_rate": 0.0,
+      "scene": "knowledge"
+    },
+    {
+      "file": "scene-collaboration-art.webp",
+      "width": 1800,
+      "height": 1010,
+      "bytes": 75596,
+      "green_spill_rate": 0.0,
+      "scene": "collaboration"
+    },
+    {
+      "file": "scene-transfer-art.webp",
+      "width": 1800,
+      "height": 1010,
+      "bytes": 65956,
+      "green_spill_rate": 0.0,
+      "scene": "transfer"
+    }
+  ],
+  "scene_variants": {
+    "spring": [
+      "scene-tasks-spring.webp",
+      "scene-inbox-spring.webp",
+      "scene-reports-spring.webp",
+      "scene-journal-spring.webp",
+      "scene-topic-spring.webp",
+      "scene-knowledge-spring.webp",
+      "scene-collaboration-spring.webp",
+      "scene-transfer-spring.webp"
+    ],
+    "summer": [
+      "scene-tasks-summer.webp",
+      "scene-inbox-summer.webp",
+      "scene-reports-summer.webp",
+      "scene-journal-summer.webp",
+      "scene-topic-summer.webp",
+      "scene-knowledge-summer.webp",
+      "scene-collaboration-summer.webp",
+      "scene-transfer-summer.webp"
+    ],
+    "autumn": [
+      "scene-tasks-autumn.webp",
+      "scene-inbox-autumn.webp",
+      "scene-reports-autumn.webp",
+      "scene-journal-autumn.webp",
+      "scene-topic-autumn.webp",
+      "scene-knowledge-autumn.webp",
+      "scene-collaboration-autumn.webp",
+      "scene-transfer-autumn.webp"
+    ],
+    "winter": [
+      "scene-tasks-winter.webp",
+      "scene-inbox-winter.webp",
+      "scene-reports-winter.webp",
+      "scene-journal-winter.webp",
+      "scene-topic-winter.webp",
+      "scene-knowledge-winter.webp",
+      "scene-collaboration-winter.webp",
+      "scene-transfer-winter.webp"
+    ]
+  }
+}

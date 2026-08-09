@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+USER_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/partyops/partyops.env"
+CONFIG="${PARTYOPS_ENV_FILE:-$USER_CONFIG}"
+
+migrate_legacy_host_config() {
+  local config="$1" configured_port agent_port temporary changed
+  [[ -f "$config" && -w "$config" ]] || return 0
+  configured_port="$(
+    set +u
+    # shellcheck disable=SC1090
+    source "$config"
+    printf '%s' "${PARTYOPS_PORT:-18765}"
+  )"
+  [[ "$configured_port" =~ ^[0-9]+$ ]] &&
+    ((configured_port >= 1024 && configured_port <= 65534)) ||
+    configured_port=18765
+  agent_port=$((configured_port + 1))
+  temporary="${config}.migration.$$"
+  cp -p -- "$config" "$temporary"
+  changed=0
+  if ! grep -q '^PARTYOPS_AGENT_PORT=' "$temporary"; then
+    printf 'PARTYOPS_AGENT_PORT=%s\n' "$agent_port" >>"$temporary"
+    changed=1
+  fi
+  if ! grep -qx 'PARTYOPS_TLS_ENABLED=true' "$temporary"; then
+    if grep -q '^PARTYOPS_TLS_ENABLED=' "$temporary"; then
+      sed -i 's/^PARTYOPS_TLS_ENABLED=.*/PARTYOPS_TLS_ENABLED=true/' "$temporary"
+    else
+      printf 'PARTYOPS_TLS_ENABLED=true\n' >>"$temporary"
+    fi
+    changed=1
+  fi
+  if [[ "$changed" -eq 1 ]]; then
+    mv -f -- "$temporary" "$config"
+    echo "旧版主机配置已迁移：启用 HTTPS 和设备安全端口。"
+  else
+    rm -f -- "$temporary"
+  fi
+}
+
+if [[ ! -f "$CONFIG" && -f /etc/partyops/partyops.env ]]; then
+  CONFIG=/etc/partyops/partyops.env
+fi
+if [[ ! -f "$CONFIG" ]]; then
+  exec "$APP_ROOT/partyops-wizard"
+fi
+migrate_legacy_host_config "$CONFIG"
+if [[ -f "$CONFIG" ]]; then
+  set -a
+  source "$CONFIG"
+  set +a
+fi
+export PARTYOPS_ENVIRONMENT="${PARTYOPS_ENVIRONMENT:-production}"
+export PARTYOPS_DATA_DIR="${PARTYOPS_DATA_DIR:-$HOME/.local/share/partyops}"
+export PARTYOPS_STRICT_SQLITE="${PARTYOPS_STRICT_SQLITE:-true}"
+export PARTYOPS_SEED_DEMO="${PARTYOPS_SEED_DEMO:-false}"
+export PARTYOPS_HOST="${PARTYOPS_HOST:-127.0.0.1}"
+export PARTYOPS_PORT="${PARTYOPS_PORT:-18765}"
+
+mkdir -p "$PARTYOPS_DATA_DIR"
+PIDFILE="$PARTYOPS_DATA_DIR/partyops.pid"
+if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  echo "党建智办已在运行。"
+  exit 0
+fi
+nohup "$APP_ROOT/partyops" >> "$PARTYOPS_DATA_DIR/launcher.log" 2>&1 &
+echo "$!" > "$PIDFILE"
+echo "党建智办已启动：http://$PARTYOPS_HOST:$PARTYOPS_PORT"

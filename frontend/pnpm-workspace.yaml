@@ -1,0 +1,11 @@
+packages:
+  - .
+
+# pnpm 11 统一在工作区配置依赖覆盖；锁定已修复安全公告的 nanoid。
+overrides:
+  nanoid: 3.3.17
+  postcss: 8.5.23
+
+# Vite 仅需要官方 esbuild 安装其平台二进制，其余依赖继续禁止执行安装脚本。
+allowBuilds:
+  esbuild: true
