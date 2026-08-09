@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="red" x1="32" y1="24" x2="226" y2="236" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c13a2b"/>
+      <stop offset="1" stop-color="#8f1d16"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#4b160f" flood-opacity=".24"/>
+    </filter>
+  </defs>
+  <rect x="18" y="18" width="220" height="220" rx="48" fill="#f7f0e4"/>
+  <rect x="28" y="28" width="200" height="200" rx="40" fill="url(#red)" filter="url(#shadow)"/>
+  <path d="M78 61h72l34 34v98a12 12 0 0 1-12 12H78a12 12 0 0 1-12-12V73a12 12 0 0 1 12-12Z" fill="#fffaf1"/>
+  <path d="M150 61v28a8 8 0 0 0 8 8h26" fill="#eadcca"/>
+  <path d="M150 61v28a8 8 0 0 0 8 8h26" fill="none" stroke="#b42318" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M91 112h48M91 137h67M91 162h37" fill="none" stroke="#b42318" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="158" cy="163" r="31" fill="#c69237" stroke="#fffaf1" stroke-width="6"/>
+  <path d="m143 163 10 10 21-24" fill="none" stroke="#fffaf1" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

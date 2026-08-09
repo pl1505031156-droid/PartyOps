@@ -1,0 +1,869 @@
+:root {
+  font-family:
+    "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", "PingFang SC",
+    sans-serif;
+  color: #292724;
+  background: #f7f1e7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --ivory: #f7f1e7;
+  --ivory-deep: #eee5d7;
+  --paper: #fbf8f1;
+  --cinnabar: #b42318;
+  --cinnabar-dark: #8e1c14;
+  --charcoal: #292724;
+  --muted: #746e66;
+  --line: #d9d0c3;
+  --line-light: #e8e0d5;
+  --green: #2f7d4c;
+  --amber: #b76a13;
+  --danger: #a81e16;
+  --serif: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+  --season-header-landscape-art: url("./assets/oriental/spring-header-landscape.webp");
+  --season-lower-scroll-art: url("./assets/oriental/spring-lower-scroll.webp");
+  --season-header-center-art: url("./assets/oriental/spring-header-center.webp");
+  --season-content-center-art: url("./assets/oriental/spring-content-center.webp");
+  --season-corner-accent-art: url("./assets/oriental/spring-corner-accent.webp");
+  --season-empty-center-art: url("./assets/oriental/spring-empty-center.webp");
+  --season-section-divider-art: url("./assets/oriental/spring-section-divider.webp");
+  --scene-archive-art: url("./assets/oriental/scene-archive-accent.webp");
+  --scene-relay-art: url("./assets/oriental/scene-relay-accent.webp");
+  --scene-scholar-art: url("./assets/oriental/scene-scholar-accent.webp");
+  --scene-water-art: url("./assets/oriental/scene-water-accent.webp");
+  --scene-tasks-art: url("./assets/oriental/scene-tasks-spring.webp");
+  --scene-inbox-art: url("./assets/oriental/scene-inbox-spring.webp");
+  --scene-reports-art: url("./assets/oriental/scene-reports-spring.webp");
+  --scene-journal-art: url("./assets/oriental/scene-journal-spring.webp");
+  --scene-topic-art: url("./assets/oriental/scene-topic-spring.webp");
+  --scene-knowledge-art: url("./assets/oriental/scene-knowledge-spring.webp");
+  --scene-collaboration-art: url("./assets/oriental/scene-collaboration-spring.webp");
+  --scene-transfer-art: url("./assets/oriental/scene-transfer-spring.webp");
+  --scene-header-art: var(--season-header-landscape-art);
+  --scene-lower-art: var(--season-lower-scroll-art);
+  --season-header-opacity: 0.46;
+  --season-lower-opacity: 0.5;
+}
+
+html[data-season="summer"] {
+  --season-header-landscape-art: url("./assets/oriental/summer-header-landscape.webp");
+  --season-lower-scroll-art: url("./assets/oriental/summer-lower-scroll.webp");
+  --season-header-center-art: url("./assets/oriental/summer-header-center.webp");
+  --season-content-center-art: url("./assets/oriental/summer-content-center.webp");
+  --season-corner-accent-art: url("./assets/oriental/summer-corner-accent.webp");
+  --season-empty-center-art: url("./assets/oriental/summer-empty-center.webp");
+  --season-section-divider-art: url("./assets/oriental/summer-section-divider.webp");
+  --scene-tasks-art: url("./assets/oriental/scene-tasks-summer.webp");
+  --scene-inbox-art: url("./assets/oriental/scene-inbox-summer.webp");
+  --scene-reports-art: url("./assets/oriental/scene-reports-summer.webp");
+  --scene-journal-art: url("./assets/oriental/scene-journal-summer.webp");
+  --scene-topic-art: url("./assets/oriental/scene-topic-summer.webp");
+  --scene-knowledge-art: url("./assets/oriental/scene-knowledge-summer.webp");
+  --scene-collaboration-art: url("./assets/oriental/scene-collaboration-summer.webp");
+  --scene-transfer-art: url("./assets/oriental/scene-transfer-summer.webp");
+  --season-header-opacity: 0.38;
+  --season-lower-opacity: 0.48;
+}
+
+html[data-season="autumn"] {
+  --season-header-landscape-art: url("./assets/oriental/autumn-header-landscape.webp");
+  --season-lower-scroll-art: url("./assets/oriental/autumn-lower-scroll.webp");
+  --season-header-center-art: url("./assets/oriental/autumn-header-center.webp");
+  --season-content-center-art: url("./assets/oriental/autumn-content-center.webp");
+  --season-corner-accent-art: url("./assets/oriental/autumn-corner-accent.webp");
+  --season-empty-center-art: url("./assets/oriental/autumn-empty-center.webp");
+  --season-section-divider-art: url("./assets/oriental/autumn-section-divider.webp");
+  --scene-tasks-art: url("./assets/oriental/scene-tasks-autumn.webp");
+  --scene-inbox-art: url("./assets/oriental/scene-inbox-autumn.webp");
+  --scene-reports-art: url("./assets/oriental/scene-reports-autumn.webp");
+  --scene-journal-art: url("./assets/oriental/scene-journal-autumn.webp");
+  --scene-topic-art: url("./assets/oriental/scene-topic-autumn.webp");
+  --scene-knowledge-art: url("./assets/oriental/scene-knowledge-autumn.webp");
+  --scene-collaboration-art: url("./assets/oriental/scene-collaboration-autumn.webp");
+  --scene-transfer-art: url("./assets/oriental/scene-transfer-autumn.webp");
+  --season-header-opacity: 0.48;
+  --season-lower-opacity: 0.53;
+}
+
+html[data-season="winter"] {
+  --season-header-landscape-art: url("./assets/oriental/winter-header-landscape.webp");
+  --season-lower-scroll-art: url("./assets/oriental/winter-lower-scroll.webp");
+  --season-header-center-art: url("./assets/oriental/winter-header-center.webp");
+  --season-content-center-art: url("./assets/oriental/winter-content-center.webp");
+  --season-corner-accent-art: url("./assets/oriental/winter-corner-accent.webp");
+  --season-empty-center-art: url("./assets/oriental/winter-empty-center.webp");
+  --season-section-divider-art: url("./assets/oriental/winter-section-divider.webp");
+  --scene-tasks-art: url("./assets/oriental/scene-tasks-winter.webp");
+  --scene-inbox-art: url("./assets/oriental/scene-inbox-winter.webp");
+  --scene-reports-art: url("./assets/oriental/scene-reports-winter.webp");
+  --scene-journal-art: url("./assets/oriental/scene-journal-winter.webp");
+  --scene-topic-art: url("./assets/oriental/scene-topic-winter.webp");
+  --scene-knowledge-art: url("./assets/oriental/scene-knowledge-winter.webp");
+  --scene-collaboration-art: url("./assets/oriental/scene-collaboration-winter.webp");
+  --scene-transfer-art: url("./assets/oriental/scene-transfer-winter.webp");
+  --season-header-opacity: 0.42;
+  --season-lower-opacity: 0.49;
+}
+
+/*
+ * 路由场景只选择一幅页头与一幅底景，禁止叠加多张底图。
+ * 四季负责色候，场景负责意象；所有图片最终都由主题组件以 contain 等比显示。
+ */
+/*
+ * 每个页面拥有独立构图与安全画布。页头只占标题右侧横向留白，底景使用
+ * 同季横向画卷铺满底部；页面意象由页头构图、底景选择与透明度共同区分。
+ * 底景只使用宽幅素材，以 100% auto 等比缩放，禁止裁切与横纵拉伸。
+ */
+html[data-scene="dashboard"] {
+  --scene-header-art: var(--season-header-landscape-art);
+  --scene-lower-art: var(--season-lower-scroll-art);
+  --scene-header-left: 29%; --scene-header-right: 1.5%; --scene-header-height: 170px;
+  --scene-header-left-compact: 34%; --scene-header-height-short: 138px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(45vh, 430px);
+  --scene-lower-height-short: min(38vh, 300px); --scene-header-position: center bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.47; --scene-lower-opacity: 0.42;
+}
+
+html[data-scene="tasks"] {
+  --scene-header-art: var(--season-section-divider-art); --scene-lower-art: var(--scene-tasks-art);
+  --scene-header-left: 31%; --scene-header-right: 1.5%; --scene-header-height: 142px;
+  --scene-header-left-compact: 38%; --scene-header-height-short: 116px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(52vh, 500px);
+  --scene-lower-height-short: min(42vh, 320px); --scene-header-position: right bottom;
+  --scene-lower-position: right bottom; --scene-header-opacity: 0.35; --scene-lower-opacity: 0.48;
+}
+
+html[data-scene="calendar"] {
+  --scene-header-art: var(--season-header-center-art); --scene-lower-art: var(--scene-water-art);
+  --scene-header-left: 14%; --scene-header-right: 2%; --scene-header-height: 150px;
+  --scene-header-left-compact: 22%; --scene-header-height-short: 118px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(48vh, 460px);
+  --scene-lower-height-short: min(39vh, 300px); --scene-header-position: center bottom;
+  --scene-lower-position: right bottom; --scene-header-opacity: 0.35; --scene-lower-opacity: 0.38;
+}
+
+html[data-scene="inbox"] {
+  --scene-header-art: var(--season-section-divider-art); --scene-lower-art: var(--scene-inbox-art);
+  --scene-header-left: 28%; --scene-header-right: 1.5%; --scene-header-height: 142px;
+  --scene-header-left-compact: 36%; --scene-header-height-short: 112px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(48vh, 455px);
+  --scene-lower-height-short: min(38vh, 285px); --scene-header-position: right bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.34; --scene-lower-opacity: 0.43;
+}
+
+html[data-scene="reports"] {
+  --scene-header-art: var(--season-header-center-art); --scene-lower-art: var(--scene-reports-art);
+  --scene-header-left: 28%; --scene-header-right: 1.5%; --scene-header-height: 146px;
+  --scene-header-left-compact: 36%; --scene-header-height-short: 114px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(53vh, 510px);
+  --scene-lower-height-short: min(42vh, 320px); --scene-header-position: center bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.35; --scene-lower-opacity: 0.42;
+}
+
+html[data-scene="journal"] {
+  --scene-header-art: var(--season-section-divider-art); --scene-lower-art: var(--scene-journal-art);
+  --scene-header-left: 28%; --scene-header-right: 1.5%; --scene-header-height: 140px;
+  --scene-header-left-compact: 37%; --scene-header-height-short: 110px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(44vh, 420px);
+  --scene-lower-height-short: min(35vh, 270px); --scene-header-position: right bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.34; --scene-lower-opacity: 0.42;
+}
+
+html[data-scene="topic"] {
+  --scene-header-art: var(--season-header-center-art); --scene-lower-art: var(--scene-topic-art);
+  --scene-header-left: 43%; --scene-header-right: 1.5%; --scene-header-height: 142px;
+  --scene-header-left-compact: 49%; --scene-header-height-short: 112px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(60vh, 570px);
+  --scene-lower-height-short: min(47vh, 355px); --scene-header-position: right bottom;
+  --scene-lower-position: right bottom; --scene-header-opacity: 0.34; --scene-lower-opacity: 0.44;
+}
+
+html[data-scene="workspace"] {
+  --scene-header-art: var(--season-header-landscape-art); --scene-lower-art: var(--season-empty-center-art);
+  --scene-header-left: 26%; --scene-header-right: 1.5%; --scene-header-height: 148px;
+  --scene-header-left-compact: 34%; --scene-header-height-short: 116px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(56vh, 540px);
+  --scene-lower-height-short: min(45vh, 340px); --scene-header-position: center bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.34; --scene-lower-opacity: 0.46;
+}
+
+html[data-scene="archives"] {
+  --scene-header-art: var(--season-section-divider-art); --scene-lower-art: var(--scene-archive-art);
+  --scene-header-left: 39%; --scene-header-right: 1.5%; --scene-header-height: 140px;
+  --scene-header-left-compact: 47%; --scene-header-height-short: 108px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(52vh, 500px);
+  --scene-lower-height-short: min(41vh, 315px); --scene-header-position: right bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.33; --scene-lower-opacity: 0.42;
+}
+
+html[data-scene="inspection"] {
+  --scene-header-art: var(--season-header-center-art); --scene-lower-art: var(--season-lower-scroll-art);
+  --scene-header-left: 25%; --scene-header-right: 1.5%; --scene-header-height: 142px;
+  --scene-header-left-compact: 34%; --scene-header-height-short: 110px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(50vh, 480px);
+  --scene-lower-height-short: min(40vh, 305px); --scene-header-position: center bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.34; --scene-lower-opacity: 0.32;
+}
+
+html[data-scene="knowledge"] {
+  --scene-header-art: var(--season-section-divider-art); --scene-lower-art: var(--scene-knowledge-art);
+  --scene-header-left: 43%; --scene-header-right: 1.5%; --scene-header-height: 140px;
+  --scene-header-left-compact: 50%; --scene-header-height-short: 108px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(55vh, 530px);
+  --scene-lower-height-short: min(44vh, 335px); --scene-header-position: right bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.32; --scene-lower-opacity: 0.45;
+}
+
+html[data-scene="comparison"] {
+  --scene-header-art: var(--season-header-center-art); --scene-lower-art: var(--scene-scholar-art);
+  --scene-header-left: 34%; --scene-header-right: 1.5%; --scene-header-height: 132px;
+  --scene-header-left-compact: 43%; --scene-header-height-short: 104px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(42vh, 400px);
+  --scene-lower-height-short: min(33vh, 250px); --scene-header-position: right bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.3; --scene-lower-opacity: 0.37;
+}
+
+html[data-scene="collaboration"] {
+  --scene-header-art: var(--season-header-landscape-art); --scene-lower-art: var(--scene-collaboration-art);
+  --scene-header-left: 27%; --scene-header-right: 1.5%; --scene-header-height: 142px;
+  --scene-header-left-compact: 36%; --scene-header-height-short: 110px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(52vh, 500px);
+  --scene-lower-height-short: min(41vh, 310px); --scene-header-position: center bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.34; --scene-lower-opacity: 0.44;
+}
+
+html[data-scene="transfer"] {
+  --scene-header-art: var(--season-section-divider-art); --scene-lower-art: var(--scene-transfer-art);
+  --scene-header-left: 34%; --scene-header-right: 1.5%; --scene-header-height: 138px;
+  --scene-header-left-compact: 42%; --scene-header-height-short: 108px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(50vh, 480px);
+  --scene-lower-height-short: min(40vh, 300px); --scene-header-position: right bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.32; --scene-lower-opacity: 0.4;
+}
+
+html[data-scene="management"] {
+  --scene-header-art: var(--season-section-divider-art); --scene-lower-art: var(--season-corner-accent-art);
+  --scene-header-left: 42%; --scene-header-right: 1.5%; --scene-header-height: 126px;
+  --scene-header-left-compact: 50%; --scene-header-height-short: 98px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(34vh, 320px);
+  --scene-lower-height-short: min(28vh, 210px); --scene-header-position: right bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.23; --scene-lower-opacity: 0.3;
+}
+
+html[data-scene="help"] {
+  --scene-header-art: var(--season-header-center-art); --scene-lower-art: var(--scene-scholar-art);
+  --scene-header-left: 38%; --scene-header-right: 1.5%; --scene-header-height: 136px;
+  --scene-header-left-compact: 46%; --scene-header-height-short: 104px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(38vh, 360px);
+  --scene-lower-height-short: min(30vh, 230px); --scene-header-position: right bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.26; --scene-lower-opacity: 0.3;
+}
+
+html[data-scene="login"] {
+  --scene-header-art: var(--season-header-landscape-art); --scene-lower-art: var(--season-lower-scroll-art);
+  --scene-header-left: 22%; --scene-header-right: 2%; --scene-header-height: 182px;
+  --scene-header-left-compact: 28%; --scene-header-height-short: 142px;
+  --scene-lower-left: 0%; --scene-lower-right: 0%; --scene-lower-height: min(52vh, 500px);
+  --scene-lower-height-short: min(42vh, 320px); --scene-header-position: center bottom;
+  --scene-lower-position: center bottom; --scene-header-opacity: 0.43; --scene-lower-opacity: 0.4;
+}
+
+/*
+ * 底部长卷的全局完整性约束。
+ *
+ * 页面专属素材的源画布有横卷与高幅两种比例。旧实现用 contain 塞进较矮槽位，
+ * 高幅素材会缩成页面中央的窄块。现在统一让画布占满主内容宽度，按宽度等比
+ * 缩放，并为高幅画面保留接近完整视口的安全高度。画面仍固定在业务内容背后，
+ * 透明上半部不会遮挡表格、表单和按钮。
+ */
+html[data-scene] {
+  /*
+   * 横卷源图本身保留约 3%—5% 的透明装裱边。画布向主内容区两侧各延展
+   * 4%，让真正的山石、芦苇和水岸贴合可视边界；超出的透明装裱边由
+   * AppShell 裁切。画面仍按原比例缩放，不会横向或纵向变形。
+   */
+  --scene-lower-left: -4%;
+  --scene-lower-right: -4%;
+  --scene-lower-position: center bottom;
+  --scene-lower-size: 100% auto;
+  --scene-lower-height: min(92vh, 1000px);
+  --scene-lower-height-compact: min(90vh, 840px);
+  --scene-lower-height-short: min(92vh, 660px);
+  --scene-header-fade-left: 9%;
+  --scene-header-fade-right: 91%;
+  --scene-lower-fade-left: 8%;
+  --scene-lower-fade-right: 92%;
+  --scene-lower-mask: linear-gradient(90deg, #000 0%, #000 100%);
+}
+
+/*
+ * 右侧落款式页头一直延伸至主内容区右边界。左端自然入画，右端不再
+ * 二次淡出；源图透明装裱边移出视口，消除“贴图框”和空白竖条。
+ */
+html[data-scene="tasks"],
+html[data-scene="inbox"],
+html[data-scene="journal"],
+html[data-scene="archives"],
+html[data-scene="knowledge"],
+html[data-scene="transfer"],
+html[data-scene="management"],
+html[data-scene="help"] {
+  --scene-header-right: -4%;
+  --scene-header-mask: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 14%,
+    #000 100%
+  );
+}
+
+/* 中央山水保持双侧雾化，避免进入标题区或在工具区形成硬边。 */
+html[data-scene="dashboard"],
+html[data-scene="calendar"],
+html[data-scene="reports"],
+html[data-scene="workspace"],
+html[data-scene="inspection"],
+html[data-scene="comparison"],
+html[data-scene="collaboration"],
+html[data-scene="login"] {
+  --scene-header-mask: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 8%,
+    #000 92%,
+    transparent 100%
+  );
+}
+
+/*
+ * 迎检页面原先把 1280×640 的中幅留白插画放进底景槽，导致页面只出现一块
+ * 孤立树影。这里改用同季 2200×360 水岸长卷，以克制高度横向承接整个留白。
+ */
+html[data-scene="inspection"] {
+  --scene-lower-height: min(36vh, 320px);
+  --scene-lower-height-compact: min(34vh, 285px);
+  --scene-lower-height-short: min(31vh, 230px);
+  --scene-lower-fade-left: 6%;
+  --scene-lower-fade-right: 94%;
+}
+
+/*
+ * 克制场景不能把“空状态插画 / 档案物件 / 角落植物”误当成全宽长卷。
+ * 原始文件、重要档案和管理域改用同季横向水岸长卷：画面仍覆盖整条底部，
+ * 但主体保持自然比例和正常尺度；页面身份继续由各自不同的页头构图表达。
+ */
+html[data-scene="workspace"] {
+  --scene-lower-art: var(--season-lower-scroll-art);
+  --scene-lower-height: min(34vh, 300px);
+  --scene-lower-height-compact: min(32vh, 270px);
+  --scene-lower-height-short: min(30vh, 220px);
+  --scene-lower-opacity: 0.34;
+  --scene-lower-fade-left: 6%;
+  --scene-lower-fade-right: 94%;
+}
+
+html[data-scene="archives"] {
+  --scene-lower-art: var(--season-lower-scroll-art);
+  --scene-lower-height: min(36vh, 320px);
+  --scene-lower-height-compact: min(34vh, 285px);
+  --scene-lower-height-short: min(31vh, 230px);
+  --scene-lower-opacity: 0.32;
+  --scene-lower-fade-left: 6%;
+  --scene-lower-fade-right: 94%;
+}
+
+html[data-scene="management"] {
+  --scene-lower-art: var(--season-lower-scroll-art);
+  --scene-lower-height: min(26vh, 220px);
+  --scene-lower-height-compact: min(24vh, 200px);
+  --scene-lower-height-short: min(22vh, 160px);
+  --scene-lower-opacity: 0.24;
+  /*
+   * 管理域右侧需要长期保留“本页帮助 / 刷新 / 助手”的独立操作区。
+   * 画卷因此不贴最右边，而是落在标题右侧的中央安全留白：这组坐标以
+   * 2048×1118 参考图的 x≈804—1807、y≈113—229 为视觉真值。
+   */
+  --scene-header-left: 31%;
+  --scene-header-left-compact: 34%;
+  --scene-header-right: 13%;
+  --scene-header-top: 28px;
+  --scene-header-height: 116px;
+  --scene-header-height-compact: 104px;
+  --scene-header-height-short: 96px;
+  --scene-header-position: right bottom;
+  --scene-header-opacity: 0.2;
+  --scene-header-mask: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 8%,
+    #000 92%,
+    transparent 100%
+  );
+  --scene-lower-fade-left: 6%;
+  --scene-lower-fade-right: 94%;
+}
+
+/*
+ * “使用帮助”位于管理分组中，也遵循同一套克制比例。旧版书斋高幅素材在
+ * 全宽画布中会被放大成巨幅背景，因此改用横向水岸长卷，确保八个管理入口
+ * 的页头和底景在 1366×768 下都保持正常尺度。
+ */
+html[data-scene="help"] {
+  --scene-lower-art: var(--season-lower-scroll-art);
+  --scene-lower-height: min(26vh, 220px);
+  --scene-lower-height-compact: min(24vh, 200px);
+  --scene-lower-height-short: min(22vh, 160px);
+  --scene-lower-opacity: 0.24;
+  --scene-header-left: 44%;
+  --scene-header-left-compact: 50%;
+  --scene-header-right: -4%;
+  --scene-header-height: 104px;
+  --scene-header-height-short: 82px;
+  --scene-header-opacity: 0.2;
+  --scene-lower-fade-left: 6%;
+  --scene-lower-fade-right: 94%;
+}
+
+/*
+ * 二十四节气只改变画卷的轻微重心与舒展程度，形成“到下一节气再换景”的连续感。
+ * 日期文字仍只在交节当天显示；这里使用 activeSolarTerm，不额外叠加任何图片。
+ */
+html[data-solar-term="立春"] { --term-art-x: -1%; --term-lower-x: 1%; }
+html[data-solar-term="雨水"] { --term-art-x: -0.5%; --term-art-y: 1px; --term-lower-scale: 1.01; }
+html[data-solar-term="惊蛰"] { --term-art-x: 0.5%; --term-art-scale: 1.01; --term-lower-x: -0.5%; }
+html[data-solar-term="春分"] { --term-art-x: 0; --term-art-scale: 1.015; --term-lower-scale: 1.01; }
+html[data-solar-term="清明"] { --term-art-x: 1%; --term-art-y: -1px; --term-lower-x: -1%; }
+html[data-solar-term="谷雨"] { --term-art-x: 0.5%; --term-art-y: 1px; --term-lower-scale: 1.015; }
+html[data-solar-term="立夏"] { --term-art-x: -1%; --term-lower-x: 0.5%; }
+html[data-solar-term="小满"] { --term-art-scale: 1.01; --term-lower-x: 1%; }
+html[data-solar-term="芒种"] { --term-art-x: 1%; --term-lower-x: -0.5%; --term-lower-scale: 1.01; }
+html[data-solar-term="夏至"] { --term-art-x: 0; --term-art-scale: 1.02; --term-lower-scale: 1.015; }
+html[data-solar-term="小暑"] { --term-art-x: -0.5%; --term-art-y: -1px; --term-lower-x: 0.5%; }
+html[data-solar-term="大暑"] { --term-art-x: 1%; --term-art-scale: 1.01; --term-lower-x: -1%; }
+html[data-solar-term="立秋"] { --term-art-x: -1%; --term-lower-x: 1%; }
+html[data-solar-term="处暑"] { --term-art-x: -0.5%; --term-art-y: 1px; --term-lower-scale: 1.01; }
+html[data-solar-term="白露"] { --term-art-x: 0.5%; --term-art-scale: 1.01; --term-lower-x: -0.5%; }
+html[data-solar-term="秋分"] { --term-art-x: 0; --term-art-scale: 1.015; --term-lower-scale: 1.01; }
+html[data-solar-term="寒露"] { --term-art-x: 1%; --term-art-y: -1px; --term-lower-x: -1%; }
+html[data-solar-term="霜降"] { --term-art-x: 0.5%; --term-art-y: 1px; --term-lower-scale: 1.015; }
+html[data-solar-term="立冬"] { --term-art-x: -1%; --term-lower-x: 0.5%; }
+html[data-solar-term="小雪"] { --term-art-scale: 1.01; --term-lower-x: 1%; }
+html[data-solar-term="大雪"] { --term-art-x: 1%; --term-lower-x: -0.5%; --term-lower-scale: 1.01; }
+html[data-solar-term="冬至"] { --term-art-x: 0; --term-art-scale: 1.02; --term-lower-scale: 1.015; }
+html[data-solar-term="小寒"] { --term-art-x: -0.5%; --term-art-y: -1px; --term-lower-x: 0.5%; }
+html[data-solar-term="大寒"] { --term-art-x: 1%; --term-art-scale: 1.01; --term-lower-x: -1%; }
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-width: 1180px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--ivory);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page {
+  min-height: calc(100vh - 84px);
+  padding: 30px 36px 48px;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.page-header > .arco-space,
+.page-header > [class*="arco-space"] {
+  max-width: 68%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.page-title {
+  margin: 0;
+  font-family: "Noto Serif CJK SC", "Source Han Serif SC", SimSun, serif;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.page-description {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.section {
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+}
+
+.section:first-child {
+  border-top: 0;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 16px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.text-danger {
+  color: var(--danger);
+}
+
+.text-success {
+  color: var(--green);
+}
+
+.empty-state {
+  position: relative;
+  z-index: 0;
+  min-height: 190px;
+  overflow: hidden;
+  padding: 54px 24px;
+  color: var(--muted);
+  text-align: center;
+  border-top: 1px solid var(--line-light);
+  border-bottom: 1px solid var(--line-light);
+  isolation: isolate;
+}
+
+/* 空状态不再叠加独立底图，统一由同季长卷承载，避免同一位置出现多幅画面。 */
+.main-area.oriental-route .empty-state::before {
+  display: none;
+}
+
+html[data-art-level="reduced"] .main-area.oriental-route .empty-state::before {
+  display: none;
+}
+
+/* 艺术层位于业务层后方；高密度信息面保持纸张底，保证长列表与表单可读。 */
+.main-area.oriental-route :is(
+  .paper-panel,
+  .arco-card,
+  .arco-table-container,
+  .arco-form,
+  .arco-tabs-content
+) {
+  background-color: rgba(251, 248, 241, 0.89);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+.paper-panel {
+  background: rgba(251, 248, 241, 0.92);
+  border: 1px solid var(--line);
+}
+
+.arco-btn-primary {
+  border-color: var(--cinnabar) !important;
+  background: var(--cinnabar) !important;
+}
+
+.arco-btn {
+  min-height: 32px;
+  border-color: #cfc5b7 !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+.arco-btn:not(.arco-btn-primary):not(.arco-btn-status-danger):not(.arco-btn-text) {
+  color: var(--charcoal) !important;
+  background: rgba(251, 248, 241, 0.54) !important;
+}
+
+.arco-btn:not(.arco-btn-primary):not(.arco-btn-status-danger):not(.arco-btn-text):hover {
+  color: var(--cinnabar) !important;
+  border-color: rgba(180, 35, 24, 0.6) !important;
+  background: rgba(180, 35, 24, 0.04) !important;
+}
+
+.arco-btn-text {
+  color: var(--cinnabar) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+.arco-btn-text:hover {
+  color: var(--cinnabar-dark) !important;
+  background: rgba(180, 35, 24, 0.04) !important;
+}
+
+.arco-btn-primary:hover {
+  border-color: var(--cinnabar-dark) !important;
+  background: var(--cinnabar-dark) !important;
+}
+
+.arco-input-wrapper,
+.arco-textarea-wrapper,
+.arco-picker,
+.arco-select-view-single,
+.arco-select-view-multiple {
+  border-color: #cfc5b7 !important;
+  background: rgba(255, 255, 255, 0.46) !important;
+  border-radius: 2px !important;
+}
+
+.arco-input-wrapper.arco-input-focus,
+.arco-textarea-wrapper:focus-within,
+.arco-picker-focused,
+.arco-select-view-focus {
+  border-color: var(--cinnabar) !important;
+  box-shadow: 0 0 0 2px rgba(180, 35, 24, 0.08) !important;
+}
+
+.arco-checkbox-icon,
+.arco-radio-icon {
+  border-color: #bfb4a5 !important;
+  background: rgba(255, 255, 255, 0.36) !important;
+  box-shadow: none !important;
+}
+
+.arco-checkbox:hover .arco-checkbox-icon,
+.arco-radio:hover .arco-radio-icon {
+  border-color: var(--cinnabar) !important;
+}
+
+.arco-checkbox-checked .arco-checkbox-icon,
+.arco-checkbox-indeterminate .arco-checkbox-icon {
+  border-color: var(--cinnabar) !important;
+  background: var(--cinnabar) !important;
+}
+
+.arco-radio-checked .arco-radio-icon {
+  border-color: var(--cinnabar) !important;
+}
+
+.arco-radio-checked .arco-radio-icon::after {
+  background: var(--cinnabar) !important;
+}
+
+.arco-switch {
+  border-radius: 12px !important;
+  background: #b8afa3 !important;
+}
+
+.arco-switch-checked {
+  background: var(--cinnabar) !important;
+}
+
+.arco-radio-button {
+  color: var(--muted) !important;
+  background: rgba(251, 248, 241, 0.54) !important;
+  border-color: #cfc5b7 !important;
+}
+
+.arco-radio-button.arco-radio-checked {
+  color: var(--cinnabar) !important;
+  background: rgba(180, 35, 24, 0.06) !important;
+  box-shadow: inset 0 -2px var(--cinnabar) !important;
+}
+
+.arco-checkbox:focus-visible .arco-checkbox-icon,
+.arco-radio:focus-visible .arco-radio-icon,
+.arco-switch:focus-visible {
+  outline: 3px solid rgba(180, 35, 24, 0.2);
+  outline-offset: 2px;
+}
+
+.arco-modal,
+.arco-drawer {
+  background: var(--paper) !important;
+}
+
+/*
+ * PartyOps 统一弹窗规范：
+ * 所有 a-modal 都在视口中央打开，不受页面滚动位置影响。
+ * 内容较长时只滚动弹窗正文，标题和操作按钮保持可见，避免在
+ * 1366×768 等较小办公屏幕上出现“弹窗跑到右侧/按钮在屏幕外”的问题。
+ * 新建、编辑、批量处理和快速录入均使用居中模态框；不再从右侧滑出。
+ */
+.arco-modal-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 24px;
+  overflow: auto;
+  white-space: normal;
+}
+
+.arco-modal-wrapper::after {
+  display: none !important;
+}
+
+.arco-modal-wrapper .arco-modal {
+  top: auto !important;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  margin: 0 !important;
+  vertical-align: initial;
+  display: flex;
+  flex-direction: column;
+}
+
+.arco-modal-wrapper .arco-modal-body {
+  min-height: 0;
+  max-height: calc(100vh - 144px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.arco-modal-wrapper .arco-modal-header,
+.arco-modal-wrapper .arco-modal-footer {
+  flex: 0 0 auto;
+}
+
+.arco-modal-wrapper .arco-modal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.arco-modal-wrapper .arco-modal-body .arco-table-container {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.arco-modal-wrapper .arco-form-item-content-wrapper,
+.arco-modal-wrapper .arco-form-item-content {
+  min-width: 0;
+}
+
+@media (max-width: 640px), (max-height: 700px) {
+  .arco-modal-wrapper {
+    padding: 12px;
+  }
+
+  .arco-modal-wrapper .arco-modal {
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .arco-modal-wrapper .arco-modal-body {
+    max-height: calc(100vh - 120px);
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}
+
+.arco-table-th {
+  color: #5c554c !important;
+  font-weight: 600 !important;
+  background: #eee6d9 !important;
+}
+
+.arco-table-td {
+  border-color: var(--line-light) !important;
+  background: rgba(251, 248, 241, 0.66) !important;
+}
+
+.arco-pagination-item,
+.arco-pagination-item-previous,
+.arco-pagination-item-next {
+  border-radius: 2px !important;
+}
+
+.arco-pagination-item-active {
+  color: #fff !important;
+  background: var(--cinnabar) !important;
+}
+
+.arco-tabs-nav::before {
+  background: var(--line) !important;
+}
+
+.arco-tabs-tab-active,
+.arco-tabs-tab:hover {
+  color: var(--cinnabar) !important;
+}
+
+.arco-tabs-nav-ink {
+  background: var(--cinnabar) !important;
+}
+
+.focus-ring:focus-visible,
+a:focus-visible,
+button:focus-visible {
+  outline: 3px solid rgba(180, 35, 24, 0.28);
+  outline-offset: 2px;
+}
+
+@media (max-height: 800px) {
+  .page {
+    padding-top: 22px;
+  }
+}
+
+@media (max-width: 1380px) {
+  .page {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+
+  .page-header {
+    gap: 16px;
+  }
+
+  .page-header > .arco-space,
+  .page-header > [class*="arco-space"] {
+    max-width: 62%;
+  }
+}
+
+@media (max-width: 1180px) {
+  .page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-header > .arco-space,
+  .page-header > [class*="arco-space"] {
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+}

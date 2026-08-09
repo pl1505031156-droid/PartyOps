@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 私密报告安全问题
+    url: https://github.com/pl1505031156-droid/PartyOps/security/advisories/new
+    about: 请勿在公开 Issue 中附带凭据、业务文件或利用细节。

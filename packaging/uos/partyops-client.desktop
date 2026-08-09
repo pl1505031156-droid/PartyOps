@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=党建智办本机共享助手
+Comment=选择并发布本机真实文件夹，不向主机上传绝对路径
+Exec=/opt/partyops/partyops-wizard --manage-shared-roots --action-uri "%u"
+TryExec=/opt/partyops/partyops-wizard
+NoDisplay=true
+Terminal=false
+StartupNotify=true
+MimeType=x-scheme-handler/partyops-client;
+Categories=Office;
