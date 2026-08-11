@@ -10,10 +10,10 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from xml.etree import ElementTree
 
 import fitz
 import pytesseract
+from defusedxml import ElementTree
 from docx import Document
 from fastapi import UploadFile
 from openpyxl import load_workbook
@@ -163,6 +163,20 @@ def _validate_office_container(data: bytes) -> None:
                     "文件结构异常",
                     "Office 文件解压后容量或压缩比超过安全限制，已停止解析。",
                 )
+            for item in members:
+                if item.is_dir() or not item.filename.lower().endswith(".xml"):
+                    continue
+                # Office XML 不需要 DTD 或实体。解析前统一拒绝，避免不同底层
+                # 库对实体扩展的处理差异形成内存放大或外部实体读取入口。
+                with archive.open(item) as source:
+                    prefix = source.read(min(item.file_size, 64 * 1024)).upper()
+                if b"<!DOCTYPE" in prefix or b"<!ENTITY" in prefix:
+                    raise ProblemException(
+                        422,
+                        "INTAKE_OFFICE_XML_UNSAFE",
+                        "文件结构不安全",
+                        "Office 文件包含不允许的 XML 实体声明，已停止解析。",
+                    )
     except zipfile.BadZipFile as exc:
         raise ProblemException(
             422,
@@ -286,6 +300,7 @@ def _detect_type(path: Path, suffix: str) -> str:
 
 
 def _extract_spreadsheet(path: Path) -> tuple[str, list[str]]:
+    _validate_office_container(path.read_bytes())
     workbook = load_workbook(io.BytesIO(path.read_bytes()), read_only=True, data_only=True)
     rows: list[str] = []
     warnings: list[str] = []
@@ -308,6 +323,7 @@ def _extract_presentation(path: Path) -> tuple[str, list[str]]:
     """不执行宏，仅从 OOXML 演示文稿的幻灯片 XML 中读取文字。"""
 
     values: list[str] = []
+    _validate_office_container(path.read_bytes())
     with zipfile.ZipFile(path) as archive:
         slide_names = sorted(
             name
