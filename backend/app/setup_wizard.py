@@ -6,6 +6,7 @@ import argparse
 import getpass
 import html
 import http.client
+import ipaddress
 import json
 import os
 import secrets
@@ -499,6 +500,19 @@ def resolve_host_url(
         or parsed.fragment
     ):
         raise ValueError("主机地址必须是无账号、无额外路径的 HTTP/HTTPS 局域网地址")
+    if os.getenv("PARTYOPS_ENVIRONMENT") != "test":
+        if parsed.hostname.lower() == "localhost":
+            raise ValueError("协同机不能使用回环地址；请填写主机在办公局域网中的真实 IP")
+        try:
+            address = ipaddress.ip_address(parsed.hostname)
+        except ValueError:
+            address = None
+        if address is not None and (
+            address.is_loopback
+            or address.is_link_local
+            or not address.is_private
+        ):
+            raise ValueError("协同机不能使用回环地址或公网地址；请填写主机的真实局域网 IP")
     normalized = urllib.parse.urlunparse(
         (parsed.scheme, parsed.netloc, "", "", "", "")
     ).rstrip("/")
@@ -555,11 +569,30 @@ def check_host(host_url: str, token: str | None = None) -> dict[str, object]:
     return payload
 
 
-def render_page(csrf: str, message: str = "", error: str = "") -> str:
-    addresses = ["127.0.0.1", *discover_lan_addresses()]
-    options = "".join(
-        f'<option value="{html.escape(address)}">{html.escape(address)}</option>'
-        for address in addresses
+def render_page(
+    csrf: str,
+    message: str = "",
+    error: str = "",
+    selected_mode: str = "",
+) -> str:
+    """渲染小白可完成的角色式首次配置向导。"""
+
+    lan_addresses = discover_lan_addresses()
+    addresses = [*lan_addresses, "127.0.0.1"]
+    placeholder = (
+        '<option value="" selected disabled>请选择与协同电脑同一网段的地址</option>'
+        if len(lan_addresses) > 1
+        else ""
+    )
+    options = placeholder + "".join(
+        (
+            f'<option value="{html.escape(address)}" '
+            f'{"selected" if len(lan_addresses) <= 1 and index == 0 else ""}>'
+            f'{html.escape(address)}'
+            f'{" · 仅本机试用，不能协同" if address == "127.0.0.1" else " · 检测到的本机地址"}'
+            "</option>"
+        )
+        for index, address in enumerate(addresses)
     )
     notice = (
         f'<div class="notice ok">{html.escape(message)}</div>' if message else ""
@@ -573,36 +606,71 @@ def render_page(csrf: str, message: str = "", error: str = "") -> str:
         if os.name == "nt"
         else f"{Path.home()}/PartyOps-数据"
     )
+    initial_mode = selected_mode if selected_mode in {"host", "client"} else ""
+    no_lan_notice = (
+        '<div class="inline-warning">检测到多个本机地址。请在协同电脑查看自己的 IP，选择前三段相同的地址（例如 192.168.3.x）；系统不会替你猜测虚拟网卡。</div>'
+        if len(lan_addresses) > 1
+        else "" if lan_addresses else '<div class="inline-warning">尚未检测到办公局域网地址。可以仅本机试用，但其他电脑无法加入；请先连接办公网络后刷新。</div>'
+    )
     return f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>党建智办 · 首次配置</title><style>
 *{{box-sizing:border-box}}body{{margin:0;color:#282522;background:#f7f1e7;font:14px/1.6 system-ui,"Noto Sans CJK SC",sans-serif}}
-main{{width:min(980px,92vw);margin:5vh auto;background:#fbf8f1;border:1px solid #d8cec1;box-shadow:0 22px 70px #5d30221a}}
-header{{padding:30px 38px;border-bottom:3px solid #b42318}}h1{{margin:0;font:600 34px/1.2 SimSun,serif}}h1 b{{color:#b42318}}header p{{margin:8px 0 0;color:#776f66}}
-.grid{{display:grid;grid-template-columns:1fr 1fr}}section{{padding:34px 38px}}section+section{{border-left:1px solid #ddd2c5}}
-h2{{margin:0 0 6px;font-size:20px}}.hint{{min-height:44px;color:#776f66}}label{{display:block;margin:17px 0 0}}label span{{display:block;margin-bottom:6px;font-size:12px}}
-input,select{{width:100%;height:42px;padding:0 12px;border:1px solid #cfc3b6;background:#fffdf8}}button{{width:100%;height:46px;margin-top:24px;color:white;background:#b42318;border:0;font-weight:600;cursor:pointer}}
+main{{width:min(1040px,94vw);margin:4vh auto;background:#fbf8f1;border:1px solid #d8cec1;box-shadow:0 22px 70px #5d30221a}}
+header{{padding:28px 38px;border-bottom:3px solid #b42318}}h1{{margin:0;font:600 34px/1.2 SimSun,serif}}h1 b{{color:#b42318}}header p{{margin:8px 0 0;color:#776f66}}
+.progress{{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#ded4c8;border-bottom:1px solid #ded4c8}}.progress span{{padding:12px 18px;color:#756d64;background:#f2ebe1;font-size:12px}}.progress span.active{{color:#8f1f17;background:#f8e9e6;font-weight:700}}
+section{{padding:28px 38px}}.role-title{{margin:0 0 5px;font:600 22px SimSun,serif}}.role-subtitle{{margin:0 0 18px;color:#776f66}}
+.role-grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.role-card{{width:100%;min-height:154px;margin:0;padding:22px;text-align:left;color:#282522;background:#fffdf8;border:1px solid #cfc3b6;cursor:pointer}}.role-card:hover,.role-card.active{{border-color:#b42318;box-shadow:inset 0 0 0 1px #b42318}}.role-card b,.role-card span,.role-card small{{display:block}}.role-card b{{font:600 21px SimSun,serif}}.role-card span{{margin:8px 0 12px;color:#b42318;font-weight:600}}.role-card small{{color:#776f66}}
+.setup-panel{{margin:0 38px 30px;padding:28px;background:#fffdf8;border:1px solid #d8cec1}}.setup-panel[hidden]{{display:none}}.panel-head{{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:18px}}.panel-head h2{{margin:0;font:600 22px SimSun,serif}}.panel-head p{{margin:5px 0 0;color:#776f66}}.back{{width:auto;height:auto;margin:0;padding:4px 0;color:#8f1f17;background:transparent}}
+.checklist{{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 20px;padding:0;list-style:none}}.checklist li{{padding:10px 12px;color:#625c55;background:#f4ede3;border-left:2px solid #b42318;font-size:12px}}
+.form-grid{{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}}label{{display:block;margin:14px 0 0}}label.full{{grid-column:1/-1}}label span{{display:block;margin-bottom:6px;font-size:12px;font-weight:600}}label small{{display:block;margin-top:5px;color:#857c72}}
+input,select{{width:100%;height:44px;padding:0 12px;border:1px solid #cfc3b6;background:#fffdf8}}input:focus,select:focus{{outline:2px solid #b4231830;border-color:#b42318}}button.primary{{width:100%;height:48px;margin-top:22px;color:white;background:#b42318;border:0;font-weight:600;cursor:pointer}}button[disabled]{{cursor:not-allowed;opacity:.45}}
+.test-row{{display:grid;grid-template-columns:1fr 1.2fr;gap:10px;align-items:end;grid-column:1/-1}}.test-button{{height:44px;margin:14px 0 0;color:#8f1f17;background:#fff8f5;border:1px solid #b42318;cursor:pointer}}.test-result{{min-height:44px;margin-top:14px;padding:10px 12px;color:#776f66;background:#f4ede3}}.test-result.ok{{color:#27613d;background:#eaf3ea}}.test-result.error{{color:#8f1f17;background:#f8e9e6}}
+.inline-warning{{margin:12px 0;padding:10px 12px;color:#7a291f;background:#f8e9e6;border-left:3px solid #b42318}}
 .notice{{margin:20px 38px 0;padding:12px 15px;border-left:3px solid}}.ok{{background:#eef4ed;border-color:#39724d}}.error{{background:#f8e9e7;border-color:#b42318}}
 footer{{padding:18px 38px;color:#776f66;background:#f1e9de;border-top:1px solid #ddd2c5}}
-@media(max-width:760px){{.grid{{grid-template-columns:1fr}}section+section{{border-left:0;border-top:1px solid #ddd2c5}}}}
+@media(max-width:760px){{.role-grid,.form-grid,.test-row,.checklist{{grid-template-columns:1fr}}.progress{{grid-template-columns:1fr}}.setup-panel{{margin:0 18px 22px}}section,header{{padding-left:22px;padding-right:22px}}}}
 </style></head><body><main><header><h1><b>党建</b>智办</h1><p>基层党建工作闭环协同系统 · PartyOps</p></header>
-{notice}{failure}<div class="grid">
-<section><h2>配置为主机</h2><p class="hint">本机保存唯一数据库、附件和备份，并向可信局域网提供服务。</p>
-<form method="post"><input type="hidden" name="csrf" value="{csrf}"><input type="hidden" name="mode" value="host">
-<label><span>绑定地址</span><select name="host">{options}</select></label>
-<label><span>服务端口</span><input name="port" value="18765" inputmode="numeric"></label>
-<label><span>数据目录</span><input name="data_dir" value="{host_data_dir}" {'readonly' if os.name == 'nt' else ''}></label>
-<button>保存并启动主机</button></form></section>
-<section><h2>加入协同终端</h2><p class="hint">终端不创建业务数据库。使用主机管理员生成的 10 分钟入网码加入设备中心，可按授权共享本机文件夹。</p>
-<form method="post"><input type="hidden" name="csrf" value="{csrf}"><input type="hidden" name="mode" value="client">
-<label><span>主机地址</span><input name="host_url" required placeholder="https://192.168.1.20:18765"></label>
+<div class="progress"><span class="active">1　选择这台电脑的角色</span><span>2　核对网络与配置</span><span>3　启动并确认连接</span></div>
+{notice}{failure}
+<section id="role-choice"><h2 class="role-title">第一步 · 这台电脑做什么</h2><p class="role-subtitle">一个团队通常只配置一台长期在线的主机，其他电脑都选择协同机。选错不会写入配置，可以返回重选。</p>
+<div class="role-grid"><button type="button" class="role-card" data-role="host"><b>这是主机</b><span>保存全团队唯一业务数据</span><small>适合长期在线、地址稳定、由管理员维护的电脑。主机负责账号、备份、设备授权和文件中转。</small></button>
+<button type="button" class="role-card" data-role="client"><b>这是协同机</b><span>加入已经配置好的主机</span><small>适合普通办公电脑。可登录业务系统、发布本机文件夹、浏览和下载已授权的团队文件。</small></button></div></section>
+<section id="host-panel" class="setup-panel" data-mode-panel="host" hidden><div class="panel-head"><div><h2>配置主机</h2><p>完成后浏览器会打开主机，继续创建首位管理员账号。</p></div><button type="button" class="back">返回重选角色</button></div>
+<ul class="checklist"><li>这台电脑会长期在线</li><li>已连接办公局域网</li><li>知道备份由谁负责</li></ul>{no_lan_notice}
+<form method="post"><input type="hidden" name="csrf" value="{csrf}"><input type="hidden" name="mode" value="host"><div class="form-grid">
+<label><span>主机局域网地址</span><select id="host-bind" name="host">{options}</select><small>协同电脑必须能访问该地址；真实办公网地址已优先显示。</small></label>
+<label><span>服务端口</span><input name="port" value="18765" inputmode="numeric"><small>通常保持 18765；相邻端口 18766 用于安全设备通道。</small></label>
+<label class="full"><span>数据与备份目录</span><input name="data_dir" value="{host_data_dir}" {'readonly' if os.name == 'nt' else ''}><small>Windows 正式安装固定保存到受保护的 ProgramData，避免普通用户误删。</small></label></div>
+<div id="loopback-warning" class="inline-warning" hidden>当前选择只能在这台电脑本机使用，其他电脑无法加入协同。若要协同，请连接办公网络并选择真实局域网地址。</div>
+<button id="host-submit" class="primary">确认配置并启动主机</button></form></section>
+<section id="client-panel" class="setup-panel" data-mode-panel="client" hidden><div class="panel-head"><div><h2>加入已有主机</h2><p>先验证主机能访问，再提交一次性入网码；测试不会消耗入网码。</p></div><button type="button" class="back">返回重选角色</button></div>
+<ul class="checklist"><li>与主机连接同一办公网络</li><li>已向管理员取得 10 分钟入网码</li><li>主机与本机版本一致</li></ul>
+<form id="client-form" method="post"><input type="hidden" name="csrf" value="{csrf}"><input type="hidden" name="mode" value="client"><div class="form-grid">
+<div class="test-row"><label><span>主机地址</span><input id="client-host-url" name="host_url" required placeholder="https://192.168.1.20:18765"><small>请从主机“设备协同 → 新增协同电脑”原样复制。</small></label><button id="test-client-host" class="test-button" type="button">先测试主机连接</button></div>
+<div id="client-test-result" class="test-result">尚未测试。只有连接成功后才能继续安全入网。</div>
 <label><span>本机设备名称</span><input name="device_name" required placeholder="例如：组织部-小王电脑"></label>
-<label><span>一次性入网码</span><input name="token" required type="password" autocomplete="off"></label>
-<label><span>允许共享的本机文件夹（可选）</span><input name="shared_dir" placeholder="{home}/Documents/党建资料"></label>
-<label><span>灾备目录</span><input name="backup_dir" value="{home}/PartyOps-灾备副本"></label>
-<button>安全入网并启动终端</button></form></section></div>
-<footer>主机保存唯一业务数据库；终端只有获批的只读索引、接收文件和灾备副本。旧版配对令牌仍可用于灾备拉取，但不能访问文件协同能力。</footer>
-</main></body></html>"""
+<label><span>一次性入网码</span><input name="token" required type="password" autocomplete="off"><small>入网码只使用一次，10 分钟后自动失效。</small></label>
+<label><span>首次共享的本机文件夹（可选）</span><input name="shared_dir" placeholder="{home}/Documents/党建资料"><small>之后可在文件中心随时添加、移除或调整共享范围。</small></label>
+<label><span>接收与灾备目录</span><input name="backup_dir" value="{home}/PartyOps-灾备副本"></label></div>
+<button id="client-submit" class="primary" disabled>请先通过主机连接测试</button></form></section>
+<footer>主机保存唯一业务数据库；协同机只保存自己的配置、接收文件和获授权索引。设备间文件仍经主机校验和审计，不启用匿名共享。</footer>
+</main><script>
+const initialMode={json.dumps(initial_mode)};
+const roleChoice=document.getElementById('role-choice');
+const panels={{host:document.getElementById('host-panel'),client:document.getElementById('client-panel')}};
+const progressSteps=[...document.querySelectorAll('.progress span')];function setProgress(index){{progressSteps.forEach((step,key)=>step.classList.toggle('active',key===index))}}
+function selectRole(role){{roleChoice.hidden=true;Object.entries(panels).forEach(([key,panel])=>panel.hidden=key!==role);setProgress(1);window.scrollTo({{top:0,behavior:'smooth'}})}}
+document.querySelectorAll('[data-role]').forEach(button=>button.addEventListener('click',()=>selectRole(button.dataset.role)));
+document.querySelectorAll('.back').forEach(button=>button.addEventListener('click',()=>{{Object.values(panels).forEach(panel=>panel.hidden=true);roleChoice.hidden=false;setProgress(0);window.scrollTo({{top:0,behavior:'smooth'}})}}));
+const bind=document.getElementById('host-bind');const loopback=document.getElementById('loopback-warning');const hostSubmit=document.getElementById('host-submit');
+function updateBindWarning(){{loopback.hidden=bind.value!=='127.0.0.1';hostSubmit.disabled=!bind.value}}bind.addEventListener('change',updateBindWarning);updateBindWarning();
+const clientHost=document.getElementById('client-host-url');const testButton=document.getElementById('test-client-host');const testResult=document.getElementById('client-test-result');const clientSubmit=document.getElementById('client-submit');
+let verifiedHost='';clientHost.addEventListener('input',()=>{{if(clientHost.value.trim()!==verifiedHost){{clientSubmit.disabled=true;clientSubmit.textContent='请先通过主机连接测试';testResult.className='test-result';testResult.textContent='地址已变化，请重新测试主机连接。'}}}});
+testButton.addEventListener('click',async()=>{{const host=clientHost.value.trim();if(!host){{testResult.className='test-result error';testResult.textContent='请先填写主机地址。';return}}testButton.disabled=true;testResult.className='test-result';testResult.textContent='正在检查主机、端口和协议……';try{{const body=new URLSearchParams({{csrf:{json.dumps(csrf)},mode:'check_client',host_url:host}});const response=await fetch(location.href,{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body}});const result=await response.json();if(!response.ok)throw new Error(result.error||'连接失败');verifiedHost=result.host_url;clientHost.value=result.host_url;clientSubmit.disabled=false;clientSubmit.textContent='连接已验证，安全入网并启动协同机';testResult.className='test-result ok';testResult.textContent=`连接成功：PartyOps ${{result.app_version||''}} 主机正常，可以继续入网。`}}catch(error){{verifiedHost='';clientSubmit.disabled=true;clientSubmit.textContent='请先通过主机连接测试';testResult.className='test-result error';testResult.textContent=error instanceof Error?error.message:'无法连接主机'}}finally{{testButton.disabled=false}}}});
+document.querySelectorAll('form').forEach(form=>form.addEventListener('submit',()=>setProgress(2)));
+if(initialMode)selectRole(initialMode);
+</script></body></html>"""
 
 
 def _choose_system_folder() -> Path | None:
@@ -777,6 +845,15 @@ def run_wizard(open_browser: bool = True) -> int:
             self.end_headers()
             self.wfile.write(payload)
 
+        def _send_json(self, body: dict[str, object], status: int = 200) -> None:
+            payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(payload)
+
         def do_GET(self) -> None:  # noqa: N802 - 标准库接口命名。
             self._send(render_page(csrf))
 
@@ -790,6 +867,21 @@ def run_wizard(open_browser: bool = True) -> int:
                 if not secrets.compare_digest(value("csrf"), csrf):
                     raise ValueError("配置页面已失效，请刷新后重试")
                 mode = value("mode")
+                if mode == "check_client":
+                    try:
+                        host_url, health = resolve_host_url(value("host_url"))
+                    except (ValueError, OSError, urllib.error.HTTPError) as exc:
+                        self._send_json({"error": str(exc)}, 400)
+                        return
+                    self._send_json(
+                        {
+                            "host_url": host_url,
+                            "status": health.get("status", ""),
+                            "app_version": health.get("app_version", ""),
+                            "mode": health.get("mode", ""),
+                        }
+                    )
+                    return
                 if mode == "host":
                     path = write_host_config(
                         value("host"),
@@ -845,13 +937,17 @@ def run_wizard(open_browser: bool = True) -> int:
                     message = f"协同终端已启动并连接：{url}"
                 else:
                     raise ValueError("请选择主机或协同终端")
-                self._send(render_page(csrf, message=message))
+                self._send(render_page(csrf, message=message, selected_mode=mode))
                 threading.Thread(
                     target=lambda: (time.sleep(1), webbrowser.open(url), shutdown.set()),
                     daemon=True,
                 ).start()
             except (ValueError, OSError, urllib.error.HTTPError) as exc:
-                self._send(render_page(csrf, error=str(exc)), 400)
+                failed_mode = locals().get("mode", "")
+                self._send(
+                    render_page(csrf, error=str(exc), selected_mode=failed_mode),
+                    400,
+                )
             except Exception as exc:  # noqa: BLE001 - 本地 HTTP 边界必须返回完整诊断页。
                 diagnostic_id = _record_wizard_failure(exc)
                 self._send(

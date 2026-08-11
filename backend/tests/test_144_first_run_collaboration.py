@@ -6,6 +6,7 @@ import pytest
 
 from app.networking import enrollment_service_url
 from app.routers import fleet
+from app import setup_wizard
 
 
 def test_enrollment_rejects_loopback_advertised_host(
@@ -108,3 +109,30 @@ def test_enrollment_status_confirms_agent_completed_pairing(
     assert completed.status_code == 200, completed.text
     assert completed.json()["status"] == "enrolled"
     assert completed.json()["device_id"] == enrolled.json()["device_id"]
+
+
+def test_first_run_wizard_prioritizes_reachable_role_based_setup(monkeypatch) -> None:
+    """首次配置必须先选角色，且局域网地址优先于只能本机访问的地址。"""
+
+    monkeypatch.setattr(
+        setup_wizard,
+        "discover_lan_addresses",
+        lambda: ["192.168.36.18"],
+    )
+    page = setup_wizard.render_page("csrf-token")
+
+    assert "第一步 · 这台电脑做什么" in page
+    assert 'data-role="host"' in page
+    assert 'data-role="client"' in page
+    assert 'value="192.168.36.18" selected' in page
+    assert page.index('value="192.168.36.18"') < page.index('value="127.0.0.1"')
+    assert "先测试主机连接" in page
+    assert 'id="client-submit"' in page and "disabled" in page
+
+
+def test_client_first_run_rejects_loopback_host(monkeypatch) -> None:
+    """协同机填写 127.0.0.1 等于连接自己，正式环境应在联网前阻止。"""
+
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    with pytest.raises(ValueError, match="协同机不能使用回环地址"):
+        setup_wizard.resolve_host_url("http://127.0.0.1:18765")
