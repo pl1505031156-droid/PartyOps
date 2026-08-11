@@ -17,7 +17,7 @@ from app.database import db_runtime
 from app.device_versions import request_device
 from app.backups import _safe_zip_members, verify_backup
 from app.ai_service import validate_provider_url
-from app.intake import extract_path_content
+from app.intake import MAX_PDF_PAGES, _extract_pdf, extract_path_content
 from app.models import Device
 from app.model_packs import _manifest_signature_valid as model_signature_valid
 from app.routers.updates import _manifest_signature_valid as update_signature_valid
@@ -198,3 +198,21 @@ def test_cookie_writes_reject_hostile_origin_and_emit_security_headers(client, a
     assert rejected.headers["x-frame-options"] == "DENY"
     assert "frame-ancestors 'none'" in rejected.headers["content-security-policy"]
     assert client.get("/api/v1/auth/me").status_code == 200
+
+
+def test_intake_rejects_pathological_pdf_page_count() -> None:
+    import fitz
+
+    document = fitz.open()
+    try:
+        for _index in range(MAX_PDF_PAGES + 1):
+            document.new_page(width=72, height=72)
+        payload = document.tobytes()
+    finally:
+        document.close()
+    try:
+        _extract_pdf(payload)
+    except ProblemException as exc:
+        assert exc.code == "INTAKE_PDF_PAGE_LIMIT"
+    else:  # pragma: no cover
+        raise AssertionError("异常页数 PDF 必须在 OCR 前被拒绝")

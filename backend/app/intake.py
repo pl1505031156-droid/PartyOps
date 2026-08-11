@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import calendar
 import re
@@ -34,6 +35,10 @@ MAX_ARCHIVE_COMPRESSION_RATIO = 200
 MAX_INTAKE_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_OFFICE_MEMBERS = 10_000
 MAX_OFFICE_UNCOMPRESSED_BYTES = 500 * 1024 * 1024
+MAX_PDF_PAGES = 500
+MAX_PDF_OCR_PAGES = 20
+MAX_IMAGE_PIXELS = 50_000_000
+_PARSE_CONCURRENCY = asyncio.Semaphore(2)
 WEEKDAY_MAP = {
     "一": 0,
     "二": 1,
@@ -188,42 +193,58 @@ def _validate_office_container(data: bytes) -> None:
 
 def _extract_pdf(data: bytes) -> tuple[str, list[str]]:
     warnings: list[str] = []
-    document = fitz.open(stream=data, filetype="pdf")
     pages: list[str] = []
-    for page in document:
-        text = page.get_text("text").strip()
-        if text:
-            pages.append(text)
-            continue
-        try:
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(1.8, 1.8), alpha=False)
-            image = Image.open(io.BytesIO(pixmap.tobytes("png")))
-            pages.append(pytesseract.image_to_string(image, lang="chi_sim"))
-        except (pytesseract.TesseractNotFoundError, RuntimeError):
-            warnings.append("扫描页需要本地 Tesseract 中文 OCR；当前环境未检测到引擎。")
+    with fitz.open(stream=data, filetype="pdf") as document:
+        if document.needs_pass:
+            raise ProblemException(422, "INTAKE_PDF_ENCRYPTED", "PDF 已加密", "请解密后再识别，或仅作为事项材料上传。")
+        if document.page_count > MAX_PDF_PAGES:
+            raise ProblemException(
+                422,
+                "INTAKE_PDF_PAGE_LIMIT",
+                "PDF 页数过多",
+                f"快速识别最多处理 {MAX_PDF_PAGES} 页；大文件可作为事项材料上传。",
+            )
+        ocr_pages = 0
+        for page in document:
+            text = page.get_text("text").strip()
+            if text:
+                pages.append(text)
+                continue
+            if ocr_pages >= MAX_PDF_OCR_PAGES:
+                if not any("OCR 页数" in warning for warning in warnings):
+                    warnings.append(f"扫描页超过 {MAX_PDF_OCR_PAGES} 页，已停止继续 OCR，请人工核对。")
+                continue
+            width = max(1, int(page.rect.width * 1.8))
+            height = max(1, int(page.rect.height * 1.8))
+            if width * height > MAX_IMAGE_PIXELS:
+                warnings.append("扫描页像素规模过大，已跳过 OCR。")
+                continue
+            ocr_pages += 1
+            try:
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(1.8, 1.8), alpha=False)
+                image = Image.open(io.BytesIO(pixmap.tobytes("png")))
+                pages.append(pytesseract.image_to_string(image, lang="chi_sim", timeout=10))
+            except (pytesseract.TesseractNotFoundError, RuntimeError):
+                if not any("Tesseract" in warning for warning in warnings):
+                    warnings.append("扫描页需要本地 Tesseract 中文 OCR；当前环境未检测到引擎或识别超时。")
     return "\n".join(pages), warnings
 
 
 def _extract_image(data: bytes) -> tuple[str, list[str]]:
     try:
         image = Image.open(io.BytesIO(data))
-        return pytesseract.image_to_string(image, lang="chi_sim"), []
+        if image.width * image.height > MAX_IMAGE_PIXELS:
+            return "", ["图片像素规模超过快速识别上限，请压缩后重试。"]
+        return pytesseract.image_to_string(image, lang="chi_sim", timeout=20), []
     except pytesseract.TesseractNotFoundError:
         return "", ["当前环境未检测到 Tesseract 中文 OCR，请人工确认图片内容。"]
     except (OSError, RuntimeError):
         return "", ["图片无法识别，请确认文件格式。"]
 
 
-async def parse_upload(upload: UploadFile, pasted_text: str = "") -> IntakeCandidate:
-    data = await upload.read(MAX_INTAKE_UPLOAD_BYTES + 1)
-    if len(data) > MAX_INTAKE_UPLOAD_BYTES:
-        raise ProblemException(
-            413,
-            "INTAKE_FILE_TOO_LARGE",
-            "收件文件过大",
-            "快速识别单个文件不超过 50 MB；大文件可在事项创建后作为材料上传。",
-        )
-    safe_filename = Path(upload.filename or "").name
+def _parse_upload_data(data: bytes, safe_filename: str, pasted_text: str) -> IntakeCandidate:
+    """同步解析主体由受控工作线程调用，避免 OCR/PDF 阻塞 API 事件循环。"""
+
     name = safe_filename.lower()
     warnings: list[str] = []
     parser_label = "仅保存原始附件"
@@ -263,6 +284,25 @@ async def parse_upload(upload: UploadFile, pasted_text: str = "") -> IntakeCandi
     result.source_filename = safe_filename
     result.parser_label = parser_label
     return result
+
+
+async def parse_upload(upload: UploadFile, pasted_text: str = "") -> IntakeCandidate:
+    data = await upload.read(MAX_INTAKE_UPLOAD_BYTES + 1)
+    if len(data) > MAX_INTAKE_UPLOAD_BYTES:
+        raise ProblemException(
+            413,
+            "INTAKE_FILE_TOO_LARGE",
+            "收件文件过大",
+            "快速识别单个文件不超过 50 MB；大文件可在事项创建后作为材料上传。",
+        )
+    safe_filename = Path(upload.filename or "").name
+    async with _PARSE_CONCURRENCY:
+        return await asyncio.to_thread(
+            _parse_upload_data,
+            data,
+            safe_filename,
+            pasted_text,
+        )
 
 
 @dataclass(frozen=True)
