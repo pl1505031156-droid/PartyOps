@@ -194,8 +194,6 @@ def _manifest_signature_valid(manifest: dict) -> bool:
     signature = manifest.get("signature")
     settings = get_settings()
     public_key = settings.update_public_key
-    if not public_key and settings.environment != "production":
-        public_key = manifest.get("public_key")
     if not signature or not public_key or Ed25519PublicKey is None:
         return False
     unsigned = dict(manifest)
@@ -302,9 +300,9 @@ async def upload_update_package(
         path.unlink(missing_ok=True)
         raise
     signature_valid = _manifest_signature_valid(manifest)
-    if settings.environment == "production" and not signature_valid:
+    if not signature_valid:
         path.unlink(missing_ok=True)
-        raise ProblemException(422, "UPDATE_SIGNATURE_INVALID", "更新包签名无效", "生产环境只接受经批准密钥签名的更新包。")
+        raise ProblemException(422, "UPDATE_SIGNATURE_INVALID", "更新包签名无效", "系统只接受由外部受信公钥验证通过的更新包。")
     digest = _sha256_path(path)
     final_name = f"partyops_{manifest['version']}_{digest[:12]}.partyops-update"
     final_path = settings.updates_dir / final_name
@@ -338,8 +336,8 @@ def apply_update(
     package = db.get(UpdatePackage, package_id)
     if not package or package.status not in {UpdateStatus.VALIDATED, UpdateStatus.COMPLETED}:
         raise ProblemException(409, "UPDATE_NOT_READY", "更新包尚未通过校验", "请先上传并校验更新包。")
-    if not package.signature_valid and get_settings().environment == "production":
-        raise ProblemException(403, "UPDATE_SIGNATURE_INVALID", "更新包签名无效", "生产环境禁止使用未签名更新包。")
+    if not package.signature_valid:
+        raise ProblemException(403, "UPDATE_SIGNATURE_INVALID", "更新包签名无效", "系统禁止使用未通过受信公钥验证的更新包。")
     package_path = get_settings().updates_dir / package.filename
     if not package_path.is_file() or _sha256_path(package_path) != package.sha256:
         raise ProblemException(

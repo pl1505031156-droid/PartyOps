@@ -74,8 +74,6 @@ def _safe_member(name: str) -> PurePosixPath:
 def _manifest_signature_valid(manifest: dict) -> bool:
     settings = get_settings()
     public_key = settings.model_pack_public_key or settings.update_public_key
-    if not public_key and settings.environment != "production":
-        public_key = str(manifest.get("public_key", ""))
     signature = str(manifest.get("signature", ""))
     if not public_key or not signature or Ed25519PublicKey is None:
         return False
@@ -186,8 +184,8 @@ def _validate_manifest(manifest: dict, archive: zipfile.ZipFile) -> tuple[dict, 
         if size != int(expected.get("size", -1)) or digest.hexdigest() != str(expected.get("sha256", "")).lower():
             raise ProblemException(422, "MODEL_PACK_HASH_MISMATCH", "模型文件校验失败", f"{filename} 的大小或哈希不一致。")
     signature_valid = _manifest_signature_valid(manifest)
-    if get_settings().environment == "production" and not signature_valid:
-        raise ProblemException(422, "MODEL_PACK_SIGNATURE_INVALID", "模型包签名无效", "生产环境只接受经 PartyOps 发布密钥签名的模型包。")
+    if not signature_valid:
+        raise ProblemException(422, "MODEL_PACK_SIGNATURE_INVALID", "模型包签名无效", "系统只接受由外部受信公钥验证通过的模型包。")
     return files, signature_valid
 
 

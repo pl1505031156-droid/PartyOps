@@ -35,7 +35,9 @@ class Settings(BaseSettings):
     app_name: str = "党建智办"
     app_version: str = "1.4.2"
     mode: Literal["host", "client"] = "host"
-    environment: Literal["development", "test", "production"] = "development"
+    # 未显式配置时按生产边界运行。开发脚本和自动化测试会主动设置
+    # development/test，避免开源用户直接启动时意外开启调试与弱校验。
+    environment: Literal["development", "test", "production"] = "production"
     data_dir: Path = Field(default_factory=default_data_dir)
     host: str = "127.0.0.1"
     port: int = 18765

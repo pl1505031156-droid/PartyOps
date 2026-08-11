@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import io
+import base64
 import hashlib
 import json
 import zipfile
 
 from fastapi.testclient import TestClient
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.config import get_settings
 
@@ -208,7 +211,7 @@ def test_saved_views_topics_calendar_and_handover(client: TestClient, admin: dic
     assert client.get(f"/api/v1/handover/{handover.json()['id']}/download").status_code == 200
 
 
-def test_update_package_validation_and_queue(client: TestClient, admin: dict) -> None:
+def test_update_package_validation_and_queue(client: TestClient, admin: dict, monkeypatch) -> None:
     current_version = get_settings().app_version
     major, minor, patch = (int(part) for part in current_version.split("."))
     update_version = f"{major}.{minor}.{patch + 1}"
@@ -216,33 +219,45 @@ def test_update_package_validation_and_queue(client: TestClient, admin: dict) ->
         f"partyops_{update_version}_amd64.deb": b"amd64-placeholder",
         f"partyops_{update_version}_arm64.deb": b"arm64-placeholder",
     }
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    monkeypatch.setattr(
+        get_settings(),
+        "update_public_key",
+        base64.b64encode(public_key).decode("ascii"),
+    )
+    manifest = {
+        "format": "partyops-update",
+        "format_version": 2,
+        "version": update_version,
+        "min_version": "1.1.1",
+        "schema_revision": "0017",
+        "architecture_artifacts": {
+            "amd64": f"partyops_{update_version}_amd64.deb",
+            "arm64": f"partyops_{update_version}_arm64.deb",
+        },
+        "artifacts": {
+            filename: {
+                "sha256": hashlib.sha256(content).hexdigest(),
+                "size": len(content),
+            }
+            for filename, content in artifacts.items()
+        },
+        "release_notes": ["测试双架构更新包与主机优先队列"],
+    }
+    canonical = json.dumps(
+        manifest,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    manifest["signature"] = base64.b64encode(private_key.sign(canonical)).decode("ascii")
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w") as archive:
-        archive.writestr(
-            "manifest.json",
-            json.dumps(
-                    {
-                        "format": "partyops-update",
-                        "format_version": 2,
-                            "version": update_version,
-                            "min_version": "1.1.1",
-                            "schema_revision": "0017",
-                            "architecture_artifacts": {
-                                "amd64": f"partyops_{update_version}_amd64.deb",
-                                "arm64": f"partyops_{update_version}_arm64.deb",
-                        },
-                        "artifacts": {
-                            filename: {
-                                "sha256": hashlib.sha256(content).hexdigest(),
-                                "size": len(content),
-                            }
-                            for filename, content in artifacts.items()
-                            },
-                            "release_notes": ["测试双架构更新包与主机优先队列"],
-                            "signature": "",
-                    }
-                ),
-            )
+        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False))
         for filename, content in artifacts.items():
             archive.writestr(filename, content)
     stream.seek(0)

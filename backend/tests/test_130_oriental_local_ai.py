@@ -293,12 +293,25 @@ def _signed_model_pack_bytes(*, valid_signature: bool = True) -> bytes:
     return stream.getvalue()
 
 
+def _trust_model_pack(payload: bytes, monkeypatch) -> None:
+    """测试只信任由外部配置注入的模型包公钥。"""
+
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+    monkeypatch.setattr(
+        get_settings(),
+        "model_pack_public_key",
+        str(manifest["public_key"]),
+    )
+
+
 def test_model_pack_signature_activation_and_resource_degradation(
     client: TestClient,
     admin: dict,
     monkeypatch,
 ) -> None:
     payload = _signed_model_pack_bytes()
+    _trust_model_pack(payload, monkeypatch)
     imported = client.post(
         "/api/v1/admin/ai/model-packs",
         files={
@@ -383,12 +396,14 @@ def test_model_pack_permission_error_degrades_status_instead_of_500(
 ) -> None:
     """模型文件暂时不可读时，更新页和系统诊断仍应正常打开。"""
 
+    payload = _signed_model_pack_bytes()
+    _trust_model_pack(payload, monkeypatch)
     imported = client.post(
         "/api/v1/admin/ai/model-packs",
         files={
             "file": (
                 "permission-test.partyops-modelpack",
-                _signed_model_pack_bytes(),
+                payload,
                 "application/octet-stream",
             )
         },
