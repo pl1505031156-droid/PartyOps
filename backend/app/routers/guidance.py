@@ -178,7 +178,7 @@ def get_enablement(
         )
         steps = [
             enablement_step("account", "首位管理员已创建", "管理员负责成员、设备、备份和正式更新。", "/help", "查看管理员职责", True),
-            enablement_step("network", "启用可信局域网与 HTTPS", "必须绑定真实私网地址，127.0.0.1 不能用于跨机协同。", "/help?query=主机配置", "查看主机配置", host_network_ready()),
+            enablement_step("network", "启用可信局域网与 HTTPS", "必须绑定真实私网地址，127.0.0.1 不能用于跨机协同。", "/help?q=主机配置", "查看主机配置", host_network_ready()),
             enablement_step("backup", "完成首次可恢复备份", "正式录入数据前先生成并验证一份本机备份。", "/settings/backups", "创建首次备份", backup_ready),
             enablement_step("device", "接入第一台协同电脑", "生成入网码后等待设备安全入网和首次心跳。", "/fleet/devices", "新增协同电脑", device_ready),
             enablement_step("team_files", "建立第一个可访问共享目录", "主机目录由管理员纳管，协同机目录由用户发布。", "/workspace", "进入文件中心", accessible_root),

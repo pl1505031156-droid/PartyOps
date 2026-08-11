@@ -27,7 +27,7 @@ import { useSessionStore } from "../stores/session";
 import QuickCreateDrawer from "./QuickCreateDrawer.vue";
 import OrientalArtLayer from "./OrientalArtLayer.vue";
 import { api } from "../api";
-import type { EnablementStatus, NotificationItem, ReminderPreference } from "../types";
+import type { NotificationItem, ReminderPreference } from "../types";
 import { localizeEmbeddedCodes, zhLabel } from "../utils/labels";
 import { orientalDateLabel } from "../utils/lunar";
 import {
@@ -55,15 +55,7 @@ const commandLoading = ref(false);
 const connectionState = ref<"live" | "polling" | "offline">("live");
 const reminderPreference = ref<ReminderPreference | null>(null);
 const recentNotifications = ref<NotificationItem[]>([]);
-const enablement = ref<EnablementStatus | null>(null);
-const enablementDismissed = ref(
-  typeof window !== "undefined" && window.sessionStorage.getItem("partyops.enablement.dismissed") === "1",
-);
 const unreadNotifications = computed(() => recentNotifications.value.filter((item) => !item.read_at).length);
-const enablementIncomplete = computed(() => (
-  enablement.value !== null
-  && enablement.value.completed_count < enablement.value.total_count
-));
 const visibleNavigationDomains = computed(() => {
   const capabilities = new Set(session.runtimeContext?.capabilities || []);
   return navigationDomains
@@ -124,8 +116,7 @@ const quickCommands = [
   { id: "archives", title: "查询重要档案", subtitle: "人事调动、年度考核和扫描件", route: "/archives", type: "command" },
   { id: "reports", title: "建立周期报告", subtitle: "周、月、季度和年度汇总", route: "/reports", type: "command" },
   { id: "topics", title: "打开专题工作空间", subtitle: "集中查看专项任务、文件、日志和联系人", route: "/topics", type: "command" },
-  { id: "help", title: "打开使用帮助", subtitle: "查看操作教程和防错清单", route: "/help", type: "command" },
-  { id: "getting-started", title: "检查首次配置与协同", subtitle: "按真实状态完成主机或协同机上手闭环", route: "/getting-started", type: "command" },
+  { id: "help", title: "打开帮助与上手", subtitle: "查看事实检查、操作教程和防错清单", route: "/help", type: "command" },
 ];
 
 const filteredCommands = computed(() => {
@@ -209,19 +200,6 @@ async function loadNotifications() {
   } catch {
     // 通知面板不阻断业务页面，下一次实时事件或刷新会重试。
   }
-}
-
-async function loadEnablement() {
-  try {
-    enablement.value = await api.get<EnablementStatus>("/me/enablement");
-  } catch {
-    // 上手提示不阻断日常工作，完整检查页仍可主动重试。
-  }
-}
-
-function dismissEnablement() {
-  enablementDismissed.value = true;
-  window.sessionStorage.setItem("partyops.enablement.dismissed", "1");
 }
 
 async function openNotification(item: NotificationItem) {
@@ -356,11 +334,10 @@ watch(
 );
 
 onMounted(async () => {
-  await Promise.all([loadReminderPreference(), loadNotifications(), loadEnablement()]);
+  await Promise.all([loadReminderPreference(), loadNotifications()]);
   connectEvents();
   window.addEventListener("keydown", globalKeydown);
   window.addEventListener("partyops:command", openCommandCenter);
-  window.addEventListener("partyops:refresh", loadEnablement);
 });
 onBeforeUnmount(() => {
   source?.close();
@@ -368,7 +345,6 @@ onBeforeUnmount(() => {
   if (commandTimer) window.clearTimeout(commandTimer);
   window.removeEventListener("keydown", globalKeydown);
   window.removeEventListener("partyops:command", openCommandCenter);
-  window.removeEventListener("partyops:refresh", loadEnablement);
 });
 </script>
 
@@ -476,16 +452,6 @@ onBeforeUnmount(() => {
           </a-button>
         </a-space>
       </header>
-      <section
-        v-if="enablementIncomplete && !enablementDismissed && route.path !== '/getting-started'"
-        class="enablement-nudge"
-      >
-        <span>{{ enablement?.completed_count }} / {{ enablement?.total_count }}</span>
-        <div><strong>{{ enablement?.title }}尚未完成</strong><small>{{ enablement?.summary }}</small></div>
-        <RouterLink :to="enablement?.next_route || '/getting-started'">继续下一步</RouterLink>
-        <RouterLink to="/getting-started">查看完整检查</RouterLink>
-        <button type="button" @click="dismissEnablement">本次稍后</button>
-      </section>
       <slot />
     </main>
     <QuickCreateDrawer v-model:visible="drawerVisible" @created="router.push(`/tasks/${$event.id}`)" />
@@ -637,7 +603,6 @@ onBeforeUnmount(() => {
 .recent-notifications span, .recent-notifications small { display: block; }
 .recent-notifications small { margin-top: 4px; color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .recent-notifications p { padding: 24px; color: var(--muted); text-align: center; }
-.enablement-nudge{position:relative;z-index:2;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto auto;gap:13px;align-items:center;margin:0 34px 16px;padding:13px 15px;color:#f8efe6;background:#312d29;border-left:3px solid var(--cinnabar)}.enablement-nudge>span{display:grid;width:42px;height:42px;color:#f0c1b7;font:12px Georgia,serif;border:1px solid #7e6d63;border-radius:50%;place-items:center}.enablement-nudge strong,.enablement-nudge small{display:block}.enablement-nudge small{margin-top:2px;color:#c8beb4;font-size:10px}.enablement-nudge a{padding:7px 9px;color:#f2d4cd;font-size:11px;border:1px solid #73574e}.enablement-nudge button{padding:7px;color:#bfb3a9;background:transparent;border:0;cursor:pointer}@media(max-width:920px){.enablement-nudge{grid-template-columns:auto 1fr}.enablement-nudge a,.enablement-nudge button{grid-column:2;justify-self:start}}
 
 .nav-list {
   display: flex;

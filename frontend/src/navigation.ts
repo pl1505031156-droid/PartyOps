@@ -31,7 +31,6 @@ export const navigationDomains: NavigationDomain[] = [
     defaultPath: "/",
     items: [
       { path: "/", label: "今日工作台", icon: "home" },
-      { path: "/getting-started", label: "上手与协同检查", icon: "help" },
     ],
   },
   {
@@ -88,7 +87,7 @@ export const navigationDomains: NavigationDomain[] = [
       { path: "/settings/updates", label: "系统更新", icon: "settings", capability: "updates.manage" },
       { path: "/settings/backups", label: "备份恢复", icon: "archive", capability: "backups.manage" },
       { path: "/settings/diagnostics", label: "运行诊断", icon: "settings", capability: "admin.access" },
-      { path: "/help", label: "使用帮助", icon: "help" },
+      { path: "/help", label: "帮助与上手", icon: "help" },
     ],
   },
 ];

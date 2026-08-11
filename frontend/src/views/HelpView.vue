@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Message } from "@arco-design/web-vue";
 import { useRoute } from "vue-router";
 import { api } from "../api";
 import { useSessionStore } from "../stores/session";
-import type { OnboardingProgress } from "../types";
+import type { EnablementStatus } from "../types";
 
 const session = useSessionStore();
 const route = useRoute();
 const keyword = ref(String(route.query.q || ""));
 const selectedId = ref("start");
-const completed = ref<string[]>([]);
-const onboarding = ref<OnboardingProgress | null>(null);
+const enablement = ref<EnablementStatus | null>(null);
+const enablementLoading = ref(false);
 
 const guides = [
   {
@@ -144,50 +143,65 @@ const filteredGuides = computed(() => {
   return visibleGuides.value.filter((item) => `${item.title}${item.summary}${item.steps.join("")}`.toLowerCase().includes(value));
 });
 const selected = computed(() => visibleGuides.value.find((item) => item.id === selectedId.value) || filteredGuides.value[0] || visibleGuides.value[0]);
-const progress = computed(() => Math.round(completed.value.length / visibleGuides.value.length * 100));
+const progress = computed(() => {
+  if (!enablement.value?.total_count) return 0;
+  return Math.round(enablement.value.completed_count / enablement.value.total_count * 100);
+});
+const personaLabels: Record<string, string> = {
+  host_admin: "主机 · 管理员",
+  host_staff: "主机 · 普通用户",
+  client_admin: "协同机 · 管理员",
+  client_staff: "协同机 · 普通用户",
+};
+const personaLabel = computed(() => (
+  personaLabels[enablement.value?.persona || ""] || "当前账号"
+));
 
-async function loadProgress() {
+async function loadEnablement() {
+  enablementLoading.value = true;
   try {
-    onboarding.value = await api.get<OnboardingProgress>("/me/onboarding");
-    completed.value = [...onboarding.value.completed_steps];
+    enablement.value = await api.get<EnablementStatus>("/me/enablement");
   } catch {
-    Message.warning("学习进度暂时无法读取，教程内容仍可正常查看");
+    enablement.value = null;
+  } finally {
+    enablementLoading.value = false;
   }
 }
 
-async function toggleComplete(id: string) {
-  if (!onboarding.value) return;
-  const next = completed.value.includes(id)
-    ? completed.value.filter((item) => item !== id)
-    : [...completed.value, id];
-  try {
-    onboarding.value = await api.patch<OnboardingProgress>(
-      "/me/onboarding",
-      { completed_steps: next },
-      { "If-Match": String(onboarding.value.version) },
-    );
-    completed.value = [...onboarding.value.completed_steps];
-  } catch (error) {
-    Message.error(error instanceof Error ? error.message : "学习进度保存失败");
-    await loadProgress();
-  }
-}
-
-onMounted(loadProgress);
+onMounted(loadEnablement);
 </script>
 
 <template>
   <div class="page help-page">
     <header class="help-hero">
       <div>
-        <p>党建智办使用指南</p>
-        <h1>使用帮助与防错指南</h1>
-        <span>从第一次建档到年度归档，每一步都可以在这里查到。</span>
+        <p>PARTYOPS · ONE GUIDANCE CENTER</p>
+        <h1>帮助、上手与协同检查</h1>
+        <span>首次配置后的真实状态、日常操作教程和防错说明统一放在这里。</span>
       </div>
-      <div class="progress-seal"><strong>{{ progress }}%</strong><small>上手清单</small></div>
+      <div class="progress-seal"><strong>{{ progress }}%</strong><small>事实完成度</small></div>
     </header>
 
-    <div class="help-search"><a-input-search v-model="keyword" size="large" allow-clear placeholder="搜索“周期任务”“最终稿”“设备入网”“备份恢复”……" /></div>
+    <section id="setup-check" class="setup-check" :aria-busy="enablementLoading">
+      <header>
+        <div>
+          <span>{{ personaLabel }}</span>
+          <h2>{{ enablement?.title || "正在检查当前电脑与账号" }}</h2>
+          <p>{{ enablement?.summary || "系统正在读取网络、备份、设备、共享目录、传输与工作状态。" }}</p>
+        </div>
+        <a-button :loading="enablementLoading" @click="loadEnablement">重新检查真实状态</a-button>
+      </header>
+      <div v-if="enablement" class="setup-steps">
+        <article v-for="(step, index) in enablement.steps" :key="step.key" :class="{ complete: step.complete }">
+          <b>{{ step.complete ? "✓" : String(index + 1).padStart(2, "0") }}</b>
+          <div><small>{{ step.complete ? "真实状态已确认" : "尚未完成" }}</small><strong>{{ step.title }}</strong><p>{{ step.description }}</p></div>
+          <RouterLink :to="step.route">{{ step.complete ? "查看" : step.action_label }}</RouterLink>
+        </article>
+      </div>
+      <p v-else-if="!enablementLoading" class="setup-error">暂时无法读取事实检查；操作教程仍可正常使用，请稍后重新检查。</p>
+    </section>
+
+    <div class="help-search"><strong>操作教程</strong><a-input-search v-model="keyword" size="large" allow-clear placeholder="搜索“周期任务”“最终稿”“设备入网”“备份恢复”……" /></div>
 
     <div class="help-layout">
       <aside>
@@ -195,10 +209,10 @@ onMounted(loadProgress);
           v-for="guide in filteredGuides"
           :key="guide.id"
           type="button"
-          :class="{ active: selected?.id === guide.id, done: completed.includes(guide.id) }"
+          :class="{ active: selected?.id === guide.id }"
           @click="selectedId = guide.id"
         >
-          <i>{{ completed.includes(guide.id) ? "✓" : String(visibleGuides.indexOf(guide) + 1).padStart(2, "0") }}</i>
+          <i>{{ String(visibleGuides.indexOf(guide) + 1).padStart(2, "0") }}</i>
           <span><strong>{{ guide.title }}</strong><small>{{ guide.summary }}</small></span>
         </button>
         <p v-if="!filteredGuides.length">没有找到相关教程，请换一个关键词。</p>
@@ -210,9 +224,7 @@ onMounted(loadProgress);
           <li v-for="(step, index) in selected.steps" :key="step"><b>{{ index + 1 }}</b><p>{{ step }}</p></li>
         </ol>
         <div class="guide-actions">
-          <a-button :type="completed.includes(selected.id) ? 'outline' : 'primary'" @click="toggleComplete(selected.id)">
-            {{ completed.includes(selected.id) ? "标记为需要重看" : "我已掌握这一部分" }}
-          </a-button>
+          <span>教程用于随时查阅；上方完成度只认真实业务状态，不接受手工勾选。</span>
           <RouterLink to="/">返回今日工作台</RouterLink>
         </div>
       </main>
@@ -234,8 +246,8 @@ onMounted(loadProgress);
 </template>
 
 <style scoped>
-.help-page{max-width:1380px}.help-hero{display:flex;align-items:flex-end;justify-content:space-between;min-height:190px;padding:34px 42px;color:#f8efe4;background:var(--charcoal);border-bottom:5px solid var(--cinnabar)}.help-hero p{margin:0 0 12px;color:#d38a7e;font:11px Georgia,serif;letter-spacing:.2em}.help-hero h1{margin:0;font-family:var(--serif);font-size:34px;letter-spacing:.06em}.help-hero span{display:block;margin-top:12px;color:#c8beb2;font-size:12px}.progress-seal{display:grid;width:92px;height:92px;place-content:center;text-align:center;border:1px solid #d38a7e;border-radius:50%}.progress-seal strong{font:26px Georgia,serif}.progress-seal small{margin-top:4px;color:#d38a7e;font-size:9px;letter-spacing:.12em}.help-search{padding:22px 0 16px}.help-layout{display:grid;grid-template-columns:310px minmax(0,1fr);min-height:560px;border:1px solid var(--line);background:rgba(251,248,241,.72)}.help-layout aside{padding:14px;border-right:1px solid var(--line)}.help-layout aside button{display:grid;width:100%;grid-template-columns:34px minmax(0,1fr);gap:10px;padding:13px 10px;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line-light);cursor:pointer}.help-layout aside button:hover,.help-layout aside button.active{background:rgba(180,35,24,.05)}.help-layout aside button.active{color:var(--cinnabar);border-left:3px solid var(--cinnabar)}.help-layout aside i{display:grid;width:28px;height:28px;place-items:center;color:var(--muted);font:10px Georgia,serif;border:1px solid var(--line);border-radius:50%}.help-layout aside button.done i{color:#fff;background:#3d7653;border-color:#3d7653}.help-layout aside strong,.help-layout aside small{display:block}.help-layout aside small{margin-top:5px;color:var(--muted);font-size:9px;line-height:1.5}.guide-paper{padding:38px 48px}.guide-paper header{padding-bottom:22px;border-bottom:2px solid var(--charcoal)}.guide-paper header span{color:var(--cinnabar);font:10px Georgia,serif;letter-spacing:.2em}.guide-paper h2{margin:9px 0 6px;font-family:var(--serif);font-size:28px}.guide-paper header p{margin:0;color:var(--muted);font-size:11px}.guide-paper ol{margin:24px 0;padding:0;list-style:none}.guide-paper li{display:grid;grid-template-columns:38px minmax(0,1fr);align-items:start;padding:17px 0;border-bottom:1px solid var(--line-light)}.guide-paper li b{display:grid;width:28px;height:28px;place-items:center;color:var(--cinnabar);font:13px Georgia,serif;border:1px solid rgba(180,35,24,.45);border-radius:50%}.guide-paper li p{margin:3px 0 0;line-height:1.8}.guide-actions{display:flex;align-items:center;justify-content:space-between;margin-top:26px}.guide-actions a{color:var(--cinnabar)}.mistake-board{display:grid;grid-template-columns:repeat(4,1fr);margin-top:22px;border:1px solid var(--line)}.mistake-board>div{min-height:150px;padding:20px;border-right:1px solid var(--line)}.mistake-board>div:last-child{border-right:0}.mistake-board span{color:var(--cinnabar);font:20px Georgia,serif}.mistake-board strong{display:block;margin:12px 0 7px}.mistake-board p{margin:0;color:var(--muted);font-size:10px;line-height:1.7}
+.help-page{max-width:1380px}.help-hero{display:flex;align-items:flex-end;justify-content:space-between;min-height:190px;padding:34px 42px;color:#f8efe4;background:var(--charcoal);border-bottom:5px solid var(--cinnabar)}.help-hero p{margin:0 0 12px;color:#d38a7e;font:11px Georgia,serif;letter-spacing:.2em}.help-hero h1{margin:0;font-family:var(--serif);font-size:34px;letter-spacing:.06em}.help-hero span{display:block;margin-top:12px;color:#c8beb2;font-size:12px}.progress-seal{display:grid;width:92px;height:92px;place-content:center;text-align:center;border:1px solid #d38a7e;border-radius:50%}.progress-seal strong{font:26px Georgia,serif}.progress-seal small{margin-top:4px;color:#d38a7e;font-size:9px;letter-spacing:.12em}.setup-check{margin-top:20px;border:1px solid var(--line);background:rgba(251,248,241,.82)}.setup-check>header{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px 26px;color:#f8efe4;background:#312d29;border-left:4px solid var(--cinnabar)}.setup-check>header span{color:#d38a7e;font:10px Georgia,serif;letter-spacing:.12em}.setup-check>header h2{margin:7px 0 4px;font:500 23px var(--serif)}.setup-check>header p{margin:0;color:#c8beb2;font-size:11px}.setup-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.setup-steps article{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:12px;align-items:center;min-height:116px;padding:17px 20px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.setup-steps article>b{display:grid;width:34px;height:34px;color:var(--cinnabar);font:11px Georgia,serif;border:1px solid rgba(180,35,24,.5);border-radius:50%;place-items:center}.setup-steps article.complete>b{color:#2c6a42;border-color:#2c6a42;background:#e8f2e9}.setup-steps article small,.setup-steps article strong{display:block}.setup-steps article small{color:var(--cinnabar);font-size:9px}.setup-steps article strong{margin:3px 0}.setup-steps article p{margin:0;color:var(--muted);font-size:10px;line-height:1.6}.setup-steps article>a{padding:7px 9px;color:var(--cinnabar);font-size:10px;border:1px solid rgba(180,35,24,.35)}.setup-error{margin:0;padding:20px;color:var(--cinnabar)}.help-search{display:grid;grid-template-columns:auto minmax(320px,720px);align-items:center;justify-content:space-between;gap:20px;padding:28px 0 16px}.help-search>strong{font:500 22px var(--serif)}.help-layout{display:grid;grid-template-columns:310px minmax(0,1fr);min-height:560px;border:1px solid var(--line);background:rgba(251,248,241,.72)}.help-layout aside{padding:14px;border-right:1px solid var(--line)}.help-layout aside button{display:grid;width:100%;grid-template-columns:34px minmax(0,1fr);gap:10px;padding:13px 10px;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line-light);cursor:pointer}.help-layout aside button:hover,.help-layout aside button.active{background:rgba(180,35,24,.05)}.help-layout aside button.active{color:var(--cinnabar);border-left:3px solid var(--cinnabar)}.help-layout aside i{display:grid;width:28px;height:28px;place-items:center;color:var(--muted);font:10px Georgia,serif;border:1px solid var(--line);border-radius:50%}.help-layout aside strong,.help-layout aside small{display:block}.help-layout aside small{margin-top:5px;color:var(--muted);font-size:9px;line-height:1.5}.guide-paper{padding:38px 48px}.guide-paper header{padding-bottom:22px;border-bottom:2px solid var(--charcoal)}.guide-paper header span{color:var(--cinnabar);font:10px Georgia,serif;letter-spacing:.2em}.guide-paper h2{margin:9px 0 6px;font-family:var(--serif);font-size:28px}.guide-paper header p{margin:0;color:var(--muted);font-size:11px}.guide-paper ol{margin:24px 0;padding:0;list-style:none}.guide-paper li{display:grid;grid-template-columns:38px minmax(0,1fr);align-items:start;padding:17px 0;border-bottom:1px solid var(--line-light)}.guide-paper li b{display:grid;width:28px;height:28px;place-items:center;color:var(--cinnabar);font:13px Georgia,serif;border:1px solid rgba(180,35,24,.45);border-radius:50%}.guide-paper li p{margin:3px 0 0;line-height:1.8}.guide-actions{display:flex;align-items:center;justify-content:space-between;margin-top:26px;color:var(--muted);font-size:11px}.guide-actions a{color:var(--cinnabar)}.mistake-board{display:grid;grid-template-columns:repeat(4,1fr);margin-top:22px;border:1px solid var(--line)}.mistake-board>div{min-height:150px;padding:20px;border-right:1px solid var(--line)}.mistake-board>div:last-child{border-right:0}.mistake-board span{color:var(--cinnabar);font:20px Georgia,serif}.mistake-board strong{display:block;margin:12px 0 7px}.mistake-board p{margin:0;color:var(--muted);font-size:10px;line-height:1.7}
 .help-page{width:100%;max-width:none}
 .source-notice{display:grid;grid-template-columns:220px minmax(0,1fr) auto;gap:24px;align-items:center;margin-top:22px;padding:22px 26px;color:#f8efe4;background:var(--charcoal);border-left:5px solid var(--cinnabar)}.source-notice span,.source-notice strong{display:block}.source-notice span{margin-bottom:6px;color:#d38a7e;font:10px Georgia,serif;letter-spacing:.14em}.source-notice p{margin:0;color:#c8beb2;font-size:11px;line-height:1.8}.source-notice a{padding:10px 14px;color:#fff;border:1px solid #d38a7e;border-radius:4px}
-@media(max-width:1050px){.help-layout{grid-template-columns:250px 1fr}.mistake-board{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:1050px){.setup-steps{grid-template-columns:1fr}.help-layout{grid-template-columns:250px 1fr}.mistake-board{grid-template-columns:repeat(2,1fr)}}
 </style>

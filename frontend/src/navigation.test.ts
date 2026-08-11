@@ -36,8 +36,11 @@ describe("五域导航", () => {
       "系统更新",
       "备份恢复",
       "运行诊断",
+      "帮助与上手",
     ]));
     expect(labels).not.toContain("工作首页");
+    expect(labels).not.toContain("上手与协同检查");
+    expect(labels.filter((label) => label === "帮助与上手")).toHaveLength(1);
   });
 
   it("首次只展开当前工作域，并能恢复合法的收纳状态", () => {

@@ -22,7 +22,7 @@ const router = createRouter({
       component: () => import("./views/ForbiddenView.vue"),
     },
     { path: "/", component: () => import("./views/TodayView.vue") },
-    { path: "/getting-started", component: () => import("./views/GettingStartedView.vue") },
+    { path: "/getting-started", redirect: { path: "/help", query: { section: "setup" } } },
     { path: "/workbench", redirect: "/" },
     { path: "/dashboard", redirect: "/" },
     { path: "/tasks", component: () => import("./views/TasksView.vue") },

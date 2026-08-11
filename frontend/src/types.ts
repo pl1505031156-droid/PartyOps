@@ -852,14 +852,6 @@ export interface ActivityEvent {
   correlation_id: string;
 }
 
-export interface OnboardingProgress {
-  user_id: string;
-  completed_steps: string[];
-  dismissed: boolean;
-  version: number;
-  updated_at: string;
-  steps: Array<{ key: string; title: string; route: string }>;
-}
 export type SeasonTheme = "spring" | "summer" | "autumn" | "winter";
 export type ArtLevel = "standard" | "reduced";
 export type ModelPackStatus = "missing" | "verifying" | "installed" | "active" | "corrupt";
