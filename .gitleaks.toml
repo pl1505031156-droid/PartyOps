@@ -1,0 +1,14 @@
+title = "PartyOps secret scanning"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "只排除本机生成且已由 .gitignore 禁止提交的测试/构建目录"
+paths = [
+  '''(^|/)backend/\.test-data/''',
+  '''(^|/)frontend/node_modules/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)artifacts/''',
+  '''(^|/)output/''',
+]
