@@ -186,3 +186,15 @@ def test_business_device_identity_never_falls_back_to_ip(client, admin) -> None:
         )
         assert request_device(request, db) is None
         assert request_device(request, db, allow_ip_fallback=True).id == device.id
+
+
+def test_cookie_writes_reject_hostile_origin_and_emit_security_headers(client, admin) -> None:
+    rejected = client.post(
+        "/api/v1/auth/logout",
+        headers={"Origin": "https://attacker.invalid"},
+    )
+    assert rejected.status_code == 403
+    assert rejected.json()["code"] == "ORIGIN_DENIED"
+    assert rejected.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in rejected.headers["content-security-policy"]
+    assert client.get("/api/v1/auth/me").status_code == 200

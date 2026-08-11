@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.encoders import ENCODERS_BY_TYPE
@@ -165,26 +166,90 @@ app.add_middleware(
 install_problem_handlers(app)
 
 
+def _apply_security_headers(response, request: Request):
+    """为正常响应和中间件提前拒绝响应统一增加浏览器安全边界。"""
+
+    response.headers["X-Trace-Id"] = request.state.trace_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; "
+        "form-action 'self'; object-src 'none'; script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+        "font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:"
+    )
+    if settings.tls_enabled:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    response.headers["Cache-Control"] = (
+        "no-store" if request.url.path.startswith("/api/") else "no-cache"
+    )
+    return response
+
+
+def _origin_allowed(request: Request) -> bool:
+    """Cookie 鉴权写请求必须来自本服务或显式允许的前端来源。"""
+
+    origin = request.headers.get("Origin", "").strip()
+    if not origin:
+        return True
+    try:
+        parsed = urlparse(origin)
+    except ValueError:
+        return False
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+        return False
+    normalized = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+    request_origin = f"{request.url.scheme.lower()}://{request.url.netloc.lower()}"
+    configured = {value.rstrip("/").lower() for value in settings.origins()}
+    return normalized == request_origin or normalized in configured
+
+
 @app.middleware("http")
 async def trace_requests(request: Request, call_next):
     request.state.trace_id = normalize_trace_id(request.headers.get("X-Trace-Id"))
+    if (
+        request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+        and (request.cookies.get("partyops_session") or request.cookies.get(DEVICE_CONTEXT_COOKIE))
+        and not _origin_allowed(request)
+    ):
+        return _apply_security_headers(
+            JSONResponse(
+                status_code=403,
+                content={
+                    "type": "https://partyops.local/problems/ORIGIN_DENIED",
+                    "title": "请求来源被拒绝",
+                    "detail": "Cookie 鉴权写请求必须来自当前 PartyOps 服务。",
+                    "code": "ORIGIN_DENIED",
+                    "trace_id": request.state.trace_id,
+                },
+                media_type="application/problem+json",
+            ),
+            request,
+        )
     # 设备令牌只允许走独立的双向 TLS Agent 端口；浏览器主端口即使在同一
     # 局域网内也不能用复制的令牌冒充终端。
     if (
-        settings.tls_enabled
+        settings.environment == "production"
         and request.headers.get("X-PartyOps-Device-Token")
-        and request.url.port != settings.agent_port
+        and (not settings.tls_enabled or request.url.port != settings.agent_port)
     ):
-        return JSONResponse(
-            status_code=403,
-            content={
-                "type": "https://partyops.local/problems/AGENT_MTLS_REQUIRED",
-                "title": "需要设备双向 TLS 通道",
-                "detail": "终端接口必须通过 Agent 安全端口访问。",
-                "code": "AGENT_MTLS_REQUIRED",
-                "trace_id": request.state.trace_id,
-            },
-            media_type="application/problem+json",
+        return _apply_security_headers(
+            JSONResponse(
+                status_code=403,
+                content={
+                    "type": "https://partyops.local/problems/AGENT_MTLS_REQUIRED",
+                    "title": "需要设备双向 TLS 通道",
+                    "detail": "终端接口必须通过 Agent 双向 TLS 安全端口访问。",
+                    "code": "AGENT_MTLS_REQUIRED",
+                    "trace_id": request.state.trace_id,
+                },
+                media_type="application/problem+json",
+            ),
+            request,
         )
     if request.url.path.startswith("/api/v1/") and not request.url.path.startswith(
         (
@@ -205,29 +270,26 @@ async def trace_requests(request: Request, call_next):
                 state = device_version_state(device)
                 if state != "current":
                     status_code = 403 if state in {"revoked", "quarantined"} else 426
-                    return JSONResponse(
-                        status_code=status_code,
-                        content={
-                            "type": "https://partyops.local/problems/DEVICE_UPDATE_REQUIRED",
-                            "title": "协同电脑需要更新",
-                            "detail": "当前协同电脑版本与主机不一致，请完成更新后再进入业务系统。",
-                            "code": "DEVICE_UPDATE_REQUIRED",
-                            "trace_id": request.state.trace_id,
-                            "device_id": device.id,
-                            "current_version": device.app_version or "未上报",
-                            "target_version": settings.app_version,
-                            "state": state,
-                        },
-                        media_type="application/problem+json",
+                    return _apply_security_headers(
+                        JSONResponse(
+                            status_code=status_code,
+                            content={
+                                "type": "https://partyops.local/problems/DEVICE_UPDATE_REQUIRED",
+                                "title": "协同电脑需要更新",
+                                "detail": "当前协同电脑版本与主机不一致，请完成更新后再进入业务系统。",
+                                "code": "DEVICE_UPDATE_REQUIRED",
+                                "trace_id": request.state.trace_id,
+                                "device_id": device.id,
+                                "current_version": device.app_version or "未上报",
+                                "target_version": settings.app_version,
+                                "state": state,
+                            },
+                            media_type="application/problem+json",
+                        ),
+                        request,
                     )
     response = await call_next(request)
-    response.headers["X-Trace-Id"] = request.state.trace_id
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "same-origin"
-    response.headers["Cache-Control"] = (
-        "no-store" if request.url.path.startswith("/api/") else "no-cache"
-    )
-    return response
+    return _apply_security_headers(response, request)
 
 
 api_prefix = "/api/v1"
