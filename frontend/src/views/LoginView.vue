@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   IconEye,
@@ -10,7 +10,9 @@ import {
 } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { useSessionStore } from "../stores/session";
+import { ApiError } from "../api";
 import { orientalDateLabel } from "../utils/lunar";
+import { validateLoginForm, type LoginFieldErrors } from "../utils/onboarding";
 import OrientalArtLayer from "../components/OrientalArtLayer.vue";
 import { sceneConfigForPath } from "../theme/oriental";
 
@@ -21,28 +23,49 @@ const loading = ref(false);
 const showPassword = ref(false);
 const showConnection = ref(false);
 const configured = ref(true);
+const usernameInput = ref<{ focus?: () => void } | null>(null);
+const passwordInput = ref<{ focus?: () => void } | null>(null);
+const displayNameInput = ref<{ focus?: () => void } | null>(null);
 const form = reactive({
   username: "",
   password: "",
   displayName: "",
 });
+const fieldErrors = reactive<LoginFieldErrors>({});
 const orientalDate = orientalDateLabel();
 const artConfig = sceneConfigForPath("/login");
 const connectionLabel = computed(() => {
   const bootstrap = session.bootstrap;
   if (!bootstrap) return "正在检测主机";
-  return `主机已连接 · ${bootstrap.host}:${bootstrap.port}`;
+  return `${bootstrap.configured ? "主机已连接" : "主机服务已就绪"} · ${bootstrap.host}:${bootstrap.port}`;
 });
 
 onMounted(async () => {
-  const status = await session.loadBootstrap();
-  configured.value = status.configured;
-  if (await session.ensure()) await router.replace("/");
+  try {
+    const status = await session.loadBootstrap();
+    configured.value = status.configured;
+    if (await session.ensure()) await router.replace("/");
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "无法连接 PartyOps 主机，请检查主机服务是否已启动");
+  }
 });
 
+function clearFieldError(field: keyof LoginFieldErrors) {
+  delete fieldErrors[field];
+}
+
+async function focusFirstError() {
+  await nextTick();
+  if (fieldErrors.displayName) displayNameInput.value?.focus?.();
+  else if (fieldErrors.username) usernameInput.value?.focus?.();
+  else if (fieldErrors.password) passwordInput.value?.focus?.();
+}
+
 async function submit() {
-  if (!form.username || !form.password) {
-    Message.warning("请输入用户名和密码");
+  Object.keys(fieldErrors).forEach((key) => delete fieldErrors[key as keyof LoginFieldErrors]);
+  Object.assign(fieldErrors, validateLoginForm(form, configured.value));
+  if (Object.keys(fieldErrors).length) {
+    await focusFirstError();
     return;
   }
   loading.value = true;
@@ -50,15 +73,23 @@ async function submit() {
     if (configured.value) {
       await session.login(form.username, form.password);
     } else {
-      if (!form.displayName) {
-        Message.warning("请填写管理员姓名");
-        return;
-      }
       await session.setup(form.username, form.displayName, form.password);
     }
     const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "/";
     await router.replace(redirect);
   } catch (error) {
+    if (error instanceof ApiError) {
+      const mapping: Record<string, keyof LoginFieldErrors> = {
+        display_name: "displayName",
+        username: "username",
+        password: "password",
+      };
+      Object.entries(error.fields).forEach(([key, value]) => {
+        const field = mapping[key];
+        if (field) fieldErrors[field] = value;
+      });
+      if (Object.keys(fieldErrors).length) await focusFirstError();
+    }
     Message.error(error instanceof Error ? error.message : "无法进入系统");
   } finally {
     loading.value = false;
@@ -91,27 +122,37 @@ async function submit() {
           <strong>{{ connectionLabel }}</strong>
         </div>
         <div class="form-rule"></div>
+        <div v-if="!configured" class="setup-stage">
+          <span>主机配置 · 第 2 步</span>
+          <strong>创建首位系统管理员</strong>
+          <p>此账号负责添加成员、协同电脑、备份和更新。创建成功后再从“设备协同”邀请其他电脑。</p>
+        </div>
         <form @submit.prevent="submit">
           <label v-if="!configured">
             <span class="field-label">管理员姓名</span>
-            <a-input v-model="form.displayName" size="large" placeholder="请输入姓名">
+            <a-input ref="displayNameInput" v-model="form.displayName" size="large" placeholder="请输入姓名" :error="Boolean(fieldErrors.displayName)" @input="clearFieldError('displayName')">
               <template #prefix><IconUser /></template>
             </a-input>
+            <small v-if="fieldErrors.displayName" class="field-error" role="alert">{{ fieldErrors.displayName }}</small>
           </label>
           <label>
             <span class="field-label">用户名</span>
-            <a-input v-model="form.username" size="large" placeholder="请输入用户名" autocomplete="username">
+            <a-input ref="usernameInput" v-model="form.username" size="large" placeholder="例如：admin" autocomplete="username" :error="Boolean(fieldErrors.username)" @input="clearFieldError('username')">
               <template #prefix><IconUser /></template>
             </a-input>
+            <small v-if="fieldErrors.username" class="field-error" role="alert">{{ fieldErrors.username }}</small>
           </label>
           <label>
             <span class="field-label">密码</span>
             <a-input
               v-model="form.password"
+              ref="passwordInput"
               size="large"
               :type="showPassword ? 'text' : 'password'"
               placeholder="请输入密码"
               :autocomplete="configured ? 'current-password' : 'new-password'"
+              :error="Boolean(fieldErrors.password)"
+              @input="clearFieldError('password')"
             >
               <template #prefix><IconLock /></template>
               <template #suffix>
@@ -126,6 +167,7 @@ async function submit() {
                 </button>
               </template>
             </a-input>
+            <small v-if="fieldErrors.password" class="field-error" role="alert">{{ fieldErrors.password }}</small>
           </label>
           <a-button html-type="submit" type="primary" size="large" long :loading="loading">
             {{ configured ? "进入系统" : "完成主机配置并进入" }}
@@ -136,7 +178,7 @@ async function submit() {
           <IconSettings />
           连接设置
         </button>
-        <p v-if="!configured" class="setup-note">首次使用：当前将初始化为主机模式，业务数据只保存在本机。</p>
+        <p v-if="!configured" class="setup-note">业务数据只保存在这台主机；首位管理员创建后请立即配置备份。</p>
       </div>
     </section>
     <a-modal v-model:visible="showConnection" title="局域网连接设置" :footer="false">
@@ -147,6 +189,10 @@ async function submit() {
           <p v-if="session.bootstrap?.lan_candidates.length">本机检测到的局域网地址：{{ session.bootstrap.lan_candidates.join("、") }}。协同终端应使用主机明确绑定的地址。</p>
           <p v-else>当前仅检测到本机访问地址。若要多设备协同，请运行配置向导并选择主机局域网 IP。</p>
         </div>
+      </div>
+      <div class="role-connection-grid">
+        <article><strong>这台电脑是主机</strong><p>保持当前页面，完成管理员创建或直接登录。协同设备、备份和系统更新只由获授权管理员设置。</p></article>
+        <article><strong>这台电脑应是协同机</strong><p>关闭此页，从开始菜单重新打开“党建智办”，在首次配置向导选择“这是协同机”，先测试主机地址再输入 10 分钟入网码。</p></article>
       </div>
     </a-modal>
   </main>
@@ -297,6 +343,47 @@ form {
   gap: 35px;
 }
 
+.setup-stage {
+  margin: -18px 0 24px;
+  padding: 14px 16px;
+  background: rgba(180, 35, 24, 0.055);
+  border-left: 3px solid var(--cinnabar);
+}
+
+.setup-stage span,
+.setup-stage strong {
+  display: block;
+}
+
+.setup-stage span {
+  color: var(--cinnabar);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.setup-stage strong {
+  margin: 3px 0;
+  font-family: var(--serif);
+  font-size: 17px;
+}
+
+.setup-stage p,
+.field-error {
+  margin: 0;
+  font-size: 12px;
+}
+
+.setup-stage p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.field-error {
+  display: block;
+  margin-top: 7px;
+  color: var(--cinnabar);
+}
+
 .field-label {
   display: block;
   margin-bottom: 11px;
@@ -357,6 +444,26 @@ form {
 
 .connection-modal p {
   color: var(--muted);
+  line-height: 1.7;
+}
+
+.role-connection-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.role-connection-grid article {
+  padding: 14px;
+  background: rgba(247, 241, 231, 0.65);
+  border: 1px solid var(--line);
+}
+
+.role-connection-grid p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
   line-height: 1.7;
 }
 
