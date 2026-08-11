@@ -912,16 +912,16 @@ onBeforeUnmount(() => {
             <div><h2>{{ selectedFile.name }}</h2><p>{{ selectedFile.relative_path }}</p></div>
           </div>
           <div class="inspector-actions">
-            <a-button v-if="selectedRoot?.source !== 'device' && selectedFile.permissions.download" size="small" type="primary" @click="openWithDefaultApp">
+            <a-button v-if="selectedRoot?.source !== 'device' && selectedFile.permissions.download" size="small" type="primary" aria-label="使用默认程序打开" @click="openWithDefaultApp">
               <template #icon><IconFile /></template>使用默认程序打开
             </a-button>
-            <a-button v-if="selectedFile.permissions.download" size="small" @click="previewSelectedFile"><template #icon><IconFile /></template>预览</a-button>
-            <a-button v-if="selectedFile.permissions.download" size="small" :loading="downloadBusy" @click="createDownload([selectedFile.id], 'browser')"><template #icon><IconDownload /></template>浏览器另存为</a-button>
-            <a-button v-if="selectedFile.permissions.download && session.runtimeContext?.capabilities.includes('workspace.download.current_device')" size="small" type="primary" :loading="downloadBusy" @click="createDownload([selectedFile.id], 'current_device')"><template #icon><IconDownload /></template>下载到本机</a-button>
-            <a-button v-if="selectedFile.permissions.send" size="small" @click="openSend"><template #icon><IconDownload /></template>发送到协同机</a-button>
-            <a-button v-if="selectedFile.permissions.send" size="small" @click="linkVisible = true"><template #icon><IconLink /></template>关联任务</a-button>
+            <a-button v-if="selectedFile.permissions.download" size="small" aria-label="预览" @click="previewSelectedFile"><template #icon><IconFile /></template>预览</a-button>
+            <a-button v-if="selectedFile.permissions.download" size="small" aria-label="浏览器另存为" :loading="downloadBusy" @click="createDownload([selectedFile.id], 'browser')"><template #icon><IconDownload /></template>浏览器另存为</a-button>
+            <a-button v-if="selectedFile.permissions.download && session.runtimeContext?.capabilities.includes('workspace.download.current_device')" size="small" type="primary" aria-label="下载到本机" :loading="downloadBusy" @click="createDownload([selectedFile.id], 'current_device')"><template #icon><IconDownload /></template>下载到本机</a-button>
+            <a-button v-if="selectedFile.permissions.send" size="small" aria-label="发送到协同机" @click="openSend"><template #icon><IconDownload /></template>发送到协同机</a-button>
+            <a-button v-if="selectedFile.permissions.send" size="small" aria-label="关联任务" @click="linkVisible = true"><template #icon><IconLink /></template>关联任务</a-button>
             <a-popconfirm v-if="selectedFile.permissions.download" content="固化会复制一份去重快照到系统附件库，原文件保持不变。确认继续？" @ok="freezeSelectedFile">
-              <a-button size="small" type="primary" :loading="downloadBusy"><template #icon><IconSafe /></template>{{ selectedRoot?.source === 'device' ? "拉取并固化" : (selectedFile.sha256 ? "重新校验" : "固化归档") }}</a-button>
+              <a-button size="small" type="primary" :aria-label="selectedRoot?.source === 'device' ? '拉取并固化' : (selectedFile.sha256 ? '重新校验' : '固化归档')" :loading="downloadBusy"><template #icon><IconSafe /></template>{{ selectedRoot?.source === 'device' ? "拉取并固化" : (selectedFile.sha256 ? "重新校验" : "固化归档") }}</a-button>
             </a-popconfirm>
           </div>
           <div class="inspector-section">

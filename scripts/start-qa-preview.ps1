@@ -1,6 +1,7 @@
 param(
   [int]$Port = 18940,
   [string]$DataRoot = "",
+  [string]$PythonPath = "",
   [switch]$Source
 )
 
@@ -31,7 +32,14 @@ if ($occupied) {
   $owner = ($occupied | Select-Object -First 1).OwningProcess
   throw "QA 端口 $Port 已被进程 $owner 占用，请通过 -Port 指定空闲端口。"
 }
-$executable = if ($Source) { Join-Path $projectRoot ".venv\Scripts\python.exe" } else { Join-Path $runtimeRoot "PartyOps.exe" }
+$executable = if ($Source) {
+  if ($PythonPath) { (Resolve-Path -LiteralPath $PythonPath).Path } else { Join-Path $projectRoot ".venv\Scripts\python.exe" }
+} else {
+  Join-Path $runtimeRoot "PartyOps.exe"
+}
+if (-not (Test-Path -LiteralPath $executable)) {
+  throw "QA 运行时不存在：$executable"
+}
 $workingDirectory = if ($Source) { Join-Path $projectRoot "backend" } else { $runtimeRoot }
 $arguments = if ($Source) { @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", [string]$Port) } else { @() }
 $startParameters = @{
