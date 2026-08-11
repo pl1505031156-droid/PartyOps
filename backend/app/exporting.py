@@ -23,6 +23,7 @@ from .config import get_settings
 from .models import AttachmentVersion, FileBlob, MaterialItem, Task, User
 from .schemas import serialize_api_datetime
 from .storage import resolve_blob_path
+from .spreadsheet_security import safe_spreadsheet_row
 from .task_service import can_view_task, task_to_out, visible_tasks
 
 
@@ -149,7 +150,7 @@ def export_tasks_xlsx(db: Session, user: User, kind: str = "台账") -> Path:
                 if "缺项" in kind and (not material.required or complete):
                     continue
                 sheet.append(
-                    [
+                    safe_spreadsheet_row([
                         task.title,
                         task.category,
                         users.get(task.owner_id, "未知"),
@@ -159,13 +160,13 @@ def export_tasks_xlsx(db: Session, user: User, kind: str = "台账") -> Path:
                         "不适用" if material.not_applicable else "齐全" if complete else "缺项",
                         (final[0].display_name or final[1].original_name) if final else "",
                         final[1].sha256 if final else "",
-                    ]
+                    ])
                 )
     else:
         for task in tasks:
             output = task_to_out(db, task, include_detail=False)
             sheet.append(
-                [
+                safe_spreadsheet_row([
                     task.title,
                     task.category,
                     "、".join(task.tags or []),
@@ -182,7 +183,7 @@ def export_tasks_xlsx(db: Session, user: User, kind: str = "台账") -> Path:
                     output.missing_required_materials,
                     task.experience_notes,
                     task.updated_at.isoformat(sep=" ", timespec="minutes"),
-                ]
+                ])
             )
     for index, width in enumerate(widths, 1):
         sheet.column_dimensions[get_column_letter(index)].width = width
@@ -329,7 +330,7 @@ def export_inspection_package(
         sheet.title = "材料目录"
         sheet.append(["事项", "类别", "材料", "必备", "状态"])
         for row in directory_rows:
-            sheet.append(row)
+            sheet.append(safe_spreadsheet_row(row))
         sheet.freeze_panes = "A2"
         for column, width in {"A": 34, "B": 18, "C": 28, "D": 10, "E": 12}.items():
             sheet.column_dimensions[column].width = width

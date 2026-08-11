@@ -17,6 +17,7 @@ from .config import get_settings
 from .enums import PeriodReportStatus, PeriodType, ReportSection, TaskStatus
 from .models import PeriodReport, PeriodReportItem, Task, User
 from .schemas import PeriodReportItemOut, PeriodReportOut
+from .spreadsheet_security import safe_spreadsheet_row
 from .task_service import task_to_out, visible_tasks
 
 
@@ -353,13 +354,13 @@ def export_period_xlsx(db: Session, report: PeriodReport) -> Path:
     for item in items:
         section = ReportSection(str(item.get("section") or ReportSection.COMPLETED.value))
         sheet.append(
-            [
+            safe_spreadsheet_row([
                 SECTION_LABELS[section],
                 item.get("title") or "",
                 item.get("content") or "",
                 item.get("source_type") or "manual",
                 "是" if item.get("carried_over") else "否",
-            ]
+            ])
         )
     for column, width in {"A": 20, "B": 42, "C": 60, "D": 14, "E": 12}.items():
         sheet.column_dimensions[column].width = width

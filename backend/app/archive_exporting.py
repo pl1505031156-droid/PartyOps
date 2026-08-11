@@ -21,6 +21,7 @@ from .config import get_settings
 from .backups import SCHEMA_VERSION
 from .models import ArchiveAttachment, ArchiveCategory, ArchiveRecord, FileBlob, User
 from .archive_service import can_view_category, safe_archive_name
+from .spreadsheet_security import safe_spreadsheet_row
 
 
 def _sha256(path: Path) -> str:
@@ -121,7 +122,7 @@ def export_archive_package(
         ).all()
         date_text = record.document_date.strftime("%Y-%m-%d") if record.document_date else ""
         sheet.append(
-            [
+            safe_spreadsheet_row([
                 record.sequence_no,
                 category.name,
                 record.document_no,
@@ -133,7 +134,7 @@ def export_archive_package(
                 len(attachments),
                 record.status.value,
                 record.summary,
-            ]
+            ])
         )
         cells = table.add_row().cells
         values = [
@@ -176,8 +177,6 @@ def export_archive_package(
         )
     workbook_path = settings.exports_dir / f".archive-{timestamp}.xlsx"
     docx_path = settings.exports_dir / f".archive-{timestamp}.docx"
-    workbook.save(workbook_path)
-    doc.save(docx_path)
     manifest = {
         "format": "partyops-important-archive",
         "version": 1,
@@ -188,22 +187,29 @@ def export_archive_package(
         "record_count": len(rows),
         "files": manifest_files,
     }
-    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
-        archive.write(workbook_path, f"{archive_year}年度档案目录.xlsx")
-        archive.write(docx_path, f"{archive_year}年度档案目录.docx")
-        for item in manifest_files:
-            path = manifest_sources.get(str(item["path"]))
-            if path and path.exists():
-                archive.write(path, str(item["path"]))
-        archive.writestr(
-            "manifest.json",
-            json.dumps(manifest, ensure_ascii=False, indent=2),
-        )
-        checksums = [
-            f"{item['sha256']}  {item['path']}"
-            for item in manifest_files
-        ]
-        archive.writestr("SHA256SUMS", "\n".join(checksums) + ("\n" if checksums else ""))
-    workbook_path.unlink(missing_ok=True)
-    docx_path.unlink(missing_ok=True)
+    try:
+        workbook.save(workbook_path)
+        doc.save(docx_path)
+        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
+            archive.write(workbook_path, f"{archive_year}年度档案目录.xlsx")
+            archive.write(docx_path, f"{archive_year}年度档案目录.docx")
+            for item in manifest_files:
+                path = manifest_sources.get(str(item["path"]))
+                if path and path.exists():
+                    archive.write(path, str(item["path"]))
+            archive.writestr(
+                "manifest.json",
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+            )
+            checksums = [
+                f"{item['sha256']}  {item['path']}"
+                for item in manifest_files
+            ]
+            archive.writestr("SHA256SUMS", "\n".join(checksums) + ("\n" if checksums else ""))
+    except Exception:
+        output.unlink(missing_ok=True)
+        raise
+    finally:
+        workbook_path.unlink(missing_ok=True)
+        docx_path.unlink(missing_ok=True)
     return output

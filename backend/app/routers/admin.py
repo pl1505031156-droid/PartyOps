@@ -76,6 +76,7 @@ from ..security import (
     hash_token,
     require_admin,
 )
+from ..spreadsheet_security import safe_spreadsheet_row
 from .events import active_stream_count
 
 
@@ -248,7 +249,7 @@ def export_audit(
         select(AuditLog).order_by(AuditLog.id.desc()).limit(limit)
     ).all():
         writer.writerow(
-            [
+            safe_spreadsheet_row([
                 item.id,
                 serialize_api_datetime(item.created_at),
                 item.actor_id or "系统",
@@ -256,7 +257,7 @@ def export_audit(
                 item.entity_type,
                 item.entity_id or "",
                 item.ip_address,
-            ]
+            ])
         )
     payload = ("\ufeff" + buffer.getvalue()).encode("utf-8")
     return StreamingResponse(

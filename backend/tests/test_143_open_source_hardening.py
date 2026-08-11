@@ -16,6 +16,7 @@ from app.intake import extract_path_content
 from app.model_packs import _manifest_signature_valid as model_signature_valid
 from app.routers.updates import _manifest_signature_valid as update_signature_valid
 from app.problems import ProblemException
+from app.spreadsheet_security import safe_spreadsheet_cell, safe_spreadsheet_row
 
 
 def test_presentation_xml_entities_are_rejected(tmp_path) -> None:
@@ -104,3 +105,15 @@ def test_backup_rejects_non_array_manifest_files(tmp_path) -> None:
         assert exc.code == "BACKUP_MANIFEST_INVALID"
     else:  # pragma: no cover
         raise AssertionError("非数组文件清单必须被拒绝")
+
+
+def test_spreadsheet_cells_never_export_untrusted_formulas() -> None:
+    values = ["=HYPERLINK(\"https://attacker.invalid\")", " +1+1", "@SUM(A1:A2)", "正常文字", 7]
+    protected = safe_spreadsheet_row(values)
+    assert protected[:3] == [
+        "'=HYPERLINK(\"https://attacker.invalid\")",
+        "' +1+1",
+        "'@SUM(A1:A2)",
+    ]
+    assert protected[3:] == ["正常文字", 7]
+    assert safe_spreadsheet_cell("-2+3") == "'-2+3"
