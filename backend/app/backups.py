@@ -6,10 +6,11 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import tempfile
 import zipfile
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -63,15 +64,55 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _validated_zip_infos(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+    """校验备份成员边界，拒绝路径逃逸、链接、重复成员和 ZIP 炸弹。"""
+
+    settings = get_settings()
+    infos = archive.infolist()
+    if len(infos) > settings.backup_max_members:
+        raise ProblemException(400, "BACKUP_MEMBER_LIMIT", "备份包无效", "备份文件数量超过安全上限。")
+    seen: set[str] = set()
+    expanded = 0
+    expanded_limit = settings.backup_restore_max_gb * 1024**3
+    for member in infos:
+        name = member.filename.replace("\\", "/")
+        parts = PurePosixPath(name).parts
+        mode = (member.external_attr >> 16) & 0o170000
+        if (
+            not name
+            or "\x00" in name
+            or name.startswith("/")
+            or ".." in parts
+            or name in seen
+            or mode == stat.S_IFLNK
+        ):
+            raise ProblemException(400, "BACKUP_PATH_INVALID", "备份包无效", "备份包含非法路径、链接或重复成员。")
+        seen.add(name)
+        expanded += max(0, int(member.file_size))
+        if expanded > expanded_limit:
+            raise ProblemException(400, "BACKUP_EXPANDED_LIMIT", "备份包无效", "备份解压体积超过安全上限。")
+        # 极小压缩数据却声明巨大输出是典型 ZIP 炸弹。正常 SQLite、图片和文档备份
+        # 即便可压缩性很高，也不应超过 1000 倍且同时大于 100 MiB。
+        if member.file_size > 100 * 1024**2 and member.file_size > max(member.compress_size, 1) * 1000:
+            raise ProblemException(400, "BACKUP_COMPRESSION_INVALID", "备份包无效", "备份成员压缩比异常。")
+    return infos
+
+
 def _safe_zip_members(archive: zipfile.ZipFile, destination: Path) -> None:
     root = destination.resolve()
-    for member in archive.infolist():
+    infos = _validated_zip_infos(archive)
+    for member in infos:
         target = (root / member.filename).resolve()
         if root != target and root not in target.parents:
             raise ProblemException(
                 400, "BACKUP_PATH_INVALID", "备份包无效", "备份包含越界路径。"
             )
-    archive.extractall(destination)
+        if member.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with archive.open(member) as source, target.open("wb") as output:
+            shutil.copyfileobj(source, output, length=1024 * 1024)
 
 
 def _ensure_data_child(path: Path) -> Path:
@@ -213,13 +254,14 @@ def verify_backup(path: Path) -> dict[str, object]:
     if not path.exists() or not zipfile.is_zipfile(path):
         raise ProblemException(400, "BACKUP_INVALID", "备份包无效", "文件不是有效备份包。")
     with zipfile.ZipFile(path) as archive:
+        infos = _validated_zip_infos(archive)
         try:
             manifest = json.loads(archive.read("manifest.json"))
         except (KeyError, json.JSONDecodeError) as exc:
             raise ProblemException(
                 400, "BACKUP_MANIFEST_INVALID", "备份清单无效", "缺少有效 manifest.json。"
             ) from exc
-        if manifest.get("format") != "partyops-backup":
+        if not isinstance(manifest, dict) or manifest.get("format") != "partyops-backup":
             raise ProblemException(400, "BACKUP_FORMAT_INVALID", "备份格式不匹配", "请选择党建智办备份。")
         if int(manifest.get("format_version", 0)) > FORMAT_VERSION:
             raise ProblemException(
@@ -232,9 +274,14 @@ def verify_backup(path: Path) -> dict[str, object]:
                 "备份数据库版本过新",
                 "请使用相同或更高版本的党建智办恢复。",
             )
-        members = {item.filename for item in archive.infolist()}
+        declared_files = manifest.get("files")
+        if not isinstance(declared_files, list):
+            raise ProblemException(400, "BACKUP_MANIFEST_INVALID", "备份清单无效", "files 必须是数组。")
+        members = {item.filename for item in infos}
         seen: set[str] = set()
-        for item in manifest.get("files", []):
+        for item in declared_files:
+            if not isinstance(item, dict):
+                raise ProblemException(400, "BACKUP_MANIFEST_INVALID", "备份清单无效", "文件项格式错误。")
             item_path = str(item.get("path", ""))
             if (
                 not item_path
@@ -253,7 +300,12 @@ def verify_backup(path: Path) -> dict[str, object]:
                 while chunk := source.read(1024 * 1024):
                     digest.update(chunk)
                     size += len(chunk)
-            if digest.hexdigest() != item["sha256"] or size != item["size"]:
+            try:
+                expected_size = int(item["size"])
+                expected_hash = str(item["sha256"]).lower()
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ProblemException(400, "BACKUP_MANIFEST_INVALID", "备份清单无效", "文件大小或哈希格式错误。") from exc
+            if expected_size < 0 or len(expected_hash) != 64 or digest.hexdigest() != expected_hash or size != expected_size:
                 raise ProblemException(
                     400, "BACKUP_HASH_MISMATCH", "备份校验失败", f"文件损坏：{item['path']}"
                 )
@@ -264,7 +316,7 @@ def verify_backup(path: Path) -> dict[str, object]:
         allowed_members = seen | {"manifest.json", "config/config.json"}
         unexpected = [
             member.filename
-            for member in archive.infolist()
+            for member in infos
             if not member.is_dir() and member.filename not in allowed_members
         ]
         if unexpected:

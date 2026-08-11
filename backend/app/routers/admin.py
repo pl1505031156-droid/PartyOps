@@ -80,6 +80,24 @@ from .events import active_stream_count
 
 
 router = APIRouter(tags=["admin"])
+
+
+async def _write_bounded_upload(file: UploadFile, path: Path, max_bytes: int) -> int:
+    """以异步分块方式保存管理端上传，避免阻塞事件循环并限制磁盘占用。"""
+
+    written = 0
+    with path.open("xb") as handle:
+        while chunk := await file.read(1024 * 1024):
+            written += len(chunk)
+            if written > max_bytes:
+                raise ProblemException(
+                    413,
+                    "BACKUP_UPLOAD_TOO_LARGE",
+                    "备份包过大",
+                    "上传超过管理员配置的备份导入上限。",
+                )
+            handle.write(chunk)
+    return written
 PROCESS_STARTED_AT = datetime.now(timezone.utc)
 
 
@@ -453,8 +471,7 @@ async def verify_uploaded_backup(
     settings = get_settings()
     path = settings.backups_dir / f"verify-{secrets.token_hex(8)}.partyops-backup"
     try:
-        with path.open("wb") as handle:
-            shutil.copyfileobj(file.file, handle)
+        await _write_bounded_upload(file, path, settings.backup_import_max_gb * 1024**3)
         manifest = verify_backup(path)
         return {"valid": True, "manifest": manifest}
     finally:
@@ -475,8 +492,7 @@ async def import_backup(
     filename = f"PartyOps-imported-{secrets.token_hex(6)}-{safe_name}"[:255]
     path = settings.backups_dir / filename
     try:
-        with path.open("wb") as handle:
-            shutil.copyfileobj(file.file, handle)
+        await _write_bounded_upload(file, path, settings.backup_import_max_gb * 1024**3)
         verify_backup(path)
     except Exception:
         path.unlink(missing_ok=True)

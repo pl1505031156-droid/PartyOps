@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     backup_minute: int = 30
     backup_daily_keep: int = 14
     backup_weekly_keep: int = 8
+    # 导入包与解压后数据分别设上限，防止超大上传、ZIP 炸弹耗尽磁盘或内存。
+    # 大型部署可通过环境变量显式调高，但不能依赖请求自行声明大小。
+    backup_import_max_gb: int = Field(default=100, ge=1, le=2048)
+    backup_restore_max_gb: int = Field(default=500, ge=1, le=4096)
+    backup_max_members: int = Field(default=200_000, ge=100, le=1_000_000)
     # 旧式只读备份令牌仅用于兼容早期终端。设置固定有效期，避免令牌
     # 泄露后永久可用；新版设备证书通道不受此值影响。
     backup_pairing_ttl_days: int = Field(default=365, ge=1, le=3650)

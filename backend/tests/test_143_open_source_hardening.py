@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import base64
 import json
+import stat
 import zipfile
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.config import Settings, get_settings
+from app.backups import _safe_zip_members, verify_backup
 from app.intake import extract_path_content
 from app.model_packs import _manifest_signature_valid as model_signature_valid
 from app.routers.updates import _manifest_signature_valid as update_signature_valid
+from app.problems import ProblemException
 
 
 def test_presentation_xml_entities_are_rejected(tmp_path) -> None:
@@ -67,3 +70,37 @@ def test_package_cannot_trust_its_own_signing_key(monkeypatch) -> None:
 
     assert update_signature_valid(manifest) is False
     assert model_signature_valid(manifest) is False
+
+
+def test_backup_rejects_symlink_member(tmp_path) -> None:
+    archive_path = tmp_path / "symlink.partyops-backup"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        link = zipfile.ZipInfo("attachments/link")
+        link.create_system = 3
+        link.external_attr = (stat.S_IFLNK | 0o777) << 16
+        archive.writestr(link, "../../outside")
+    with zipfile.ZipFile(archive_path) as archive:
+        try:
+            _safe_zip_members(archive, tmp_path / "output")
+        except ProblemException as exc:
+            assert exc.code == "BACKUP_PATH_INVALID"
+        else:  # pragma: no cover - 安全回归失败时给出清晰断言
+            raise AssertionError("符号链接成员必须被拒绝")
+
+
+def test_backup_rejects_non_array_manifest_files(tmp_path) -> None:
+    archive_path = tmp_path / "invalid.partyops-backup"
+    manifest = {
+        "format": "partyops-backup",
+        "format_version": 1,
+        "schema_version": "0017",
+        "files": {"path": "database/partyops.db"},
+    }
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+    try:
+        verify_backup(archive_path)
+    except ProblemException as exc:
+        assert exc.code == "BACKUP_MANIFEST_INVALID"
+    else:  # pragma: no cover
+        raise AssertionError("非数组文件清单必须被拒绝")
