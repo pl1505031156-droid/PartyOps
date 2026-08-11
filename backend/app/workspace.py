@@ -6,6 +6,7 @@ import hashlib
 import logging
 import mimetypes
 import os
+import re
 import secrets
 import shutil
 import threading
@@ -307,7 +308,15 @@ def normalize_included_paths(values: list[str]) -> list[str]:
 
     normalized: set[str] = set()
     for raw in values:
-        value = str(raw or "").strip().replace("\\", "/").strip("/")
+        raw_value = str(raw or "").strip().replace("\\", "/")
+        if raw_value.startswith("/") or re.match(r"^[A-Za-z]:", raw_value):
+            raise ProblemException(
+                422,
+                "WORKSPACE_SELECTION_PATH_INVALID",
+                "接入目录范围无效",
+                "只能选择授权根目录内已经发现的相对文件夹。",
+            )
+        value = raw_value.strip("/")
         if value in {"", "."}:
             normalized.add(".")
             continue

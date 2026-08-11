@@ -211,7 +211,7 @@ def _extract_pdf(data: bytes) -> tuple[str, list[str]]:
                 pages.append(text)
                 continue
             if ocr_pages >= MAX_PDF_OCR_PAGES:
-                if not any("OCR 页数" in warning for warning in warnings):
+                if not any("停止继续 OCR" in warning for warning in warnings):
                     warnings.append(f"扫描页超过 {MAX_PDF_OCR_PAGES} 页，已停止继续 OCR，请人工核对。")
                 continue
             width = max(1, int(page.rect.width * 1.8))

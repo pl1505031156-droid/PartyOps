@@ -44,4 +44,6 @@ source = ["app"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-fail_under = 90
+# 行覆盖率与分支覆盖率由 scripts/verify-coverage.py 分别校验；coverage.py
+# 的单一 fail_under 会在 branch=true 时混合两个指标，无法表达发布门禁语义。
+fail_under = 0

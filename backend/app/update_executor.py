@@ -147,6 +147,7 @@ def _acquire_update_lock(lock_path: Path) -> bool:
             except OSError:
                 return False
             continue
+        write_failed = False
         try:
             payload = json.dumps(
                 {
@@ -161,10 +162,15 @@ def _acquire_update_lock(lock_path: Path) -> bool:
             os.fsync(lock_fd)
             return True
         except OSError:
-            lock_path.unlink(missing_ok=True)
-            return False
+            write_failed = True
         finally:
             os.close(lock_fd)
+        if write_failed:
+            try:
+                lock_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return False
     return False
 
 

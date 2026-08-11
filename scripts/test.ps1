@@ -33,8 +33,16 @@ Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") run build }
 Push-Location (Join-Path $root "backend")
 try {
     Invoke-Checked {
-      & $python -m pytest tests --cov=app --cov-report=term-missing --cov-report=html
-    } "后端覆盖率测试"
+      & $python -m coverage erase
+      & $python -m coverage run --branch -m pytest tests
+    } "后端全量测试"
+    Invoke-Checked {
+      & $python -m coverage html
+      & $python -m coverage json --fail-under=0 -o coverage-release.json
+    } "后端覆盖率报告"
+    Invoke-Checked {
+      & $python (Join-Path $root "scripts\verify-coverage.py") coverage-release.json --line 90 --branch 73
+    } "后端覆盖率门禁"
 }
 finally {
     Pop-Location
