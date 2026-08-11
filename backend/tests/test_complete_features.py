@@ -662,7 +662,7 @@ def test_client_agent_networking_and_setup_helpers(
     assert host_autostart is not None
     assert "党建智办主机服务" in host_autostart.read_text(encoding="utf-8")
     assert str(host_config.resolve()) in host_autostart.read_text(encoding="utf-8")
-    assert "配置为主机" in setup_wizard.render_page("csrf")
+    assert "这是主机" in setup_wizard.render_page("csrf")
     assert "成功" in setup_wizard.render_page("csrf", message="成功")
     assert "错误" in setup_wizard.render_page("csrf", error="错误")
 

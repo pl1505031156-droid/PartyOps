@@ -16,6 +16,67 @@ import win32serviceutil
 from app.setup_wizard import load_host_environment
 
 
+def prepare_host_runtime(environment: dict[str, str], executable: Path) -> None:
+    """仅在明确选择主机后开放私网端口，并启动主机更新监督器。"""
+
+    port = int(environment.get("PARTYOPS_PORT", "18765"))
+    if not 1024 <= port <= 65534:
+        raise RuntimeError("主机服务端口超出允许范围")
+    rule_name = "党建智办主机"
+    subprocess.run(
+        [
+            "netsh.exe",
+            "advfirewall",
+            "firewall",
+            "delete",
+            "rule",
+            f"name={rule_name}",
+        ],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=30,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    firewall = subprocess.run(
+        [
+            "netsh.exe",
+            "advfirewall",
+            "firewall",
+            "add",
+            "rule",
+            f"name={rule_name}",
+            "dir=in",
+            "action=allow",
+            "protocol=TCP",
+            f"localport={port},{port + 1}",
+            "profile=private",
+            "remoteip=LocalSubnet",
+            f"program={executable}",
+            "enable=yes",
+        ],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=30,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    if firewall.returncode != 0:
+        raise RuntimeError("专用网络防火墙规则配置失败")
+    # 协同机由 Agent 按用户确认更新；只有主机需要常驻系统级更新监督器。
+    subprocess.run(
+        ["sc.exe", "start", "PartyOpsUpdateService"],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=30,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+
+
 class PartyOpsHostService(win32serviceutil.ServiceFramework):
     _svc_name_ = "PartyOpsHost"
     _svc_display_name_ = "党建智办 PartyOps 主机服务"
@@ -49,6 +110,7 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
         program_data = Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
         config_path = program_data / "partyops.env"
         executable = Path(sys.executable).resolve().with_name("PartyOps.exe")
+        prepared_config_mtime = 0
         while win32event.WaitForSingleObject(self.stop_event, 5000) == win32event.WAIT_TIMEOUT:
             if not config_path.is_file() or not executable.is_file():
                 continue
@@ -58,6 +120,14 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
             environment.update(load_host_environment(config_path))
             environment.setdefault("PARTYOPS_MODE", "host")
             environment.setdefault("PARTYOPS_DATA_DIR", str(program_data))
+            try:
+                config_mtime = config_path.stat().st_mtime_ns
+                if prepared_config_mtime != config_mtime:
+                    prepare_host_runtime(environment, executable)
+                    prepared_config_mtime = config_mtime
+            except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+                servicemanager.LogErrorMsg(f"PartyOps 主机系统配置未完成：{exc}")
+                continue
             self.process = subprocess.Popen(
                 [str(executable)],
                 env=environment,

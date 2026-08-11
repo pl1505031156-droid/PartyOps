@@ -81,11 +81,21 @@ def write_mode_config(mode: str, *, config_path: Path | None = None) -> Path:
     return path
 
 
-def write_host_config(host: str, port: int, data_dir: Path) -> Path:
+def validate_host_config_selection(host: str, port: int) -> None:
     if host not in {"127.0.0.1", *discover_lan_addresses()}:
         raise ValueError("请选择本机检测到的明确局域网地址")
     if not 1024 <= port <= 65534:
         raise ValueError("主机端口必须在 1024—65534 之间，下一端口用于 Agent 安全通道")
+
+
+def write_host_config(
+    host: str,
+    port: int,
+    data_dir: Path,
+    *,
+    write_user_mode: bool = True,
+) -> Path:
+    validate_host_config_selection(host, port)
     windows_system_mode = os.name == "nt" and os.getenv("PARTYOPS_ENVIRONMENT") != "test"
     resolved_data_dir = (
         Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
@@ -122,12 +132,89 @@ def write_host_config(host: str, port: int, data_dir: Path) -> Path:
         else config_root() / "partyops.env"
     )
     _write_private(path, content)
-    write_mode_config("host", config_path=path)
+    if write_user_mode:
+        write_mode_config("host", config_path=path)
     if windows_system_mode:
         _write_private(
             path.parent / "mode.json",
             json.dumps({"format_version": 1, "mode": "host", "config_path": str(path)}, ensure_ascii=False, indent=2),
         )
+    return path
+
+
+def windows_is_admin() -> bool:
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        return False
+
+
+def clear_windows_client_autostart() -> None:
+    """清除当前桌面账号的协同 Agent 自启动，避免主机角色误起 Agent。"""
+
+    if os.name != "nt":
+        return
+    import winreg
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_SET_VALUE,
+        ) as key:
+            winreg.DeleteValue(key, "PartyOpsAgent")
+    except FileNotFoundError:
+        return
+
+
+def configure_host_config(host: str, port: int, data_dir: Path) -> Path:
+    """Windows 仅为主机角色申请一次 UAC，并让日常账号保留正确 mode.json。"""
+
+    validate_host_config_selection(host, port)
+    windows_system_mode = os.name == "nt" and os.getenv("PARTYOPS_ENVIRONMENT") != "test"
+    if not windows_system_mode or windows_is_admin():
+        path = write_host_config(host, port, data_dir)
+        if windows_system_mode:
+            clear_windows_client_autostart()
+        return path
+
+    wizard = _executable("PartyOpsWizard")
+    script = (
+        "$process = Start-Process -FilePath $args[0] "
+        "-ArgumentList '--privileged-host-config','--host',$args[1],'--port',$args[2] "
+        "-Verb RunAs -Wait -PassThru; exit $process.ExitCode"
+    )
+    result = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            script,
+            str(wizard),
+            host,
+            str(port),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    if result.returncode != 0:
+        raise ValueError(
+            "主机配置需要一次 Windows 管理员授权；授权未完成，系统尚未切换为主机。"
+        )
+    path = Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps" / "partyops.env"
+    if not path.is_file():
+        raise ValueError("Windows 已返回授权结果，但主机配置文件未生成，请重试")
+    write_mode_config("host", config_path=path)
+    clear_windows_client_autostart()
     return path
 
 
@@ -338,6 +425,11 @@ def launch_host(config_path: Path) -> str:
             timeout=30,
         ).returncode == 0
         if not started:
+            if os.getenv("PARTYOPS_ENVIRONMENT") != "test":
+                raise ValueError(
+                    "PartyOps 主机服务未能启动。请在 Windows 服务中确认“党建智办 PartyOps 主机服务”已安装，"
+                    "然后重新打开配置向导；系统不会降级为权限不足的用户进程。"
+                )
             _spawn(
                 [str(_executable("partyops"))],
                 Path(env["PARTYOPS_DATA_DIR"]) / "launcher.log",
@@ -387,8 +479,26 @@ def install_host_autostart(config_path: Path) -> Path | None:
 
 
 def install_client_autostart(config_path: Path) -> Path | None:
-    """在 Linux 桌面会话启动时恢复终端伴随进程。"""
+    """在当前 Windows/UOS 桌面账号登录时恢复协同 Agent。"""
 
+    if sys.platform == "win32":
+        import winreg
+
+        try:
+            executable = _executable("PartyOpsAgent")
+        except FileNotFoundError:
+            # 源码运行和旧便携包仍使用 partyops-client；正式安装包使用
+            # PartyOpsAgent.exe。这里只在固定随包名称之间兼容，不接受外部命令。
+            executable = _executable("partyops-client")
+        command = f'"{executable}" --config "{config_path.resolve()}" --no-open-browser'
+        with winreg.CreateKeyEx(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_SET_VALUE,
+        ) as key:
+            winreg.SetValueEx(key, "PartyOpsAgent", 0, winreg.REG_SZ, command)
+        return config_path
     if not sys.platform.startswith("linux"):
         return None
     executable = _executable("partyops-client")
@@ -965,7 +1075,7 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                     )
                     return
                 if mode == "host":
-                    path = write_host_config(
+                    path = configure_host_config(
                         value("host"),
                         int(value("port")),
                         Path(value("data_dir")),
@@ -1096,7 +1206,20 @@ def main() -> None:
     parser.add_argument("--manage-shared-roots", action="store_true")
     parser.add_argument("--action-uri", default="")
     parser.add_argument("--initial-role", choices=("host", "client"), default="")
+    parser.add_argument("--privileged-host-config", action="store_true")
+    parser.add_argument("--host", default="")
+    parser.add_argument("--port", type=int, default=18765)
     args = parser.parse_args()
+    if args.privileged_host_config:
+        if os.name != "nt" or not windows_is_admin():
+            raise SystemExit("Windows 主机配置助手需要管理员权限")
+        write_host_config(
+            args.host,
+            args.port,
+            Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps",
+            write_user_mode=False,
+        )
+        raise SystemExit(0)
     if args.manage_shared_roots:
         action_token = ""
         if args.action_uri:

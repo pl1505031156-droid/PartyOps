@@ -43,10 +43,9 @@ Root: HKCR; Subkey: "partyops-file\shell\open\command"; ValueType: string; Value
 Root: HKCR; Subkey: "partyops-client"; ValueType: string; ValueName: ""; ValueData: "URL:PartyOps Client Protocol"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "partyops-client"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCR; Subkey: "partyops-client\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PartyOpsWizard.exe"" --manage-shared-roots --action-uri ""%1"""
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "PartyOpsAgent"; ValueData: """{app}\PartyOpsAgent.exe"" --config ""{localappdata}\PartyOps\client.json"" --no-open-browser"; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\PartyOpsLauncher.exe"; Description: "启动党建智办配置向导"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\PartyOpsLauncher.exe"; Description: "启动党建智办配置向导"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]
 Filename: "{app}\PartyOpsService.exe"; Parameters: "--wait=30 stop"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "StopHostService"
@@ -98,7 +97,7 @@ begin
     exit;
   RunChecked(
     ExpandConstant('{app}\PartyOpsService.exe'),
-    '--startup auto ' + ServiceInstallAction('PartyOpsHost'),
+    '--startup manual ' + ServiceInstallAction('PartyOpsHost'),
     '安装 PartyOps 主机服务'
   );
   RunChecked(
@@ -107,8 +106,13 @@ begin
     '配置 PartyOps 主机服务恢复策略'
   );
   RunChecked(
+    ExpandConstant('{sys}\sc.exe'),
+    'sdset PartyOpsHost "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)"',
+    '配置 PartyOps 主机服务启动权限'
+  );
+  RunChecked(
     ExpandConstant('{app}\PartyOpsUpdaterService.exe'),
-    '--startup auto ' + ServiceInstallAction('PartyOpsUpdateService'),
+    '--startup manual ' + ServiceInstallAction('PartyOpsUpdateService'),
     '安装 PartyOps 更新服务'
   );
   RunChecked(
@@ -116,19 +120,9 @@ begin
     'failure PartyOpsUpdateService reset= 86400 actions= restart/5000/restart/15000/',
     '配置 PartyOps 更新服务恢复策略'
   );
-  RunChecked(
-    ExpandConstant('{sys}\sc.exe'),
-    'start PartyOpsUpdateService',
-    '启动 PartyOps 更新服务'
-  );
   Exec(
     ExpandConstant('{sys}\netsh.exe'),
     'advfirewall firewall delete rule name="党建智办主机"',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode
-  );
-  RunChecked(
-    ExpandConstant('{sys}\netsh.exe'),
-    'advfirewall firewall add rule name="党建智办主机" dir=in action=allow protocol=TCP localport=18765,18766 profile=private program="' + ExpandConstant('{app}\PartyOps.exe') + '"',
-    '配置专用网络防火墙规则'
   );
 end;

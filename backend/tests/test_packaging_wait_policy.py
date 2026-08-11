@@ -124,3 +124,25 @@ def test_optional_local_ai_dependencies_do_not_block_base_uos_install() -> None:
     assert 'requirements-local-ai.txt' in portable
     assert 'validate-uos-wheelhouse.py' in portable
     assert "本地语义离线依赖闭包不完整" in portable
+
+
+def test_windows_installer_defers_host_privileges_until_role_selection() -> None:
+    """协同机安装后不能自动启动主机服务、更新服务或开放入站端口。"""
+
+    installer = (ROOT / "packaging" / "windows" / "PartyOps.iss").read_text(
+        encoding="utf-8"
+    )
+    host_service = (
+        ROOT / "packaging" / "windows" / "windows_service.py"
+    ).read_text(encoding="utf-8")
+
+    assert installer.count("--startup manual") == 2
+    assert "--startup auto" not in installer
+    assert "start PartyOpsUpdateService" not in installer
+    assert "runasoriginaluser" in installer
+    assert 'ValueName: "PartyOpsAgent"' not in installer
+    assert "advfirewall firewall add rule" not in installer
+    assert "sdset PartyOpsHost" in installer
+    assert "remoteip=LocalSubnet" in host_service
+    assert '["sc.exe", "start", "PartyOpsUpdateService"]' in host_service
+    assert "prepare_host_runtime(environment, executable)" in host_service

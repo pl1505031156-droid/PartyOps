@@ -9,7 +9,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from app.setup_wizard import load_host_environment
+from app.setup_wizard import clear_windows_client_autostart, load_host_environment
 
 
 def detached(command: list[str]) -> None:
@@ -42,6 +42,7 @@ def main() -> int:
         detached([str(runtime / "PartyOpsAgent.exe"), "--config", str(config), "--once"])
         return 0
     if mode.get("mode") == "host":
+        clear_windows_client_autostart()
         config = Path(str(mode.get("config_path") or Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps" / "partyops.env"))
         if not config.is_file():
             detached([str(runtime / "PartyOpsWizard.exe")])

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -188,6 +190,58 @@ def test_first_admin_bootstrap_uses_local_loopback_channel(monkeypatch) -> None:
         "password": "PartyOps@2026",
     }
     assert captured["context"] is not None
+
+
+@pytest.mark.skipif(setup_wizard.os.name != "nt", reason="仅验证 Windows UAC 角色隔离")
+def test_windows_host_role_uses_uac_helper_for_protected_config(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """日常桌面账号选择主机时只为系统配置请求一次 UAC。"""
+
+    program_data = tmp_path / "ProgramData"
+    local_config = tmp_path / "LocalConfig"
+    helper = tmp_path / "PartyOpsWizard.exe"
+    helper.write_bytes(b"test")
+    elevated_calls: list[list[str]] = []
+    cleared: list[bool] = []
+
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.setattr(setup_wizard, "config_root", lambda: local_config)
+    monkeypatch.setattr(
+        setup_wizard,
+        "discover_lan_addresses",
+        lambda: ["192.168.36.18"],
+    )
+    monkeypatch.setattr(setup_wizard, "windows_is_admin", lambda: False)
+    monkeypatch.setattr(setup_wizard, "_executable", lambda _name: helper)
+    monkeypatch.setattr(
+        setup_wizard,
+        "clear_windows_client_autostart",
+        lambda: cleared.append(True),
+    )
+
+    def run_elevated(command, **_kwargs):
+        elevated_calls.append(command)
+        config = program_data / "PartyOps" / "partyops.env"
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text("PARTYOPS_MODE=host\n", encoding="utf-8")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(setup_wizard.subprocess, "run", run_elevated)
+    config_path = setup_wizard.configure_host_config(
+        "192.168.36.18",
+        18765,
+        tmp_path / "ignored-data-dir",
+    )
+
+    assert config_path == program_data / "PartyOps" / "partyops.env"
+    assert "-Verb RunAs" in elevated_calls[0][4]
+    assert json.loads((local_config / "mode.json").read_text(encoding="utf-8"))[
+        "mode"
+    ] == "host"
+    assert cleared == [True]
 
 
 def test_enablement_center_uses_real_state_and_role_specific_steps(
