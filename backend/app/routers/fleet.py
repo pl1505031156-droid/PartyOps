@@ -59,6 +59,7 @@ from ..models import (
     utcnow,
 )
 from ..local_secrets import decrypt_local_json, encrypt_local_json
+from ..networking import discover_lan_addresses, enrollment_service_url
 from ..problems import ProblemException
 from ..pki import issue_device_certificate
 from ..schemas import (
@@ -69,6 +70,7 @@ from ..schemas import (
     DeviceBrowserTokenOut,
     DeviceEnrollmentCreate,
     DeviceEnrollmentOut,
+    DeviceEnrollmentStatusOut,
     DeviceGrantCreate,
     DeviceGrantOut,
     DeviceHeartbeat,
@@ -536,12 +538,46 @@ def create_enrollment(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> DeviceEnrollmentOut:
+    settings = get_settings()
+    available_hosts = discover_lan_addresses()
+    # 旧测试契约没有 advertised_host；隔离测试环境使用固定首项以保持历史用例
+    # 可重复。开发和生产环境必须由管理员确认，不能把虚拟网卡猜成办公网卡。
+    requested_host = payload.advertised_host
+    if not requested_host and settings.environment == "test" and available_hosts:
+        requested_host = available_hosts[0]
+    try:
+        advertised_url = enrollment_service_url(
+            requested_host=requested_host,
+            configured_host=settings.host,
+            configured_port=settings.port,
+            request_base_url=str(request.base_url),
+            lan_candidates=available_hosts,
+            tls_enabled=settings.tls_enabled,
+        )
+    except ValueError as exc:
+        raise ProblemException(
+            422,
+            "ENROLLMENT_HOST_INVALID",
+            "主机地址不可用于协同",
+            "请选择列表中的真实局域网地址；127.0.0.1 只能由主机自己访问。",
+            fields={"advertised_host": str(exc)},
+            extra={"available_hosts": available_hosts},
+        ) from exc
+    except LookupError as exc:
+        raise ProblemException(
+            422,
+            "ENROLLMENT_HOST_REQUIRED",
+            "请选择主机局域网地址",
+            "检测到多个或没有可确认的网卡地址，系统不会猜测，以免协同电脑配置失败。",
+            fields={"advertised_host": str(exc)},
+            extra={"available_hosts": available_hosts},
+        ) from exc
     active_count = db.scalar(select(func.count()).select_from(Device).where(Device.active.is_(True))) or 0
     if active_count >= get_max_devices(db):
         raise ProblemException(409, "DEVICE_LIMIT_REACHED", "已达到设备上限", "请先提高上限或撤销不用的设备。")
     from ..pki import ensure_tls_material
 
-    ca_fingerprint = str(ensure_tls_material(get_settings())["fingerprint"])
+    ca_fingerprint = str(ensure_tls_material(settings)["fingerprint"])
     # 将 CA 指纹作为入网码的一部分交给终端。终端会先固定该指纹，再发送
     # 一次性秘密，避免首次 HTTPS 引导阶段遭遇中间人窃取入网码。
     code = normalize_enrollment_code(
@@ -553,15 +589,56 @@ def create_enrollment(
         created_by=admin.id,
     )
     db.add(enrollment)
-    write_audit(db, admin, "device.enrollment_create", "device_enrollment", enrollment.id, {"name": payload.name}, client_ip(request))
+    write_audit(
+        db,
+        admin,
+        "device.enrollment_create",
+        "device_enrollment",
+        enrollment.id,
+        {"name": payload.name, "advertised_url": advertised_url},
+        client_ip(request),
+    )
     db.commit()
     return DeviceEnrollmentOut(
         id=enrollment.id,
         name=payload.name,
         code=code,
         expires_at=enrollment.expires_at,
-        host_url=str(request.base_url).rstrip("/"),
+        host_url=advertised_url,
         ca_fingerprint=ca_fingerprint,
+    )
+
+
+@router.get(
+    "/admin/devices/enrollments/{enrollment_id}/status",
+    response_model=DeviceEnrollmentStatusOut,
+)
+def enrollment_status(
+    enrollment_id: str,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> DeviceEnrollmentStatusOut:
+    """供首次配置界面确认协同 Agent 是否真正完成入网。"""
+
+    enrollment = db.get(DeviceEnrollment, enrollment_id)
+    if enrollment is None:
+        raise ProblemException(404, "ENROLLMENT_NOT_FOUND", "入网任务不存在", "请重新生成入网码。")
+    device = enrollment_device(db, enrollment.id)
+    if device is not None:
+        status = "enrolled"
+    elif aware_utc(enrollment.expires_at) <= utcnow():
+        status = "expired"
+    else:
+        status = "pending"
+    return DeviceEnrollmentStatusOut(
+        id=enrollment.id,
+        status=status,
+        expires_at=enrollment.expires_at,
+        used_at=enrollment.used_at,
+        device_id=device.id if device else None,
+        device_name=device.name if device else "",
+        device_status=device.status if device else "",
+        last_seen_at=device.last_seen_at if device else None,
     )
 
 

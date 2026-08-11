@@ -45,8 +45,15 @@ const maxDevices = ref(20);
 const enrollmentVisible = ref(false);
 const deleteVisible = ref(false);
 const deleteTarget = ref<Device | null>(null);
-const enrollmentForm = reactive({ name: "协同电脑" });
+const enrollmentForm = reactive({ name: "协同电脑", advertised_host: "" });
 const enrollment = ref<{ code: string; host_url: string; expires_at: string; ca_fingerprint: string } | null>(null);
+const enrollmentStatus = ref<{
+  status: "pending" | "enrolled" | "expired";
+  device_id: string | null;
+  device_name: string;
+  device_status: string;
+  last_seen_at: string | null;
+} | null>(null);
 const loading = ref(false);
 const transferVisible = ref(false);
 const attachVisible = ref(false);
@@ -74,6 +81,7 @@ const attachForm = reactive({
   is_final: false,
 });
 let refreshTimer: number | undefined;
+let enrollmentTimer: number | undefined;
 let lastWarning = "";
 
 const sectionMeta = computed(() => ({
@@ -115,6 +123,21 @@ const destinationRoots = computed(() => approvedRoots.value.filter((item) => (
   && item.permissions.upload
   && (!transferForm.destination_device_id || item.device_id === transferForm.destination_device_id)
 )));
+const enrollmentHostOptions = computed(() => {
+  const bootstrap = session.bootstrap;
+  if (!bootstrap) return [];
+  const values = [...bootstrap.lan_candidates];
+  if (
+    bootstrap.host
+    && !["127.0.0.1", "::1", "localhost", "0.0.0.0", "::"].includes(bootstrap.host)
+  ) values.unshift(bootstrap.host);
+  return [...new Set(values)];
+});
+const enrollmentStep = computed(() => {
+  if (!enrollment.value) return 1;
+  if (enrollmentStatus.value?.status !== "enrolled") return 2;
+  return enrollmentStatus.value.device_status === "online" ? 4 : 3;
+});
 
 watch(
   () => props.initialSection,
@@ -369,13 +392,71 @@ function versionStateLabel(state: string): string {
 }
 
 async function createEnrollment() {
+  if (!enrollmentForm.name.trim()) {
+    Message.warning("请填写便于识别的协同电脑名称");
+    return;
+  }
+  if (!enrollmentForm.advertised_host) {
+    Message.warning("请选择协同电脑能够访问的主机局域网地址");
+    return;
+  }
   try {
-    const result = await api.post<{ code: string; host_url: string; expires_at: string; ca_fingerprint: string }>("/admin/devices/enrollments", { name: enrollmentForm.name });
+    const result = await api.post<{ id: string; code: string; host_url: string; expires_at: string; ca_fingerprint: string }>("/admin/devices/enrollments", {
+      name: enrollmentForm.name.trim(),
+      advertised_host: enrollmentForm.advertised_host,
+    });
     enrollment.value = result;
+    enrollmentStatus.value = { status: "pending", device_id: null, device_name: "", device_status: "", last_seen_at: null };
+    startEnrollmentWatch(result.id);
     Message.success("入网码已生成，10 分钟内有效");
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "生成入网码失败");
   }
+}
+
+async function openEnrollment() {
+  enrollment.value = null;
+  enrollmentStatus.value = null;
+  stopEnrollmentWatch();
+  try {
+    const bootstrap = await session.loadBootstrap();
+    const candidates = [...new Set([
+      ...bootstrap.lan_candidates,
+      ...(!["127.0.0.1", "::1", "localhost", "0.0.0.0", "::"].includes(bootstrap.host) ? [bootstrap.host] : []),
+    ])];
+    enrollmentForm.advertised_host = candidates.includes(bootstrap.host)
+      ? bootstrap.host
+      : candidates.length === 1 ? candidates[0] : "";
+    enrollmentVisible.value = true;
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "无法读取主机网络信息");
+  }
+}
+
+function stopEnrollmentWatch() {
+  if (enrollmentTimer !== undefined) window.clearInterval(enrollmentTimer);
+  enrollmentTimer = undefined;
+}
+
+async function checkEnrollmentStatus(enrollmentId: string) {
+  try {
+    const previous = enrollmentStatus.value?.status;
+    const result = await api.get<typeof enrollmentStatus.value>(`/admin/devices/enrollments/${enrollmentId}/status`);
+    enrollmentStatus.value = result;
+    if (result?.status === "enrolled" && previous !== "enrolled") {
+      Message.success(`“${result.device_name || "协同电脑"}”已完成安全入网`);
+      await load();
+    }
+    if (result?.status === "expired") stopEnrollmentWatch();
+  } catch {
+    // 主机重启或短暂断线时继续轮询，入网码到期前无需用户重新操作。
+  }
+}
+
+function startEnrollmentWatch(enrollmentId: string) {
+  stopEnrollmentWatch();
+  void checkEnrollmentStatus(enrollmentId);
+  enrollmentTimer = window.setInterval(() => void checkEnrollmentStatus(enrollmentId), 2_000);
 }
 
 async function saveDevice(device: Device, field: "active" | "allow_host_access" | "allow_device_transfer" | "allow_user_shares", value: boolean) {
@@ -476,6 +557,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener("partyops:refresh", load);
   if (refreshTimer !== undefined) window.clearInterval(refreshTimer);
+  stopEnrollmentWatch();
 });
 </script>
 
@@ -495,7 +577,7 @@ onBeforeUnmount(() => {
         />
         <a-button :loading="loading" @click="load"><template #icon><IconRefresh /></template>刷新状态</a-button>
         <a-button v-if="session.runtimeContext?.capabilities.includes('workspace.local_share') && activeSection === 'devices'" type="primary" @click="openLocalShareManager"><template #icon><IconPlus /></template>共享本机文件夹</a-button>
-        <a-button v-if="isAdmin && activeSection === 'devices'" type="primary" @click="enrollmentVisible = true"><template #icon><IconPlus /></template>新增协同电脑</a-button>
+        <a-button v-if="isAdmin && activeSection === 'devices'" type="primary" @click="openEnrollment"><template #icon><IconPlus /></template>新增协同电脑</a-button>
         <a-button v-if="activeSection === 'transfers'" type="primary" @click="openTransfer"><template #icon><IconPlus /></template>新建传输</a-button>
       </a-space>
     </header>
@@ -658,13 +740,40 @@ onBeforeUnmount(() => {
       <p v-if="!roots.length" class="muted">当前账号或本机尚无可用共享目录，请联系管理员审批并授权。</p>
     </section>
 
-    <a-modal v-model:visible="enrollmentVisible" title="新增协同电脑" :footer="false">
-      <a-form :model="enrollmentForm" layout="vertical">
-        <a-form-item field="name" label="设备名称"><a-input v-model="enrollmentForm.name" placeholder="例如：组织委员电脑" /></a-form-item>
-        <a-button type="primary" @click="createEnrollment">生成 10 分钟入网码</a-button>
+    <a-modal v-model:visible="enrollmentVisible" title="新增协同电脑" :width="720" :footer="false" @cancel="stopEnrollmentWatch">
+      <a-alert type="info" class="enrollment-intro">
+        <strong>请在主机和协同电脑都保持开机、连接同一办公局域网。</strong>
+        <p>本向导会自动确认协同 Agent 是否真正入网；看到“连接完成”前请不要关闭窗口。</p>
+      </a-alert>
+      <a-steps :current="enrollmentStep" small class="enrollment-steps">
+        <a-step title="确认主机地址" />
+        <a-step title="协同机输入信息" />
+        <a-step title="等待首次心跳" />
+        <a-step title="连接完成" />
+      </a-steps>
+      <a-form v-if="!enrollment" :model="enrollmentForm" layout="vertical">
+        <a-form-item field="name" label="这台协同电脑叫什么">
+          <a-input v-model="enrollmentForm.name" placeholder="例如：组织委员电脑" />
+          <template #extra>使用办公室或岗位名称，后续授权时更容易识别。</template>
+        </a-form-item>
+        <a-form-item field="advertised_host" label="协同电脑连接哪个主机地址" required>
+          <a-select v-model="enrollmentForm.advertised_host" placeholder="请选择真实局域网地址">
+            <a-option v-for="host in enrollmentHostOptions" :key="host" :value="host">{{ host }}</a-option>
+          </a-select>
+          <template #extra>不要填写 127.0.0.1；多网卡时请选择与协同电脑同一网段的地址。</template>
+        </a-form-item>
+        <a-alert v-if="!enrollmentHostOptions.length" type="error" class="enrollment-network-error">
+          未检测到可共享的局域网地址。请先退出并重新运行“PartyOps 配置向导”，选择主机模式和真实网卡地址，再返回此处。
+        </a-alert>
+        <a-button type="primary" :disabled="!enrollmentForm.name.trim() || !enrollmentForm.advertised_host" @click="createEnrollment">地址已确认，生成 10 分钟入网码</a-button>
       </a-form>
       <a-alert v-if="enrollment" type="warning" class="enrollment-alert">
-        在协同电脑上打开 PartyOps Agent，输入以下信息：
+        <strong>现在转到协同电脑完成以下操作：</strong>
+        <ol>
+          <li>安装同版本 PartyOps，首次配置选择“协同机”。</li>
+          <li>打开 PartyOps Agent，把下方主机地址和完整入网码粘贴进去。</li>
+          <li>核对 CA 指纹后确认；本窗口会自动显示真实连接结果。</li>
+        </ol>
         <p><strong>主机地址：</strong>{{ enrollment.host_url }}</p>
         <div class="enrollment-code-row">
           <strong>一次性入网码（{{ enrollment.code.length }} 个字符）：</strong>
@@ -674,6 +783,13 @@ onBeforeUnmount(() => {
         <p><strong>主机 CA 指纹：</strong><code>{{ enrollment.ca_fingerprint }}</code></p>
         <p><strong>有效期：</strong>{{ formatServerTime(enrollment.expires_at, "YYYY-MM-DD HH:mm:ss") }}（北京时间）</p>
       </a-alert>
+      <div v-if="enrollment" class="enrollment-result" :class="enrollmentStatus?.status || 'pending'">
+        <strong v-if="enrollmentStatus?.status === 'enrolled'">{{ enrollmentStatus.device_status === 'online' ? '连接完成，可以开始协同' : '安全入网已完成，正在等待 Agent 首次心跳' }}</strong>
+        <strong v-else-if="enrollmentStatus?.status === 'expired'">入网码已过期，请返回重新生成</strong>
+        <strong v-else>正在等待协同电脑连接……</strong>
+        <p v-if="enrollmentStatus?.status === 'enrolled'">设备：{{ enrollmentStatus.device_name }} · 状态：{{ zhLabel(enrollmentStatus.device_status) }}</p>
+        <p v-else>无需手动刷新；系统每 2 秒确认一次真实入网状态。</p>
+      </div>
     </a-modal>
 
     <a-modal
@@ -715,7 +831,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.fleet-page{max-width:1480px}.date-kicker{margin:0 0 10px;color:var(--cinnabar);font:13px Georgia,serif;letter-spacing:.08em}.fleet-summary{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;margin-bottom:28px;background:var(--line);border:1px solid var(--line)}.fleet-summary article{min-height:112px;padding:20px;background:rgba(251,248,241,.86)}.fleet-summary span,.fleet-summary strong,.fleet-summary small{display:block}.fleet-summary span{color:var(--muted);font-size:11px}.fleet-summary strong{margin:8px 0;font:30px Georgia,serif}.fleet-summary small{color:var(--muted);font-size:11px}.safe-card{display:flex;align-items:center;gap:12px;color:#f8efe4;background:var(--charcoal)!important}.safe-card svg{font-size:24px;color:#e8b1a6}.safe-card small{color:#c8beb2}.panel{margin-bottom:24px;padding:20px;background:rgba(251,248,241,.72);border:1px solid var(--line)}.panel-heading{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px}.panel-heading h2{margin:0;font-size:18px}.panel-heading p{margin:5px 0 0;color:var(--muted);font-size:12px}.subline{display:block;margin-top:3px;color:var(--muted);font-size:10px}.status-pill,.version-pill{display:inline-flex;padding:3px 7px;color:var(--muted);font-size:11px;background:#eee6d9;border-radius:12px}.status-pill.online,.version-pill.current{color:#21633b;background:#e4f1e7}.status-pill.revoked,.version-pill.outdated,.version-pill.failed{color:#8e2a20;background:#f3deda}.version-pill.updating{color:#7d5713;background:#f5e8c8}.muted{color:var(--muted);font-size:12px}.enrollment-alert{margin-top:18px}.enrollment-alert p{margin:8px 0}.enrollment-alert code{padding:3px 6px;color:var(--charcoal);background:#eee6d9}.enrollment-code-row{display:grid;gap:8px;margin:10px 0}.enrollment-code{display:block;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-all;user-select:all;line-height:1.7}.enrollment-code-row .arco-btn{justify-self:start}
+.fleet-page{max-width:1480px}.date-kicker{margin:0 0 10px;color:var(--cinnabar);font:13px Georgia,serif;letter-spacing:.08em}.fleet-summary{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;margin-bottom:28px;background:var(--line);border:1px solid var(--line)}.fleet-summary article{min-height:112px;padding:20px;background:rgba(251,248,241,.86)}.fleet-summary span,.fleet-summary strong,.fleet-summary small{display:block}.fleet-summary span{color:var(--muted);font-size:11px}.fleet-summary strong{margin:8px 0;font:30px Georgia,serif}.fleet-summary small{color:var(--muted);font-size:11px}.safe-card{display:flex;align-items:center;gap:12px;color:#f8efe4;background:var(--charcoal)!important}.safe-card svg{font-size:24px;color:#e8b1a6}.safe-card small{color:#c8beb2}.panel{margin-bottom:24px;padding:20px;background:rgba(251,248,241,.72);border:1px solid var(--line)}.panel-heading{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px}.panel-heading h2{margin:0;font-size:18px}.panel-heading p{margin:5px 0 0;color:var(--muted);font-size:12px}.subline{display:block;margin-top:3px;color:var(--muted);font-size:10px}.status-pill,.version-pill{display:inline-flex;padding:3px 7px;color:var(--muted);font-size:11px;background:#eee6d9;border-radius:12px}.status-pill.online,.version-pill.current{color:#21633b;background:#e4f1e7}.status-pill.revoked,.version-pill.outdated,.version-pill.failed{color:#8e2a20;background:#f3deda}.version-pill.updating{color:#7d5713;background:#f5e8c8}.muted{color:var(--muted);font-size:12px}.enrollment-intro p{margin:5px 0 0}.enrollment-steps{margin:24px 0}.enrollment-network-error{margin-bottom:16px}.enrollment-alert{margin-top:18px}.enrollment-alert ol{margin:10px 0 12px;padding-left:22px;line-height:1.8}.enrollment-alert p{margin:8px 0}.enrollment-alert code{padding:3px 6px;color:var(--charcoal);background:#eee6d9}.enrollment-code-row{display:grid;gap:8px;margin:10px 0}.enrollment-code{display:block;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-all;user-select:all;line-height:1.7}.enrollment-code-row .arco-btn{justify-self:start}.enrollment-result{margin-top:14px;padding:15px 17px;border-left:3px solid #b8862e;background:#f7edcf}.enrollment-result.enrolled{border-left-color:#2e7b49;background:#e8f3ea}.enrollment-result.expired{border-left-color:var(--cinnabar);background:#f5e2de}.enrollment-result p{margin:6px 0 0;color:var(--muted)}
 .fleet-page{width:100%;max-width:none}
 .staff-collaboration-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.staff-collaboration-grid .panel{margin:0;min-height:150px}.staff-collaboration-grid h2{margin-top:0;font-size:16px}.staff-collaboration-grid strong{display:block;margin:16px 0 8px;color:var(--cinnabar);font:22px var(--serif)}.staff-collaboration-grid p{color:var(--muted);line-height:1.7}.remote-root-panel{margin-bottom:16px}.grant-form{display:grid;grid-template-columns:1fr 1.2fr 1.2fr 1.4fr auto;gap:10px;align-items:center;margin-bottom:16px;padding:12px;background:rgba(180,35,24,.045);border:1px solid var(--line-light)}.permission-root-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.permission-root-list article{padding:14px;border:1px solid var(--line-light);background:rgba(255,255,255,.28)}.permission-root-list b,.permission-root-list span,.permission-root-list small{display:block}.permission-root-list span{margin:7px 0;color:var(--cinnabar);font-size:11px}.permission-root-list small{color:var(--muted)}.inline-note{margin-left:10px;color:var(--muted);font-size:11px}
 @media (max-width:1000px){.fleet-summary{grid-template-columns:repeat(2,1fr)}.panel-heading{align-items:flex-start;flex-direction:column;gap:12px}}

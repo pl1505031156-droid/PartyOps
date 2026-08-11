@@ -1328,6 +1328,12 @@ class BackgroundJobOut(ORMModel):
 
 class DeviceEnrollmentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    advertised_host: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="协同电脑能够访问的主机局域网地址",
+    )
 
 
 class DeviceEnrollmentOut(BaseModel):
@@ -1337,6 +1343,17 @@ class DeviceEnrollmentOut(BaseModel):
     expires_at: datetime
     host_url: str
     ca_fingerprint: str
+
+
+class DeviceEnrollmentStatusOut(BaseModel):
+    id: str
+    status: str = Field(pattern=r"^(pending|enrolled|expired)$")
+    expires_at: datetime
+    used_at: datetime | None = None
+    device_id: str | None = None
+    device_name: str = ""
+    device_status: str = ""
+    last_seen_at: datetime | None = None
 
 
 class DeviceOut(ORMModel):

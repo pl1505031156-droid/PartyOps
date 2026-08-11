@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+from urllib.parse import urlsplit
 
 
 def discover_lan_addresses() -> list[str]:
@@ -73,3 +74,47 @@ def validate_transport_security(
 def service_url(host: str, port: int) -> str:
     shown_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
     return f"http://{shown_host}:{port}"
+
+
+def enrollment_service_url(
+    *,
+    requested_host: str | None,
+    configured_host: str,
+    configured_port: int,
+    request_base_url: str,
+    lan_candidates: list[str],
+    tls_enabled: bool,
+) -> str:
+    """选择协同机实际可达的主机地址，绝不把回环或通配地址发给别的电脑。"""
+
+    candidates = sorted(dict.fromkeys(lan_candidates))
+    allowed = set(candidates)
+    if configured_host not in {"0.0.0.0", "::", "localhost"}:
+        try:
+            configured_address = ipaddress.ip_address(configured_host)
+        except ValueError:
+            configured_address = None
+        if configured_address is None or (
+            configured_address.is_private
+            and not configured_address.is_loopback
+            and not configured_address.is_link_local
+        ):
+            allowed.add(configured_host)
+
+    selected = (requested_host or "").strip()
+    if selected:
+        if selected not in allowed:
+            raise ValueError("所选地址不是本机当前可用的可信局域网地址")
+    elif configured_host in allowed:
+        selected = configured_host
+    else:
+        request_host = urlsplit(request_base_url).hostname or ""
+        if request_host in allowed:
+            selected = request_host
+        elif len(candidates) == 1:
+            selected = candidates[0]
+        else:
+            raise LookupError("请明确选择协同电脑能够访问的主机局域网地址")
+
+    scheme = "https" if tls_enabled else "http"
+    return f"{scheme}://{selected}:{configured_port}"
