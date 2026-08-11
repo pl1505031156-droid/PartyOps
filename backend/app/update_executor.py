@@ -734,6 +734,7 @@ def install_device_package(package_path: Path) -> bool:
 
 
 def run_daemon(once: bool = False) -> int:
+    database_retry_seconds = 3
     while True:
         try:
             with db_runtime.session_factory() as db:
@@ -746,9 +747,19 @@ def run_daemon(once: bool = False) -> int:
                     .order_by(UpdateRun.created_at)
                 )
                 run_id = run.id if run else None
-        except OperationalError:
+        except OperationalError as exc:
             # 终端模式可能没有主机数据库；更新服务保持空闲，不创建第二份数据库。
-            run_id = None
+            logger.warning(
+                "更新服务暂时无法读取数据库，将在 %s 秒后重试：%s",
+                database_retry_seconds,
+                type(exc).__name__,
+            )
+            if once:
+                return 0
+            time.sleep(database_retry_seconds)
+            database_retry_seconds = min(database_retry_seconds * 2, 60)
+            continue
+        database_retry_seconds = 3
         if run_id:
             execute_host_update(run_id)
         if once:

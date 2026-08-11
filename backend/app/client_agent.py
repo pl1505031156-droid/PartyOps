@@ -6,6 +6,7 @@ import argparse
 import getpass
 import hashlib
 import json
+import logging
 import mimetypes
 import os
 import platform
@@ -24,6 +25,7 @@ import urllib.request
 import webbrowser
 import zipfile
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from pathlib import PurePosixPath
 
@@ -41,6 +43,52 @@ AGENT_VERSION = "1.4.2"
 _ACTIVE_SSL_CONTEXT = None
 HEARTBEAT_INTERVAL_SECONDS = 15
 COMMAND_POLL_INTERVAL_SECONDS = 5
+logger = logging.getLogger("partyops.client_agent")
+
+
+def configure_agent_logging(config_path: Path) -> Path:
+    """在协同机配置目录写入轮转日志，不记录令牌或文件正文。"""
+
+    log_dir = config_path.parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "partyops-agent.log"
+    target = str(log_path.resolve()).lower()
+    if not any(
+        str(getattr(handler, "baseFilename", "")).lower() == target
+        for handler in logger.handlers
+    ):
+        handler = RotatingFileHandler(
+            log_path,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+            delay=True,
+        )
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    return log_path
+
+
+def _record_agent_failure(
+    config_path: Path,
+    config: dict[str, object],
+    operation: str,
+    exc: BaseException,
+) -> None:
+    """持久化可诊断状态；鉴权失效时明确要求重新入网。"""
+
+    status = getattr(exc, "code", None)
+    logger.warning("operation_failed operation=%s type=%s status=%s", operation, type(exc).__name__, status or "")
+    config["last_agent_error"] = operation
+    config["last_agent_error_at"] = datetime.now(timezone.utc).isoformat()
+    if isinstance(exc, urllib.error.HTTPError) and exc.code in {401, 403}:
+        config["authentication_state"] = "reauth_required"
+    try:
+        _save_config(config_path, config)
+    except OSError:
+        logger.exception("agent_state_persist_failed operation=%s", operation)
 
 
 class AgentCommandError(RuntimeError):
@@ -1644,6 +1692,7 @@ def run(
     if not config_path.exists():
         print(f"配置不存在：{config_path}", file=sys.stderr)
         return 2
+    configure_agent_logging(config_path)
     config = json.loads(config_path.read_text(encoding="utf-8"))
     configure_ssl_context(config)
     try:
@@ -1695,8 +1744,8 @@ def run(
                     ValueError,
                     urllib.error.HTTPError,
                     urllib.error.URLError,
-                ):
-                    pass
+                ) as exc:
+                    _record_agent_failure(config_path, config, "shared_root_sync", exc)
                 for command in poll_device_commands(agent_host_url, token):
                     process_device_command(
                         agent_host_url,
@@ -1748,14 +1797,16 @@ def run(
                     )
                     config["indexed_file_count"] = indexed
                     _save_config(config_path, config)
+                    if _errors:
+                        logger.warning("scan_partial indexed=%s errors=%s", indexed, _errors)
                 except (
                     OSError,
                     ValueError,
                     RuntimeError,
                     urllib.error.HTTPError,
                     urllib.error.URLError,
-                ):
-                    pass
+                ) as exc:
+                    _record_agent_failure(config_path, config, "workspace_scan", exc)
                 next_scan_at = time.monotonic() + max(
                     300,
                     int(config.get("scan_interval_seconds", 600) or 600),
