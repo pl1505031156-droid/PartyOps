@@ -1,0 +1,3 @@
+# 正式运行依赖总入口：基础业务与可选本地智能运行时。
+-r requirements.txt
+-r requirements-local-ai.txt

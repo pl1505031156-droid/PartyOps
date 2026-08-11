@@ -20,7 +20,8 @@
 - [需求追踪矩阵](requirements-matrix.md)
 - [交付记录](delivery-record.md)
 - [安全加固记录](security-hardening-2026-08-04.md)
-- [依赖安全例外](security-exception-cryptography-2026-69247.md)
+- [第三方组件与许可证](../THIRD_PARTY_NOTICES.md)
+- [安全报告策略](../SECURITY.md)
 
 ## 架构与设计
 

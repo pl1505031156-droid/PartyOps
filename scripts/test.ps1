@@ -22,16 +22,9 @@ function Invoke-Checked {
   }
 }
 
-$riskExceptionExpires = [datetime]"2026-09-30"
-if ((Get-Date).Date -gt $riskExceptionExpires.Date) {
-  throw "cryptography PYSEC-2026-3552 风险例外已到期，必须重新审查并更新依赖或例外记录。"
-}
-
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") audit --prod --audit-level high } "前端生产依赖审计"
 Invoke-Checked { & $python -m pip check } "Python 依赖一致性检查"
-# 当前稳定版 cryptography 49.0.0 的唯一已知项只影响项目未调用的
-# PKCS#7 解密 API；精确例外和到期日见 output/dependency-risk-acceptance-2026-08-09.md。
-Invoke-Checked { & $python -m pip_audit --ignore-vuln PYSEC-2026-3552 } "Python 依赖审计"
+Invoke-Checked { & $python -m pip_audit -r (Join-Path $root "backend\requirements-release.txt") } "Python 依赖审计"
 Invoke-Checked { & $python -m compileall -q (Join-Path $root "backend\app") (Join-Path $root "backend\tests") } "Python 编译检查"
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") run typecheck } "前端类型检查"
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") run test:coverage } "前端覆盖率测试"

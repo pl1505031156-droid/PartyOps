@@ -1,149 +1,151 @@
-# 党建智办部署说明
+# PartyOps 1.4.2 部署与独立搭建
 
-## 1. 部署模型
+最后核对：2026-08-11。本文只描述当前 `1.4.2` / 数据库 `0017`；旧版本文档仅用于迁移追溯。
 
-主机运行单个 PartyOps 业务进程并保存唯一 SQLite 数据库、附件、备份和日志。协同终端只在桌面登录时运行 Agent，不开放终端入站服务，也不保存可写业务数据库。主端口供浏览器使用，下一端口为强制客户端证书的 Agent 通道。
+> 当前 GitHub Release 是 `v1.4.2-rc.1` 候选版，不是稳定生产版。Windows 10、UOS 双架构、20GB、24 小时长稳、90% 覆盖率和正式签名证据未齐全前，不得把候选安装器用于正式业务数据。
 
-```mermaid
-flowchart LR
-  C["协同终端浏览器"] -->|"HTTPS / SSE"| H["PartyOps 主端口"]
-  A["终端 Agent"] -->|"HTTPS + mTLS + 设备令牌"| G["Agent 专用端口"]
-  A -->|"灾备和文件分块"| B["主机中转 API"]
-  A -->|"脱敏数量与修订号"| N["提醒摘要 API"]
-  A -->|"notify-send"| U["统信桌面通知"]
-  H --> D["主机 SQLite（唯一真相）"]
-  H --> F["主机附件目录"]
-  B --> R["终端灾备副本目录"]
+## 1. 部署结构
+
+- 一台主机运行后端、SQLite、受管附件、备份、审计与更新服务。
+- Windows 10/11 x64 或 UOS amd64/arm64 协同机通过 Agent 接入。
+- 浏览器业务端口默认 `18765`；设备 Agent 双向 TLS 端口默认 `18766`。
+- 只允许可信局域网，不支持也不应配置公网端口映射、SMB 匿名共享或设备直连。
+- 主机数据库必须位于本机可靠磁盘，不能放在 NAS、云盘同步目录或网络共享盘。
+
+## 2. 使用 Release 安装
+
+### 2.1 下载与真实性校验
+
+只从同一 GitHub Release 下载安装文件、`.sha256` 和签名说明。先计算哈希：
+
+```powershell
+Get-FileHash .\PartyOps_1.4.2_windows_amd64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\PartyOps_1.4.2_windows_amd64.exe
 ```
 
-## 2. 主机配置
+```bash
+sha256sum partyops_1.4.2_amd64.deb
+dpkg-deb --info partyops_1.4.2_amd64.deb
+```
 
-生产配置使用环境变量或 `/etc/partyops/partyops.env`：
+哈希不一致、正式版缺少签名或签名发布者不一致时停止安装。当前 `rc.1` Windows 文件未做 Authenticode 正式签名，只能隔离试用。
 
-```ini
-PARTYOPS_ENVIRONMENT=production
+### 2.2 Windows 10/11 x64
+
+1. 以管理员身份运行 `PartyOps_1.4.2_windows_amd64.exe`。
+2. 首次打开桌面“党建智办”，明确选择“主机”或“协同机”。不能由残留配置猜测角色。
+3. 主机模式创建首任管理员，数据位于 `%PROGRAMDATA%\PartyOps`，服务随系统启动。
+4. 协同机模式使用主机生成的限时入网码；用户配置、接收文件和日志位于 `%LOCALAPPDATA%\PartyOps`。
+5. 主机管理员在“管理 → 设备协同”确认设备、目录与成员权限。
+6. 防火墙只对“专用网络”和单位可信网段开放所需端口，不开放“公用网络”。
+
+### 2.3 UOS V20 amd64/arm64
+
+确认架构后安装匹配包：
+
+```bash
+dpkg --print-architecture
+sudo apt-get install ./partyops_1.4.2_amd64.deb
+# ARM64 使用 partyops_1.4.2_arm64.deb
+```
+
+若 Release 只提供 `PartyOps-UOS-build-kit.zip`，它是原生构建套件而不是 DEB。必须在对应架构的 UOS 目标机校验 ZIP 后运行套件内构建脚本，再校验生成的 DEB；不要在 x64 机器伪造 ARM64 验收结果。
+
+主机系统配置位于 `/etc/partyops/partyops.env`，数据默认位于 `/var/lib/partyops`。服务检查：
+
+```bash
+systemctl status partyops partyops-updater --no-pager
+journalctl -u partyops -n 100 --no-pager
+curl --cacert /var/lib/partyops/secrets/ca-cert.pem https://主机地址:18765/api/v1/health
+```
+
+## 3. 从源码独立搭建（仅本机开发/审计）
+
+源码模式默认只绑定 `127.0.0.1`，不能代替带 TLS、服务管理和回滚的正式安装器。
+
+前置条件：Git、CPython 3.11–3.13、Node.js 22、Corepack。Windows PowerShell：
+
+```powershell
+git clone https://github.com/pl1505031156-droid/PartyOps.git
+Set-Location PartyOps
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt
+corepack pnpm --dir frontend install --frozen-lockfile
+.\scripts\dev.ps1
+```
+
+开发前端为 `http://127.0.0.1:4173`，API 健康检查为 `http://127.0.0.1:18765/api/v1/health`。开发脚本会显式启用开发环境和随机口令演示数据；它不会创建可用于外部部署的服务或 TLS 边界。
+
+生产前端本机构建：
+
+```powershell
+.\scripts\build.ps1
+```
+
+生产模式如果绑定非回环地址，程序会拒绝通配/公网地址和明文 HTTP。请优先使用安装向导生成的 CA、主机证书、设备证书与服务配置，不要手工关闭校验。
+
+## 4. 生产配置基线
+
+关键环境变量如下，敏感值不得提交到 Git：
+
+```dotenv
 PARTYOPS_MODE=host
-PARTYOPS_HOST=192.168.10.20
+PARTYOPS_ENVIRONMENT=production
+PARTYOPS_HOST=192.168.1.20
 PARTYOPS_PORT=18765
 PARTYOPS_AGENT_PORT=18766
-PARTYOPS_TLS_ENABLED=true
 PARTYOPS_DATA_DIR=/var/lib/partyops
 PARTYOPS_STRICT_SQLITE=true
 PARTYOPS_SEED_DEMO=false
-PARTYOPS_BACKUP_HOUR=18
-PARTYOPS_BACKUP_MINUTE=30
+PARTYOPS_TLS_ENABLED=true
+PARTYOPS_TLS_CERT_FILE=/var/lib/partyops/secrets/host-cert.pem
+PARTYOPS_TLS_KEY_FILE=/var/lib/partyops/secrets/host-key.pem
+PARTYOPS_TLS_CLIENT_CA_FILE=/var/lib/partyops/secrets/ca-cert.pem
+PARTYOPS_TLS_REQUIRE_CLIENT_CERT=true
+PARTYOPS_UPDATE_PUBLIC_KEY=<部署端预置的 Ed25519 公钥>
+PARTYOPS_MODEL_PACK_PUBLIC_KEY=<模型包发布公钥；可与更新公钥分离>
 ```
 
-`PARTYOPS_HOST` 必须是主机明确选定的可信局域网地址，不使用 `0.0.0.0`，不做公网端口映射。
+- 私钥文件权限限定为服务账号；不得放进源码、更新包、模型包或诊断包。
+- 更新包/模型包不能用包内自带公钥给自己签名，必须由上述外部受信公钥验证。
+- `allowed_origins` 只加入实际受信前端来源；浏览器写操作同时验证 Origin。
+- AI 外部服务必须使用 HTTPS；内网模型需要管理员显式标记受信，链路本地与保留地址始终拒绝。
 
-## 3. UOS V20 离线构建
+## 5. 首次验收
 
-便携包必须分别在计划支持的最旧 UOS V20 amd64 与 UOS V20 ARM64 目标机上原生构建。PyInstaller 不捆绑 glibc，也不是跨架构编译器，不能在较新的 Linux 或 amd64 电脑上构建后假设兼容旧系统与 ARM64。
+至少用主机管理员、主机普通用户、协同机管理员、协同机普通用户各走一次：
 
-在联网 Windows 准备机执行：
+1. 登录、退出、密码重置和会话撤销。
+2. 新建事项、协办/审核、评论/提及、材料版本和归档。
+3. 普通协同用户选择本机真实目录，设置团队/指定成员并立即同步。
+4. 另一台电脑浏览、预览、单文件下载、多选/文件夹 ZIP、下载到本机接收目录。
+5. 传输中撤销目录/成员权限，确认下一分块和最终读取均停止。
+6. 档案获授权用户新建、编辑、上传扫描件；字段错误显示在具体字段。
+7. 创建、下载、校验备份；在隔离副本上完成恢复演练。
+8. 检查浏览器控制台、服务日志、Agent 轮转日志和磁盘空间告警。
 
-```powershell
-.\scripts\prepare-uos-offline.ps1 -Architecture all
-.\scripts\package-uos-build-kit.ps1
-```
+健康接口必须显示程序版本、SQLite 能力和模式修订均正确。候选发布还必须满足 [1.4.2 发布就绪门禁](release-readiness-1.4.2.md)。
 
-得到 `artifacts/PartyOps-UOS-build-kit.zip` 和 `.sha256`。套件包含源码、已构建前端、amd64/ARM64 两套 Linux 离线轮子、两种架构的独立 CPython 3.11.15、SQLite/pysqlite3 源码及依赖哈希。准备过程会生成并校验：
+## 6. 备份、升级与回滚
 
-- `vendor/sqlite-amalgamation-3510300.zip`
-- `vendor/pysqlite3-0.5.4.tar.gz`
-- `vendor/cpython-3.11.15+20260623-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz`
-- `vendor/cpython-3.11.15+20260623-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz`
-- `vendor/wheels/amd64/` 与 `vendor/wheels/arm64/` 中全部锁定轮子
+- 升级前自动创建数据库快照，管理员还应下载一份已校验的完整备份。
+- 备份导入限制上传体积、成员数、解压体积与压缩比，并拒绝路径逃逸、符号链接、未登记文件和哈希不一致。
+- 统一 `.partyops-update` 只接受外部受信 Ed25519 公钥验证通过的包，按平台/架构选取制品。
+- 升级失败由平台执行器停止新版本、恢复程序与升级前数据库，再运行健康检查。
+- `0017 → 0016` 会丢失新共享成员等字段；已有新业务写入时优先恢复完整升级前备份，不要长期使用结构降级库。
 
-UOS 目标机需为 glibc ≥2.28，构建目录至少有 4 GiB 可用空间，并使用具有管理员授权的日常桌面账号。先核对套件 SHA-256，再执行一条命令完成环境检测、构建、安装和桌面集成：
+详见 [升级与回滚](upgrade-1.4.2.md)、[备份恢复](backup-restore.md) 和 [长期运行手册](operations-runbook.md)。
 
-```bash
-sha256sum -c PartyOps-UOS-build-kit.zip.sha256
-unzip PartyOps-UOS-build-kit.zip
-cd PartyOps
-bash install.sh
-```
+## 7. 故障定位
 
-目录已有与本机架构匹配的 1.1.1 `.deb` 时，脚本只做哈希校验和安装/升级，不安装构建环境。没有预构建包时才进入原生构建：UOS 软件源没有 Python 3.11 时，自动解压本机架构的独立 CPython 3.11.15，不再依赖 `python3.11-venv/dev` 系统包。其他工具缺失时优先安装 `vendor/system-debs/<架构>` 中的匹配包，否则从当前可信 UOS 软件源安装编译、压缩和 Tesseract 中文 OCR。完全离线且缺少系统工具时停止并报告缺项。
+- 主机日志：数据目录 `logs/partyops.log`（JSON 单行、按日轮转）。
+- 协同机日志：配置目录 `logs/partyops-agent.log`（5 MiB × 6 份）。
+- `AGENT_MTLS_REQUIRED`：设备令牌走错端口或未启用正式双向 TLS。
+- `ORIGIN_DENIED`：Cookie 写请求来自非当前服务/未允许来源。
+- `DEVICE_UPDATE_REQUIRED`：协同 Agent 与主机版本不一致，先完成签名更新。
+- `reauth_required`：设备凭据失效，需要备份本机共享配置后重新入网。
+- 恢复前先复制原始日志和备份，不要删除数据目录或覆盖数据库。
 
-安装后会创建应用菜单、专属图标和当前用户桌面快捷方式，并打开“主机 / 协同终端”向导。若只构建不安装，分别运行 `build-portable.sh` 与 `build-deb.sh`。需要开机后不登录也持续提供服务时，可使用高级系统服务命令：
+## 8. 开源与许可证
 
-```bash
-bash packaging/uos/build-and-install.sh 192.168.10.20
-```
-
-必须把 IP 替换为该 UOS 主机网卡上的真实 RFC1918 地址；脚本拒绝 `0.0.0.0`、公网地址和不属于本机的地址。
-
-输出：
-
-- `artifacts/PartyOps-uos-amd64.tar.zst`
-- `artifacts/PartyOps-uos-arm64.tar.zst`
-- `artifacts/partyops_1.1.1_amd64.deb`
-- `artifacts/partyops_1.1.1_arm64.deb`
-- `artifacts/SHA256SUMS.amd64`、`artifacts/SHA256SUMS.arm64`
-- `artifacts/dependency-sha256-amd64.txt`、`artifacts/dependency-sha256-arm64.txt`
-
-两种架构制品汇总后执行 `scripts/package-uos-release.ps1`，生成同时包含两套包并自动选包的离线发布 ZIP。
-
-构建脚本会先把 SQLite 3.51.3 amalgamation 静态编译进 `pysqlite3`，再打包应用；启动时 `PARTYOPS_STRICT_SQLITE=true` 会拒绝低版本或缺少 FTS5 的运行时。
-
-安装后执行目标机验收并保留结果：
-
-```bash
-bash packaging/uos/target-acceptance.sh https://192.168.10.20:18765
-```
-
-## 4. 安装与桌面入口
-
-一键安装完成后，统信启动器和桌面都会显示“党建智办”及红色文书图标。首次双击进入角色向导，配置完成后再次双击会直接启动或打开系统。
-
-amd64 便携包示例（ARM64 将文件名替换为 `arm64`）：
-
-```bash
-tar --zstd -xf PartyOps-uos-amd64.tar.zst -C /opt
-sudo install -d -o "$USER" -g "$USER" /var/lib/partyops
-/opt/PartyOps/start.sh
-```
-
-Debian 包：
-
-```bash
-sudo apt-get install ./partyops_1.1.1_amd64.deb
-```
-
-ARM64 D2000/8 必须安装 `partyops_1.1.1_arm64.deb`。也可以在统信文件管理器中直接双击匹配架构的 `.deb`。首次双击桌面“党建智办”，选择主机或协同终端。若单位启用了主机防火墙，只对可信局域网网段放行浏览器端口及 Agent 端口；不要做路由器公网映射。
-
-## 5. 协同终端
-
-协同终端安装与自身处理器匹配的 `.deb`；主机为 amd64、终端为 ARM64 时两者包文件不同，但应用版本和协议相同。终端无需启用 `partyops` 主机业务服务。管理员在“设备与协同中心”生成 10 分钟入网码，然后在终端双击“党建智办”，填写主机地址、设备名称、包含 CA 指纹的一次性入网码和可共享的本机文件夹。终端先校验 CA 指纹，再提交入网请求；主机批准目录和权限后，Agent 才开始上传索引与执行传输。
-
-向导只创建 `~/.config/partyops/client.json`，不会创建业务数据库；同时安装桌面会话自启动项。也可手工执行：
-
-```bash
-/opt/PartyOps/partyops-client --config "$HOME/.config/partyops/client.json"
-```
-
-终端断开时不会写入第二份业务数据库；恢复在线后补拉最新备份。
-
-浏览器中的任务更新依赖主机 SSE，断线会自动按事件编号续传；SSE 不可用时页面每 10 秒短轮询。终端伴随进程仅主动访问主机健康检查、最新备份和脱敏提醒摘要接口，不监听任何入站端口。
-
-Agent 每 15 秒发送心跳、轮询幂等命令，并按低负载周期只上传获批目录的相对路径、文件名、大小、类型和修改时间，不读取或上传正文/OCR。跨设备文件始终经主机中转，默认 8MB 分块、20GB 单文件、100GB 中转配额。Agent 还会每 30 秒访问提醒摘要接口；该接口只返回未读数量和修订号，不返回任务标题、正文、敏感事项或主机路径。
-
-## 6. 数据、日志与诊断
-
-- 数据库：`$PARTYOPS_DATA_DIR/partyops.db`
-- 附件：`$PARTYOPS_DATA_DIR/attachments/`
-- 备份：`$PARTYOPS_DATA_DIR/backups/`
-- 导出：`$PARTYOPS_DATA_DIR/exports/`
-- 日志：`$PARTYOPS_DATA_DIR/logs/partyops.log`，5 MB × 6 份轮转
-- 健康检查：`GET /api/v1/health`
-
-## 7. 回滚
-
-1.0.0 升级到 1.1.1 时保持相同 Debian 包名 `partyops`，不卸载、不新建图标和数据库。启动时先创建 `pre-upgrade` 备份，再迁移到模式 `0008`。管理员可导入签名 `.partyops-update`，由 root 更新服务执行 SQLite 在线快照、匹配架构安装、健康检查和失败回滚。详见 `docs/upgrade-1.1.md`。
-
-卸载 `.deb` 不删除 `/var/lib/partyops`。需要彻底清理数据时必须另行人工确认并先导出备份。
-
-## 8. 构建边界
-
-本项目最后一次 Windows 侧验证日期为 2026-07-28。Windows 已完成前后端构建、67 项后端测试、覆盖率门槛、前端测试和安装脚本静态核对；UOS 原生 `.tar.zst`/`.deb`、amd64/ARM64 指令集兼容、systemd 重启、自带中文 OCR 与 `notify-send` 桌面弹窗仍须在两种实际 UOS V20 目标机运行上述脚本后确认。不得把 Windows 生成的文件改名冒充 Linux 制品。
+PartyOps 自有代码按 GPL-3.0 发布，并组合使用 AGPL-3.0 的 PyMuPDF。发布二进制必须保留源码获取入口、[第三方声明](../THIRD_PARTY_NOTICES.md) 与两份 [CycloneDX SBOM](sbom-python.cdx.json)。许可证选择和再分发义务应由发布责任人做最终法律复核。

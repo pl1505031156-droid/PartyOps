@@ -301,6 +301,6 @@ PartyOps 希望把“基层真正怎么办公”变成可以持续改进的开�
 
 ## 许可证与致谢
 
-PartyOps 采用 [GNU General Public License v3.0](LICENSE)。第三方组件及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。特别感谢 [Firecrawl AnyDoc](https://github.com/firecrawl/anydoc) 和 [pdf-inspector](https://github.com/firecrawl/pdf-inspector) 为离线文档阅读提供的开源能力。
+PartyOps 自有代码采用 [GNU General Public License v3.0](LICENSE)，并组合使用 AGPL-3.0 的 PyMuPDF；网络交互与二进制再分发需要同时遵守相应源代码提供义务。第三方组件、许可证边界和完整依赖清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[Python SBOM](docs/sbom-python.cdx.json) 与 [前端 SBOM](docs/sbom-frontend.cdx.json)。特别感谢 [Firecrawl AnyDoc](https://github.com/firecrawl/anydoc) 和 [pdf-inspector](https://github.com/firecrawl/pdf-inspector) 为离线文档阅读提供的开源能力。
 
 更多资料：[完整文档索引](docs/README.md) · [更新记录](CHANGELOG.md) · [安全策略](SECURITY.md) · [使用说明](docs/user-guide.md) · [1.4.2 更新说明](docs/党建智办-1.4.2-更新说明.txt) · [1.4.2 验收记录](docs/acceptance-1.4.2.md) · [需求追踪矩阵](docs/requirements-matrix.md)
