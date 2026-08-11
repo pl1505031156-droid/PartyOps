@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from datetime import timedelta
 
 from sqlalchemy import func, select
@@ -164,7 +165,9 @@ def seed_demo_data(db: Session, admin: User) -> None:
         staff = User(
             username="xietong",
             display_name="协同人员",
-            password_hash=hash_password("PartyOps@2026"),
+            # 演示账号仅用于承载示例协作关系，不发布通用口令。管理员如需
+            # 实际登录该账号，必须从用户管理中主动重置密码。
+            password_hash=hash_password(secrets.token_urlsafe(32)),
             role=UserRole.STAFF,
         )
         db.add(staff)

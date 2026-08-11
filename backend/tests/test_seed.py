@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import Base
 from app.enums import UserRole
 from app.models import Task, TaskTemplate, User
-from app.security import hash_password
+from app.security import hash_password, verify_password
 from app.seed import seed_demo_data, seed_templates
 
 
@@ -27,7 +27,9 @@ def test_seed_demo_data_in_fresh_database(tmp_path) -> None:
         seed_demo_data(db, admin)
         assert db.scalar(select(func.count()).select_from(TaskTemplate)) >= 5
         assert db.scalar(select(func.count()).select_from(Task)) == 2
-        assert db.scalar(select(User).where(User.username == "xietong")) is not None
+        seeded_staff = db.scalar(select(User).where(User.username == "xietong"))
+        assert seeded_staff is not None
+        assert not verify_password("PartyOps@2026", seeded_staff.password_hash)
         seed_templates(db, admin)
         seed_demo_data(db, admin)
         assert db.scalar(select(func.count()).select_from(Task)) == 2
