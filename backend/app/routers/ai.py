@@ -16,6 +16,7 @@ from ..ai_service import (
     is_private_endpoint,
     provider_output,
     test_provider,
+    validate_provider_url,
 )
 from ..audit import emit_event, write_audit
 from ..database import get_session
@@ -278,8 +279,12 @@ def patch_ai_settings(
         raise ProblemException(409, "VERSION_CONFLICT", "AI 配置已更新", "请刷新后重试。")
     if payload.enabled and (not payload.base_url.strip() or not payload.model.strip()):
         raise ProblemException(422, "AI_CONFIG_INCOMPLETE", "AI 配置不完整", "启用前必须填写接口地址和模型名称。")
-    if payload.base_url and not payload.base_url.startswith(("http://", "https://")):
-        raise ProblemException(422, "AI_URL_INVALID", "接口地址无效", "接口地址必须以 http:// 或 https:// 开头。")
+    if payload.base_url:
+        validate_provider_url(
+            payload.base_url.strip(),
+            payload.trusted_intranet,
+            resolve=False,
+        )
     is_new = provider is None
     if is_new:
         provider = AIProviderConfig(created_by=admin.id, version=1)

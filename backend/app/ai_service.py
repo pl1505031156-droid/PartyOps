@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import ipaddress
 import re
+import socket
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -64,17 +66,97 @@ def decrypt_api_key(value: str) -> str:
 
 def is_private_endpoint(base_url: str) -> bool:
     host = (urlparse(base_url).hostname or "").lower()
-    if host in {"localhost", "127.0.0.1", "::1"}:
+    if host == "localhost" or host.endswith((".local", ".lan")):
         return True
-    if host.startswith("10.") or host.startswith("192.168."):
-        return True
-    if host.startswith("172."):
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_private or address.is_loopback
+
+
+def validate_provider_url(
+    base_url: str,
+    trusted_intranet: bool,
+    *,
+    resolve: bool,
+) -> bool:
+    """验证模型地址并在每次出站前重新解析，降低 SSRF 与 DNS 重绑定风险。"""
+
+    try:
+        parsed = urlparse(base_url)
+        port = parsed.port
+    except ValueError as exc:
+        raise ProblemException(422, "AI_URL_INVALID", "接口地址无效", "接口端口格式错误。") from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ProblemException(
+            422,
+            "AI_URL_INVALID",
+            "接口地址无效",
+            "仅允许不含账号、查询参数和片段的 http(s) 模型服务地址。",
+        )
+    host = parsed.hostname.lower()
+    scopes: set[str] = set()
+
+    def classify(value: str) -> str:
         try:
-            second = int(host.split(".")[1])
-            return 16 <= second <= 31
-        except (ValueError, IndexError):
-            return False
-    return host.endswith(".local") or host.endswith(".lan")
+            address = ipaddress.ip_address(value)
+        except ValueError:
+            return "unknown"
+        if address.is_link_local or address.is_multicast or address.is_unspecified or address.is_reserved:
+            return "forbidden"
+        if address.is_private or address.is_loopback:
+            return "private"
+        return "public" if address.is_global else "forbidden"
+
+    literal_scope = classify(host)
+    if literal_scope != "unknown":
+        scopes.add(literal_scope)
+    elif host == "localhost" or host.endswith((".local", ".lan")):
+        scopes.add("private")
+    elif resolve:
+        try:
+            for result in socket.getaddrinfo(host, port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM):
+                scopes.add(classify(str(result[4][0])))
+        except OSError as exc:
+            raise ProblemException(
+                502,
+                "AI_PROVIDER_UNREACHABLE",
+                "AI 服务地址无法解析",
+                "请检查模型服务域名和单位网络。",
+            ) from exc
+    else:
+        scopes.add("public")
+    if "forbidden" in scopes or ("private" in scopes and "public" in scopes):
+        raise ProblemException(
+            422,
+            "AI_ENDPOINT_FORBIDDEN",
+            "模型服务地址被拒绝",
+            "禁止访问链路本地、保留地址或同时解析到内外网的地址。",
+        )
+    private = "private" in scopes
+    if private and not trusted_intranet:
+        raise ProblemException(
+            422,
+            "AI_ENDPOINT_PRIVATE_DENIED",
+            "内网模型服务未受信",
+            "访问内网或本机地址前必须由管理员显式启用“受信内网”。",
+        )
+    if not private and parsed.scheme != "https":
+        raise ProblemException(
+            422,
+            "AI_ENDPOINT_TLS_REQUIRED",
+            "外部模型服务必须使用 HTTPS",
+            "请改用经过 TLS 保护的模型接口。",
+        )
+    return private
 
 
 def provider_output(provider: AIProviderConfig | None) -> dict[str, object]:
@@ -117,6 +199,7 @@ def endpoint_url(base_url: str, suffix: str) -> str:
 
 
 def test_provider(provider: AIProviderConfig) -> None:
+    validate_provider_url(provider.base_url, provider.trusted_intranet, resolve=True)
     key = decrypt_api_key(provider.api_key_encrypted)
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     try:
@@ -283,6 +366,7 @@ def call_compatible_model(
     instruction: str,
     excerpts: list[str],
 ) -> str:
+    validate_provider_url(provider.base_url, provider.trusted_intranet, resolve=True)
     key = decrypt_api_key(provider.api_key_encrypted)
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     payload = {

@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from app.config import Settings, get_settings
 from app.content_security import may_render_inline
 from app.backups import _safe_zip_members, verify_backup
+from app.ai_service import validate_provider_url
 from app.intake import extract_path_content
 from app.model_packs import _manifest_signature_valid as model_signature_valid
 from app.routers.updates import _manifest_signature_valid as update_signature_valid
@@ -125,3 +126,20 @@ def test_active_xml_content_is_never_rendered_inline() -> None:
     assert may_render_inline("application/pdf") is True
     assert may_render_inline("image/svg+xml") is False
     assert may_render_inline("text/html") is False
+
+
+def test_ai_provider_ssrf_boundary() -> None:
+    assert validate_provider_url("http://127.0.0.1:9000/v1", True, resolve=False) is True
+    for target in (
+        "http://169.254.169.254/latest/meta-data",
+        "http://127.0.0.1:9000/v1",
+        "http://user:password@example.com/v1",
+        "http://example.com/v1",
+    ):
+        try:
+            validate_provider_url(target, False, resolve=False)
+        except ProblemException:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"危险模型地址必须被拒绝：{target}")
+    assert validate_provider_url("https://api.example.com/v1", False, resolve=False) is False
