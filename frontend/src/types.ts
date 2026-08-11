@@ -939,3 +939,72 @@ export interface AIRecommendation {
   created_at: string;
   updated_at: string;
 }
+
+export interface PartyDevelopmentRuleMetadata {
+  version: string;
+  published_at: string;
+  title: string;
+  source_url: string;
+  principles: string[];
+  phase_labels: Record<string, string>;
+}
+
+export interface PartyDevelopmentMaterial {
+  id?: string;
+  profile_id?: string;
+  phase: string;
+  name: string;
+  responsible_party: string;
+  guidance: string;
+  required: boolean;
+  enabled?: boolean;
+  sort_order?: number;
+  national?: boolean;
+  source?: string;
+  version?: number;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PartyDevelopmentNode {
+  key: string;
+  title: string;
+  phase: string;
+  date_kind: "actual" | "deadline" | "earliest" | "window" | "manual" | "workday_window";
+  date: string | null;
+  end_date: string | null;
+  provisional: boolean;
+  status: "completed" | "overdue" | "waiting_manual" | "planned";
+  article: string;
+  basis: string;
+  requires_manual_confirmation: boolean;
+  materials: PartyDevelopmentMaterial[];
+}
+
+export interface PartyDevelopmentResult {
+  name: string;
+  application_date: string;
+  rule_version: string;
+  rule_published_at: string;
+  rule_title: string;
+  source_url: string;
+  generated_at: string;
+  provisional: boolean;
+  nodes: PartyDevelopmentNode[];
+  warnings: Array<{ code: string; level: "high" | "medium" | "low"; message: string }>;
+  manual_confirmation_items: string[];
+}
+
+export interface PartyDevelopmentProfile {
+  id: string;
+  name: string;
+  description: string;
+  source_label: string;
+  active: boolean;
+  version: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  items: PartyDevelopmentMaterial[];
+}

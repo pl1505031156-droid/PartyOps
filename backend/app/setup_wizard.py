@@ -641,11 +641,11 @@ def resolve_host_url(
         )
         try:
             context = (
-                ssl._create_unverified_context()
+                ssl._create_unverified_context()  # nosec B323 - 仅探测健康页；正式入网由入网码 CA 指纹固定。
                 if urllib.parse.urlparse(candidate).scheme == "https"
                 else None
             )
-            with urllib.request.urlopen(
+            with urllib.request.urlopen(  # nosec B310 - candidate 已被限制为无账号/路径的私有 HTTP(S) 主机。
                 request,
                 timeout=5,
                 context=context,
@@ -719,9 +719,13 @@ def bootstrap_first_admin(
         method="POST",
         headers={"Content-Type": "application/json"},
     )
-    context = ssl._create_unverified_context() if parsed.scheme == "https" else None
+    context = ssl._create_unverified_context() if parsed.scheme == "https" else None  # nosec B323 - 请求目标被重写为本机回环初始化接口。
     try:
-        with urllib.request.urlopen(request, timeout=15, context=context) as response:
+        with urllib.request.urlopen(  # nosec B310 - URL 在上方固定重写为 127.0.0.1 与固定 API 路径。
+            request,
+            timeout=15,
+            context=context,
+        ) as response:
             if response.status != 201:
                 raise ValueError("主机未确认首位管理员，请重试")
     except urllib.error.HTTPError as exc:

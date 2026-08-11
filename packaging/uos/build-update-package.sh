@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS="$ROOT/artifacts"
-VERSION="${PARTYOPS_VERSION:-1.4.2}"
+VERSION="${PARTYOPS_VERSION:-1.4.3}"
 OUT="$ARTIFACTS/partyops_${VERSION}.partyops-update"
 WORK="$(mktemp -d "$ROOT/.build-uos/update.XXXXXX")"
 trap 'rm -r -- "$WORK"' EXIT
@@ -46,8 +46,8 @@ manifest = {
     "format_version": 2,
     "version": version,
     "min_version": "1.3.4",
-    "schema_revision": "0017",
-    "release_title": "真文件共享与本地智能发布收口",
+    "schema_revision": "0018",
+    "release_title": "个人备忘与党员发展计算正式发布",
     "architecture_artifacts": {
         "amd64": f"partyops_{version}_amd64.deb",
         "arm64": f"partyops_{version}_arm64.deb",
@@ -63,11 +63,13 @@ manifest = {
     },
     "artifacts": artifacts,
     "release_notes": [
+        "新增严格本机私有备忘录，支持清单、搜索、回收站和 AES-GCM 加密导入导出",
+        "新增 2026 年 5 月新版细则确定性时间计算、风险提示、单位补充材料与 Word 导出",
         "协同机普通用户可通过系统选择器发布、管理本机真实目录并设置团队或指定成员范围",
         "单文件、多选与文件夹 ZIP 支持浏览器另存为及当前协同机断点接收，设备间继续由主机校验中转",
         "主机与协同机界面统一读取运行上下文和有效能力，管理员入口对普通用户隐藏并在直达时拒绝",
         "中文向量与本地 LLM 改为独立签名模型包，BGE 使用清单定义的 CLS 池化并按目录授权正文索引",
-        "数据库升级到 0017，支持从 1.3.4 和 1.4.0 候选版直接升级并在失败时恢复升级前备份",
+        "数据库升级到 0018，支持从 1.3.4 和 1.4.0—1.4.2 候选版直接升级并在失败时恢复升级前备份",
         "统一包同时包含 UOS amd64、UOS arm64 和 Windows x64 安装制品",
     ],
     "signature": "",

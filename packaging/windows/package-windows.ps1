@@ -6,8 +6,8 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $runtimeRoot = Join-Path $repoRoot "artifacts\windows-runtime"
 $artifactRoot = Join-Path $repoRoot "artifacts"
-$bundleRoot = Join-Path $artifactRoot "PartyOps-1.4.2-windows-amd64"
-$expectedBundleRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "artifacts\PartyOps-1.4.2-windows-amd64"))
+$bundleRoot = Join-Path $artifactRoot "PartyOps-1.4.3-windows-amd64"
+$expectedBundleRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "artifacts\PartyOps-1.4.3-windows-amd64"))
 $sqliteDll = Join-Path $repoRoot "vendor\windows\sqlite-3.53.4\runtime\sqlite3.dll"
 $expectedSqliteVersion = "3.53.4"
 $expectedSqliteSha256 = "AB57D0437795ECC757CB693F32EA224173FA9856594D95CFA6B5033E645CD1EC"
@@ -98,7 +98,7 @@ if ($LASTEXITCODE -ne 0) {
   throw "Inno Setup 安装器构建失败，退出码：$LASTEXITCODE"
 }
 
-$installer = Join-Path $artifactRoot "PartyOps_1.4.2_windows_amd64.exe"
+$installer = Join-Path $artifactRoot "PartyOps_1.4.3_windows_amd64.exe"
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
 [System.IO.File]::WriteAllText(
   "$installer.sha256",

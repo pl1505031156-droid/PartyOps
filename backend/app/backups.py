@@ -23,7 +23,7 @@ from .problems import ProblemException
 
 
 FORMAT_VERSION = 1
-SCHEMA_VERSION = "0017"
+SCHEMA_VERSION = "0018"
 
 
 def current_schema_version() -> str:

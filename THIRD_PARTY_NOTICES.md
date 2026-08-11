@@ -1,6 +1,6 @@
 # 第三方开源软件声明
 
-PartyOps 1.4.2 使用下列直接运行依赖；完整的直接与传递依赖可在
+PartyOps 1.4.3 使用下列直接运行依赖；完整的直接与传递依赖可在
 [Python CycloneDX SBOM](docs/sbom-python.cdx.json) 和
 [前端 CycloneDX SBOM](docs/sbom-frontend.cdx.json) 中审计。版本由
 `backend/requirements*.txt`、`backend/pyproject.toml` 与
@@ -44,6 +44,8 @@ GPLv3 第 13 节，GPLv3 与 AGPLv3 可以组合，但组合的软件需要遵�
 | markdown-it | 15.0.0 | MIT |
 | `@firecrawl/anydoc-wasm` | 0.1.7 | MIT |
 | `@firecrawl/pdf-inspector-wasm` | 0.1.3 | MIT；内含 Adobe CMaps（BSD-3-Clause） |
+
+测试环境使用 `fake-indexeddb` 6.2.5（Apache-2.0）验证严格本机私有存储；该包是开发依赖，不进入生产前端运行包。
 
 ## 文件中心文档解析组件
 

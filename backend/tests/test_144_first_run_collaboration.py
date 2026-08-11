@@ -103,7 +103,7 @@ def test_enrollment_status_confirms_agent_completed_pairing(
             "name": "党员活动室电脑",
             "architecture": "amd64",
             "platform": "windows",
-            "agent_version": "1.4.2",
+            "agent_version": "1.4.3",
             "local_username": "partyops-user",
         },
     )

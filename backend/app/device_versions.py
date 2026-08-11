@@ -31,8 +31,11 @@ from .problems import ProblemException
 
 DEVICE_CONTEXT_COOKIE = "partyops_device_context"
 DEVICE_CONTEXT_SECRET_KEY = "device_context_hmac_secret"
-CURRENT_RELEASE_TITLE = "1.4.2 跨机文档阅读与协同传输稳定版"
+CURRENT_RELEASE_TITLE = "1.4.3 个人备忘与党员发展计算版"
 CURRENT_RELEASE_NOTES = [
+    "新增严格本机私有备忘录，支持清单、置顶、标签、回收站和 AES-GCM 加密备份",
+    "新增依据 2026 年 5 月新版细则的确定性党员发展时间计算、风险提示和 Word 导出",
+    "单位补充材料只能追加材料清单，不得改写或缩短国家规则期限",
     "文件中心内置 Firecrawl AnyDoc 与 pdf-inspector，可离线结构化阅读 Office、PDF、OpenDocument、RTF、EPUB 与 CSV",
     "协同机文档先经设备命令、分块续传、整体哈希与最终权限复核，再进入浏览器阅读视图",
     "修复自动扫描与立即同步并发写入、远端文件统计为零和 Agent 最终确认冲突",
@@ -42,7 +45,7 @@ CURRENT_RELEASE_NOTES = [
     "主机与协同机界面按运行上下文和有效能力显示，普通用户不再进入空白管理页",
     "中文向量和本地 LLM 使用分能力签名模型包，正文语义索引必须由目录显式授权",
     "统一更新清单同时支持 UOS amd64、UOS arm64 与 Windows 10/11 x64",
-    "数据库升级到 0017，支持从 1.3.4 和 1.4.0 候选版直接升级并保留全部业务数据",
+    "数据库升级到 0018，支持从 1.3.4 和 1.4.0—1.4.2 候选版升级并保留全部业务数据",
 ]
 
 

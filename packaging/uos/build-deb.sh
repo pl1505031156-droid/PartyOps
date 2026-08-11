@@ -6,7 +6,7 @@ ARTIFACTS="$ROOT/artifacts"
 mkdir -p "$ROOT/.build-uos"
 BUILD="$(mktemp -d "$ROOT/.build-uos/deb.XXXXXX")"
 PKG="$BUILD/deb-root"
-VERSION="${PARTYOPS_VERSION:-1.4.2}"
+VERSION="${PARTYOPS_VERSION:-1.4.3}"
 ARCH="${PARTYOPS_BUILD_ARCH:-$(dpkg --print-architecture 2>/dev/null || true)}"
 
 [[ "$ARCH" == "amd64" || "$ARCH" == "arm64" ]] || {

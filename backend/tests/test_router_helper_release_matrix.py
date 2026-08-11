@@ -108,7 +108,7 @@ def _valid_update_manifest() -> dict:
         "format_version": 2,
         "version": "9.9.9",
         "min_version": "1.3.4",
-        "schema_revision": "0017",
+        "schema_revision": "0018",
         "release_notes": ["正式发布回归"],
         "architecture_artifacts": architecture,
         "platform_artifacts": {

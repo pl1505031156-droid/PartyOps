@@ -9,6 +9,7 @@ import {
   IconCloudDownload,
   IconCommand,
   IconDown,
+  IconEdit,
   IconFile,
   IconFolder,
   IconHome,
@@ -81,6 +82,7 @@ const expandedDomainKeys = ref<NavigationDomainKey[]>(loadExpandedDomains());
 
 const iconMap = {
   home: IconHome,
+  memo: IconEdit,
   task: IconFile,
   calendar: IconCalendar,
   inbox: IconImport,
@@ -110,6 +112,7 @@ const domainIconMap = {
 
 const quickCommands = [
   { id: "new-task", title: "快速新建事项", subtitle: "打开 30 秒建档抽屉", route: "", type: "command" },
+  { id: "new-memo", title: "快速新建备忘", subtitle: "仅保存在当前电脑，不进入协同", route: "/memos", type: "command" },
   { id: "calendar", title: "打开工作日历", subtitle: "查看本周安排和年度节点", route: "/calendar", type: "command" },
   { id: "inbox", title: "解析通知或文件", subtitle: "进入快速收件箱", route: "/inbox", type: "command" },
   { id: "workspace", title: "搜索原始文件", subtitle: "进入综合文件中心", route: "/workspace", type: "command" },
@@ -307,10 +310,19 @@ function chooseCommand(item: { id: string; route: string }) {
     drawerVisible.value = true;
     return;
   }
+  if (item.id === "new-memo") {
+    router.push({ path: "/memos", query: { new: String(Date.now()) } });
+    return;
+  }
   if (item.route) router.push(item.route);
 }
 
 function globalKeydown(event: KeyboardEvent) {
+  if (event.ctrlKey && event.altKey && event.key.toLowerCase() === "m") {
+    event.preventDefault();
+    router.push({ path: "/memos", query: { new: String(Date.now()) } });
+    return;
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     openCommandCenter();

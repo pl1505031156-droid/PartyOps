@@ -101,7 +101,7 @@ foreach ($entry in $entries) {
   Assert-NativeSuccess "$($entry.Name) 冻结构建"
 }
 
-$bundleRoot = Join-Path $outputRoot "PartyOps-1.4.2-windows-amd64"
+$bundleRoot = Join-Path $outputRoot "PartyOps-1.4.3-windows-amd64"
 if (Test-Path -LiteralPath $bundleRoot) { Remove-Item -LiteralPath $bundleRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $bundleRoot | Out-Null
 foreach ($entry in $entries) {
@@ -134,7 +134,7 @@ $env:PARTYOPS_WINDOWS_OUTPUT_ROOT = $outputRoot
 & $InnoCompiler (Join-Path $PSScriptRoot "PartyOps.iss")
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
-$installer = Join-Path $outputRoot "PartyOps_1.4.2_windows_amd64.exe"
+$installer = Join-Path $outputRoot "PartyOps_1.4.3_windows_amd64.exe"
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
 [System.IO.File]::WriteAllText(
   "$installer.sha256",

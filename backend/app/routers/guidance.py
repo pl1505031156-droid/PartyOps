@@ -63,7 +63,7 @@ def host_network_ready() -> bool:
 
     settings = get_settings()
     host = settings.host.strip().lower()
-    if host in {"127.0.0.1", "::1", "localhost", "0.0.0.0", "::"}:
+    if host in {"127.0.0.1", "::1", "localhost", "0.0.0.0", "::"}:  # nosec B104 - 此处拒绝不可供协同机访问的地址。
         return False
     try:
         address = ipaddress.ip_address(host)

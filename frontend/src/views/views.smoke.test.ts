@@ -39,7 +39,10 @@ import JournalView from "./JournalView.vue";
 import KnowledgeView from "./KnowledgeView.vue";
 import LoginView from "./LoginView.vue";
 import MyWorkView from "./MyWorkView.vue";
+import MemoView from "./MemoView.vue";
 import NotificationsView from "./NotificationsView.vue";
+import PartyDevelopmentView from "./PartyDevelopmentView.vue";
+import PartyDevelopmentSettingsView from "./PartyDevelopmentSettingsView.vue";
 import ReportsView from "./ReportsView.vue";
 import RequiredUpdateView from "./RequiredUpdateView.vue";
 import SettingsView from "./SettingsView.vue";
@@ -202,6 +205,8 @@ function responseFor(path: string): unknown {
   }
   if (path === "/auth/me") return { id: "user-1", username: "admin", display_name: "测试管理员", role: "admin", active: true, version: 1 };
   if (path === "/runtime/context") return { node_mode: "host", platform: "windows", user_role: "admin", device_id: null, device_name: "主机", capabilities: ["admin"] };
+  if (path === "/party-development/rules/current") return { version: "2026.05", published_at: "2026-05-18", title: "中国共产党发展党员工作细则（2026年5月修订）", source_url: "https://www.12371.cn/2026/05/18/ARTI1779102179030620.shtml", principles: [], phase_labels: { application: "申请入党" } };
+  if (path === "/admin/party-development/profiles") return [{ id: "profile-1", name: "待管理员确认", description: "测试模板", source_label: "测试表格", active: false, version: 1, created_by: "user-1", created_at: now, updated_at: now, items: [{ id: "material-1", profile_id: "profile-1", phase: "activist", name: "三考材料", responsible_party: "党支部", guidance: "待确认", required: false, enabled: true, sort_order: 1, version: 1, created_by: "user-1", created_at: now, updated_at: now }] }];
   if (path === "/calendar/preferences") return { user_id: "user-1", default_view: "week", week_starts_on: 1, visible_event_types: ["task_due"], compact_weekends: false, version: 1, updated_at: now };
   if (path.startsWith("/calendar/events?")) return [];
   if (path.startsWith("/knowledge")) return [knowledge];
@@ -284,8 +289,11 @@ describe("核心页面真实挂载", () => {
     ["事项清单", TasksView, "/tasks"],
     ["事项详情", TaskDetailView, "/tasks/task-1"],
     ["快速收件", InboxView, "/inbox"],
+    ["本机备忘录", MemoView, "/memos"],
     ["周期模板", TemplatesView, "/templates"],
     ["日历", CalendarView, "/calendar"],
+    ["党员发展计算", PartyDevelopmentView, "/party-development"],
+    ["党员发展补充材料", PartyDevelopmentSettingsView, "/party-development-settings"],
     ["工作日志", JournalView, "/journal"],
     ["报告", ReportsView, "/reports"],
     ["知识与联系人", KnowledgeView, "/knowledge"],
@@ -308,12 +316,144 @@ describe("核心页面真实挂载", () => {
     wrapper.unmount();
   });
 
+  it.each([
+    ["原始文件中心", WorkspaceView, "/workspace"],
+    ["重要档案", ArchivesView, "/archives"],
+    ["事项详情", TaskDetailView, "/tasks/task-1"],
+    ["设备协同", FleetView, "/fleet"],
+    ["事项清单", TasksView, "/tasks"],
+    ["周期模板", TemplatesView, "/templates"],
+    ["报告", ReportsView, "/reports"],
+    ["日志", JournalView, "/journal"],
+  ])("%s在空数据与已完成状态下仍保持可操作", async (_name, component, path) => {
+    apiMocks.get.mockImplementation(async (requestPath) => {
+      if (requestPath === "/workspace/roots" || requestPath.startsWith("/workspace/files?")) return [];
+      if (requestPath.startsWith("/workspace/search")) return [];
+      if (requestPath === "/collaboration/options") return { current_device: null, devices: [], roots: [] };
+      if (requestPath === "/archives/categories") return [];
+      if (requestPath === "/archives/years") return { years: [] };
+      if (requestPath.startsWith("/archives/records")) return [];
+      if (requestPath === "/admin/devices" || requestPath === "/admin/device-grants") return [];
+      if (requestPath === "/admin/devices/version-status" || requestPath === "/admin/workspace/remote-roots") return [];
+      if (requestPath === "/transfers" || requestPath === "/admin/updates" || requestPath === "/admin/update-runs") return [];
+      if (requestPath.startsWith("/tasks?")) return { items: [] };
+      if (requestPath === "/tasks/task-1") {
+        return {
+          ...task,
+          status: "completed",
+          completed_at: now,
+          archived_at: now,
+          missing_required_materials: 0,
+          participants: [],
+          steps: [],
+          materials: [],
+          comments: [],
+          events: [],
+          subtasks: [],
+        };
+      }
+      if (requestPath.startsWith("/templates") || requestPath.startsWith("/recurrences")) return [];
+      if (requestPath.startsWith("/period-reports") || requestPath.startsWith("/report-templates")) return [];
+      if (requestPath.startsWith("/work-journal")) return [];
+      return responseFor(requestPath);
+    });
+    const wrapper = await mountView(component as Component, path as string, true);
+    expect(wrapper.text().length).toBeGreaterThan(10);
+    expect(wrapper.html()).not.toContain("undefined");
+    wrapper.unmount();
+  });
+
   it("通知中心完成全部已读动作并重新加载", async () => {
     const wrapper = await mountView(NotificationsView, "/notifications");
     const buttons = wrapper.findAll("button");
     await buttons.at(-1)?.trigger("click");
     await flushPromises();
     expect(apiMocks.post).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("我的工作覆盖四类切换、缺省文案、加载状态和异常降级", async () => {
+    const wrapper = await mountView(MyWorkView, "/my-work");
+    const state = setupState(wrapper);
+    const fallbackTask = {
+      ...task,
+      category: "",
+      description: "",
+      internal_due_at: null,
+    };
+    state.tasksByScope = {
+      owned: [fallbackTask],
+      collaborating: [],
+      reviewing: [task],
+      step_assigned: [],
+    };
+    state.activeScope = "owned";
+    await flushPromises();
+    expect(wrapper.text()).toContain("日常工作");
+    expect(wrapper.text()).toContain("暂无办理说明");
+    expect(wrapper.text()).toContain("未设内部截止");
+
+    state.activeScope = "collaborating";
+    state.loading = true;
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("当前分类没有待处理事项");
+    state.loading = false;
+    await flushPromises();
+    expect(wrapper.text()).toContain("当前分类没有待处理事项");
+    state.activeScope = "reviewing";
+    await flushPromises();
+    expect(wrapper.text()).toContain("内部截止");
+
+    apiMocks.get.mockRejectedValueOnce(new Error("工作清单读取失败"));
+    await runAction(state, "load");
+    apiMocks.get.mockRejectedValueOnce("非标准错误");
+    await runAction(state, "load");
+    expect(state.loading).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("今日工作台覆盖空数据、去重、时间降级和推荐接口失败", async () => {
+    const wrapper = await mountView(TodayView, "/");
+    const state = setupState(wrapper);
+    state.data = null;
+    expect(state.alertCount).toBe(0);
+    expect(state.primaryTasks).toEqual([]);
+    expect(state.nextCalendarTask).toBeNull();
+    expect(await (state.dashboardCount as (...keys: string[]) => number)("待审核")).toBe(0);
+
+    state.data = {
+      ...today,
+      today_tasks: [{ ...task, internal_due_at: null, formal_due_at: null, planned_start_at: null, work_area: "" }],
+      overdue_tasks: [{ ...task, internal_due_at: null, formal_due_at: null, planned_start_at: null, work_area: "" }],
+      pending_review_feedback: [],
+      completed_this_week: [],
+      next_week_plan: [],
+      risks: {
+        incomplete_materials: 0,
+        recurrence_anomalies: 0,
+        draft_reports: 0,
+        backup_stale: false,
+        device_alerts: [],
+      },
+    };
+    state.recommendations = [];
+    await flushPromises();
+    expect((state.primaryTasks as unknown[]).length).toBe(1);
+    expect(wrapper.text()).toContain("当前没有异常风险");
+    expect(wrapper.text()).not.toContain("当前没有必须立即办理的事项");
+    const labelWithoutDate = state.dueLabel as (value: {
+      internal_due_at: string | null;
+      formal_due_at: string | null;
+      planned_start_at: string | null;
+    }) => string;
+    expect(labelWithoutDate({ internal_due_at: null, formal_due_at: null, planned_start_at: null })).toBe("未设时间");
+
+    apiMocks.get.mockRejectedValueOnce("非标准错误");
+    await runAction(state, "load");
+    expect(state.loadError).toBe("今日工作台加载失败");
+    apiMocks.get.mockResolvedValueOnce(today).mockRejectedValueOnce(new Error("推荐暂不可用"));
+    await runAction(state, "load");
+    expect(state.recommendations).toEqual([]);
     wrapper.unmount();
   });
 
@@ -556,6 +696,80 @@ describe("核心页面真实挂载", () => {
     wrapper.unmount();
   });
 
+  it("事项详情覆盖无数据守卫、受限事项和失败恢复分支", async () => {
+    const wrapper = await mountView(TaskDetailView, "/tasks/task-1", true);
+    const state = setupState(wrapper);
+
+    state.task = null;
+    await runAction(state, "openEdit");
+    await runAction(state, "saveEdit");
+    await runAction(state, "openAction", "complete");
+    await runAction(state, "applyAction");
+    await runAction(state, "toggleStep", "step-1", false, 1);
+    await runAction(state, "addComment");
+    await runAction(state, "addMaterial");
+    await runAction(state, "addStep");
+    await runAction(state, "addSubtask");
+    await runAction(state, "addParticipant");
+    await runAction(state, "removeParticipant", "participant-1");
+    await runAction(state, "markNotApplicable");
+    await runAction(state, "uploadVersion");
+    await runAction(state, "applyConflictDraft");
+    expect((state.actionOptions as unknown[]).length).toBe(0);
+    expect((state.conflictRows as unknown[]).length).toBe(0);
+
+    state.task = {
+      ...task,
+      task_type: "project",
+      sensitivity: "restricted",
+      status: "archived",
+      annual_focus: "",
+      reporting_scope: "",
+      tags: [],
+      parent_task_id: "parent-1",
+      contact_ids: ["contact-1", "missing"],
+      missing_required_materials: 0,
+      subtasks: [{ ...task, id: "child-1", task_type: "standard", missing_required_materials: 0 }],
+      steps: [{ id: "step-1", title: "已完成步骤", completed: true, assignee_id: null, version: 1 }],
+      materials: [{ ...material, complete: true, not_applicable: true, versions: [{ id: "version-1", version_no: 1, is_final: true, created_at: now }] }],
+      comments: [{ id: "comment-1", author_id: "user-1", parent_id: "parent-comment", body: "回复", mentioned_user_ids: ["user-2"], created_at: now }],
+      events: [{ id: "event-1", event_type: "archived", from_status: "in_progress", to_status: "archived", note: "已归档", created_at: now }],
+      participants: [{ id: "participant-1", user_id: "user-1", role: "owner" }],
+    };
+    await flushPromises();
+    expect(wrapper.text()).toContain("项目子任务");
+    expect(wrapper.text()).toContain("归档锁定");
+    expect(wrapper.text()).toContain("敏感事项");
+
+    state.notApplicableMaterial = material;
+    state.notApplicableReason = "";
+    await runAction(state, "markNotApplicable");
+    state.uploadMaterial = null;
+    state.uploadFile = null;
+    await runAction(state, "uploadVersion");
+    state.conflict = { draft_id: "", current_version: "", current: {}, submitted: {} };
+    await runAction(state, "applyConflictDraft");
+    await runAction(state, "materialCategoryLabel", "unknown-category");
+    await runAction(state, "toggleFinal", false);
+
+    state.task = { ...task, status: "in_progress" };
+    apiMocks.patch.mockRejectedValueOnce(new Error("保存失败"));
+    await runAction(state, "saveEdit");
+    apiMocks.post.mockRejectedValueOnce(new Error("操作失败"));
+    await runAction(state, "applyAction");
+    apiMocks.post.mockRejectedValueOnce(new Error("评论失败"));
+    state.comment = "重试评论";
+    await runAction(state, "addComment");
+    apiMocks.post.mockRejectedValueOnce(new Error("步骤失败"));
+    (state.stepForm as { title: string }).title = "异常步骤";
+    await runAction(state, "addStep");
+    apiMocks.post.mockRejectedValueOnce(new Error("协办失败"));
+    state.participantUserId = "user-2";
+    await runAction(state, "addParticipant");
+
+    wrapper.unmount();
+  });
+
   it("文件中心执行目录、搜索、范围、标签、关联、下载、共享和跨机发送闭环", async () => {
     apiMocks.get.mockImplementation(async (path) => {
       if (path === "/workspace/roots") return [workspaceRoot];
@@ -676,6 +890,72 @@ describe("核心页面真实挂载", () => {
     expect(apiMocks.post).toHaveBeenCalled();
     expect(apiMocks.patch).toHaveBeenCalled();
     expect(apiMocks.put).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("文件中心覆盖空选择、撤权、传输失败和接口异常分支", async () => {
+    const wrapper = await mountView(WorkspaceView, "/workspace", true);
+    const state = setupState(wrapper);
+
+    state.selectedRootId = "";
+    await runAction(state, "loadFiles");
+    await runAction(state, "search");
+    state.selectedRootId = "root-1";
+    state.keyword = "";
+    await runAction(state, "search");
+    await runAction(state, "goToLevel", -1);
+    await runAction(state, "toggleChecked", "file-1", "true");
+    await runAction(state, "toggleChecked", "file-1", 1);
+
+    state.selectedFile = null;
+    await runAction(state, "saveTags");
+    await runAction(state, "linkTask");
+    await runAction(state, "freezeFile");
+    await runAction(state, "freezeSelectedFile");
+    await runAction(state, "downloadFile");
+    await runAction(state, "openSend");
+    await runAction(state, "openWithDefaultApp");
+    await runAction(state, "createDownload", [], "browser", false);
+    state.sharingRoot = null;
+    await runAction(state, "saveSharing");
+    await runAction(state, "sendToDevice");
+
+    await runAction(state, "rootSourceLabel", { ...workspaceRoot, source: "device", device_id: null });
+    state.selectedFile = { ...workspaceFile, is_directory: true };
+    await runAction(state, "openDocumentPreview");
+    state.selectedFile = { ...workspaceFile, permissions: { ...workspaceFile.permissions, download: false } };
+    await runAction(state, "openDocumentPreview");
+
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect((state.waitForTransferCompletion as Function)("transfer-1", aborted.signal)).rejects.toThrow("预览已取消");
+    apiMocks.get.mockResolvedValueOnce([]);
+    await expect((state.waitForTransferCompletion as Function)("missing")).rejects.toThrow("未找到文件传输任务");
+    apiMocks.get.mockResolvedValueOnce([{ ...transfer, status: "failed", error_message: "源设备离线" }]);
+    await expect((state.waitForTransferCompletion as Function)("transfer-1")).rejects.toThrow("源设备离线");
+
+    state.selectedRootId = "root-1";
+    state.roots = [workspaceRoot];
+    apiMocks.get.mockRejectedValueOnce(new Error("目录权限已撤销"));
+    await runAction(state, "loadFiles");
+    state.keyword = "通知";
+    apiMocks.get.mockRejectedValueOnce(new Error("搜索失败"));
+    await runAction(state, "search");
+    apiMocks.post.mockRejectedValueOnce(new Error("本机协议不可用"));
+    await runAction(state, "openLocalShareManager");
+
+    state.selectedFile = workspaceFile;
+    apiMocks.patch.mockRejectedValueOnce(new Error("标签保存失败"));
+    await runAction(state, "saveTags");
+    state.linkTaskId = "task-1";
+    apiMocks.post.mockRejectedValueOnce(new Error("关联失败"));
+    await runAction(state, "linkTask");
+    apiMocks.post.mockRejectedValueOnce(new Error("发送失败"));
+    Object.assign(state.sendForm as object, { destination_device_id: "device-1" });
+    await runAction(state, "sendToDevice");
+    apiMocks.post.mockRejectedValueOnce(new Error("打开失败"));
+    await runAction(state, "openWithDefaultApp");
+
     wrapper.unmount();
   });
 
@@ -855,6 +1135,76 @@ describe("核心页面真实挂载", () => {
     expect(apiMocks.post).toHaveBeenCalled();
     expect(apiMocks.patch).toHaveBeenCalled();
     expect(apiMocks.delete).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("设备协同覆盖普通用户视图、表单守卫与接口异常分支", async () => {
+    const wrapper = await mountView(FleetView, "/fleet", true);
+    const state = setupState(wrapper);
+
+    state.loading = true;
+    await runAction(state, "load");
+    state.loading = false;
+    Object.assign(state.grantForm as object, { device_id: "", root_id: "", capabilities: [] });
+    await runAction(state, "createGrant");
+    await runAction(state, "loadSourceFiles", "");
+    await runAction(state, "handleSourceRootChange", "");
+    await runAction(state, "createTransfer");
+    state.attachTransfer = null;
+    Object.assign(state.attachForm as object, { target_id: "" });
+    await runAction(state, "attachReceivedFile");
+    Object.assign(state.enrollmentForm as object, { name: "", advertised_host: "" });
+    await runAction(state, "createEnrollment");
+    (state.enrollmentForm as { name: string; advertised_host: string }).name = "测试协同机";
+    await runAction(state, "createEnrollment");
+    state.enrollment = null;
+    await runAction(state, "copyEnrollmentCode");
+    state.deleteTarget = null;
+    await runAction(state, "deleteDevice");
+
+    await runAction(state, "switchValue", "false");
+    await runAction(state, "switchValue", 1);
+    await runAction(state, "capabilityLabels", []);
+    await runAction(state, "versionStatus", "missing-device");
+    await runAction(state, "transferDirectionLabel", { ...transfer, delivery_mode: "browser", source_device_id: null });
+    await runAction(state, "transferDirectionLabel", { ...transfer, delivery_mode: "current_device", source_device_id: "device-1" });
+    await runAction(state, "transferDirectionLabel", { ...transfer, direction: "device_to_host", delivery_mode: "managed_inbox" });
+    await runAction(state, "transferDirectionLabel", { ...transfer, direction: "host_to_device", delivery_mode: "managed_inbox" });
+    await runAction(state, "transferProgress", { ...transfer, status: "completed" });
+    await runAction(state, "transferProgress", { ...transfer, status: "queued", completed_chunks: 0, total_chunks: 0 });
+
+    const staffWrapper = await mountView(FleetView, "/fleet");
+    const staffState = setupState(staffWrapper);
+    staffState.activeSection = "devices";
+    staffState.roots = [{ ...workspaceRoot, source: "device", published_by_user_id: "user-1" }];
+    await flushPromises();
+    expect(staffWrapper.text()).toContain("本机协同状态");
+    staffState.activeSection = "grants";
+    await flushPromises();
+    expect(staffWrapper.text()).toContain("我的目录权限");
+    expect(staffWrapper.text()).not.toContain("设备与目录双重授权");
+    staffState.activeSection = "transfers";
+    staffState.transfers = [];
+    await flushPromises();
+    expect(staffWrapper.text()).toContain("当前没有传输记录");
+    staffState.activeSection = "inbox";
+    await flushPromises();
+    staffWrapper.unmount();
+
+    apiMocks.get.mockRejectedValueOnce(new Error("设备读取失败"));
+    await runAction(state, "load");
+    apiMocks.post.mockRejectedValueOnce(new Error("授权失败"));
+    Object.assign(state.grantForm as object, { device_id: "device-1", root_id: "root-1", capabilities: ["download"] });
+    await runAction(state, "createGrant");
+    apiMocks.patch.mockRejectedValueOnce(new Error("设备设置失败"));
+    await runAction(state, "saveDevice", device, "allow_user_shares", false);
+    apiMocks.patch.mockRejectedValueOnce(new Error("上限失败"));
+    await runAction(state, "saveMaxDevices");
+    apiMocks.post.mockRejectedValueOnce(new Error("轮换失败"));
+    await runAction(state, "rotateCertificate", device);
+    apiMocks.patch.mockRejectedValueOnce(new Error("传输失败"));
+    await runAction(state, "transferAction", transfer, "pause");
+
     wrapper.unmount();
   });
 

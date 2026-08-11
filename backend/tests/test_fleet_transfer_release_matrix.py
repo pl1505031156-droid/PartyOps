@@ -30,8 +30,8 @@ def _enroll(client: TestClient, name: str) -> dict:
             "architecture": "amd64",
             "platform": "windows",
             "kernel": "10.0.19045",
-            "app_version": "1.4.2",
-            "agent_version": "1.4.2",
+            "app_version": "1.4.3",
+            "agent_version": "1.4.3",
         },
     )
     assert enrolled.status_code == 201, enrolled.text

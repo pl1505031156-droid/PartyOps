@@ -9,7 +9,7 @@ export default defineConfig({
   workers: 1,
   timeout: 90_000,
   expect: { timeout: 15_000 },
-  outputDir: "../output/playwright/1.4.2-document-preview",
+  outputDir: "../output/playwright/1.4.3-release-candidate",
   reporter: [["list"]],
   use: {
     baseURL: process.env.PARTYOPS_E2E_BASE_URL || "http://127.0.0.1:18950",

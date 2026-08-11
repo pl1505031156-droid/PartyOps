@@ -83,12 +83,15 @@ const attachForm = reactive({
 let refreshTimer: number | undefined;
 let enrollmentTimer: number | undefined;
 let lastWarning = "";
+const isAdmin = computed(() => session.runtimeContext?.capabilities.includes("fleet.manage") === true);
 
 const sectionMeta = computed(() => ({
   devices: {
     kicker: "多设备安全协同",
-    title: "设备协同",
-    description: "最多纳管 20 台 UOS 或 Windows 电脑；设备状态、版本和访问开关统一由主机管理员管理。",
+    title: isAdmin.value ? "设备协同" : "本机协同",
+    description: isAdmin.value
+      ? "最多纳管 20 台 UOS 或 Windows 电脑；设备状态、版本和访问开关统一由主机管理员管理。"
+      : "查看本机连接状态、自己发布的共享目录和传输记录；全局设备配置由管理员统一维护。",
   },
   inbox: {
     kicker: "跨设备文件接收",
@@ -101,16 +104,17 @@ const sectionMeta = computed(() => ({
     description: "主机、协同机以及协同机之间的文件传输统一排队、审批、校验和续传。",
   },
   grants: {
-    kicker: "设备与目录双重授权",
-    title: "设备授权与状态",
-    description: "按设备、用户和目录授予最小权限；撤销后在下一个文件分块立即停止。",
+    kicker: isAdmin.value ? "设备与目录双重授权" : "我的共享权限",
+    title: isAdmin.value ? "设备授权与状态" : "我的目录权限",
+    description: isAdmin.value
+      ? "按设备、用户和目录授予最小权限；撤销后在下一个文件分块立即停止。"
+      : "查看当前账号在本机可以浏览、下载和转发的共享目录；权限变更会立即生效。",
   },
 }[activeSection.value]));
 
 const receivedTransfers = computed(() =>
   transfers.value.filter((item) => item.direction === "device_to_host"),
 );
-const isAdmin = computed(() => session.runtimeContext?.capabilities.includes("fleet.manage") === true);
 const approvedRoots = computed(() => roots.value.filter((item) => item.enabled && item.approval_status === "approved"));
 const ownRoots = computed(() => roots.value.filter((item) => item.permissions.manage_root));
 const sourceRoots = computed(() => approvedRoots.value.filter((item) => (

@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $artifacts = Join-Path $root "artifacts"
-$version = if ($env:PARTYOPS_VERSION) { $env:PARTYOPS_VERSION } else { "1.4.2" }
+$version = if ($env:PARTYOPS_VERSION) { $env:PARTYOPS_VERSION } else { "1.4.3" }
 $stagingRoot = Join-Path $root ".release-kit"
 $releaseName = "PartyOps-$version-UOS-amd64-arm64-offline"
 $staging = Join-Path $stagingRoot $releaseName
@@ -45,6 +45,8 @@ Copy-Item -LiteralPath (Join-Path $root "packaging\uos\one-click-install.sh") `
   -Destination (Join-Path $staging "packaging\uos")
 foreach ($document in @(
   "one-click-install.md",
+  "upgrade-1.4.3.md",
+  "党建智办-1.4.3-更新说明.txt",
   "upgrade-1.4.2.md",
   "党建智办-1.4.2-更新说明.txt",
   "upgrade-1.4.1.md",

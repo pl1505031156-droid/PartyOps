@@ -68,9 +68,11 @@ def test_agent_logging_failure_network_and_browser_bridge(monkeypatch, tmp_path:
 
     monkeypatch.setattr(client_agent.urllib.request, "urlopen", urlopen)
     client_agent._ACTIVE_SSL_CONTEXT = None
-    assert client_agent._urlopen("request", 3).status == 200
+    with pytest.raises(client_agent.AgentCommandError, match="有效的 HTTP/HTTPS"):
+        client_agent._urlopen("request", 3)
+    assert client_agent._urlopen("https://partyops.test/request", 3).status == 200
     client_agent._ACTIVE_SSL_CONTEXT = object()
-    assert client_agent._urlopen("request", 4).status == 200
+    assert client_agent._urlopen("https://partyops.test/request", 4).status == 200
     client_agent._ACTIVE_SSL_CONTEXT = None
     result = client_agent._json_request("http://host/test", token="token", payload={"a": 1}, method="POST")
     assert result == {"token": "一次性 令牌"}

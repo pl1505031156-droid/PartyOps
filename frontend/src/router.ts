@@ -22,6 +22,7 @@ const router = createRouter({
       component: () => import("./views/ForbiddenView.vue"),
     },
     { path: "/", component: () => import("./views/TodayView.vue") },
+    { path: "/memos", component: () => import("./views/MemoView.vue") },
     { path: "/getting-started", redirect: { path: "/help", query: { section: "setup" } } },
     { path: "/workbench", redirect: "/" },
     { path: "/dashboard", redirect: "/" },
@@ -34,6 +35,10 @@ const router = createRouter({
     },
     { path: "/inbox", component: () => import("./views/InboxView.vue") },
     { path: "/calendar", component: () => import("./views/CalendarView.vue") },
+    {
+      path: "/party-development",
+      component: () => import("./views/PartyDevelopmentView.vue"),
+    },
     {
       path: "/reports",
       component: () => import("./views/ReportsView.vue"),
@@ -57,6 +62,11 @@ const router = createRouter({
     {
       path: "/templates",
       component: () => import("./views/TemplatesView.vue"),
+      meta: { capability: "admin.access" },
+    },
+    {
+      path: "/party-development-settings",
+      component: () => import("./views/PartyDevelopmentSettingsView.vue"),
       meta: { capability: "admin.access" },
     },
     {

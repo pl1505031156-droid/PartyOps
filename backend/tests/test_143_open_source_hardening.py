@@ -101,7 +101,7 @@ def test_backup_rejects_non_array_manifest_files(tmp_path) -> None:
     manifest = {
         "format": "partyops-backup",
         "format_version": 1,
-        "schema_version": "0017",
+        "schema_version": "0018",
         "files": {"path": "database/partyops.db"},
     }
     with zipfile.ZipFile(archive_path, "w") as archive:

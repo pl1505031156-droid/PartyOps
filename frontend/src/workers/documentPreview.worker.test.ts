@@ -91,4 +91,43 @@ describe("文档阅读 Worker", () => {
     const failed = await dispatch({ requestId: "bad-1", name: "损坏.docx", mimeType: "application/octet-stream", buffer: bufferOf("bad") });
     expect(failed).toMatchObject({ ok: false, code: "invalid_document", message: "[object Object]" });
   });
+
+  it("覆盖 MIME 识别、无后缀文档、空 PDF 风险和标准异常降级", async () => {
+    wasmMocks.processPdf.mockReturnValueOnce({
+      markdown: "",
+      pagesNeedingOcr: [],
+      hasEncodingIssues: false,
+      pdfType: "digital",
+      pageCount: 1,
+      confidence: 1,
+      processingTimeMs: 2,
+      ocrReasonsByPage: {},
+      layout: { pagesWithTables: [], pagesWithColumns: [] },
+    });
+    const pdfByMime = await dispatch({ requestId: "pdf-mime", name: "无后缀", mimeType: "APPLICATION/PDF", buffer: bufferOf("pdf") });
+    expect(pdfByMime).toMatchObject({ ok: true, format: "pdf", warnings: [], truncated: false });
+
+    scope.postMessage.mockClear();
+    const textByMime = await dispatch({ requestId: "text-mime", name: "说明", mimeType: "text/plain", buffer: bufferOf("正文") });
+    expect(textByMime).toMatchObject({ ok: true, format: "text", engine: "partyops-text" });
+
+    scope.postMessage.mockClear();
+    const unknown = await dispatch({ requestId: "unknown", name: "数据.bin", mimeType: "application/octet-stream", buffer: bufferOf("bin") });
+    expect(unknown).toMatchObject({ ok: true, format: "bin", engine: "anydoc" });
+
+    scope.postMessage.mockClear();
+    wasmMocks.toMarkdownBytes.mockImplementationOnce(() => { throw new Error("文档解析失败"); });
+    const standardError = await dispatch({ requestId: "error", name: "损坏.bin", mimeType: "application/octet-stream", buffer: bufferOf("bad") });
+    expect(standardError).toMatchObject({ ok: false, code: "unknown", message: "文档解析失败" });
+
+    scope.postMessage.mockClear();
+    wasmMocks.toMarkdownBytes.mockImplementationOnce(() => { throw { code: "" }; });
+    const emptyCode = await dispatch({ requestId: "empty-code", name: "损坏.bin", mimeType: "application/octet-stream", buffer: bufferOf("bad") });
+    expect(emptyCode).toMatchObject({ ok: false, code: "unknown", message: "[object Object]" });
+
+    scope.postMessage.mockClear();
+    wasmMocks.toMarkdownBytes.mockImplementationOnce(() => { throw null; });
+    const emptyError = await dispatch({ requestId: "empty-error", name: "损坏.bin", mimeType: "application/octet-stream", buffer: bufferOf("bad") });
+    expect(emptyError).toMatchObject({ ok: false, code: "unknown", message: "document preview failed" });
+  });
 });

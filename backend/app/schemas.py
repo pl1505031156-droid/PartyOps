@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date as dt_date, datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -1769,6 +1769,122 @@ class WorkCalendarImportItem(BaseModel):
 
 class WorkCalendarImport(BaseModel):
     items: list[WorkCalendarImportItem] = Field(min_length=1, max_length=800)
+
+
+class PartyDevelopmentActualDates(BaseModel):
+    conversation_date: dt_date | None = None
+    activist_date: dt_date | None = None
+    publicity_start_date: dt_date | None = None
+    development_object_date: dt_date | None = None
+    training_completed_date: dt_date | None = None
+    political_review_completed_date: dt_date | None = None
+    pre_review_approved_date: dt_date | None = None
+    branch_acceptance_date: dt_date | None = None
+    committee_approval_date: dt_date | None = None
+    oath_date: dt_date | None = None
+    transition_application_date: dt_date | None = None
+    transition_branch_meeting_date: dt_date | None = None
+    transition_approval_date: dt_date | None = None
+    training_days: int | None = Field(default=None, ge=0, le=365)
+    training_hours: float | None = Field(default=None, ge=0, le=10_000)
+
+
+class PartyDevelopmentCalculateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    application_date: dt_date
+    actual_dates: PartyDevelopmentActualDates = Field(default_factory=PartyDevelopmentActualDates)
+    profile_ids: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("姓名不能为空")
+        return normalized
+
+
+class PartyDevelopmentNodeOut(BaseModel):
+    key: str
+    title: str
+    phase: str
+    date_kind: str
+    date: dt_date | None = None
+    end_date: dt_date | None = None
+    provisional: bool = False
+    status: str
+    article: str
+    basis: str
+    requires_manual_confirmation: bool = False
+    materials: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PartyDevelopmentResultOut(BaseModel):
+    name: str
+    application_date: dt_date
+    rule_version: str
+    rule_published_at: dt_date
+    rule_title: str
+    source_url: str
+    generated_at: datetime
+    provisional: bool
+    nodes: list[PartyDevelopmentNodeOut]
+    warnings: list[dict[str, str]] = Field(default_factory=list)
+    manual_confirmation_items: list[str] = Field(default_factory=list)
+
+
+class PartyDevelopmentMaterialInput(BaseModel):
+    phase: str = Field(min_length=1, max_length=48, pattern=r"^[a-z0-9_]+$")
+    name: str = Field(min_length=1, max_length=200)
+    responsible_party: str = Field(default="", max_length=120)
+    guidance: str = Field(default="", max_length=2_000)
+    required: bool = False
+    enabled: bool = True
+    sort_order: int = Field(default=0, ge=0, le=10_000)
+
+
+class PartyDevelopmentMaterialOut(ORMModel):
+    id: str
+    profile_id: str
+    phase: str
+    name: str
+    responsible_party: str
+    guidance: str
+    required: bool
+    enabled: bool
+    sort_order: int
+    version: int
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class PartyDevelopmentProfileCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=2_000)
+    source_label: str = Field(default="本单位补充", max_length=255)
+    active: bool = False
+    items: list[PartyDevelopmentMaterialInput] = Field(default_factory=list, max_length=200)
+
+
+class PartyDevelopmentProfilePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=2_000)
+    source_label: str | None = Field(default=None, max_length=255)
+    active: bool | None = None
+
+
+class PartyDevelopmentProfileOut(ORMModel):
+    id: str
+    name: str
+    description: str
+    source_label: str
+    active: bool
+    version: int
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+    items: list[PartyDevelopmentMaterialOut] = Field(default_factory=list)
 
 
 class CalendarEventOut(BaseModel):

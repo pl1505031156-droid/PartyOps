@@ -22,6 +22,8 @@ describe("五域导航", () => {
   it("详情页和管理工具能归入正确工作域", () => {
     expect(domainForPath("/tasks/task-1").key).toBe("work");
     expect(domainForPath("/calendar").key).toBe("work");
+    expect(domainForPath("/party-development").key).toBe("work");
+    expect(domainForPath("/memos").key).toBe("today");
     expect(domainForPath("/archives").key).toBe("materials");
     expect(domainForPath("/fleet").key).toBe("collaboration");
     expect(domainForPath("/ai-approvals").key).toBe("management");
@@ -37,6 +39,9 @@ describe("五域导航", () => {
       "备份恢复",
       "运行诊断",
       "帮助与上手",
+      "备忘录",
+      "党员发展计算",
+      "党员发展补充材料",
     ]));
     expect(labels).not.toContain("工作首页");
     expect(labels).not.toContain("上手与协同检查");

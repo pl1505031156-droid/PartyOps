@@ -126,7 +126,7 @@ def ensure_tls_material(settings: Settings) -> dict[str, object]:
             names.append(x509.IPAddress(ipaddress.ip_address(settings.host)))
         except ValueError:
             # 配置允许主机名；该名称同时加入 SAN，浏览器仍会严格校验。
-            if settings.host and settings.host not in {"0.0.0.0", "::"}:
+            if settings.host and settings.host not in {"0.0.0.0", "::"}:  # nosec B104 - 通配值被排除在证书 SAN 外。
                 names.append(x509.DNSName(settings.host[:253]))
         subject = x509.Name(
             [

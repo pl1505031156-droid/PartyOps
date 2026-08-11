@@ -4,7 +4,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $artifacts = Join-Path $root "artifacts"
 $stagingRoot = Join-Path $root ".build-kit"
 $staging = Join-Path $stagingRoot "PartyOps"
-$archive = Join-Path $artifacts "PartyOps-UOS-build-kit.zip"
+$archive = Join-Path $artifacts "PartyOps-UOS-1.4.3-build-kit.zip"
 
 if (-not (Test-Path -LiteralPath (Join-Path $root "frontend\dist\client\index.html"))) {
   throw "缺少前端生产构建，请先运行 scripts\build.ps1 或 pnpm build。"
@@ -87,15 +87,31 @@ foreach ($item in $include) {
   }
 }
 
+# 发布清单、候选验收和 Release 正文都要记录这个 ZIP 自身的最终哈希或条目数，
+# 若把它们再次放入 ZIP 会形成不可收敛的自引用。构建套件只保留安装、运维、
+# 迁移和用户文档；发布证据以 GitHub 源码与 Release 同级附件为准。
+foreach ($releaseEvidence in @(
+  "docs\README.md",
+  "docs\release-notes-v1.4.3-rc.1.md",
+  "docs\release-readiness-1.4.3.md",
+  "docs\acceptance-1.4.3.md",
+  "docs\artifact-manifest-1.4.3.md"
+)) {
+  $evidencePath = Join-Path $staging $releaseEvidence
+  if (Test-Path -LiteralPath $evidencePath) {
+    Remove-Item -LiteralPath $evidencePath -Force
+  }
+}
+
 $capabilityLines = @(
   "党建智办 PartyOps UOS 原生构建套件能力说明",
-  "版本：1.4.2",
+  "版本：1.4.3",
   "生成时间：$([DateTimeOffset]::Now.ToString('yyyy-MM-dd HH:mm:ss zzz'))",
   "",
   "已包含：",
-  "- PartyOps 1.4.2 后端源码、前端生产构建、UOS/Windows 安装与统一升级脚本。",
+  "- PartyOps 1.4.3 后端源码、前端生产构建、UOS/Windows 安装与统一升级脚本。",
   "- amd64 与 ARM64 的 Python 3.11.15 基础运行时和核心离线轮子。",
-  "- SQLite 3.51.3、FTS5 构建输入、OCR 集成脚本及双架构打包入口。",
+  "- SQLite 3.53.4、FTS5 构建输入、OCR 集成脚本及双架构打包入口。",
   "- 规则推荐与已获批外部 AI 接口不依赖本地模型运行时。",
   "",
   "本地智能说明："

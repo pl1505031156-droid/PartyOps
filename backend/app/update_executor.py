@@ -437,7 +437,11 @@ def _health_check() -> bool:
             material = settings.tls_client_ca_file
             if material and material.is_file():
                 context = ssl.create_default_context(cafile=str(material))
-        with urllib.request.urlopen(request, timeout=5, context=context) as response:
+        with urllib.request.urlopen(  # nosec B310 - scheme 固定为 HTTP(S)，主机来自已校验运行配置。
+            request,
+            timeout=5,
+            context=context,
+        ) as response:
             return response.status == 200
     except (urllib.error.URLError, TimeoutError):
         return False

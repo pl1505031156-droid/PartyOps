@@ -812,7 +812,7 @@ def test_heartbeat_keeps_enrollment_recovery(client: TestClient, admin: dict) ->
         "architecture": "amd64",
         "platform": "windows",
         "kernel": "10.0.26100",
-        "agent_version": "1.4.2",
+        "agent_version": "1.4.3",
         "local_username": "review-user",
         "disk_free_bytes": 10_000_000_000,
     }
@@ -826,7 +826,7 @@ def test_heartbeat_keeps_enrollment_recovery(client: TestClient, admin: dict) ->
             "architecture": "amd64",
             "platform": "windows",
             "kernel": "10.0.26100",
-            "agent_version": "1.4.2",
+            "agent_version": "1.4.3",
             "local_username": "review-user",
             "disk_free_bytes": 9_000_000_000,
         },

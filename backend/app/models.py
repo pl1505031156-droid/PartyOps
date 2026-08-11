@@ -1467,6 +1467,52 @@ class WorkCalendarEntry(Base):
     __table_args__ = (UniqueConstraint("date_key", "kind"),)
 
 
+class PartyDevelopmentProfile(Base):
+    """单位党员发展补充材料模板；不得承载或覆盖国家法定期限。"""
+
+    __tablename__ = "party_development_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    name: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    source_label: Mapped[str] = mapped_column(String(255), default="本单位补充")
+    active: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class PartyDevelopmentMaterial(Base):
+    """单位补充材料条目，只影响导出清单和提示，不参与日期计算。"""
+
+    __tablename__ = "party_development_materials"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    profile_id: Mapped[str] = mapped_column(
+        ForeignKey("party_development_profiles.id", ondelete="CASCADE"), index=True
+    )
+    phase: Mapped[str] = mapped_column(String(48), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    responsible_party: Mapped[str] = mapped_column(String(120), default="")
+    guidance: Mapped[str] = mapped_column(Text, default="")
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("profile_id", "phase", "name", name="uq_party_development_material"),
+    )
+
+
 class DocumentComparison(Base):
     __tablename__ = "document_comparisons"
 

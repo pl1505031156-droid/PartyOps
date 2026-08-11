@@ -39,7 +39,7 @@ from .enrollment_codes import normalize_enrollment_code as _normalize_enrollment
 from .schemas import serialize_api_datetime
 
 
-AGENT_VERSION = "1.4.2"
+AGENT_VERSION = "1.4.3"
 _ACTIVE_SSL_CONTEXT = None
 HEARTBEAT_INTERVAL_SECONDS = 15
 COMMAND_POLL_INTERVAL_SECONDS = 5
@@ -99,13 +99,20 @@ class AgentCommandError(RuntimeError):
 
 
 def _urlopen(request, timeout: int):
+    target = request.full_url if isinstance(request, urllib.request.Request) else str(request)
+    parsed = urllib.parse.urlparse(target)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise AgentCommandError("REMOTE_URL_INVALID", "协同请求只允许使用有效的 HTTP/HTTPS 主机地址")
     if _ACTIVE_SSL_CONTEXT is not None:
-        return urllib.request.urlopen(
+        return urllib.request.urlopen(  # nosec B310 - 协议和主机已在上方白名单校验。
             request,
             timeout=timeout,
             context=_ACTIVE_SSL_CONTEXT,
         )
-    return urllib.request.urlopen(request, timeout=timeout)
+    return urllib.request.urlopen(  # nosec B310 - 协议和主机已在上方白名单校验。
+        request,
+        timeout=timeout,
+    )
 
 
 def sha256_file(path: Path) -> str:
@@ -183,7 +190,7 @@ def configure_ssl_context(config: dict[str, object]) -> None:
         _ACTIVE_SSL_CONTEXT = None
         return
     context = ssl.create_default_context(cafile=str(ca_file))
-    if cert_file.exists() and key_file.exists():
+    if cert_value and key_value and cert_file.is_file() and key_file.is_file():
         context.load_cert_chain(str(cert_file), str(key_file))
     _ACTIVE_SSL_CONTEXT = context
 
@@ -399,10 +406,10 @@ def enroll_device(
         )
         # 此次下载的证书不直接受信；只有哈希与管理员页面给出的入网码
         # 完全一致后，才用它建立真正的入网 TLS 连接。
-        with urllib.request.urlopen(  # noqa: S310 - 由下方 SHA-256 固定校验。
+        with urllib.request.urlopen(  # nosec B310 - URL 来源已校验；证书由下方 SHA-256 固定校验。
             bootstrap_request,
             timeout=15,
-            context=ssl._create_unverified_context(),
+            context=ssl._create_unverified_context(),  # nosec B323 - 仅用于取得待固定 CA，信任建立在入网码指纹上。
         ) as response:
             ca_pem = response.read(256 * 1024)
         ca_certificate = x509.load_pem_x509_certificate(ca_pem)

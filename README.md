@@ -6,7 +6,8 @@
 
 把事项办理、跨机文件、重要档案、迎检材料、通知评论和工作留痕，收进一套真正能落地的局域网协同闭环。
 
-[![Release](https://img.shields.io/badge/release-v1.4.2--rc.1-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.2-rc.1)
+[![Release](https://img.shields.io/badge/release-v1.4.3--rc.1-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.1)
+[![Source](https://img.shields.io/badge/source-v1.4.3--rc.1-c58b3d?style=for-the-badge)](docs/release-readiness-1.4.3.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-292520?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20UOS-c17b17?style=for-the-badge)](#安装教程)
 [![Local first](https://img.shields.io/badge/data-local--first-2f7d57?style=for-the-badge)](#安全与隐私)
@@ -17,7 +18,7 @@
 </div>
 
 > [!IMPORTANT]
-> 当前源码版本为 `1.4.2`，数据库模式为 `0017`。最新可下载版本是 **v1.4.2-rc.1 测试候选**。Windows 11 浏览器与真实协同 Agent 候选验证已完成，但覆盖率、Windows 10、UOS 双架构、20GB、24 小时长稳和正式签名门禁尚未全部关闭，因此当前安装器不能标注为稳定正式版。详见[发布就绪判定](docs/release-readiness-1.4.2.md)。
+> 当前源码版本为 `1.4.3`，数据库模式为 `0018`，可下载版本为 **v1.4.3-rc.1 测试候选**。前后端行覆盖率和分支覆盖率均已达到 90% / 80% 门槛，Windows 11 冻结运行时、安装/卸载和主要浏览器流程已通过；Windows 10、UOS 双架构、20GB、24 小时长稳和正式签名仍未全部关闭，因此该候选不得用于正式全量生产部署。详见[1.4.3 发布就绪判定](docs/release-readiness-1.4.3.md)。
 
 ## 30 秒了解 PartyOps
 
@@ -27,7 +28,15 @@ PartyOps 不是一套把表单搬到浏览器里的系统。它解决的是基�
 
 ## 系统主界面实景
 
-下面全部来自 PartyOps 1.4.2 的真实浏览器流程和演示数据，不是设计稿。
+下面全部来自 PartyOps 的真实浏览器流程和演示数据，不是设计稿。
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/images/partyops-today-1.4.3.png" alt="PartyOps 1.4.3 今日工作台" width="100%"><br><strong>今日工作台</strong></td>
+    <td width="33%"><img src="docs/images/partyops-memo-1.4.3.png" alt="PartyOps 1.4.3 本机私有备忘录" width="100%"><br><strong>本机私有备忘录</strong></td>
+    <td width="33%"><img src="docs/images/partyops-party-development-1.4.3.png" alt="PartyOps 1.4.3 发展党员时间计算" width="100%"><br><strong>发展党员时间计算</strong></td>
+  </tr>
+</table>
 
 ### 今日工作台：一周工作，一处看清
 
@@ -81,13 +90,15 @@ PartyOps 不是一套把表单搬到浏览器里的系统。它解决的是基�
 | 已入网用户可以发布本机真实文件夹，按团队或指定人员授权浏览、下载和转发。设备间仍由主机中转，不开放 SMB、匿名共享或设备直连。 | 事项的主办、协办、审核、步骤、材料、评论、提及和通知围绕同一业务对象推进，减少重复建表和版本漂移。 | 重要档案支持年度目录、类别权限、协同贡献、扫描件、OCR、版本历史、业务关联、作废与恢复。 |
 | **文件打开就能读** | **本地数据边界** | **失败可恢复、过程可追溯** |
 | PDF、Word、Excel、PowerPoint、OpenDocument、RTF、EPUB、CSV 和常见文本可在文件中心打开，远端内容先完成分块传输与 SHA-256 校验。 | 文档正文不上传 Firecrawl 或外部服务；本地 AI 由管理员离线导入并按向量、LLM 两种能力启停。 | SQLite 在线快照、版本化备份、更新前备份、原子恢复、断点续传、哈希失败隔离、审计记录和设备隔离共同守住数据。 |
+| **本机私有备忘** | **新版细则时间计算** | **规则与单位材料分层** |
+| 细小工作用文本或清单随手记录，按账号和当前电脑隔离；支持 30 天回收站与 AES-GCM 加密备份，内容不进入主机。 | 依据 2026 年 5 月新版细则确定性计算截止、最早和建议窗口；工作日不完整时明确“暂算”，不使用 LLM 猜日期。 | 国家节点与期限写死并带条款来源；管理员只能追加本单位“三考”、思想汇报、自传等材料，不能缩短法定流程。 |
 
 ## 五大工作域
 
 | 工作域 | 面向谁 | 主要能力 |
 | --- | --- | --- |
-| **今日** | 所有人 | 一周总览、临期风险、必须办理、日历节点和周期汇总 |
-| **工作** | 主办、协办、审核人 | 事项与清单、我的工作、通知、日历、收件箱、报告、日志和专题空间 |
+| **今日** | 所有人 | 一周总览、临期风险、必须办理、日历节点、周期汇总与本机私有备忘 |
+| **工作** | 主办、协办、审核人 | 事项与清单、我的工作、通知、日历、党员发展计算、收件箱、报告、日志和专题空间 |
 | **资料** | 档案与材料经办人 | 原始文件中心、跨机共享、重要档案、迎检归档、知识库、文档比较与查重 |
 | **协同** | 主机与协同机用户 | 设备入网、共享目录、接收箱、三种传输、目录与人员授权 |
 | **管理** | 有效能力对应的管理员 | 周期模板、自动归档、报告模板、本地 AI、更新、备份、诊断与帮助 |
@@ -109,7 +120,8 @@ PartyOps 不是一套把表单搬到浏览器里的系统。它解决的是基�
 | --- | --- | --- |
 | `1.4.0` | 重要档案贡献权限、通知评论、我的工作、共享目录审批和跨平台更新适配 | 内部候选 |
 | `1.4.1` | 普通用户发布共享目录、团队/指定成员授权、双通道下载和本地 AI 分能力激活 | 内部候选 |
-| `1.4.2-rc.1` | AnyDoc / pdf-inspector 离线文档阅读、跨机文件直接阅读、权限撤销复核和发布链路收口 | 当前 Pre-release |
+| `1.4.2-rc.1` | AnyDoc / pdf-inspector 离线文档阅读、跨机文件直接阅读、权限撤销复核和发布链路收口 | 历史 Pre-release |
+| `1.4.3-rc.1` | 本机私有备忘、2026 新版细则党员发展计算、专业中文 Word 导出与单位补充材料分层 | 当前 Pre-release，NO-GO |
 
 完整变更、修复与安全说明见 [CHANGELOG.md](CHANGELOG.md)。PartyOps 不会为了看起来“已发布”而隐藏未完成门禁，版本证据、制品哈希和已知限制都会随 Release 一起公开。
 
@@ -130,23 +142,24 @@ flowchart LR
 
 ## 下载
 
-当前可下载版本为 [v1.4.2-rc.1 测试候选](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.2-rc.1)：
+当前可下载版本为 [v1.4.3-rc.1 测试候选](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.1)：
 
-- [Windows 10/11 x64 安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.2-rc.1/PartyOps_1.4.2_windows_amd64.exe)
-- [Windows SHA-256](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.2-rc.1/PartyOps_1.4.2_windows_amd64.exe.sha256)
-- [Windows 候选验证清单](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.2-rc.1/PartyOps_1.4.2_windows_amd64.candidate.json)
-- [UOS 1.4.2 原生构建套件](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.2-rc.1/PartyOps-UOS-build-kit.zip)
-- [UOS 构建套件 SHA-256](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.2-rc.1/PartyOps-UOS-build-kit.zip.sha256)
+- [Windows 10/11 x64 安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.1/PartyOps_1.4.3_windows_amd64.exe)
+- [Windows SHA-256](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.1/PartyOps_1.4.3_windows_amd64.exe.sha256)
+- [Windows 候选验证清单](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.1/PartyOps_1.4.3_windows_amd64.candidate.json)
+- [UOS 1.4.3 原生构建套件](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.1/PartyOps-UOS-1.4.3-build-kit.zip)
+- [UOS 构建套件 SHA-256](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.1/PartyOps-UOS-1.4.3-build-kit.zip.sha256)
 
-UOS ZIP 是供 UOS V20 amd64/arm64 目标机原生构建的离线套件，不是可直接安装的 DEB。稳定正式版的目标制品为：
+UOS ZIP 是供 UOS V20 amd64/arm64 目标机原生构建的离线套件，不是可直接安装的 DEB。1.4.3 稳定正式版的目标制品为：
 
-- `PartyOps_1.4.2_windows_amd64.exe`
-- `partyops_1.4.2_amd64.deb`
-- `partyops_1.4.2_arm64.deb`
-- `partyops_1.4.2.partyops-update`
+- `PartyOps_1.4.3_windows_amd64.exe`
+- `partyops_1.4.3_amd64.deb`
+- `partyops_1.4.3_arm64.deb`
+- `partyops_1.4.3.partyops-update`
+- `PartyOps-UOS-1.4.3-build-kit.zip`
 - 可选的中文向量、轻量 LLM、增强 LLM `.partyops-modelpack`
 
-只有同时附带 SHA-256、发布签名、迁移/回滚说明和真机验收记录的 Release 才是正式版。当前门禁为 **NO-GO**；`v1.4.2-rc.1` 未做 Windows Authenticode 正式签名，只能在隔离测试电脑试用，不得用于正式全量生产部署。
+只有同时附带 SHA-256、发布签名、迁移/回滚说明和真机验收记录的 Release 才是正式版。当前门禁为 **NO-GO**；`v1.4.3-rc.1` 未做 Windows Authenticode 正式签名，只能在隔离测试电脑试用，不得用于正式全量生产部署。
 
 ## 安装教程
 
@@ -160,20 +173,20 @@ UOS ZIP 是供 UOS V20 amd64/arm64 目标机原生构建的离线套件，不是
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\PartyOps_1.4.2_windows_amd64.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\PartyOps_1.4.2_windows_amd64.exe
+Get-FileHash .\PartyOps_1.4.3_windows_amd64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\PartyOps_1.4.3_windows_amd64.exe
 ```
 
 UOS：
 
 ```bash
 dpkg --print-architecture
-sha256sum partyops_1.4.2_amd64.deb
+sha256sum partyops_1.4.3_amd64.deb
 ```
 
 ### Windows 10/11 x64
 
-1. 使用管理员权限运行 `PartyOps_1.4.2_windows_amd64.exe`。
+1. 使用管理员权限运行 `PartyOps_1.4.3_windows_amd64.exe`。
 2. 安装器创建开始菜单/桌面入口、本机共享管理协议和仅限专用网络的 `18765`、`18766` 入站规则。
 3. 首次打开“党建智办”，明确选择角色：
    - **主机**：创建系统管理员，数据写入 `%PROGRAMDATA%\PartyOps`，主机服务随 Windows 启动。
@@ -182,7 +195,7 @@ sha256sum partyops_1.4.2_amd64.deb
 5. 协同用户在“资料 → 原始文件”点击“共享本机文件夹”，用系统选择器选中目录，再设置团队或指定人员范围。
 6. 从另一台电脑登录，确认可以浏览、打开阅读、浏览器另存为或下载到本机接收目录。
 
-`v1.4.2-rc.1` 尚未签名，Windows SmartScreen 可能阻止启动。只有在隔离测试电脑上、且实算 SHA-256 与 Release 完全一致时才可继续；正式部署遇到无签名或发布者不一致时不要安装。
+`v1.4.3-rc.1` 尚未签名，Windows SmartScreen 可能阻止启动。只有在隔离测试电脑上、且实算 SHA-256 与 Release 完全一致时才可继续；正式部署遇到无签名或发布者不一致时不要安装。
 
 ### UOS V20 amd64 / arm64
 
@@ -195,8 +208,8 @@ dpkg --print-architecture
 海光、兆芯、Intel、AMD 通常使用 `amd64`；飞腾等 ARM 机器使用 `arm64`。当前候选 Release 只提供原生构建套件，须在对应 UOS 目标机解压并构建：
 
 ```bash
-sha256sum PartyOps-UOS-build-kit.zip
-unzip PartyOps-UOS-build-kit.zip
+sha256sum PartyOps-UOS-1.4.3-build-kit.zip
+unzip PartyOps-UOS-1.4.3-build-kit.zip
 cd PartyOps
 sudo bash packaging/uos/build-and-install.sh
 ```
@@ -204,8 +217,8 @@ sudo bash packaging/uos/build-and-install.sh
 正式 Release 形成 DEB 后，可直接安装对应包：
 
 ```bash
-sudo apt install ./partyops_1.4.2_amd64.deb
-# ARM64 机器改用：sudo apt install ./partyops_1.4.2_arm64.deb
+sudo apt install ./partyops_1.4.3_amd64.deb
+# ARM64 机器改用：sudo apt install ./partyops_1.4.3_arm64.deb
 ```
 
 安装后从应用菜单打开“党建智办”，按与 Windows 相同的向导选择主机或协同机。主机服务数据默认位于 `/var/lib/partyops`；日常用户的协同配置位于 `~/.config/partyops`，接收目录位于用户数据目录。无 sudo 的日常账号应由管理员安装，不要在 root 桌面完成普通用户的协同配置。
@@ -222,12 +235,12 @@ sudo apt install ./partyops_1.4.2_amd64.deb
 
 ### 升级、备份与回滚
 
-- 日常升级：主机管理员进入“管理 → 系统更新”，导入已签名的 `partyops_1.4.2.partyops-update`。主机先升级并健康检查，协同机随后按平台选择包。
+- 日常升级：主机管理员进入“管理 → 系统更新”，导入已签名的 `partyops_1.4.3.partyops-update`。主机先升级并健康检查，协同机随后按平台选择包。当前候选尚未提供正式签名统一更新包。
 - 升级前：执行一次手工备份并下载到独立介质；系统还会自动创建升级前快照。
-- 失败回滚：更新执行器恢复程序与升级前数据库；`0017` 降级到 `0016` 会丢失 1.4.1/1.4.2 的共享成员等新字段，正式环境优先恢复完整备份。
+- 失败回滚：更新执行器恢复程序与升级前数据库；`0018` 降级到 `0017` 会删除党员发展单位补充材料模板，正式环境优先恢复完整备份。
 - 不要通过复制正在运行的 SQLite 文件做备份，也不要混用不同版本的主机和协同 Agent。
 
-完整步骤见[安装、升级与回滚](docs/upgrade-1.4.2.md)、[备份恢复手册](docs/backup-restore.md)和[长期运行手册](docs/operations-runbook.md)。
+完整步骤见[安装、升级与回滚](docs/upgrade-1.4.3.md)、[备份恢复手册](docs/backup-restore.md)和[长期运行手册](docs/operations-runbook.md)。
 
 ### 卸载
 
@@ -268,7 +281,7 @@ corepack pnpm --dir frontend install --frozen-lockfile
 .\scripts\test.ps1
 ```
 
-该脚本执行前端单元测试、覆盖率、类型检查、生产构建、Sites 兼容测试、Python 全量测试和依赖审计。项目正式门槛为前后端全仓行覆盖率至少 90%；不要通过降低阈值或排除业务文件让发布“假绿”。
+该脚本执行前端单元测试、覆盖率、类型检查、生产构建、Sites 兼容测试、Python 全量测试和依赖审计。项目正式门槛为前后端全仓行覆盖率至少 90%、分支覆盖率至少 80%；不要通过降低阈值或排除业务文件让发布“假绿”。
 
 ## 项目结构
 
@@ -291,7 +304,7 @@ corepack pnpm --dir frontend install --frozen-lockfile
 
 PartyOps 希望把“基层真正怎么办公”变成可以持续改进的开源产品。如果它对你有启发，欢迎点击右上角 **Star**，让更多需要本地协同、国产系统适配和党建业务闭环的团队看到它。
 
-- **想直接体验**：从 [v1.4.2-rc.1 Release](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.2-rc.1) 下载候选安装器，先阅读已知限制并校验 SHA-256。
+- **想直接体验**：从 [v1.4.3-rc.1 Release](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.1) 下载候选安装器，先阅读已知限制并校验 SHA-256。
 - **发现问题**：在 [Issues](https://github.com/pl1505031156-droid/PartyOps/issues) 提交版本、系统、主机/协同机角色、复现步骤、期望/实际结果和已脱敏日志。
 - **有产品建议**：在 [Discussions](https://github.com/pl1505031156-droid/PartyOps/discussions) 讲清真实工作场景、现在怎么做、卡在哪里、哪些角色会受益。
 - **愿意贡献代码**：先阅读[贡献指南](CONTRIBUTING.md)，从 `main` 创建短分支，为修复补充回归测试，并运行 `scripts/test.ps1`。
@@ -303,4 +316,4 @@ PartyOps 希望把“基层真正怎么办公”变成可以持续改进的开�
 
 PartyOps 自有代码采用 [GNU General Public License v3.0](LICENSE)，并组合使用 AGPL-3.0 的 PyMuPDF；网络交互与二进制再分发需要同时遵守相应源代码提供义务。第三方组件、许可证边界和完整依赖清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[Python SBOM](docs/sbom-python.cdx.json) 与 [前端 SBOM](docs/sbom-frontend.cdx.json)。特别感谢 [Firecrawl AnyDoc](https://github.com/firecrawl/anydoc) 和 [pdf-inspector](https://github.com/firecrawl/pdf-inspector) 为离线文档阅读提供的开源能力。
 
-更多资料：[完整文档索引](docs/README.md) · [更新记录](CHANGELOG.md) · [安全策略](SECURITY.md) · [使用说明](docs/user-guide.md) · [1.4.2 更新说明](docs/党建智办-1.4.2-更新说明.txt) · [1.4.2 验收记录](docs/acceptance-1.4.2.md) · [需求追踪矩阵](docs/requirements-matrix.md)
+更多资料：[完整文档索引](docs/README.md) · [更新记录](CHANGELOG.md) · [安全策略](SECURITY.md) · [使用说明](docs/user-guide.md) · [1.4.3 更新说明](docs/党建智办-1.4.3-更新说明.txt) · [2026 党员发展规则](docs/party-development-rules-2026.md) · [1.4.3 验收记录](docs/acceptance-1.4.3.md) · [需求追踪矩阵](docs/requirements-matrix.md)

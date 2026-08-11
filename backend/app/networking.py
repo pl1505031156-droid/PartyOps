@@ -39,7 +39,7 @@ def validate_bind_host(host: str, production: bool) -> None:
 
     if not production:
         return
-    if host in {"0.0.0.0", "::"}:
+    if host in {"0.0.0.0", "::"}:  # nosec B104 - 此分支显式拒绝通配绑定。
         raise RuntimeError("生产模式必须选择明确的可信局域网 IP，不能绑定全部网卡")
     try:
         address = ipaddress.ip_address(host)
@@ -72,7 +72,7 @@ def validate_transport_security(
 
 
 def service_url(host: str, port: int) -> str:
-    shown_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    shown_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host  # nosec B104 - 通配值只映射为回环展示地址。
     return f"http://{shown_host}:{port}"
 
 
@@ -89,7 +89,7 @@ def enrollment_service_url(
 
     candidates = sorted(dict.fromkeys(lan_candidates))
     allowed = set(candidates)
-    if configured_host not in {"0.0.0.0", "::", "localhost"}:
+    if configured_host not in {"0.0.0.0", "::", "localhost"}:  # nosec B104 - 通配值不会加入可下发地址。
         try:
             configured_address = ipaddress.ip_address(configured_host)
         except ValueError:

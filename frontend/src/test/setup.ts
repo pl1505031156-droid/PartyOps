@@ -1,5 +1,6 @@
 import { config } from "@vue/test-utils";
 import { vi } from "vitest";
+import "fake-indexeddb/auto";
 
 class ResizeObserverStub {
   observe() {}

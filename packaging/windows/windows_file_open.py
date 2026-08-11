@@ -33,7 +33,11 @@ def main() -> int:
             return 3
         context = ssl.create_default_context(cafile=str(ca))
     request = urllib.request.Request(f"{scheme}://{host}:{port}/api/v1/workspace/open-tokens/{urllib.parse.quote(token)}")
-    with urllib.request.urlopen(request, timeout=10, context=context) as response:
+    with urllib.request.urlopen(  # nosec B310 - scheme 固定为 HTTP(S)，host 被强制为回环地址。
+        request,
+        timeout=10,
+        context=context,
+    ) as response:
         target = Path(response.read(32 * 1024).decode("utf-8")).resolve(strict=True)
     os.startfile(target)  # type: ignore[attr-defined]
     return 0

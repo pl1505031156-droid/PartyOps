@@ -180,7 +180,7 @@ if [[ "$ARCH" != "amd64" && "$ARCH" != "arm64" ]]; then
   echo "党建智办仅支持 amd64 和 ARM64；本机架构为：$ARCH" >&2
   exit 2
 fi
-VERSION="${PARTYOPS_VERSION:-1.4.2}"
+VERSION="${PARTYOPS_VERSION:-1.4.3}"
 DEB="$ARTIFACTS/partyops_${VERSION}_${ARCH}.deb"
 
 if [[ -f "$DEB" && "$FORCE_REBUILD" != "1" ]]; then

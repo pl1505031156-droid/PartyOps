@@ -8,7 +8,7 @@ export type NavigationDomainKey =
 export interface NavigationItem {
   path: string;
   label: string;
-  icon: "home" | "task" | "calendar" | "inbox" | "report" | "journal" | "topic"
+  icon: "home" | "memo" | "task" | "calendar" | "inbox" | "report" | "journal" | "topic"
     | "folder" | "archive" | "book" | "compare" | "device" | "transfer"
     | "template" | "automation" | "ai" | "settings" | "help";
   capability?: string;
@@ -31,6 +31,7 @@ export const navigationDomains: NavigationDomain[] = [
     defaultPath: "/",
     items: [
       { path: "/", label: "今日工作台", icon: "home" },
+      { path: "/memos", label: "备忘录", icon: "memo" },
     ],
   },
   {
@@ -43,6 +44,7 @@ export const navigationDomains: NavigationDomain[] = [
       { path: "/my-work", label: "我的工作", icon: "task" },
       { path: "/notifications", label: "通知中心", icon: "inbox" },
       { path: "/calendar", label: "工作日历", icon: "calendar" },
+      { path: "/party-development", label: "党员发展计算", icon: "calendar" },
       { path: "/inbox", label: "快速收件箱", icon: "inbox" },
       { path: "/reports", label: "周期汇总", icon: "report" },
       { path: "/journal", label: "工作日志", icon: "journal" },
@@ -81,6 +83,7 @@ export const navigationDomains: NavigationDomain[] = [
     defaultPath: "/templates",
     items: [
       { path: "/templates", label: "周期与模板", icon: "template", capability: "admin.access" },
+      { path: "/party-development-settings", label: "党员发展补充材料", icon: "template", capability: "admin.access" },
       { path: "/automation", label: "自动归档规则", icon: "automation", capability: "admin.access" },
       { path: "/report-designer", label: "报告模板", icon: "template", capability: "admin.access" },
       { path: "/ai-approvals", label: "AI 草稿审批", icon: "ai", capability: "ai.manage" },

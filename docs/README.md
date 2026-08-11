@@ -1,15 +1,28 @@
 # PartyOps 文档索引
 
-这里集中列出 PartyOps 的当前操作文档、发布证据和历史升级记录。首次安装或试用请从“当前版本”开始；带旧版本号的文件仅用于迁移、审计和故障追溯，不能替代 1.4.2 的说明。
+这里集中列出 PartyOps 的当前操作文档、发布证据和历史升级记录。首次安装或试用请从“当前版本”开始；带旧版本号的文件仅用于迁移、审计和故障追溯，不能替代 1.4.3 的说明。
 
-## 当前版本 1.4.2
+## 当前版本 1.4.3
 
 - [使用说明](user-guide.md)
-- [安装、升级与回滚](upgrade-1.4.2.md)
+- [安装、升级与回滚](upgrade-1.4.3.md)
+- [1.4.3 更新说明](党建智办-1.4.3-更新说明.txt)
+- [v1.4.3-rc.1 发布说明](release-notes-v1.4.3-rc.1.md)
 - [安装检查清单](installation-checklist.md)
+- [部署与独立搭建](deployment.md)
+- [2026 党员发展规则说明](party-development-rules-2026.md)
+- [1.4.3 发布就绪判定](release-readiness-1.4.3.md)
+- [1.4.3 候选验收记录](acceptance-1.4.3.md)
+- [1.4.3 制品清单](artifact-manifest-1.4.3.md)
+
+## 运维与通用说明
+
 - [备份与恢复](backup-restore.md)
 - [长期运行手册](operations-runbook.md)
-- [部署说明](deployment.md)
+
+## 1.4.2 历史候选
+
+- [安装、升级与回滚](upgrade-1.4.2.md)
 - [v1.4.2-rc.1 发布说明](release-notes-v1.4.2-rc.1.md)
 
 ## 发布门禁与证据

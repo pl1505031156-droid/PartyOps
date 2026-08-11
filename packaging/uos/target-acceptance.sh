@@ -16,7 +16,7 @@ mkdir -p "$ROOT/artifacts"
     *) echo "不支持的处理器架构：$(uname -m)" >&2; exit 2 ;;
   esac
   echo "architecture=$ARCH"
-  VERSION="${PARTYOPS_VERSION:-1.4.2}"
+  VERSION="${PARTYOPS_VERSION:-1.4.3}"
   INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' partyops)"
   INSTALLED_ARCH="$(dpkg-query -W -f='${Architecture}' partyops)"
   echo "installed_version=$INSTALLED_VERSION"

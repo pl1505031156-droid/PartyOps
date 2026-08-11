@@ -1,5 +1,5 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.2"
+#define MyAppVersion "1.4.3"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
@@ -15,7 +15,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 OutputDir={#OutputRoot}
-OutputBaseFilename=PartyOps_1.4.2_windows_amd64
+OutputBaseFilename=PartyOps_1.4.3_windows_amd64
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern

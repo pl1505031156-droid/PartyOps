@@ -1,8 +1,8 @@
-# PartyOps 1.4.2 部署与独立搭建
+# PartyOps 1.4.3 部署与独立搭建
 
-最后核对：2026-08-11。本文只描述当前 `1.4.2` / 数据库 `0017`；旧版本文档仅用于迁移追溯。
+最后核对：2026-08-11。本文只描述当前 `1.4.3` / 数据库 `0018`；旧版本文档仅用于迁移追溯。
 
-> 当前 GitHub Release 是 `v1.4.2-rc.1` 候选版，不是稳定生产版。Windows 10、UOS 双架构、20GB、24 小时长稳、90% 覆盖率和正式签名证据未齐全前，不得把候选安装器用于正式业务数据。
+> 当前 GitHub Release 是 `v1.4.3-rc.1` 候选版，不是稳定生产版。覆盖率门禁已通过；Windows 10、UOS 双架构、20GB、24 小时长稳和正式签名证据未齐全前，不得把候选安装器用于正式业务数据。
 
 ## 1. 部署结构
 
@@ -19,20 +19,20 @@
 只从同一 GitHub Release 下载安装文件、`.sha256` 和签名说明。先计算哈希：
 
 ```powershell
-Get-FileHash .\PartyOps_1.4.2_windows_amd64.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\PartyOps_1.4.2_windows_amd64.exe
+Get-FileHash .\PartyOps_1.4.3_windows_amd64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\PartyOps_1.4.3_windows_amd64.exe
 ```
 
 ```bash
-sha256sum partyops_1.4.2_amd64.deb
-dpkg-deb --info partyops_1.4.2_amd64.deb
+sha256sum partyops_1.4.3_amd64.deb
+dpkg-deb --info partyops_1.4.3_amd64.deb
 ```
 
 哈希不一致、正式版缺少签名或签名发布者不一致时停止安装。当前 `rc.1` Windows 文件未做 Authenticode 正式签名，只能隔离试用。
 
 ### 2.2 Windows 10/11 x64
 
-1. 以管理员身份运行 `PartyOps_1.4.2_windows_amd64.exe`。
+1. 以管理员身份运行 `PartyOps_1.4.3_windows_amd64.exe`。
 2. 首次打开桌面“党建智办”，明确选择“主机”或“协同机”。不能由残留配置猜测角色。
 3. 主机模式创建首任管理员，数据位于 `%PROGRAMDATA%\PartyOps`，服务随系统启动。
 4. 协同机模式使用主机生成的限时入网码；用户配置、接收文件和日志位于 `%LOCALAPPDATA%\PartyOps`。
@@ -45,11 +45,11 @@ dpkg-deb --info partyops_1.4.2_amd64.deb
 
 ```bash
 dpkg --print-architecture
-sudo apt-get install ./partyops_1.4.2_amd64.deb
-# ARM64 使用 partyops_1.4.2_arm64.deb
+sudo apt-get install ./partyops_1.4.3_amd64.deb
+# ARM64 使用 partyops_1.4.3_arm64.deb
 ```
 
-若 Release 只提供 `PartyOps-UOS-build-kit.zip`，它是原生构建套件而不是 DEB。必须在对应架构的 UOS 目标机校验 ZIP 后运行套件内构建脚本，再校验生成的 DEB；不要在 x64 机器伪造 ARM64 验收结果。
+若 Release 只提供 `PartyOps-UOS-1.4.3-build-kit.zip`，它是原生构建套件而不是 DEB。必须在对应架构的 UOS 目标机校验 ZIP 后运行套件内构建脚本，再校验生成的 DEB；不要在 x64 机器伪造 ARM64 验收结果。
 
 主机系统配置位于 `/etc/partyops/partyops.env`，数据默认位于 `/var/lib/partyops`。服务检查：
 
@@ -124,7 +124,7 @@ PARTYOPS_MODEL_PACK_PUBLIC_KEY=<模型包发布公钥；可与更新公钥分离
 7. 创建、下载、校验备份；在隔离副本上完成恢复演练。
 8. 检查浏览器控制台、服务日志、Agent 轮转日志和磁盘空间告警。
 
-健康接口必须显示程序版本、SQLite 能力和模式修订均正确。候选发布还必须满足 [1.4.2 发布就绪门禁](release-readiness-1.4.2.md)。
+健康接口必须显示程序版本、SQLite 能力和模式修订均正确。候选发布还必须满足 [1.4.3 发布就绪门禁](release-readiness-1.4.3.md)。
 
 ## 6. 备份、升级与回滚
 
@@ -132,9 +132,9 @@ PARTYOPS_MODEL_PACK_PUBLIC_KEY=<模型包发布公钥；可与更新公钥分离
 - 备份导入限制上传体积、成员数、解压体积与压缩比，并拒绝路径逃逸、符号链接、未登记文件和哈希不一致。
 - 统一 `.partyops-update` 只接受外部受信 Ed25519 公钥验证通过的包，按平台/架构选取制品。
 - 升级失败由平台执行器停止新版本、恢复程序与升级前数据库，再运行健康检查。
-- `0017 → 0016` 会丢失新共享成员等字段；已有新业务写入时优先恢复完整升级前备份，不要长期使用结构降级库。
+- `0018 → 0017` 会删除党员发展单位补充材料模板；已有新业务写入时优先恢复完整升级前备份，不要长期使用结构降级库。
 
-详见 [升级与回滚](upgrade-1.4.2.md)、[备份恢复](backup-restore.md) 和 [长期运行手册](operations-runbook.md)。
+详见 [升级与回滚](upgrade-1.4.3.md)、[备份恢复](backup-restore.md) 和 [长期运行手册](operations-runbook.md)。
 
 ## 7. 故障定位
 
