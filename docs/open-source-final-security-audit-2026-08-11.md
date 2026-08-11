@@ -95,7 +95,8 @@
 | Python 依赖一致性 / CVE | `pip check` 通过；`pip-audit` 0 个已知漏洞 | 通过 |
 | 前端生产依赖 CVE | `pnpm audit --prod` 0 个已知漏洞 | 通过 |
 | Bandit | 0 High；剩余 Medium 为受固定指纹保护的首次 CA 获取、限定 scheme 的 urllib 调用和 `0.0.0.0` 防御性比较 | 无高危；人工复核通过 |
-| gitleaks | 当前树与 Git 历史扫描通过配置门禁；定向隐私路径仍需历史重写 | 条件通过 |
+| gitleaks | 当前树与重写后的全部本地分支/标签历史扫描通过；五个定向隐私路径历史命中为 0 | 通过（GitHub 旧 PR 缓存仍属平台清理项） |
+| GitHub 私密漏洞报告 | 仓库级 Private vulnerability reporting 已启用，`SECURITY.md` 中的私密报告入口可用 | 通过 |
 | Chromium 真实回归 | 登录、主界面、目录纳管、59 文件索引、结构化阅读、浏览器下载、响应头与恶意 Origin 拒绝通过 | 通过（Windows 11 单机源码环境） |
 
 浏览器下载的运行日志形成真实 `POST /workspace/downloads = 201` 与内容读取 `GET = 200`，不是仅检查按钮可见。重新加载生产构建后无新增控制台错误；登录页最初的 401 是匿名探测 `/auth/me` 的预期鉴权响应，不是未处理异常。
