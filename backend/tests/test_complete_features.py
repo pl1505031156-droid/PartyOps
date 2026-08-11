@@ -780,9 +780,11 @@ def test_setup_wizard_browser_flow_and_launch_helpers(
     assert setup_wizard.check_host("http://127.0.0.1:18765")["status"] == "ok"
 
     attempted_urls: list[str] = []
+    attempted_pairing_headers: list[str | None] = []
 
     def https_after_plain_http_disconnect(request, **_kwargs):
         attempted_urls.append(request.full_url)
+        attempted_pairing_headers.append(request.get_header("X-PartyOps-Pairing"))
         if request.full_url.startswith("http://"):
             raise setup_wizard.http.client.RemoteDisconnected(
                 "Remote end closed connection without response"
@@ -795,7 +797,8 @@ def test_setup_wizard_browser_flow_and_launch_helpers(
         https_after_plain_http_disconnect,
     )
     resolved, health = setup_wizard.resolve_host_url(
-        "http://192.168.20.5:18765"
+        "http://192.168.20.5:18765",
+        "不应发送的旧配对凭据",
     )
     assert resolved == "https://192.168.20.5:18765"
     assert health["status"] == "ok"
@@ -803,6 +806,7 @@ def test_setup_wizard_browser_flow_and_launch_helpers(
         "http://192.168.20.5:18765/api/v1/health",
         "https://192.168.20.5:18765/api/v1/health",
     ]
+    assert attempted_pairing_headers == [None, None]
 
     monkeypatch.setattr(
         setup_wizard.urllib.request,

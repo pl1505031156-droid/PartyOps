@@ -478,7 +478,12 @@ def resolve_host_url(
     host_url: str,
     token: str | None = None,
 ) -> tuple[str, dict[str, object]]:
-    """探测主机协议；允许从旧 HTTP 地址自动升级到 HTTPS，但绝不降级。"""
+    """探测主机协议；探测阶段绝不携带配对凭据。
+
+    ``token`` 仅保留旧调用签名兼容，故意不写入请求。HTTPS 健康探测可能面对
+    尚未信任的自签名证书，因此只能读取公开健康状态；随后设备入网会使用入网码
+    中的 CA 指纹固定主机身份，再提交一次性入网凭据。
+    """
 
     raw = host_url.strip().rstrip("/")
     if "://" not in raw:
@@ -504,12 +509,11 @@ def resolve_host_url(
                 parsed._replace(scheme="https", path="", params="", query="", fragment="")
             ).rstrip("/")
         )
-    headers = {"X-PartyOps-Pairing": token} if token else {}
+    _ = token
     last_error: BaseException | None = None
     for candidate in dict.fromkeys(candidates):
         request = urllib.request.Request(
             f"{candidate}/api/v1/health",
-            headers=headers,
         )
         try:
             context = (

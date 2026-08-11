@@ -29,6 +29,7 @@ from .device_versions import (
     device_version_state,
     ensure_current_release,
     ensure_device_context_secret,
+    issue_device_context_token,
     request_device,
     verify_device_context_token,
 )
@@ -36,7 +37,7 @@ from .problems import install_problem_handlers
 from .routers import admin, ai, archives, auth, bootstrap, events, fleet, integration, operations, productivity, support, tasks, updates, workspace
 from .scheduler import scheduler_loop
 from .seed import seed_templates
-from .models import User
+from .models import User, utcnow
 from .enums import UserRole
 from .networking import validate_bind_host, validate_transport_security
 from .schemas import serialize_api_datetime
@@ -172,7 +173,8 @@ def _apply_security_headers(response, request: Request):
     response.headers["X-Trace-Id"] = request.state.trace_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "same-origin"
+    if "Referrer-Policy" not in response.headers:
+        response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
@@ -184,9 +186,10 @@ def _apply_security_headers(response, request: Request):
     )
     if settings.tls_enabled:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
-    response.headers["Cache-Control"] = (
-        "no-store" if request.url.path.startswith("/api/") else "no-cache"
-    )
+    if "Cache-Control" not in response.headers:
+        response.headers["Cache-Control"] = (
+            "no-store" if request.url.path.startswith("/api/") else "no-cache"
+        )
     return response
 
 
@@ -314,19 +317,26 @@ def device_launch(
     token: str = Query(min_length=40, max_length=2_048),
     db=Depends(get_session),
 ) -> RedirectResponse:
-    device = verify_device_context_token(db, token)
+    device = verify_device_context_token(db, token, purpose="launch")
     if not device:
-        return RedirectResponse(url="/?device_context_error=1", status_code=303)
+        response = RedirectResponse(url="/?device_context_error=1", status_code=303)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+    context_token, expires_at = issue_device_context_token(db, device)
+    db.commit()
     response = RedirectResponse(url="/", status_code=303)
     response.set_cookie(
         DEVICE_CONTEXT_COOKIE,
-        token,
-        max_age=30 * 24 * 60 * 60,
+        context_token,
+        max_age=max(1, int((expires_at - utcnow()).total_seconds())),
         httponly=True,
         secure=settings.tls_enabled,
         samesite="strict",
         path="/",
     )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
     return response
 
 

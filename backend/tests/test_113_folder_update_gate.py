@@ -113,10 +113,14 @@ def test_release_history_and_device_update_gate(
         headers={"X-PartyOps-Device-Token": device["device_token"]},
     )
     assert browser_token.status_code == 200, browser_token.text
-    client.cookies.set(
-        "partyops_device_context",
-        browser_token.json()["token"],
+    launch = client.get(
+        "/device-launch",
+        params={"token": browser_token.json()["token"]},
+        follow_redirects=False,
     )
+    assert launch.status_code == 303
+    assert launch.headers["cache-control"] == "no-store"
+    assert launch.headers["referrer-policy"] == "no-referrer"
 
     gate = client.get("/api/v1/device/update-gate")
     assert gate.status_code == 200, gate.text

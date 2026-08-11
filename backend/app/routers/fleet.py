@@ -1285,7 +1285,14 @@ def create_device_browser_token(
     db: Session = Depends(get_session),
 ) -> DeviceBrowserTokenOut:
     device = authenticated_device(token, db)
-    browser_token, expires_at = issue_device_context_token(db, device)
+    # 启动票据会短暂出现在自定义协议和浏览器 URL 中，只允许 60 秒内换取
+    # 真正的 HttpOnly 设备上下文；不能直接作为业务接口 Cookie 使用。
+    browser_token, expires_at = issue_device_context_token(
+        db,
+        device,
+        lifetime=timedelta(seconds=60),
+        purpose="launch",
+    )
     db.commit()
     return DeviceBrowserTokenOut(token=browser_token, expires_at=expires_at)
 

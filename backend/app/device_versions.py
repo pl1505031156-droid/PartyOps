@@ -72,12 +72,16 @@ def issue_device_context_token(
     device: Device,
     *,
     lifetime: timedelta = timedelta(days=30),
+    purpose: str = "context",
 ) -> tuple[str, datetime]:
+    if purpose not in {"context", "launch"}:
+        raise ValueError("设备上下文令牌用途无效")
     expires_at = utcnow() + lifetime
     payload = {
         "device_id": device.id,
         "expires": int(expires_at.timestamp()),
         "nonce": secrets.token_urlsafe(12),
+        "purpose": purpose,
     }
     encoded = _b64encode(
         json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
@@ -89,7 +93,12 @@ def issue_device_context_token(
     return f"{encoded}.{signature}", expires_at
 
 
-def verify_device_context_token(db: Session, token: str) -> Device | None:
+def verify_device_context_token(
+    db: Session,
+    token: str,
+    *,
+    purpose: str = "context",
+) -> Device | None:
     try:
         encoded, signature = token.split(".", 1)
         setting = db.get(SystemSetting, DEVICE_CONTEXT_SECRET_KEY)
@@ -106,6 +115,8 @@ def verify_device_context_token(db: Session, token: str) -> Device | None:
             return None
         payload = json.loads(_b64decode(encoded).decode("utf-8"))
         if int(payload.get("expires", 0)) <= int(utcnow().timestamp()):
+            return None
+        if not hmac.compare_digest(str(payload.get("purpose", "")), purpose):
             return None
         device = db.get(Device, str(payload.get("device_id", "")))
         return device if device and device.active else None

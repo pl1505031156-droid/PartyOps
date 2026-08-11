@@ -183,7 +183,12 @@ def test_windows_device_root_lifecycle_and_device_archive_grant(
     _login(client, "staff")
     browser = client.post("/api/v1/devices/browser-token", headers=headers)
     assert browser.status_code == 200, browser.text
-    client.cookies.set("partyops_device_context", browser.json()["token"])
+    launch = client.get(
+        "/device-launch",
+        params={"token": browser.json()["token"]},
+        follow_redirects=False,
+    )
+    assert launch.status_code == 303
     visible = client.get("/api/v1/archives/categories")
     permitted = next(item for item in visible.json() if item["id"] == category["id"])
     assert permitted["permissions"]["contribute"] is True

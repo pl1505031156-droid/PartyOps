@@ -156,7 +156,17 @@ def test_staff_publishes_team_root_and_creates_both_download_channels(
     _login(client, "staff")
     browser_token = client.post("/api/v1/devices/browser-token", headers=device_headers)
     assert browser_token.status_code == 200, browser_token.text
+    # URL 中的短期启动票据不能被直接当成长期业务 Cookie 使用。
     client.cookies.set("partyops_device_context", browser_token.json()["token"])
+    direct_use = client.post("/api/v1/workspace/local-share-actions")
+    assert direct_use.status_code == 409
+    client.cookies.delete("partyops_device_context")
+    launch = client.get(
+        "/device-launch",
+        params={"token": browser_token.json()["token"]},
+        follow_redirects=False,
+    )
+    assert launch.status_code == 303
     context = client.get("/api/v1/runtime/context")
     assert context.status_code == 200, context.text
     assert context.json()["node_mode"] == "client"
