@@ -23,7 +23,9 @@ SetupLogging=yes
 UninstallDisplayIcon={app}\PartyOpsLauncher.exe
 
 [Dirs]
-Name: "{commonappdata}\PartyOps"; Permissions: users-modify
+; 主机数据库、备份、证书与信任公钥只能由服务账户和管理员修改。
+; 协同机日常用户只写自己的 LocalAppData，不能借同机低权限账号篡改主机数据。
+Name: "{commonappdata}\PartyOps"; Permissions: admins-full system-full
 Name: "{localappdata}\PartyOps"; Permissions: users-modify
 
 [Files]

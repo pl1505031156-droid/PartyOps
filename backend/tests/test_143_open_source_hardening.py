@@ -6,6 +6,7 @@ import base64
 import json
 import stat
 import zipfile
+from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -216,3 +217,18 @@ def test_intake_rejects_pathological_pdf_page_count() -> None:
         assert exc.code == "INTAKE_PDF_PAGE_LIMIT"
     else:  # pragma: no cover
         raise AssertionError("异常页数 PDF 必须在 OCR 前被拒绝")
+
+
+def test_windows_host_data_directory_is_not_user_writable() -> None:
+    installer = (
+        Path(__file__).resolve().parents[2]
+        / "packaging"
+        / "windows"
+        / "PartyOps.iss"
+    ).read_text(encoding="utf-8")
+    program_data_line = next(
+        line for line in installer.splitlines() if '"{commonappdata}\\PartyOps"' in line
+    )
+    assert "admins-full" in program_data_line
+    assert "system-full" in program_data_line
+    assert "users-modify" not in program_data_line
