@@ -495,6 +495,25 @@ export interface NotificationItem {
   created_at: string;
 }
 
+export interface EnablementStep {
+  key: string;
+  title: string;
+  description: string;
+  route: string;
+  action_label: string;
+  complete: boolean;
+}
+
+export interface EnablementStatus {
+  persona: "host_admin" | "host_staff" | "client_admin" | "client_staff";
+  title: string;
+  summary: string;
+  completed_count: number;
+  total_count: number;
+  next_route: string;
+  steps: EnablementStep[];
+}
+
 export interface AIProvider {
   id: string | null;
   name: string;

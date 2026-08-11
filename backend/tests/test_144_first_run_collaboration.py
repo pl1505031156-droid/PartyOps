@@ -136,3 +136,42 @@ def test_client_first_run_rejects_loopback_host(monkeypatch) -> None:
     monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
     with pytest.raises(ValueError, match="协同机不能使用回环地址"):
         setup_wizard.resolve_host_url("http://127.0.0.1:18765")
+
+
+def test_enablement_center_uses_real_state_and_role_specific_steps(
+    client,
+    admin: dict,
+    staff: dict,
+) -> None:
+    """上手中心的完成状态必须来自业务事实，且普通用户不出现管理任务。"""
+
+    admin_status = client.get("/api/v1/me/enablement")
+    assert admin_status.status_code == 200, admin_status.text
+    admin_body = admin_status.json()
+    assert admin_body["persona"] == "host_admin"
+    admin_steps = {item["key"]: item for item in admin_body["steps"]}
+    assert admin_steps["account"]["complete"] is True
+    assert admin_steps["network"]["complete"] is False
+    assert admin_steps["backup"]["route"] == "/settings/backups"
+
+    try:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "staff", "password": "PartyOps@2026"},
+        )
+        assert login.status_code == 200, login.text
+        staff_status = client.get("/api/v1/me/enablement")
+        assert staff_status.status_code == 200, staff_status.text
+        staff_body = staff_status.json()
+        assert staff_body["persona"] == "host_staff"
+        assert "backup" not in {item["key"] for item in staff_body["steps"]}
+        assert all(
+            not item["route"].startswith("/settings")
+            for item in staff_body["steps"]
+        )
+    finally:
+        restored = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": "PartyOps@2026"},
+        )
+        assert restored.status_code == 200, restored.text

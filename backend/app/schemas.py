@@ -1860,6 +1860,25 @@ class OnboardingProgressOut(ORMModel):
     steps: list[dict[str, str]] = Field(default_factory=list)
 
 
+class EnablementStepOut(BaseModel):
+    key: str
+    title: str
+    description: str
+    route: str
+    action_label: str
+    complete: bool
+
+
+class EnablementOut(BaseModel):
+    persona: str = Field(pattern=r"^(host_admin|host_staff|client_admin|client_staff)$")
+    title: str
+    summary: str
+    completed_count: int
+    total_count: int
+    next_route: str
+    steps: list[EnablementStepOut]
+
+
 class ProjectionCheckpointOut(ORMModel):
     name: str
     last_event_id: int

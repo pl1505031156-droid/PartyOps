@@ -29,7 +29,10 @@ export const navigationDomains: NavigationDomain[] = [
     label: "今日",
     shortLabel: "今日",
     defaultPath: "/",
-    items: [{ path: "/", label: "今日工作台", icon: "home" }],
+    items: [
+      { path: "/", label: "今日工作台", icon: "home" },
+      { path: "/getting-started", label: "上手与协同检查", icon: "help" },
+    ],
   },
   {
     key: "work",
