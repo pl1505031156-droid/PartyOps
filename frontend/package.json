@@ -28,6 +28,8 @@
     "@playwright/test": "1.62.1",
     "@vitejs/plugin-vue": "6.0.1",
     "@vitest/coverage-v8": "3.2.6",
+    "@vue/test-utils": "2.4.11",
+    "jsdom": "30.0.1",
     "typescript": "5.9.2",
     "vite": "6.4.3",
     "vitest": "3.2.6",

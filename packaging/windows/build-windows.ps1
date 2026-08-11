@@ -6,7 +6,22 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-if ($SqliteDll) { $SqliteDll = (Resolve-Path -LiteralPath $SqliteDll).Path }
+$officialSqliteDll = Join-Path $repoRoot "vendor\windows\sqlite-3.53.4\runtime\sqlite3.dll"
+$officialSqliteVersion = "3.53.4"
+$officialSqliteSha256 = "AB57D0437795ECC757CB693F32EA224173FA9856594D95CFA6B5033E645CD1EC"
+if (-not $SqliteDll) { $SqliteDll = $officialSqliteDll }
+if (-not (Test-Path -LiteralPath $SqliteDll)) {
+  throw "缺少经校验的 SQLite $officialSqliteVersion 运行时：$SqliteDll；请先执行 scripts/prepare-windows-build.ps1。"
+}
+$SqliteDll = (Resolve-Path -LiteralPath $SqliteDll).Path
+$actualSqliteSha256 = (Get-FileHash -LiteralPath $SqliteDll -Algorithm SHA256).Hash
+if ($actualSqliteSha256 -ne $officialSqliteSha256) {
+  throw "SQLite DLL SHA-256 不匹配，拒绝把来源不明的数据库运行时写入正式安装包。"
+}
+$providedSqliteVersion = & $Python -c "import ctypes,sys; lib=ctypes.WinDLL(sys.argv[1]); lib.sqlite3_libversion.restype=ctypes.c_char_p; print(lib.sqlite3_libversion().decode())" $SqliteDll
+if ($LASTEXITCODE -ne 0 -or $providedSqliteVersion -ne $officialSqliteVersion) {
+  throw "SQLite DLL 版本应为 $officialSqliteVersion，实际为 $providedSqliteVersion。"
+}
 $buildRoot = Join-Path $repoRoot "artifacts\windows-runtime"
 $outputRoot = Join-Path $repoRoot "artifacts"
 $frontendDist = Join-Path $repoRoot "frontend\dist"
@@ -41,16 +56,7 @@ try {
 Assert-NativeSuccess "Windows Python 构建依赖安装"
 $sqliteVersion = & $Python -c "import sqlite3; print(sqlite3.sqlite_version)"
 Assert-NativeSuccess "开发运行时 SQLite 版本读取"
-if ([version]$sqliteVersion -lt [version]"3.51.3") {
-  if (-not $SqliteDll -or -not (Test-Path -LiteralPath $SqliteDll)) {
-    throw "当前 SQLite 为 $sqliteVersion；必须通过 -SqliteDll 提供经校验的 SQLite 3.51.3 或更高版本 DLL。"
-  }
-  $providedSqliteVersion = & $Python -c "import ctypes,sys; lib=ctypes.WinDLL(sys.argv[1]); lib.sqlite3_libversion.restype=ctypes.c_char_p; print(lib.sqlite3_libversion().decode())" $SqliteDll
-  Assert-NativeSuccess "发布 SQLite DLL 版本读取"
-  if ([version]$providedSqliteVersion -lt [version]"3.51.3") {
-    throw "提供的 SQLite DLL 版本为 $providedSqliteVersion，低于 3.51.3。"
-  }
-}
+Write-Host "开发 Python SQLite=$sqliteVersion；正式冻结运行时固定使用 SQLite $providedSqliteVersion。"
 
 if (Test-Path -LiteralPath $buildRoot) { Remove-Item -LiteralPath $buildRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
@@ -89,7 +95,7 @@ foreach ($entry in $entries) {
     "cryptography", "cryptography.fernet", "httpx", "win32timezone",
     "numpy", "onnxruntime", "tokenizers"
   )) { $arguments += @("--hidden-import", $module) }
-  if ($SqliteDll) { $arguments += @("--add-binary", "$SqliteDll;.") }
+  $arguments += @("--add-binary", "$SqliteDll;.")
   $arguments += (Join-Path $repoRoot $entry.Script)
   & $Python @arguments
   Assert-NativeSuccess "$($entry.Name) 冻结构建"
@@ -105,14 +111,12 @@ foreach ($entry in $entries) {
     Copy-Item -LiteralPath (Join-Path $buildRoot "$($entry.Name).exe") -Destination $bundleRoot -Force
   }
 }
-if ($SqliteDll) {
-  Copy-Item -LiteralPath $SqliteDll -Destination (Join-Path $bundleRoot "sqlite3.dll") -Force
-  $internalRoot = Join-Path $bundleRoot "_internal"
-  New-Item -ItemType Directory -Path $internalRoot -Force | Out-Null
-  Copy-Item -LiteralPath $SqliteDll -Destination (Join-Path $internalRoot "sqlite3.dll") -Force
-  if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $internalRoot "sqlite3.dll")).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $SqliteDll).Hash) {
-    throw "冻结运行时中的 SQLite DLL 与经校验输入不一致。"
-  }
+Copy-Item -LiteralPath $SqliteDll -Destination (Join-Path $bundleRoot "sqlite3.dll") -Force
+$internalRoot = Join-Path $bundleRoot "_internal"
+New-Item -ItemType Directory -Path $internalRoot -Force | Out-Null
+Copy-Item -LiteralPath $SqliteDll -Destination (Join-Path $internalRoot "sqlite3.dll") -Force
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $internalRoot "sqlite3.dll")).Hash -ne $officialSqliteSha256) {
+  throw "冻结运行时中的 SQLite DLL 与经校验输入不一致。"
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\uos\update-public-key.txt") -Destination $bundleRoot -Force
 foreach ($notice in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {

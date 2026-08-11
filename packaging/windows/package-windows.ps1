@@ -8,7 +8,9 @@ $runtimeRoot = Join-Path $repoRoot "artifacts\windows-runtime"
 $artifactRoot = Join-Path $repoRoot "artifacts"
 $bundleRoot = Join-Path $artifactRoot "PartyOps-1.4.2-windows-amd64"
 $expectedBundleRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "artifacts\PartyOps-1.4.2-windows-amd64"))
-$sqliteDll = Join-Path $repoRoot "vendor\windows\sqlite-3.53.3-x64\sqlite3.dll"
+$sqliteDll = Join-Path $repoRoot "vendor\windows\sqlite-3.53.4\runtime\sqlite3.dll"
+$expectedSqliteVersion = "3.53.4"
+$expectedSqliteSha256 = "AB57D0437795ECC757CB693F32EA224173FA9856594D95CFA6B5033E645CD1EC"
 $localAiRoot = Join-Path $repoRoot "vendor\windows\local-ai\llama-b10331"
 
 if ([System.IO.Path]::GetFullPath($bundleRoot) -ne $expectedBundleRoot) {
@@ -19,6 +21,14 @@ if (-not (Test-Path -LiteralPath (Join-Path $runtimeRoot "PartyOps\PartyOps.exe"
 }
 if (-not (Test-Path -LiteralPath $sqliteDll)) {
   throw "缺少经校验的 SQLite 运行时：$sqliteDll"
+}
+$actualSqliteVersion = & (Join-Path $repoRoot ".venv\Scripts\python.exe") -c "import ctypes,sys; lib=ctypes.WinDLL(sys.argv[1]); lib.sqlite3_libversion.restype=ctypes.c_char_p; print(lib.sqlite3_libversion().decode())" $sqliteDll
+if ($LASTEXITCODE -ne 0 -or $actualSqliteVersion -ne $expectedSqliteVersion) {
+  throw "SQLite DLL 版本应为 $expectedSqliteVersion，实际为 $actualSqliteVersion。"
+}
+$actualSqliteHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sqliteDll).Hash
+if ($actualSqliteHash -ne $expectedSqliteSha256) {
+  throw "SQLite DLL SHA-256 不匹配，拒绝组装正式安装包。"
 }
 foreach ($runtimeFile in @("llama-server.exe", "llama-server-impl.dll", "llama-common.dll", "llama.dll", "ggml.dll", "LICENSE", "SOURCE.json")) {
   if (-not (Test-Path -LiteralPath (Join-Path $localAiRoot $runtimeFile))) {
@@ -64,7 +74,7 @@ Copy-Item -Path (Join-Path $localAiRoot "*") -Destination $bundleRoot -Force
 & (Join-Path $bundleRoot "llama-server.exe") --version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "llama.cpp Windows 运行时验证失败，退出码：$LASTEXITCODE" }
 
-$expectedSqliteHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sqliteDll).Hash
+$expectedSqliteHash = $expectedSqliteSha256
 $bundledSqliteHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $internalRoot "sqlite3.dll")).Hash
 if ($expectedSqliteHash -ne $bundledSqliteHash) {
   throw "冻结运行时中的 SQLite DLL 与经校验输入不一致。"
