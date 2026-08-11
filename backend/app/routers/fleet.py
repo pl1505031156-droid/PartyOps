@@ -1295,7 +1295,7 @@ def device_update_gate(
     request: Request,
     db: Session = Depends(get_session),
 ) -> DeviceUpdateGate:
-    value = build_device_gate(db, request_device(request, db))
+    value = build_device_gate(db, request_device(request, db, allow_ip_fallback=True))
     db.commit()
     return DeviceUpdateGate(**value)
 

@@ -113,14 +113,21 @@ def verify_device_context_token(db: Session, token: str) -> Device | None:
         return None
 
 
-def request_device(request: Request, db: Session) -> Device | None:
-    """优先使用签名设备上下文，首次桥接时回退到唯一局域网 IP。"""
+def request_device(
+    request: Request,
+    db: Session,
+    *,
+    allow_ip_fallback: bool = False,
+) -> Device | None:
+    """解析签名设备上下文；IP 回退仅供只读升级引导兼容旧客户端。"""
 
     token = request.cookies.get(DEVICE_CONTEXT_COOKIE, "")
     if token:
         device = verify_device_context_token(db, token)
         if device:
             return device
+    if not allow_ip_fallback:
+        return None
     ip_address = request.client.host if request.client else ""
     if not ip_address or ip_address in {"127.0.0.1", "::1", "localhost", "testclient"}:
         return None

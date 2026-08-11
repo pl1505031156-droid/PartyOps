@@ -198,7 +198,9 @@ async def trace_requests(request: Request, call_next):
         # 协同电脑版本低于主机时，服务端同时阻止业务 API。前端路由门禁
         # 负责给出更新说明；此处避免手工输入 URL 绕过版本一致性要求。
         with db_runtime.session_factory() as gate_db:
-            device = request_device(request, gate_db)
+            # 仅版本门禁允许旧客户端按唯一 IP 识别；业务授权始终要求签名
+            # 设备上下文，避免同一 NAT/IP 下的浏览器继承设备权限。
+            device = request_device(request, gate_db, allow_ip_fallback=True)
             if device:
                 state = device_version_state(device)
                 if state != "current":

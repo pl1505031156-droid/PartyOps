@@ -9,12 +9,16 @@ import zipfile
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi import Request
 
 from app.config import Settings, get_settings
 from app.content_security import may_render_inline
+from app.database import db_runtime
+from app.device_versions import request_device
 from app.backups import _safe_zip_members, verify_backup
 from app.ai_service import validate_provider_url
 from app.intake import extract_path_content
+from app.models import Device
 from app.model_packs import _manifest_signature_valid as model_signature_valid
 from app.routers.updates import _manifest_signature_valid as update_signature_valid
 from app.problems import ProblemException
@@ -143,3 +147,42 @@ def test_ai_provider_ssrf_boundary() -> None:
         else:  # pragma: no cover
             raise AssertionError(f"危险模型地址必须被拒绝：{target}")
     assert validate_provider_url("https://api.example.com/v1", False, resolve=False) is False
+
+
+def test_business_device_identity_never_falls_back_to_ip(client, admin) -> None:
+    enrollment = client.post(
+        "/api/v1/admin/devices/enrollments",
+        json={"name": "设备身份边界终端"},
+    )
+    assert enrollment.status_code == 201, enrollment.text
+    enrolled = client.post(
+        "/api/v1/devices/enroll",
+        json={
+            "code": enrollment.json()["code"],
+            "name": "设备身份边界终端",
+            "architecture": "amd64",
+            "platform": "windows",
+            "kernel": "test",
+            "app_version": get_settings().app_version,
+            "agent_version": get_settings().app_version,
+        },
+    )
+    assert enrolled.status_code == 201, enrolled.text
+    with db_runtime.session_factory() as db:
+        device = db.get(Device, enrolled.json()["device_id"])
+        assert device is not None
+        device.ip_address = "203.0.113.44"
+        db.commit()
+        request = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/v1/workspace/roots",
+                "headers": [],
+                "client": ("203.0.113.44", 45000),
+                "scheme": "https",
+                "server": ("partyops.local", 18765),
+            }
+        )
+        assert request_device(request, db) is None
+        assert request_device(request, db, allow_ip_fallback=True).id == device.id
