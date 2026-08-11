@@ -672,6 +672,7 @@ def test_setup_wizard_browser_flow_and_launch_helpers(
 ) -> None:
     opened: list[str] = []
     real_launch_host = setup_wizard.launch_host
+    real_resolve_host_url = setup_wizard.resolve_host_url
     monkeypatch.setattr(setup_wizard.webbrowser, "open", lambda url: opened.append(url))
     monkeypatch.setattr(
         setup_wizard,
@@ -682,6 +683,19 @@ def test_setup_wizard_browser_flow_and_launch_helpers(
         setup_wizard,
         "launch_host",
         lambda _path: "http://127.0.0.1:18765",
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "resolve_host_url",
+        lambda value, *_args: (value, {"status": "ok"}),
+    )
+    created_admins: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        setup_wizard,
+        "bootstrap_first_admin",
+        lambda service_url, **values: created_admins.append(
+            {"service_url": service_url, **values}
+        ),
     )
     result: list[int] = []
     thread = threading.Thread(
@@ -709,14 +723,50 @@ def test_setup_wizard_browser_flow_and_launch_helpers(
         opened[0], data=payload, method="POST"
     )
     with setup_wizard.urllib.request.urlopen(request, timeout=5) as response:
-        assert "主机已启动" in response.read().decode("utf-8")
+        admin_page = response.read().decode("utf-8")
+    assert "首次配置最后一步" in admin_page
+    assert 'name="mode" value="bootstrap_admin"' in admin_page
+
+    admin_payload = setup_wizard.urllib.parse.urlencode(
+        {
+            "csrf": csrf,
+            "mode": "bootstrap_admin",
+            "display_name": "系统管理员",
+            "username": "admin",
+            "password": "PartyOps@2026",
+        }
+    ).encode()
+
+    class NoRedirect(setup_wizard.urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *_args, **_kwargs):
+            return None
+
+    opener = setup_wizard.urllib.request.build_opener(NoRedirect)
+    with pytest.raises(urllib.error.HTTPError) as redirect:
+        opener.open(
+            setup_wizard.urllib.request.Request(
+                opened[0], data=admin_payload, method="POST"
+            ),
+            timeout=5,
+        )
+    assert redirect.value.code == 303
+    assert redirect.value.headers["Location"] == "http://127.0.0.1:18765"
     thread.join(timeout=5)
     assert result == [0]
+    assert created_admins == [
+        {
+            "service_url": "http://127.0.0.1:18765",
+            "username": "admin",
+            "display_name": "系统管理员",
+            "password": "PartyOps@2026",
+        }
+    ]
 
     executable = tmp_path / "partyops"
     executable.write_text("", encoding="utf-8")
     monkeypatch.setattr(setup_wizard, "runtime_root", lambda: tmp_path)
     monkeypatch.setattr(setup_wizard, "launch_host", real_launch_host)
+    monkeypatch.setattr(setup_wizard, "resolve_host_url", real_resolve_host_url)
     assert setup_wizard._executable("partyops") == executable
     commands: list[tuple[list[str], Path, dict[str, str] | None]] = []
     monkeypatch.setattr(

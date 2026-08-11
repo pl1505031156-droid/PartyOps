@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.networking import enrollment_service_url
@@ -136,6 +138,56 @@ def test_client_first_run_rejects_loopback_host(monkeypatch) -> None:
     monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
     with pytest.raises(ValueError, match="协同机不能使用回环地址"):
         setup_wizard.resolve_host_url("http://127.0.0.1:18765")
+
+
+def test_host_first_run_keeps_admin_creation_inside_setup() -> None:
+    """主机配置结束前必须创建首位管理员，不能把第二套向导丢到今日工作台。"""
+
+    page = setup_wizard.render_admin_setup_page(
+        "csrf-token",
+        "https://192.168.36.18:18765",
+    )
+    assert "首次配置最后一步" in page
+    assert "创建管理员并进入登录页" in page
+    assert 'name="mode" value="bootstrap_admin"' in page
+    assert "我已掌握" not in page
+
+
+def test_first_admin_bootstrap_uses_local_loopback_channel(monkeypatch) -> None:
+    """管理员密码只应发送给刚启动的本机服务，不经过办公网地址。"""
+
+    captured: dict[str, object] = {}
+
+    class Response:
+        status = 201
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def open_request(request, **kwargs):
+        captured["url"] = request.full_url
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        captured["context"] = kwargs.get("context")
+        return Response()
+
+    monkeypatch.setattr(setup_wizard.urllib.request, "urlopen", open_request)
+    setup_wizard.bootstrap_first_admin(
+        "https://192.168.36.18:18765",
+        username="Admin_01",
+        display_name="首位管理员",
+        password="PartyOps@2026",
+    )
+
+    assert captured["url"] == "https://127.0.0.1:18765/api/v1/bootstrap/host"
+    assert captured["body"] == {
+        "username": "admin_01",
+        "display_name": "首位管理员",
+        "password": "PartyOps@2026",
+    }
+    assert captured["context"] is not None
 
 
 def test_enablement_center_uses_real_state_and_role_specific_steps(

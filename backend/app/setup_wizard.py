@@ -569,6 +569,80 @@ def check_host(host_url: str, token: str | None = None) -> dict[str, object]:
     return payload
 
 
+def bootstrap_first_admin(
+    service_url: str,
+    *,
+    username: str,
+    display_name: str,
+    password: str,
+) -> None:
+    """仅通过本机回环连接创建首位管理员，避免首次配置跨到业务登录页。"""
+
+    normalized_username = username.strip().lower()
+    normalized_display_name = display_name.strip()
+    if len(normalized_display_name) < 2:
+        raise ValueError("管理员姓名至少填写 2 个字")
+    if not 3 <= len(normalized_username) <= 64 or any(
+        character not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+        for character in normalized_username
+    ):
+        raise ValueError("用户名需为 3—64 位英文字母、数字、点、短横线或下划线")
+    if not 8 <= len(password) <= 128:
+        raise ValueError("密码需要 8—128 个字符")
+    parsed = urllib.parse.urlparse(service_url)
+    if parsed.scheme not in {"http", "https"} or parsed.port is None:
+        raise ValueError("主机服务地址无效，请返回重新配置")
+    local_url = urllib.parse.urlunparse(
+        (parsed.scheme, f"127.0.0.1:{parsed.port}", "/api/v1/bootstrap/host", "", "", "")
+    )
+    payload = json.dumps(
+        {
+            "username": normalized_username,
+            "display_name": normalized_display_name,
+            "password": password,
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        local_url,
+        data=payload,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    context = ssl._create_unverified_context() if parsed.scheme == "https" else None
+    try:
+        with urllib.request.urlopen(request, timeout=15, context=context) as response:
+            if response.status != 201:
+                raise ValueError("主机未确认首位管理员，请重试")
+    except urllib.error.HTTPError as exc:
+        detail = "首位管理员创建失败，请核对字段后重试"
+        try:
+            problem = json.loads(exc.read().decode("utf-8"))
+            detail = str(problem.get("detail") or problem.get("title") or detail)
+        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+            pass
+        raise ValueError(detail) from exc
+
+
+def render_admin_setup_page(csrf: str, service_url: str, error: str = "") -> str:
+    """渲染首次配置最后一步；管理员创建成功后才离开配置向导。"""
+
+    failure = f'<div class="notice error" role="alert">{html.escape(error)}</div>' if error else ""
+    safe_url = html.escape(service_url)
+    return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>党建智办 · 创建首位管理员</title><style>
+*{{box-sizing:border-box}}body{{margin:0;color:#282522;background:#f7f1e7;font:14px/1.6 system-ui,"Noto Sans CJK SC",sans-serif}}main{{width:min(860px,94vw);margin:5vh auto;background:#fbf8f1;border:1px solid #d8cec1;box-shadow:0 22px 70px #5d30221a}}header{{padding:28px 38px;border-bottom:3px solid #b42318}}h1{{margin:0;font:600 32px SimSun,serif}}h1 b{{color:#b42318}}header p{{margin:8px 0 0;color:#776f66}}.progress{{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#ded4c8}}.progress span{{padding:12px 18px;color:#27613d;background:#edf3ea;font-size:12px;font-weight:600}}.progress span.active{{color:#8f1f17;background:#f8e9e6}}section{{padding:30px 38px}}.service-ok{{margin-bottom:22px;padding:14px 16px;color:#27613d;background:#eaf3ea;border-left:3px solid #39724d}}.service-ok strong,.service-ok small{{display:block}}.service-ok small{{margin-top:3px;color:#597261}}.form-grid{{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}}label{{display:block;margin-top:15px}}label:first-child{{grid-column:1/-1}}label span{{display:block;margin-bottom:6px;font-size:12px;font-weight:600}}label small{{display:block;margin-top:5px;color:#857c72}}input{{width:100%;height:44px;padding:0 12px;border:1px solid #cfc3b6;background:#fffdf8}}input:focus{{outline:2px solid #b4231830;border-color:#b42318}}button{{width:100%;height:48px;margin-top:24px;color:#fff;background:#b42318;border:0;font-weight:600;cursor:pointer}}.field-error{{min-height:20px;margin:4px 0 0;color:#9d2118;font-size:11px}}.notice{{margin:20px 38px 0;padding:12px 15px;border-left:3px solid}}.error{{background:#f8e9e7;border-color:#b42318}}footer{{padding:18px 38px;color:#776f66;background:#f1e9de;border-top:1px solid #ddd2c5}}@media(max-width:700px){{.form-grid,.progress{{grid-template-columns:1fr}}section,header{{padding-left:22px;padding-right:22px}}}}
+</style></head><body><main><header><h1><b>党建</b>智办</h1><p>首次配置最后一步 · 创建团队首位管理员</p></header>
+<div class="progress"><span>✓　角色已确认</span><span>✓　网络与主机已启动</span><span class="active">3　创建管理员并完成</span></div>{failure}
+<section><div class="service-ok"><strong>主机服务连接正常</strong><small>{safe_url} · 管理员创建后才会进入业务登录页</small></div>
+<form id="admin-form" method="post" novalidate><input type="hidden" name="csrf" value="{csrf}"><input type="hidden" name="mode" value="bootstrap_admin"><div class="form-grid">
+<label><span>管理员姓名</span><input id="display-name" name="display_name" autocomplete="name" placeholder="例如：系统管理员" aria-describedby="display-name-error"><p id="display-name-error" class="field-error"></p></label>
+<label><span>登录用户名</span><input id="username" name="username" autocomplete="username" placeholder="例如：admin" aria-describedby="username-error"><p id="username-error" class="field-error"></p></label>
+<label><span>登录密码</span><input id="password" name="password" type="password" autocomplete="new-password" placeholder="至少 8 个字符" aria-describedby="password-error"><p id="password-error" class="field-error"></p><small>请使用单位可管理的强密码；系统不会在页面或日志中回显。</small></label></div>
+<button>创建管理员并进入登录页</button></form></section><footer>此账号负责成员、设备、备份和更新。其他人员应在系统内单独创建账号，不要共用管理员密码。</footer></main>
+<script>const form=document.getElementById('admin-form');const fields={{display_name:document.getElementById('display-name'),username:document.getElementById('username'),password:document.getElementById('password')}};const errors={{display_name:document.getElementById('display-name-error'),username:document.getElementById('username-error'),password:document.getElementById('password-error')}};form.addEventListener('submit',event=>{{Object.values(errors).forEach(node=>node.textContent='');const values={{display_name:fields.display_name.value.trim(),username:fields.username.value.trim(),password:fields.password.value}};const found={{}};if(values.display_name.length<2)found.display_name='管理员姓名至少填写 2 个字';if(!/^[A-Za-z0-9_.-]{{3,64}}$/.test(values.username))found.username='用户名需为 3—64 位英文字母、数字、点、短横线或下划线';if(values.password.length<8)found.password='密码至少需要 8 个字符';const first=Object.keys(found)[0];if(first){{event.preventDefault();Object.entries(found).forEach(([key,value])=>errors[key].textContent=value);fields[first].focus()}}}});</script></body></html>"""
+
+
 def render_page(
     csrf: str,
     message: str = "",
@@ -831,9 +905,11 @@ def run_shared_root_manager(open_browser: bool = True, action_token: str = "") -
     return 0
 
 
-def run_wizard(open_browser: bool = True) -> int:
+def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
     csrf = secrets.token_urlsafe(24)
     shutdown = threading.Event()
+    selected_mode = initial_mode if initial_mode in {"host", "client"} else ""
+    host_setup: dict[str, str] = {}
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, body: str, status: int = 200) -> None:
@@ -854,8 +930,14 @@ def run_wizard(open_browser: bool = True) -> int:
             self.end_headers()
             self.wfile.write(payload)
 
+        def _redirect(self, location: str) -> None:
+            self.send_response(303)
+            self.send_header("Location", location)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+
         def do_GET(self) -> None:  # noqa: N802 - 标准库接口命名。
-            self._send(render_page(csrf))
+            self._send(render_page(csrf, selected_mode=selected_mode))
 
         def do_POST(self) -> None:  # noqa: N802 - 标准库接口命名。
             try:
@@ -897,7 +979,26 @@ def run_wizard(open_browser: bool = True) -> int:
                         url = urllib.parse.urlunparse(
                             parsed._replace(scheme="https")
                         )
-                    message = f"主机已启动：{url}。首次进入后创建管理员账号。"
+                    resolved_url, _health = resolve_host_url(url)
+                    host_setup["service_url"] = resolved_url
+                    self._send(render_admin_setup_page(csrf, resolved_url))
+                    return
+                elif mode == "bootstrap_admin":
+                    service_url = host_setup.get("service_url", "")
+                    if not service_url:
+                        raise ValueError("主机配置状态已失效，请返回第一步重新配置")
+                    bootstrap_first_admin(
+                        service_url,
+                        username=value("username"),
+                        display_name=value("display_name"),
+                        password=value("password"),
+                    )
+                    self._redirect(service_url)
+                    threading.Thread(
+                        target=lambda: (time.sleep(1), shutdown.set()),
+                        daemon=True,
+                    ).start()
+                    return
                 elif mode == "client":
                     host_url, _health = resolve_host_url(value("host_url"))
                     device_name = value("device_name").strip()
@@ -944,10 +1045,20 @@ def run_wizard(open_browser: bool = True) -> int:
                 ).start()
             except (ValueError, OSError, urllib.error.HTTPError) as exc:
                 failed_mode = locals().get("mode", "")
-                self._send(
-                    render_page(csrf, error=str(exc), selected_mode=failed_mode),
-                    400,
-                )
+                if failed_mode == "bootstrap_admin" and host_setup.get("service_url"):
+                    self._send(
+                        render_admin_setup_page(
+                            csrf,
+                            host_setup["service_url"],
+                            error=str(exc),
+                        ),
+                        400,
+                    )
+                else:
+                    self._send(
+                        render_page(csrf, error=str(exc), selected_mode=failed_mode),
+                        400,
+                    )
             except Exception as exc:  # noqa: BLE001 - 本地 HTTP 边界必须返回完整诊断页。
                 diagnostic_id = _record_wizard_failure(exc)
                 self._send(
@@ -984,6 +1095,7 @@ def main() -> None:
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--manage-shared-roots", action="store_true")
     parser.add_argument("--action-uri", default="")
+    parser.add_argument("--initial-role", choices=("host", "client"), default="")
     args = parser.parse_args()
     if args.manage_shared_roots:
         action_token = ""
@@ -995,7 +1107,7 @@ def main() -> None:
             if not action_token or len(action_token) > 256:
                 raise SystemExit("本机共享操作令牌无效")
         raise SystemExit(run_shared_root_manager(not args.no_browser, action_token))
-    raise SystemExit(run_wizard(not args.no_browser))
+    raise SystemExit(run_wizard(not args.no_browser, args.initial_role))
 
 
 if __name__ == "__main__":
