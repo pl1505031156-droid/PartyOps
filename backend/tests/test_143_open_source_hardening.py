@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.config import Settings, get_settings
+from app.content_security import may_render_inline
 from app.backups import _safe_zip_members, verify_backup
 from app.intake import extract_path_content
 from app.model_packs import _manifest_signature_valid as model_signature_valid
@@ -117,3 +118,10 @@ def test_spreadsheet_cells_never_export_untrusted_formulas() -> None:
     ]
     assert protected[3:] == ["正常文字", 7]
     assert safe_spreadsheet_cell("-2+3") == "'-2+3"
+
+
+def test_active_xml_content_is_never_rendered_inline() -> None:
+    assert may_render_inline("image/png") is True
+    assert may_render_inline("application/pdf") is True
+    assert may_render_inline("image/svg+xml") is False
+    assert may_render_inline("text/html") is False

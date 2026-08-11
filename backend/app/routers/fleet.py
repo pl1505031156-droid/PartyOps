@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from ..audit import emit_event, write_audit
 from ..archive_service import can_contribute_category, category_for_record, index_archive_attachment
 from ..config import get_settings
+from ..content_security import may_render_inline
 from ..database import db_runtime, get_session
 from ..device_versions import (
     build_device_gate,
@@ -1722,10 +1723,11 @@ def download_transfer_content(
     transfer = _authorized_transfer(db, transfer_id, user)
     _require_current_transfer_source_access(db, transfer)
     path = _completed_inbox_path(transfer)
-    write_audit(db, user, "transfer.content_read", "transfer", transfer.id, {"inline": inline}, client_ip(request))
-    db.commit()
     media_type = mimetypes.guess_type(transfer.original_name)[0] or "application/octet-stream"
-    disposition = "inline" if inline else "attachment"
+    actual_inline = inline and may_render_inline(media_type)
+    write_audit(db, user, "transfer.content_read", "transfer", transfer.id, {"inline": actual_inline}, client_ip(request))
+    db.commit()
+    disposition = "inline" if actual_inline else "attachment"
     return FileResponse(
         path,
         media_type=media_type,

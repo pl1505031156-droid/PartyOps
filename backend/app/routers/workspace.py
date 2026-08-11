@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..audit import emit_event, write_audit
 from ..config import get_settings
+from ..content_security import may_render_inline
 from ..database import db_runtime, get_session
 from ..device_versions import request_device
 from ..enums import TransferStatus
@@ -930,12 +931,19 @@ def preview_workspace_file(
             extra={"copy_endpoint": f"/api/v1/workspace/files/{item.id}/copy-to-inbox"},
         )
     path = resolve_workspace_path(root, item.relative_path)
-    if item.mime_type.startswith("image/") or item.mime_type == "application/pdf":
+    if may_render_inline(item.mime_type):
         return FileResponse(
             path,
             media_type=item.mime_type,
             filename=Path(item.name).name,
             content_disposition_type="inline",
+        )
+    if item.mime_type in {"image/svg+xml", "image/svg"}:
+        return FileResponse(
+            path,
+            media_type="image/svg+xml",
+            filename=Path(item.name).name,
+            content_disposition_type="attachment",
         )
     text_value = item.extracted_text or item.ocr_text
     return PlainTextResponse(text_value or "该文件不在系统内读取正文，请使用主机默认程序打开。")
