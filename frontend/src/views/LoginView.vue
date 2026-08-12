@@ -90,7 +90,15 @@ async function submit() {
       });
       if (Object.keys(fieldErrors).length) await focusFirstError();
     }
-    Message.error(error instanceof Error ? error.message : "无法进入系统");
+    // 网络层失败（fetch 抛 TypeError / 连接被拒）单独给出可操作提示，
+    // 不展示浏览器底层的 “Failed to fetch” 或 “urlopen error” 原文。
+    const isConnectionFailure = error instanceof TypeError
+      || (error instanceof Error && /failed to fetch|networkerror|10061|积极拒绝/i.test(error.message));
+    Message.error(
+      isConnectionFailure
+        ? "无法连接到 PartyOps 主机服务。请确认主机服务已完全启动后再试，必要时稍等片刻重试。"
+        : (error instanceof Error ? error.message : "无法进入系统"),
+    );
   } finally {
     loading.value = false;
   }

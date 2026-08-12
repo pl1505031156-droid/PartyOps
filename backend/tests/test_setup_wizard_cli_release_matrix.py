@@ -99,6 +99,12 @@ def test_launch_host_windows_service_success_test_fallback_and_production_failur
     monkeypatch.setattr(setup_wizard, "load_host_environment", lambda _path: environment)
     monkeypatch.setattr(setup_wizard, "install_host_autostart", lambda _path: None)
     monkeypatch.setattr(setup_wizard, "_wait_and_install_ca", lambda _path: None)
+    # launch_host 现在会等待主机健康检查后再打开浏览器；测试环境没有真实服务，直接返回预期地址。
+    monkeypatch.setattr(
+        setup_wizard,
+        "wait_for_host_health",
+        lambda host, port, tls=False, timeout=90.0: f"http://{host}:{port}",
+    )
     monkeypatch.setattr(setup_wizard, "os", SimpleNamespace(name="nt", getenv=lambda key, default=None: "test" if key == "PARTYOPS_ENVIRONMENT" else default))
     monkeypatch.setattr(
         setup_wizard.subprocess,

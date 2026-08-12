@@ -20,7 +20,9 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 SetupLogging=yes
-UninstallDisplayIcon={app}\PartyOpsLauncher.exe
+; 安装器自身与卸载项使用 PartyOps 品牌图标（来自打包目录 partyops.ico）
+SetupIconFile={#BuildRoot}\partyops.ico
+UninstallDisplayIcon={app}\partyops.ico
 
 [Dirs]
 ; 主机数据库、备份、证书与信任公钥只能由服务账户和管理员修改。
@@ -32,9 +34,9 @@ Name: "{localappdata}\PartyOps"; Permissions: users-modify
 Source: "{#BuildRoot}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\党建智办"; Filename: "{app}\PartyOpsLauncher.exe"
-Name: "{group}\管理本机共享文件夹"; Filename: "{app}\PartyOpsWizard.exe"; Parameters: "--manage-shared-roots"
-Name: "{commondesktop}\党建智办"; Filename: "{app}\PartyOpsLauncher.exe"
+Name: "{group}\党建智办"; Filename: "{app}\PartyOpsLauncher.exe"; IconFilename: "{app}\partyops.ico"
+Name: "{group}\管理本机共享文件夹"; Filename: "{app}\PartyOpsWizard.exe"; Parameters: "--manage-shared-roots"; IconFilename: "{app}\partyops.ico"
+Name: "{commondesktop}\党建智办"; Filename: "{app}\PartyOpsLauncher.exe"; IconFilename: "{app}\partyops.ico"
 
 [Registry]
 Root: HKCR; Subkey: "partyops-file"; ValueType: string; ValueName: ""; ValueData: "URL:PartyOps File Protocol"; Flags: uninsdeletekey

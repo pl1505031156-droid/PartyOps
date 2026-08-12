@@ -9,7 +9,11 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from app.setup_wizard import clear_windows_client_autostart, load_host_environment
+from app.setup_wizard import (
+    clear_windows_client_autostart,
+    load_host_environment,
+    wait_for_host_health,
+)
 
 
 def detached(command: list[str]) -> None:
@@ -49,8 +53,17 @@ def main() -> int:
             return 0
         subprocess.run(["sc.exe", "start", "PartyOpsHost"], check=False, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
         values = load_host_environment(config)
-        scheme = "https" if values.get("PARTYOPS_TLS_ENABLED", "").lower() == "true" else "http"
-        webbrowser.open(f"{scheme}://{values.get('PARTYOPS_HOST', '127.0.0.1')}:{values.get('PARTYOPS_PORT', '18765')}")
+        host = values.get("PARTYOPS_HOST", "127.0.0.1")
+        port = int(values.get("PARTYOPS_PORT", "18765"))
+        tls = values.get("PARTYOPS_TLS_ENABLED", "").lower() == "true"
+        # 服务冷启动需要数十秒；先等服务健康再打开浏览器，
+        # 避免首次配置提交时出现“目标计算机积极拒绝”（WinError 10061）。
+        try:
+            url = wait_for_host_health(host, port, tls=tls)
+        except ConnectionError:
+            scheme = "https" if tls else "http"
+            url = f"{scheme}://{host}:{port}"
+        webbrowser.open(url)
         return 0
     detached([str(runtime / "PartyOpsWizard.exe")])
     return 0

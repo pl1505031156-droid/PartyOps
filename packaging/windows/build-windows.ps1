@@ -44,15 +44,37 @@ foreach ($runtimeFile in @("llama-server.exe", "llama-server-impl.dll", "llama-c
 
 Push-Location (Join-Path $repoRoot "frontend")
 try {
-  corepack pnpm install --frozen-lockfile
-  Assert-NativeSuccess "前端依赖安装"
-  corepack pnpm run typecheck
-  Assert-NativeSuccess "前端类型检查"
-  corepack pnpm run build
-  Assert-NativeSuccess "前端生产构建"
+  # 使用系统 pnpm（corepack 在当前构建环境不可用）。
+  # 依赖已完整存在时跳过 install，避免在受控环境中触发多余的网络与清理操作。
+  $pnpm = Get-Command pnpm -ErrorAction SilentlyContinue
+  if (-not $pnpm) { throw "未找到 pnpm，无法构建前端。请先安装 pnpm 或启用 corepack。" }
+  $viteBin = Join-Path (Join-Path $repoRoot "frontend") "node_modules\.bin\vite.cmd"
+  # pnpm.ps1 shim 会把子进程 stderr 写入错误流，在 $ErrorActionPreference=Stop
+  # 下被当作 NativeCommandError 抛出，导致构建误判失败；这里临时放行并
+  # 只以 $LASTEXITCODE 判定结果。
+  $previousEap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    if (-not (Test-Path -LiteralPath $viteBin)) {
+      & pnpm install --frozen-lockfile
+      Assert-NativeSuccess "前端依赖安装"
+    }
+    & pnpm run typecheck
+    Assert-NativeSuccess "前端类型检查"
+    & pnpm run build
+    Assert-NativeSuccess "前端生产构建"
+  } finally {
+    $ErrorActionPreference = $previousEap
+  }
 } finally { Pop-Location }
 
-& $Python -m pip install -r (Join-Path $repoRoot "backend\requirements.txt") -r (Join-Path $repoRoot "backend\requirements-local-ai.txt") -r (Join-Path $PSScriptRoot "requirements-build.txt")
+$previousEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+  & $Python -m pip install -r (Join-Path $repoRoot "backend\requirements.txt") -r (Join-Path $repoRoot "backend\requirements-local-ai.txt") -r (Join-Path $PSScriptRoot "requirements-build.txt")
+} finally {
+  $ErrorActionPreference = $previousEap
+}
 Assert-NativeSuccess "Windows Python 构建依赖安装"
 $sqliteVersion = & $Python -c "import sqlite3; print(sqlite3.sqlite_version)"
 Assert-NativeSuccess "开发运行时 SQLite 版本读取"
@@ -72,11 +94,19 @@ $entries = @(
   @{ Name = "PartyOpsUpdaterService"; Script = "packaging\windows\windows_updater_service.py" }
 )
 
+# 统一的 PartyOps 品牌图标：嵌入所有可执行文件，桌面/开始菜单/资源管理器
+# 均显示自定义图标，而不是 PyInstaller 默认图标。
+$brandIcon = Join-Path $PSScriptRoot "partyops.ico"
+if (-not (Test-Path -LiteralPath $brandIcon)) {
+  throw "缺少品牌图标 partyops.ico，无法为可执行文件嵌入自定义图标。"
+}
+
 foreach ($entry in $entries) {
   $arguments = @(
     "-m", "PyInstaller", "--noconfirm", "--clean",
     $(if ($entry.Mode -eq "onedir") { "--onedir" } else { "--onefile" }),
     "--name", $entry.Name,
+    "--icon", $brandIcon,
     "--paths", (Join-Path $repoRoot "backend"),
     "--distpath", $buildRoot,
     "--workpath", (Join-Path $repoRoot ".build-windows\work"),
@@ -97,7 +127,15 @@ foreach ($entry in $entries) {
   )) { $arguments += @("--hidden-import", $module) }
   $arguments += @("--add-binary", "$SqliteDll;.")
   $arguments += (Join-Path $repoRoot $entry.Script)
-  & $Python @arguments
+  # PyInstaller 会把进度/警告写入 stderr，在 $ErrorActionPreference=Stop 下
+  # 会被当作 NativeCommandError 抛出；临时放行并仅以 $LASTEXITCODE 判定。
+  $previousEap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $Python @arguments
+  } finally {
+    $ErrorActionPreference = $previousEap
+  }
   Assert-NativeSuccess "$($entry.Name) 冻结构建"
 }
 
@@ -119,6 +157,7 @@ if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $internalRoot "sqlit
   throw "冻结运行时中的 SQLite DLL 与经校验输入不一致。"
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\uos\update-public-key.txt") -Destination $bundleRoot -Force
+Copy-Item -LiteralPath $brandIcon -Destination (Join-Path $bundleRoot "partyops.ico") -Force
 foreach ($notice in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
   $noticePath = Join-Path $repoRoot $notice
   if (-not (Test-Path -LiteralPath $noticePath)) { throw "发布包缺少开源声明文件：$notice" }
@@ -131,7 +170,13 @@ Assert-NativeSuccess "llama.cpp Windows 运行时验证"
 if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw "未找到 Inno Setup 6：$InnoCompiler" }
 $env:PARTYOPS_WINDOWS_BUILD_ROOT = $bundleRoot
 $env:PARTYOPS_WINDOWS_OUTPUT_ROOT = $outputRoot
-& $InnoCompiler (Join-Path $PSScriptRoot "PartyOps.iss")
+$previousEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+  & $InnoCompiler (Join-Path $PSScriptRoot "PartyOps.iss")
+} finally {
+  $ErrorActionPreference = $previousEap
+}
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
 $installer = Join-Path $outputRoot "PartyOps_1.4.3_windows_amd64.exe"

@@ -88,6 +88,45 @@ def validate_host_config_selection(host: str, port: int) -> None:
         raise ValueError("主机端口必须在 1024—65534 之间，下一端口用于 Agent 安全通道")
 
 
+def _validate_windows_data_dir(data_dir: Path) -> Path:
+    """Windows 正式模式：允许用户自定义数据目录，但拒绝系统关键目录。
+
+    数据目录承载业务数据库、备份与证书。Windows 主机服务以 SYSTEM 运行，
+    只要不是系统关键目录即可；推荐放在数据盘（如 D:\\PartyOps-数据）。
+    """
+    if not str(data_dir).strip():
+        return Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
+    resolved = data_dir.expanduser().resolve()
+    root = Path(resolved.anchor)
+    if resolved == root:
+        raise ValueError(
+            "数据目录不能是磁盘根目录，请选择具体文件夹，例如 D:\\PartyOps-数据"
+        )
+    system_markers = []
+    for env_name, fallback in (
+        ("WINDIR", r"C:\Windows"),
+        ("ProgramFiles", r"C:\Program Files"),
+        ("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+    ):
+        raw = os.getenv(env_name) or fallback
+        try:
+            system_markers.append(Path(raw).resolve())
+        except OSError:
+            continue
+    for marker in system_markers:
+        if resolved == marker or marker in resolved.parents:
+            raise ValueError(
+                "数据目录不能放在系统目录中，请选择普通数据盘目录，例如 D:\\PartyOps-数据"
+            )
+    try:
+        resolved.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ValueError(
+            f"无法创建数据目录 {resolved}，请检查权限或换一个位置。"
+        ) from exc
+    return resolved
+
+
 def write_host_config(
     host: str,
     port: int,
@@ -97,11 +136,12 @@ def write_host_config(
 ) -> Path:
     validate_host_config_selection(host, port)
     windows_system_mode = os.name == "nt" and os.getenv("PARTYOPS_ENVIRONMENT") != "test"
-    resolved_data_dir = (
-        Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
-        if windows_system_mode
-        else data_dir.expanduser().resolve()
-    )
+    if windows_system_mode:
+        # Windows 正式安装：允许用户自定义数据目录（默认 ProgramData\PartyOps），
+        # 不再强制固定到系统盘。
+        resolved_data_dir = _validate_windows_data_dir(data_dir)
+    else:
+        resolved_data_dir = data_dir.expanduser().resolve()
     values = {
         "PARTYOPS_MODE": "host",
         "PARTYOPS_ENVIRONMENT": "production",
@@ -412,10 +452,61 @@ def _wait_and_install_ca(ca_path: Path) -> None:
         time.sleep(0.5)
 
 
+def wait_for_host_health(
+    host: str,
+    port: int,
+    tls: bool = False,
+    timeout: float = 90.0,
+) -> str:
+    """轮询主机服务健康检查，就绪后返回服务 URL。
+
+    主进程冷启动（冻结运行时解包 + 数据库迁移 + 证书生成 + 绑定端口）
+    在 Windows 上通常需要 20–60 秒。此前向导/启动器在拉起服务后立刻
+    打开浏览器，用户提交首次配置时服务尚未监听，出现
+    “urlopen error [WinError 10061] 由于目标计算机积极拒绝”的错误。
+    这里在打开浏览器前等待 /api/v1/health 返回 ok，杜绝该竞态。
+    """
+    scheme = "https" if tls else "http"
+    url = f"{scheme}://{host}:{port}"
+    deadline = time.monotonic() + max(5.0, timeout)
+    context = ssl._create_unverified_context() if tls else None
+    last_error: BaseException | None = None
+    while time.monotonic() < deadline:
+        try:
+            request = urllib.request.Request(f"{url}/api/v1/health")
+            with urllib.request.urlopen(
+                request,
+                timeout=3,
+                context=context,
+            ) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if isinstance(payload, dict) and payload.get("status") == "ok":
+                return url
+            last_error = ValueError("健康检查返回内容无效")
+        except (
+            http.client.RemoteDisconnected,
+            ConnectionResetError,
+            ssl.SSLError,
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
+            last_error = exc
+        time.sleep(1.5)
+    raise ConnectionError(
+        f"主机服务在 {timeout:.0f} 秒内未能就绪（{url}）。"
+        "请确认 PartyOps 主机服务已启动；也可以稍后手动打开该地址完成首次配置。"
+    ) from last_error
+
+
 def launch_host(config_path: Path) -> str:
     env = load_host_environment(config_path)
     host = env["PARTYOPS_HOST"]
     port = int(env["PARTYOPS_PORT"])
+    tls = env.get("PARTYOPS_TLS_ENABLED", "").lower() == "true"
     install_host_autostart(config_path)
     if os.name == "nt":
         started = subprocess.run(
@@ -441,10 +532,12 @@ def launch_host(config_path: Path) -> str:
             Path(env["PARTYOPS_DATA_DIR"]) / "launcher.log",
             env,
         )
+    # 先等服务就绪，再打开浏览器：消除首次配置提交时的 10061 连接竞态。
+    url = wait_for_host_health(host, port, tls=tls)
     # 证书由主机进程首次启动时生成；在打开浏览器前完成一次图形授权，
     # 避免用户首先看到“不受信任证书”警告。
     _wait_and_install_ca(Path(env["PARTYOPS_DATA_DIR"]) / "secrets" / "pki" / "ca.pem")
-    return f"http://{host}:{port}"
+    return url
 
 
 def install_host_autostart(config_path: Path) -> Path | None:
@@ -813,6 +906,7 @@ section{{padding:28px 38px}}.role-title{{margin:0 0 5px;font:600 22px SimSun,ser
 .checklist{{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 20px;padding:0;list-style:none}}.checklist li{{padding:10px 12px;color:#625c55;background:#f4ede3;border-left:2px solid #b42318;font-size:12px}}
 .form-grid{{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}}label{{display:block;margin:14px 0 0}}label.full{{grid-column:1/-1}}label span{{display:block;margin-bottom:6px;font-size:12px;font-weight:600}}label small{{display:block;margin-top:5px;color:#857c72}}
 input,select{{width:100%;height:44px;padding:0 12px;border:1px solid #cfc3b6;background:#fffdf8}}input:focus,select:focus{{outline:2px solid #b4231830;border-color:#b42318}}button.primary{{width:100%;height:48px;margin-top:22px;color:white;background:#b42318;border:0;font-weight:600;cursor:pointer}}button[disabled]{{cursor:not-allowed;opacity:.45}}
+.dir-row{{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}}button.browse{{height:44px;padding:0 18px;color:#8f1f17;background:#fff8f5;border:1px solid #b42318;cursor:pointer}}
 .test-row{{display:grid;grid-template-columns:1fr 1.2fr;gap:10px;align-items:end;grid-column:1/-1}}.test-button{{height:44px;margin:14px 0 0;color:#8f1f17;background:#fff8f5;border:1px solid #b42318;cursor:pointer}}.test-result{{min-height:44px;margin-top:14px;padding:10px 12px;color:#776f66;background:#f4ede3}}.test-result.ok{{color:#27613d;background:#eaf3ea}}.test-result.error{{color:#8f1f17;background:#f8e9e6}}
 .inline-warning{{margin:12px 0;padding:10px 12px;color:#7a291f;background:#f8e9e6;border-left:3px solid #b42318}}
 .notice{{margin:20px 38px 0;padding:12px 15px;border-left:3px solid}}.ok{{background:#eef4ed;border-color:#39724d}}.error{{background:#f8e9e7;border-color:#b42318}}
@@ -829,7 +923,7 @@ footer{{padding:18px 38px;color:#776f66;background:#f1e9de;border-top:1px solid 
 <form method="post"><input type="hidden" name="csrf" value="{csrf}"><input type="hidden" name="mode" value="host"><div class="form-grid">
 <label><span>主机局域网地址</span><select id="host-bind" name="host">{options}</select><small>协同电脑必须能访问该地址；真实办公网地址已优先显示。</small></label>
 <label><span>服务端口</span><input name="port" value="18765" inputmode="numeric"><small>通常保持 18765；相邻端口 18766 用于安全设备通道。</small></label>
-<label class="full"><span>数据与备份目录</span><input name="data_dir" value="{host_data_dir}" {'readonly' if os.name == 'nt' else ''}><small>Windows 正式安装固定保存到受保护的 ProgramData，避免普通用户误删。</small></label></div>
+<label class="full"><span>数据与备份目录</span><div class="dir-row"><input id="data-dir" name="data_dir" value="{host_data_dir}" placeholder="例如 D:\PartyOps-数据"><button id="browse-data-dir" class="browse" type="button">浏览…</button></div><small>业务数据库、备份与证书保存在这里。建议填数据盘目录（如 D:\PartyOps-数据）避免占用系统盘；留空使用默认位置。</small></label></div>
 <div id="loopback-warning" class="inline-warning" hidden>当前选择只能在这台电脑本机使用，其他电脑无法加入协同。若要协同，请连接办公网络并选择真实局域网地址。</div>
 <button id="host-submit" class="primary">确认配置并启动主机</button></form></section>
 <section id="client-panel" class="setup-panel" data-mode-panel="client" hidden><div class="panel-head"><div><h2>加入已有主机</h2><p>先验证主机能访问，再提交一次性入网码；测试不会消耗入网码。</p></div><button type="button" class="back">返回重选角色</button></div>
@@ -857,6 +951,8 @@ const clientHost=document.getElementById('client-host-url');const testButton=doc
 let verifiedHost='';clientHost.addEventListener('input',()=>{{if(clientHost.value.trim()!==verifiedHost){{clientSubmit.disabled=true;clientSubmit.textContent='请先通过主机连接测试';testResult.className='test-result';testResult.textContent='地址已变化，请重新测试主机连接。'}}}});
 testButton.addEventListener('click',async()=>{{const host=clientHost.value.trim();if(!host){{testResult.className='test-result error';testResult.textContent='请先填写主机地址。';return}}testButton.disabled=true;testResult.className='test-result';testResult.textContent='正在检查主机、端口和协议……';try{{const body=new URLSearchParams({{csrf:{json.dumps(csrf)},mode:'check_client',host_url:host}});const response=await fetch(location.href,{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body}});const result=await response.json();if(!response.ok)throw new Error(result.error||'连接失败');verifiedHost=result.host_url;clientHost.value=result.host_url;clientSubmit.disabled=false;clientSubmit.textContent='连接已验证，安全入网并启动协同机';testResult.className='test-result ok';testResult.textContent=`连接成功：PartyOps ${{result.app_version||''}} 主机正常，可以继续入网。`}}catch(error){{verifiedHost='';clientSubmit.disabled=true;clientSubmit.textContent='请先通过主机连接测试';testResult.className='test-result error';testResult.textContent=error instanceof Error?error.message:'无法连接主机'}}finally{{testButton.disabled=false}}}});
 document.querySelectorAll('form').forEach(form=>form.addEventListener('submit',()=>setProgress(2)));
+const browseButton=document.getElementById('browse-data-dir');const dataDirInput=document.getElementById('data-dir');
+if(browseButton&&dataDirInput){{browseButton.addEventListener('click',async()=>{{browseButton.disabled=true;browseButton.textContent='选择中…';try{{const body=new URLSearchParams({{csrf:{json.dumps(csrf)},mode:'browse_data_dir'}});const response=await fetch(location.href,{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body}});const result=await response.json();if(!response.ok)throw new Error(result.error||'选择失败');if(result.path)dataDirInput.value=result.path;}}catch(error){{}}finally{{browseButton.disabled=false;browseButton.textContent='浏览…'}}}})}};
 if(initialMode)selectRole(initialMode);
 </script></body></html>"""
 
@@ -1077,6 +1173,12 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                             "mode": health.get("mode", ""),
                         }
                     )
+                    return
+                if mode == "browse_data_dir":
+                    # 前端“浏览…”按钮：由向导进程调用系统目录选择器并回填，
+                    # 浏览器本身拿不到本地绝对路径。
+                    selected = _choose_system_folder()
+                    self._send_json({"path": str(selected) if selected else ""})
                     return
                 if mode == "host":
                     path = configure_host_config(
