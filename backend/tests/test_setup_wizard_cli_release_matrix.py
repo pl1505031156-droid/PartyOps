@@ -105,32 +105,106 @@ def test_launch_host_windows_service_success_test_fallback_and_production_failur
         "wait_for_host_health",
         lambda host, port, tls=False, timeout=90.0: f"http://{host}:{port}",
     )
-    monkeypatch.setattr(setup_wizard, "os", SimpleNamespace(name="nt", getenv=lambda key, default=None: "test" if key == "PARTYOPS_ENVIRONMENT" else default))
     monkeypatch.setattr(
-        setup_wizard.subprocess,
-        "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""),
+        setup_wizard,
+        "os",
+        SimpleNamespace(name="nt", getenv=lambda key, default=None: "test" if key == "PARTYOPS_ENVIRONMENT" else default),
     )
-    assert setup_wizard.launch_host(config) == "http://127.0.0.1:18765"
-
+    # test 环境：launch_host 不再调用 sc.exe，而是直接 spawn 用户进程。
     spawned: list[list[str]] = []
-    monkeypatch.setattr(
-        setup_wizard.subprocess,
-        "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 1, "", ""),
-    )
     monkeypatch.setattr(setup_wizard, "_executable", lambda _name: tmp_path / "partyops.exe")
     monkeypatch.setattr(setup_wizard, "_spawn", lambda command, *_args: spawned.append(command))
-    assert setup_wizard.launch_host(config).endswith(":18765")
+    assert setup_wizard.launch_host(config) == "http://127.0.0.1:18765"
     assert spawned
 
+    # production 环境：服务已存在并启动成功。
+    spawned.clear()
     monkeypatch.setattr(
         setup_wizard,
         "os",
         SimpleNamespace(name="nt", getenv=lambda key, default=None: "production" if key == "PARTYOPS_ENVIRONMENT" else default),
     )
-    with pytest.raises(ValueError, match="主机服务未能启动"):
+    monkeypatch.setattr(setup_wizard, "_start_windows_host_service", lambda timeout=60.0: None)
+    assert setup_wizard.launch_host(config) == "http://127.0.0.1:18765"
+
+    # production 环境：服务未安装 → 给出明确诊断。
+    monkeypatch.setattr(
+        setup_wizard,
+        "_start_windows_host_service",
+        lambda timeout=60.0: (_ for _ in ()).throw(
+            ValueError("未检测到“党建智办 PartyOps 主机服务”。请重新运行安装器完成服务安装")
+        ),
+    )
+    with pytest.raises(ValueError, match="主机服务"):
         setup_wizard.launch_host(config)
+
+
+def test_start_windows_host_service_missing_stopped_and_retry(monkeypatch) -> None:
+    """服务缺失直接报错；已停止则重试启动并容忍冷启动慢；诊断信息包含 sc 输出。"""
+
+    _original_monotonic = setup_wizard.time.monotonic
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        text = kwargs.get("text", False)
+        if "query" in command[2]:
+            # 前三次 query 返回“已停止”，之后返回“正在运行”。
+            query_count = sum(1 for c in calls if "query" in c[2])
+            if query_count <= 3:
+                return subprocess.CompletedProcess(
+                    command, 0, "STATE: 4  STOPPED\n服务已停止" if not text else "STATE: 4  STOPPED",
+                    "",
+                )
+            return subprocess.CompletedProcess(
+                command, 0, "STATE: 4  RUNNING\n服务正在运行" if not text else "STATE: 4  RUNNING",
+                "",
+            )
+        if "start" in command[2]:
+            start_count = sum(1 for c in calls if "start" in c[2])
+            # 前两次 start 失败（模拟冷启动慢），第三次成功。
+            if start_count <= 2:
+                return subprocess.CompletedProcess(
+                    command, 1053, "服务未及时响应" if not text else "服务未及时响应", "stderr",
+                )
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(setup_wizard.subprocess, "run", fake_run)
+    monkeypatch.setattr(setup_wizard.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(setup_wizard.time, "sleep", lambda _seconds: None)
+    # 服务存在且启动成功：不抛错。
+    setup_wizard._start_windows_host_service(timeout=30.0)
+    def missing_run(command, **kwargs):
+        text = kwargs.get("text", False)
+        return subprocess.CompletedProcess(
+            command, 1060, "The specified service does not exist" if not text else "指定的服务未安装", "",
+        )
+
+    monkeypatch.setattr(setup_wizard.subprocess, "run", missing_run)
+    with pytest.raises(ValueError, match="未检测到"):
+        setup_wizard._start_windows_host_service(timeout=5.0)
+
+    # 服务一直启动失败：最终给出包含诊断信息的报错。
+    calls.clear()
+    # 恢复真实单调时钟，避免 while 循环因恒定时钟而无限循环。
+    monkeypatch.setattr(setup_wizard.time, "monotonic", _original_monotonic)
+    monkeypatch.setattr(setup_wizard.time, "sleep", lambda _seconds: None)
+
+    def failing_run(command, **kwargs):
+        calls.append(command)
+        text = kwargs.get("text", False)
+        if "query" in command[2]:
+            return subprocess.CompletedProcess(
+                command, 0, "STATE: 4  STOPPED" if not text else "STATE: 4  STOPPED", "",
+            )
+        return subprocess.CompletedProcess(
+            command, 1053, "服务未及时响应" if not text else "服务未及时响应", "stderr",
+        )
+
+    monkeypatch.setattr(setup_wizard.subprocess, "run", failing_run)
+    with pytest.raises(ValueError, match="诊断信息"):
+        setup_wizard._start_windows_host_service(timeout=5.0)
 
 
 def _run_main(monkeypatch, argv: list[str]) -> SystemExit:

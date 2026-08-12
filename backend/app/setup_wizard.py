@@ -502,6 +502,79 @@ def wait_for_host_health(
     ) from last_error
 
 
+def _start_windows_host_service(timeout: float = 60.0) -> None:
+    """启动 Windows 主机服务，带存在性检查、状态诊断与重试。
+
+    首次配置的常见失败原因：
+    - 安装器刚注册完服务，SCM 尚未完全就绪，sc start 返回失败；
+    - 冻结运行时（PyInstaller onedir）冷启动较慢，sc start 在 30 秒
+      内返回 1053（服务未及时响应）；
+    - 服务已被手动停止或处于异常状态。
+    这里先查询服务是否安装，再按状态重试启动，最后给出可操作诊断，
+    避免直接抛出笼统的“主机服务未能启动”。
+    """
+
+    def _query() -> str:
+        result = subprocess.run(
+            ["sc.exe", "query", "PartyOpsHost"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        output = (result.stdout + result.stderr).lower()
+        if "service does not exist" in output or "指定的服务未安装" in output:
+            return "missing"
+        if "stopped" in output or "已停止" in output:
+            return "stopped"
+        if "running" in output or "正在运行" in output:
+            return "running"
+        if "start_pending" in output or "启动" in output:
+            return "pending"
+        return "unknown"
+
+    state = _query()
+    if state == "running":
+        return
+    if state == "missing":
+        raise ValueError(
+            "未检测到“党建智办 PartyOps 主机服务”。请重新运行安装器完成服务安装，"
+            "或在 Windows 服务（Win+R 输入 services.msc）中确认服务存在后重试。"
+        )
+    # 已安装但未运行：重试启动，容忍冷启动慢/SCM 未就绪。
+    last_error: str | None = None
+    deadline = time.monotonic() + max(5.0, timeout)
+    attempt = 0
+    while time.monotonic() < deadline:
+        attempt += 1
+        result = subprocess.run(
+            ["sc.exe", "start", "PartyOpsHost"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if result.returncode == 0:
+            return
+        last_error = (result.stdout + result.stderr).strip() or f"退出码 {result.returncode}"
+        current = _query()
+        if current == "running":
+            return
+        if current == "missing":
+            raise ValueError(
+                "未检测到“党建智办 PartyOps 主机服务”。请重新运行安装器完成服务安装，"
+                "或在 Windows 服务（Win+R 输入 services.msc）中确认服务存在后重试。"
+            )
+        time.sleep(3.0)
+    raise ValueError(
+        "PartyOps 主机服务启动失败。请打开 Windows 服务（Win+R 输入 services.msc），"
+        "找到“党建智办 PartyOps 主机服务”，确认其状态与启动类型后手动启动，"
+        "再重新打开配置向导。\n诊断信息：" + (last_error or "未知")
+    )
+
+
 def launch_host(config_path: Path) -> str:
     env = load_host_environment(config_path)
     host = env["PARTYOPS_HOST"]
@@ -509,23 +582,14 @@ def launch_host(config_path: Path) -> str:
     tls = env.get("PARTYOPS_TLS_ENABLED", "").lower() == "true"
     install_host_autostart(config_path)
     if os.name == "nt":
-        started = subprocess.run(
-            ["sc.exe", "start", "PartyOpsHost"],
-            check=False,
-            capture_output=True,
-            timeout=30,
-        ).returncode == 0
-        if not started:
-            if os.getenv("PARTYOPS_ENVIRONMENT") != "test":
-                raise ValueError(
-                    "PartyOps 主机服务未能启动。请在 Windows 服务中确认“党建智办 PartyOps 主机服务”已安装，"
-                    "然后重新打开配置向导；系统不会降级为权限不足的用户进程。"
-                )
+        if os.getenv("PARTYOPS_ENVIRONMENT") == "test":
             _spawn(
                 [str(_executable("partyops"))],
                 Path(env["PARTYOPS_DATA_DIR"]) / "launcher.log",
                 env,
             )
+        else:
+            _start_windows_host_service()
     else:
         _spawn(
             [str(_executable("partyops"))],
