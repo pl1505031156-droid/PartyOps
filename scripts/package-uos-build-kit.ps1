@@ -174,7 +174,7 @@ $capabilityLines = @(
   "党建智办 PartyOps UOS 原生构建套件能力说明",
   "版本：$releaseVersion",
   "标签：$releaseTag",
-  "生成时间：$([DateTimeOffset]::Now.ToString('yyyy-MM-dd HH:mm:ss zzz'))",
+  "发布基线日期：2026-08-13（内容采用可复现构建，不嵌入构建机当前时间）",
   "",
   "已包含：",
   "- PartyOps 1.4.3 后端源码、前端生产构建、UOS/Windows 安装与统一升级脚本。",
