@@ -153,6 +153,8 @@ flowchart LR
 
 UOS ZIP 是供 UOS V20 amd64/arm64 目标机原生构建的离线套件，不是可直接安装的 DEB。1.4.3 稳定正式版的目标制品为：
 
+UOS 用户也只需下载一个 ZIP。解压后运行 `bash install.sh`，安装器会用 ZIP 内置 `BUILD-KIT-SHA256SUMS` 自动核验全部构建输入，随后校验生成的 DEB，并在安装后核验版本、架构、桌面入口和更新服务；无需另下外部校验包。
+
 - `PartyOps_1.4.3-rc.2_windows_amd64.exe`
 - `partyops_1.4.3_amd64.deb`
 - `partyops_1.4.3_arm64.deb`
@@ -209,11 +211,12 @@ dpkg --print-architecture
 海光、兆芯、Intel、AMD 通常使用 `amd64`；飞腾等 ARM 机器使用 `arm64`。当前候选 Release 只提供原生构建套件，须在对应 UOS 目标机解压并构建：
 
 ```bash
-sha256sum PartyOps-UOS-1.4.3-rc.2-build-kit.zip
 unzip PartyOps-UOS-1.4.3-rc.2-build-kit.zip
 cd PartyOps-1.4.3-rc.2
-sudo bash packaging/uos/build-and-install.sh
+bash install.sh
 ```
+
+`install.sh` 会先校验 ZIP 内置的整套文件清单，再按本机架构构建和校验 DEB、执行安装，并自动核验版本、架构、桌面入口与系统更新服务。官网会直接显示 ZIP 的外层 SHA-256，普通用户无需再下载第二个校验文件。
 
 正式 Release 形成 DEB 后，可直接安装对应包：
 

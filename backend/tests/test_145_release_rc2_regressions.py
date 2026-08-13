@@ -186,3 +186,20 @@ def test_uos_build_kit_normalizes_archive_metadata() -> None:
     assert "[DateTimeOffset]::Now" not in script
     assert '"发布基线日期：2026-08-13（内容采用可复现构建，不嵌入构建机当前时间）"' in script
     assert "$entry.LastWriteTime = [DateTimeOffset]$normalizedTime" in script
+
+
+def test_uos_single_zip_verifies_all_inputs_before_install() -> None:
+    """UOS 普通用户只下载一个 ZIP，安装入口自动完成前后两段验证。"""
+
+    root = Path(__file__).resolve().parents[2]
+    package_script = (root / "scripts" / "package-uos-build-kit.ps1").read_text(
+        encoding="utf-8"
+    )
+    installer = (root / "packaging" / "uos" / "one-click-install.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'Join-Path $staging "BUILD-KIT-SHA256SUMS"' in package_script
+    assert 'sha256sum -c "BUILD-KIT-SHA256SUMS"' in installer
+    assert 'run_stage "0/5 自动校验 ZIP 内全部安装输入" verify_build_kit' in installer
+    assert 'run_stage "核验安装、应用入口和系统内更新助手" verify_installed_package' in installer

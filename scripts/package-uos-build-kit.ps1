@@ -237,6 +237,25 @@ Get-ChildItem -LiteralPath $staging -File -Recurse |
     [System.IO.File]::WriteAllText($_.FullName, $linuxContent, $utf8WithoutBom)
   }
 
+# 普通用户只下载一个 ZIP。把整个套件的清单放进 ZIP，install.sh 会在构建、
+# 安装和安装后验收前自动核验全部输入；外部 .sha256 仅用于下载线路自动化。
+$buildKitManifest = Join-Path $staging "BUILD-KIT-SHA256SUMS"
+$buildKitManifestLines = @(
+  Get-ChildItem -LiteralPath $staging -File -Recurse -Force |
+    Where-Object { $_.FullName -ne $buildKitManifest } |
+    Sort-Object FullName |
+    ForEach-Object {
+      $relative = $_.FullName.Substring($staging.Length).TrimStart("\", "/").Replace("\", "/")
+      $fileHash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+      "$fileHash  $relative"
+    }
+)
+[System.IO.File]::WriteAllText(
+  $buildKitManifest,
+  (($buildKitManifestLines -join "`n") + "`n"),
+  $utf8WithoutBom
+)
+
 if (Test-Path -LiteralPath $archive) {
   Remove-Item -LiteralPath $archive -Force
 }

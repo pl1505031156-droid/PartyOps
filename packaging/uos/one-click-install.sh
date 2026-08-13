@@ -86,6 +86,19 @@ run_stage() {
   echo "---- $CURRENT_STAGE ----"
   "$@"
 }
+verify_build_kit() {
+  local manifest="$ROOT/BUILD-KIT-SHA256SUMS"
+  [[ -f "$manifest" ]] || {
+    echo "缺少 ZIP 内置完整性清单：$manifest" >&2
+    echo "请重新下载完整的 PartyOps UOS 单文件 ZIP，勿从旧目录覆盖解压。" >&2
+    return 2
+  }
+  command -v sha256sum >/dev/null 2>&1 || {
+    echo "系统缺少 sha256sum，无法在安装前自动验证单文件套件。" >&2
+    return 2
+  }
+  (cd "$ROOT" && sha256sum -c "BUILD-KIT-SHA256SUMS")
+}
 verify_artifacts() {
   (cd "$ARTIFACTS" && sha256sum -c "SHA256SUMS.$ARCH")
 }
@@ -168,6 +181,7 @@ trap report_failure ERR
 echo "========================================"
 echo "  党建智办（PartyOps）一键安装"
 echo "========================================"
+run_stage "0/5 自动校验 ZIP 内全部安装输入" verify_build_kit
 ARCH="$(dpkg --print-architecture 2>/dev/null || true)"
 if [[ -z "$ARCH" ]]; then
   case "$(uname -m)" in
