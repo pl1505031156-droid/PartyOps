@@ -1,5 +1,6 @@
 param(
-  [string]$InnoCompiler = ""
+  [string]$InnoCompiler = "",
+  [string]$Python = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,6 +16,17 @@ $expectedSqliteVersion = "3.53.4"
 $expectedSqliteSha256 = "AB57D0437795ECC757CB693F32EA224173FA9856594D95CFA6B5033E645CD1EC"
 $localAiRoot = Join-Path $repoRoot "vendor\windows\local-ai\llama-b10331"
 
+if (-not $Python) {
+  $Python = if ($env:PARTYOPS_PYTHON) {
+    $env:PARTYOPS_PYTHON
+  } else {
+    Join-Path $repoRoot ".venv\Scripts\python.exe"
+  }
+}
+if (-not (Test-Path -LiteralPath $Python)) {
+  throw "未找到用于生成发布清单的 Python：$Python"
+}
+
 if ([System.IO.Path]::GetFullPath($bundleRoot) -ne $expectedBundleRoot) {
   throw "拒绝清理未验证的 Windows 组装目录：$bundleRoot"
 }
@@ -24,7 +36,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $runtimeRoot "PartyOps\PartyOps.exe"
 if (-not (Test-Path -LiteralPath $sqliteDll)) {
   throw "缺少经校验的 SQLite 运行时：$sqliteDll"
 }
-$actualSqliteVersion = & (Join-Path $repoRoot ".venv\Scripts\python.exe") -c "import ctypes,sys; lib=ctypes.WinDLL(sys.argv[1]); lib.sqlite3_libversion.restype=ctypes.c_char_p; print(lib.sqlite3_libversion().decode())" $sqliteDll
+$actualSqliteVersion = & $Python -c "import ctypes,sys; lib=ctypes.WinDLL(sys.argv[1]); lib.sqlite3_libversion.restype=ctypes.c_char_p; print(lib.sqlite3_libversion().decode())" $sqliteDll
 if ($LASTEXITCODE -ne 0 -or $actualSqliteVersion -ne $expectedSqliteVersion) {
   throw "SQLite DLL 版本应为 $expectedSqliteVersion，实际为 $actualSqliteVersion。"
 }
@@ -77,7 +89,7 @@ Copy-Item -Path (Join-Path $localAiRoot "*") -Destination $bundleRoot -Force
 if ($LASTEXITCODE -ne 0) { throw "llama.cpp Windows 运行时验证失败，退出码：$LASTEXITCODE" }
 $sourceCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw "读取源码提交失败" }
-& (Join-Path $repoRoot ".venv\Scripts\python.exe") `
+& $Python `
   (Join-Path $repoRoot "scripts\generate-release-manifest.py") `
   --root $bundleRoot `
   --output (Join-Path $bundleRoot "release-manifest.json") `

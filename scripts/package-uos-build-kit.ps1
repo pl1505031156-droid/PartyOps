@@ -1,3 +1,7 @@
+param(
+  [string]$Python = ""
+)
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -7,7 +11,16 @@ $releaseVersion = "1.4.3-rc.2"
 $releaseTag = "v1.4.3-rc.2"
 $staging = Join-Path $stagingRoot "PartyOps-$releaseVersion"
 $archive = Join-Path $artifacts "PartyOps-UOS-$releaseVersion-build-kit.zip"
-$python = Join-Path $root ".venv\Scripts\python.exe"
+if (-not $Python) {
+  $Python = if ($env:PARTYOPS_PYTHON) {
+    $env:PARTYOPS_PYTHON
+  } else {
+    Join-Path $root ".venv\Scripts\python.exe"
+  }
+}
+if (-not (Test-Path -LiteralPath $Python)) {
+  throw "未找到用于校验 UOS 离线依赖的 Python：$Python"
+}
 
 if (-not (Test-Path -LiteralPath (Join-Path $root "frontend\dist\client\index.html"))) {
   throw "缺少前端生产构建，请先运行 scripts\build.ps1 或 pnpm build。"
@@ -47,7 +60,7 @@ foreach ($architecture in @("amd64", "arm64")) {
       $optionalLlmMissing.Add($relativePath)
     }
   }
-  & $python (Join-Path $root "scripts\validate-uos-wheelhouse.py") `
+  & $Python (Join-Path $root "scripts\validate-uos-wheelhouse.py") `
     --architecture $architecture `
     --wheelhouse $wheelhouse `
     --requirements `
