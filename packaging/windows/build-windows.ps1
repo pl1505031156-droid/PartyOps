@@ -28,8 +28,30 @@ $buildRoot = Join-Path $repoRoot "artifacts\windows-runtime"
 $outputRoot = Join-Path $repoRoot "artifacts"
 $frontendDist = Join-Path $repoRoot "frontend\dist"
 $localAiRoot = Join-Path $repoRoot "vendor\windows\local-ai\llama-b10331"
+$siteCustomizeRoot = Join-Path $repoRoot ".build-windows\sitecustomize"
 function Assert-NativeSuccess([string]$Stage) {
   if ($LASTEXITCODE -ne 0) { throw "$Stage 失败，退出码：$LASTEXITCODE" }
+}
+# PyInstaller 6.16 会无条件读取 site.getusersitepackages()，即使 Python 已
+# 禁用用户目录。发布构建必须只扫描虚拟环境；这里用构建期 sitecustomize
+# 返回空路径，既避免无权限用户目录，也防止未锁定包混入制品。
+New-Item -ItemType Directory -Force -Path $siteCustomizeRoot | Out-Null
+$siteCustomize = @'
+"""PartyOps Windows 发布构建隔离。"""
+import site
+if not site.ENABLE_USER_SITE:
+    site.getusersitepackages = lambda: ""
+'@
+[System.IO.File]::WriteAllText(
+  (Join-Path $siteCustomizeRoot "sitecustomize.py"),
+  $siteCustomize,
+  (New-Object System.Text.UTF8Encoding($false))
+)
+$env:PYTHONNOUSERSITE = "1"
+$env:PYTHONPATH = if ($env:PYTHONPATH) {
+  "$siteCustomizeRoot$([IO.Path]::PathSeparator)$env:PYTHONPATH"
+} else {
+  $siteCustomizeRoot
 }
 if (-not $InnoCompiler) {
   $InnoCompiler = @(
