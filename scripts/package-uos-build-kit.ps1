@@ -266,6 +266,7 @@ try {
     ForEach-Object {
       $relative = $_.FullName.Substring($stagingRoot.Length).TrimStart("\", "/").Replace("\", "/")
       $entry = $zipWriter.CreateEntry($relative, [System.IO.Compression.CompressionLevel]::Optimal)
+      $entry.LastWriteTime = [DateTimeOffset]$normalizedTime
       $entryStream = $entry.Open()
       $sourceStream = [System.IO.File]::OpenRead($_.FullName)
       try {
