@@ -75,6 +75,11 @@ foreach ($entry in $oneFileEntries) {
 }
 
 Copy-Item -LiteralPath $sqliteDll -Destination (Join-Path $bundleRoot "sqlite3.dll") -Force
+$installerIcon = Join-Path $repoRoot "packaging\windows\partyops.ico"
+if (-not (Test-Path -LiteralPath $installerIcon)) {
+  throw "缺少 Windows 安装器品牌图标：$installerIcon"
+}
+Copy-Item -LiteralPath $installerIcon -Destination (Join-Path $bundleRoot "partyops.ico") -Force
 $internalRoot = Join-Path $bundleRoot "_internal"
 New-Item -ItemType Directory -Path $internalRoot -Force | Out-Null
 Copy-Item -LiteralPath $sqliteDll -Destination (Join-Path $internalRoot "sqlite3.dll") -Force

@@ -203,3 +203,15 @@ def test_uos_single_zip_verifies_all_inputs_before_install() -> None:
     assert 'sha256sum -c "BUILD-KIT-SHA256SUMS"' in installer
     assert 'run_stage "0/5 自动校验 ZIP 内全部安装输入" verify_build_kit' in installer
     assert 'run_stage "核验安装、应用入口和系统内更新助手" verify_installed_package' in installer
+
+
+def test_windows_package_includes_installer_icon_before_inno_compile() -> None:
+    """Inno 引用的品牌图标必须进入组装目录，不能到最后一步才报缺文件。"""
+
+    root = Path(__file__).resolve().parents[2]
+    package_script = (
+        root / "packaging" / "windows" / "package-windows.ps1"
+    ).read_text(encoding="utf-8")
+
+    assert 'Join-Path $repoRoot "packaging\\windows\\partyops.ico"' in package_script
+    assert 'Join-Path $bundleRoot "partyops.ico"' in package_script
