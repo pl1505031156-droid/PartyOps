@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from app import setup_wizard
+from app import windows_host_status
 from app.windows_host_status import CHILD_EXITED, write_service_status
 
 
@@ -23,6 +24,34 @@ class _HealthResponse:
 
     def read(self) -> bytes:
         return b'{"status":"ok"}'
+
+
+def test_windows_service_shared_probe_marks_loopback_health(monkeypatch) -> None:
+    """监督服务重启后应自行确认 ready，不能永久停在 child_running。"""
+
+    requested: list[str] = []
+
+    def open_health(request, **_kwargs):
+        requested.append(request.full_url)
+        return _HealthResponse()
+
+    monkeypatch.setattr(windows_host_status.urllib.request, "urlopen", open_health)
+    healthy, detail = windows_host_status.probe_loopback_health(18765, tls=True)
+
+    assert healthy is True
+    assert detail == ""
+    assert requested == ["https://127.0.0.1:18765/api/v1/health"]
+
+
+def test_windows_service_source_promotes_child_to_ready() -> None:
+    service = (
+        Path(__file__).parents[2] / "packaging" / "windows" / "windows_service.py"
+    ).read_text(encoding="utf-8")
+
+    assert "probe_loopback_health(port, tls=tls)" in service
+    assert 'stage="ready"' in service
+    assert 'stage="health_timeout"' in service
+    assert "code=HEALTH_TIMEOUT" in service
 
 
 def test_health_probe_uses_loopback_but_returns_advertised_url(monkeypatch, tmp_path) -> None:

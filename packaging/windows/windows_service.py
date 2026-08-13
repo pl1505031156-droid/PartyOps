@@ -18,8 +18,10 @@ from app.setup_wizard import load_host_environment
 from app.windows_host_status import (
     CHILD_EXITED,
     DATA_DIR_DENIED,
+    HEALTH_TIMEOUT,
     PORT_IN_USE,
     TLS_INIT_FAILED,
+    probe_loopback_health,
     service_log_path,
     tail_service_log,
     write_service_status,
@@ -150,6 +152,11 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
         self.stop_event = win32event.CreateEvent(None, 0, 0, None)
         self.process: subprocess.Popen | None = None
         self.output_stream = None
+        self.child_environment: dict[str, str] | None = None
+        self.child_data_dir: Path | None = None
+        self.child_started_at = 0.0
+        self.ready_pid: int | None = None
+        self.health_timeout_pid: int | None = None
 
     def SvcStop(self):  # noqa: N802 - Windows 服务协议固定命名。
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
@@ -186,6 +193,44 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
             if self.process:
                 exit_code = self.process.poll()
                 if exit_code is None:
+                    if (
+                        self.ready_pid != self.process.pid
+                        and self.child_environment is not None
+                        and self.child_data_dir is not None
+                    ):
+                        port = int(self.child_environment.get("PARTYOPS_PORT", "18765"))
+                        tls = (
+                            self.child_environment.get("PARTYOPS_TLS_ENABLED", "").lower()
+                            == "true"
+                        )
+                        healthy, detail = probe_loopback_health(port, tls=tls)
+                        if healthy:
+                            _safe_write_service_status(
+                                self.child_data_dir,
+                                stage="ready",
+                                pid=self.process.pid,
+                            )
+                            _safe_append_service_log(
+                                self.child_data_dir,
+                                f"主进程健康检查通过 pid={self.process.pid}",
+                            )
+                            self.ready_pid = self.process.pid
+                        elif (
+                            time.monotonic() - self.child_started_at >= 180
+                            and self.health_timeout_pid != self.process.pid
+                        ):
+                            _safe_write_service_status(
+                                self.child_data_dir,
+                                stage="health_timeout",
+                                code=HEALTH_TIMEOUT,
+                                detail=detail,
+                                pid=self.process.pid,
+                            )
+                            _safe_append_service_log(
+                                self.child_data_dir,
+                                f"主进程健康检查超时 pid={self.process.pid} detail={detail}",
+                            )
+                            self.health_timeout_pid = self.process.pid
                     continue
                 self._close_output_stream()
                 environment = os.environ.copy()
@@ -202,6 +247,10 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
                 )
                 _safe_append_service_log(data_dir, f"主进程退出 exit_code={exit_code} code={code}")
                 self.process = None
+                self.child_environment = None
+                self.child_data_dir = None
+                self.ready_pid = None
+                self.health_timeout_pid = None
                 # 让向导至少有一个轮询周期读取稳定的终止诊断，再进行自动重启。
                 continue
             environment = os.environ.copy()
@@ -248,6 +297,11 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
                     stderr=subprocess.STDOUT,
                     creationflags=subprocess.CREATE_NO_WINDOW,
                 )
+                self.child_environment = environment
+                self.child_data_dir = data_dir
+                self.child_started_at = time.monotonic()
+                self.ready_pid = None
+                self.health_timeout_pid = None
             except OSError as exc:
                 self._close_output_stream()
                 code = DATA_DIR_DENIED if isinstance(exc, PermissionError) else CHILD_EXITED
@@ -259,6 +313,8 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
                 )
                 servicemanager.LogErrorMsg(f"PartyOps 主进程无法启动：{exc}")
                 self.process = None
+                self.child_environment = None
+                self.child_data_dir = None
                 continue
             _safe_write_service_status(
                 data_dir,

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -90,3 +93,43 @@ def tail_service_log(data_dir: Path, *, max_bytes: int = 8192) -> str:
             return stream.read(max_bytes).decode("utf-8", errors="replace")
     except OSError:
         return ""
+
+
+def probe_loopback_health(
+    port: int,
+    *,
+    tls: bool,
+    timeout: float = 3.0,
+) -> tuple[bool, str]:
+    """探测本机 PartyOps 健康接口，供 Windows 监督服务持续上报阶段。
+
+    这里只访问固定的 127.0.0.1 地址；TLS 证书由 PartyOps 内部 CA 签发，
+    服务进程尚未把 CA 安装到系统信任区时也必须能够完成本机就绪探测。
+    """
+
+    if not 1024 <= port <= 65534:
+        return False, "主机服务端口超出允许范围"
+    scheme = "https" if tls else "http"
+    context = ssl._create_unverified_context() if tls else None  # nosec B323 - 固定回环健康探测。
+    request = urllib.request.Request(f"{scheme}://127.0.0.1:{port}/api/v1/health")
+    try:
+        with urllib.request.urlopen(  # nosec B310 - URL 固定为本机回环地址与健康路径。
+            request,
+            timeout=max(0.5, min(timeout, 5.0)),
+            context=context,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if isinstance(payload, dict) and payload.get("status") == "ok":
+            return True, ""
+        return False, "健康检查返回内容无效"
+    except (
+        ConnectionResetError,
+        ssl.SSLError,
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as exc:
+        return False, str(exc)[-2000:]
