@@ -97,6 +97,51 @@ var
   ServiceSetupFailed: Boolean;
   DataDirPage: TInputDirWizardPage;
 
+function UnquoteEnvironmentValue(Value: String): String;
+var
+  FirstCode, LastCode: Integer;
+begin
+  Result := Trim(Value);
+  if Length(Result) < 2 then
+    exit;
+  FirstCode := Ord(Result[1]);
+  LastCode := Ord(Result[Length(Result)]);
+  if ((FirstCode = 39) and (LastCode = 39)) or
+     ((FirstCode = 34) and (LastCode = 34)) then
+  begin
+    Delete(Result, Length(Result), 1);
+    Delete(Result, 1, 1);
+    Result := Trim(Result);
+  end;
+end;
+
+function LoadConfiguredDataDir(var ConfiguredDataDir: String): Boolean;
+var
+  EnvironmentLines: TArrayOfString;
+  I: Integer;
+  Line, Prefix: String;
+begin
+  Result := False;
+  Prefix := 'PARTYOPS_DATA_DIR=';
+  if not LoadStringsFromFile(
+    ExpandConstant('{commonappdata}\PartyOps\partyops.env'),
+    EnvironmentLines
+  ) then
+    exit;
+  for I := 0 to GetArrayLength(EnvironmentLines) - 1 do
+  begin
+    Line := Trim(EnvironmentLines[I]);
+    if CompareText(Copy(Line, 1, Length(Prefix)), Prefix) = 0 then
+    begin
+      ConfiguredDataDir := UnquoteEnvironmentValue(
+        Copy(Line, Length(Prefix) + 1, Length(Line))
+      );
+      Result := ConfiguredDataDir <> '';
+      exit;
+    end;
+  end;
+end;
+
 procedure InitializeWizard;
 var
   PreviousDataDir: String;
@@ -114,11 +159,15 @@ begin
   );
   DataDirPage.Add('');
   PreviousDataDir := '';
-  if LoadStringsFromFile(
-    ExpandConstant('{commonappdata}\PartyOps\install-data-dir.txt'),
-    PreviousDataDirLines
-  ) and (GetArrayLength(PreviousDataDirLines) > 0) then
-    PreviousDataDir := Trim(PreviousDataDirLines[0]);
+  // 卸载重装或升级时，实际主机配置比安装阶段预选标记更可信。
+  if not LoadConfiguredDataDir(PreviousDataDir) then
+  begin
+    if LoadStringsFromFile(
+      ExpandConstant('{commonappdata}\PartyOps\install-data-dir.txt'),
+      PreviousDataDirLines
+    ) and (GetArrayLength(PreviousDataDirLines) > 0) then
+      PreviousDataDir := Trim(PreviousDataDirLines[0]);
+  end;
   if PreviousDataDir = '' then
     PreviousDataDir := ExpandConstant('{commonappdata}\PartyOps');
   DataDirPage.Values[0] := PreviousDataDir;

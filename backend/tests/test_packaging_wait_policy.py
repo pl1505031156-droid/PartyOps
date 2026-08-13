@@ -161,6 +161,11 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "UsePreviousAppDir=yes" in installer
     assert "LoadStringsFromFile(" in installer
     assert "SaveStringsToUTF8File(" in installer
+    assert "function LoadConfiguredDataDir" in installer
+    assert "PartyOps\\partyops.env" in installer
+    assert installer.index("LoadConfiguredDataDir(PreviousDataDir)") < installer.index(
+        "install-data-dir.txt"
+    )
     assert "install-data-dir.txt" in installer
     assert "function PrepareToInstall" in installer
     assert "--wait=45 stop" in installer
