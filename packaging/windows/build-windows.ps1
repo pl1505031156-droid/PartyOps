@@ -127,8 +127,12 @@ $entries = @(
 # 统一的 PartyOps 品牌图标：嵌入所有可执行文件，桌面/开始菜单/资源管理器
 # 均显示自定义图标，而不是 PyInstaller 默认图标。
 $brandIcon = Join-Path $PSScriptRoot "partyops.ico"
+$brandImage = Join-Path $PSScriptRoot "partyops-1024.png"
 if (-not (Test-Path -LiteralPath $brandIcon)) {
   throw "缺少品牌图标 partyops.ico，无法为可执行文件嵌入自定义图标。"
+}
+if (-not (Test-Path -LiteralPath $brandImage)) {
+  throw "缺少品牌图片 partyops-1024.png，无法生成 PartyOps 专属中文安装界面。"
 }
 
 foreach ($entry in $entries) {
@@ -188,6 +192,7 @@ if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $internalRoot "sqlit
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\uos\update-public-key.txt") -Destination $bundleRoot -Force
 Copy-Item -LiteralPath $brandIcon -Destination (Join-Path $bundleRoot "partyops.ico") -Force
+Copy-Item -LiteralPath $brandImage -Destination (Join-Path $bundleRoot "partyops-1024.png") -Force
 foreach ($notice in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
   $noticePath = Join-Path $repoRoot $notice
   if (-not (Test-Path -LiteralPath $noticePath)) { throw "发布包缺少开源声明文件：$notice" }

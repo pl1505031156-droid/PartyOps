@@ -146,3 +146,25 @@ def test_windows_installer_defers_host_privileges_until_role_selection() -> None
     assert "remoteip=LocalSubnet" in host_service
     assert '["sc.exe", "start", "PartyOpsUpdateService"]' in host_service
     assert "prepare_host_runtime(environment, executable)" in host_service
+
+
+def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> None:
+    """安装器须保留程序/数据自定义目录，并在覆盖文件前安全停服。"""
+
+    installer = (ROOT / "packaging" / "windows" / "PartyOps.iss").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'Name: "chinesesimp"' in installer
+    assert "ChineseSimplified.isl" in installer
+    assert "欢迎使用党建智办 PartyOps 安装向导" in installer
+    assert "UsePreviousAppDir=yes" in installer
+    assert "LoadStringsFromFile(" in installer
+    assert "SaveStringsToUTF8File(" in installer
+    assert "install-data-dir.txt" in installer
+    assert "function PrepareToInstall" in installer
+    assert "--wait=45 stop" in installer
+    assert "UPGRADE_SERVICE_STOP_FAILED" in installer
+    assert installer.index("function PrepareToInstall") < installer.index(
+        "procedure CurStepChanged"
+    )

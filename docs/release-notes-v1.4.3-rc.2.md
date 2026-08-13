@@ -7,6 +7,7 @@
 ## 本轮解决的问题
 
 - Windows 安装与首次配置均可选择本机固定磁盘数据目录，支持中文、空格和非 C 盘；UAC 后不会静默回退到 ProgramData。
+- Windows 安装器使用 PartyOps 专属简体中文向导；程序目录与数据目录分别可选并在升级时保留。覆盖升级会先等待两个 PartyOps 服务完全停止，失败时给出 `UPGRADE_SERVICE_STOP_FAILED` 中文诊断，不再暴露英文文件占用框。
 - 业务数据库、附件、备份、证书、模型、缓存、日志和接收文件跟随所选目录；迁移失败保留原配置和旧数据。
 - 主机服务分别报告服务注册、SCM 启动、子进程、端口、健康检查和局域网地址阶段，并把子进程输出与退出码写入轮转日志。
 - 启动失败返回 `SERVICE_MISSING`、`SERVICE_STOPPED`、`CHILD_EXITED`、`PORT_IN_USE`、`DATA_DIR_DENIED`、`TLS_INIT_FAILED` 或 `HEALTH_TIMEOUT`，不会打开未就绪或空白页面。

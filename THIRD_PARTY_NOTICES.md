@@ -47,6 +47,15 @@ GPLv3 第 13 节，GPLv3 与 AGPLv3 可以组合，但组合的软件需要遵�
 
 测试环境使用 `fake-indexeddb` 6.2.5（Apache-2.0）验证严格本机私有存储；该包是开发依赖，不进入生产前端运行包。
 
+## Windows 安装器构建组件
+
+| 组件 | 固定版本 | 用途 | 上游与许可证 |
+| --- | --- | --- | --- |
+| Inno Setup | 6.7.3 | 生成 Windows 单文件安装器 | <https://github.com/jrsoftware/issrc/tree/is-6_7_3>，Inno Setup License |
+| Simplified Chinese messages | `is-6_7_3` | PartyOps 安装器简体中文界面 | `Files/Languages/Unofficial/ChineseSimplified.isl`，维护者 Zhenghan Yang，随 Inno Setup 源码按 Inno Setup License 分发 |
+
+仓库内的中文消息文件仅规范化了行尾空白；PartyOps 专属标题、路径说明和诊断文案仅在 `PartyOps.iss` 的 `[Messages]` 与 `[Code]` 中覆盖。
+
 ## 文件中心文档解析组件
 
 | 组件 | 固定版本 | 用途 | 上游 | 许可证 |
