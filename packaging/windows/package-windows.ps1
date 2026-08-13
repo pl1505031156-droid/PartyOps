@@ -4,10 +4,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$releaseVersion = "1.4.3-rc.2"
+$releaseTag = "v1.4.3-rc.2"
 $runtimeRoot = Join-Path $repoRoot "artifacts\windows-runtime"
 $artifactRoot = Join-Path $repoRoot "artifacts"
-$bundleRoot = Join-Path $artifactRoot "PartyOps-1.4.3-windows-amd64"
-$expectedBundleRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "artifacts\PartyOps-1.4.3-windows-amd64"))
+$bundleRoot = Join-Path $artifactRoot "PartyOps-$releaseVersion-windows-amd64"
+$expectedBundleRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "artifacts\PartyOps-$releaseVersion-windows-amd64"))
 $sqliteDll = Join-Path $repoRoot "vendor\windows\sqlite-3.53.4\runtime\sqlite3.dll"
 $expectedSqliteVersion = "3.53.4"
 $expectedSqliteSha256 = "AB57D0437795ECC757CB693F32EA224173FA9856594D95CFA6B5033E645CD1EC"
@@ -73,6 +75,16 @@ foreach ($notice in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
 Copy-Item -Path (Join-Path $localAiRoot "*") -Destination $bundleRoot -Force
 & (Join-Path $bundleRoot "llama-server.exe") --version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "llama.cpp Windows 运行时验证失败，退出码：$LASTEXITCODE" }
+$sourceCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0) { throw "读取源码提交失败" }
+& (Join-Path $repoRoot ".venv\Scripts\python.exe") `
+  (Join-Path $repoRoot "scripts\generate-release-manifest.py") `
+  --root $bundleRoot `
+  --output (Join-Path $bundleRoot "release-manifest.json") `
+  --version $releaseVersion `
+  --tag $releaseTag `
+  --commit $sourceCommit
+if ($LASTEXITCODE -ne 0) { throw "嵌入式发布清单生成失败" }
 
 $expectedSqliteHash = $expectedSqliteSha256
 $bundledSqliteHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $internalRoot "sqlite3.dll")).Hash
@@ -98,11 +110,30 @@ if ($LASTEXITCODE -ne 0) {
   throw "Inno Setup 安装器构建失败，退出码：$LASTEXITCODE"
 }
 
-$installer = Join-Path $artifactRoot "PartyOps_1.4.3_windows_amd64.exe"
+$installer = Join-Path $artifactRoot "PartyOps_1.4.3-rc.2_windows_amd64.exe"
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
 [System.IO.File]::WriteAllText(
   "$installer.sha256",
   "$hash  $(Split-Path -Leaf $installer)`n",
+  (New-Object System.Text.UTF8Encoding($false))
+)
+$candidate = [ordered]@{
+  schema_version = 1
+  product = "PartyOps"
+  version = $releaseVersion
+  release_tag = $releaseTag
+  source_commit = $sourceCommit
+  platform = "windows-amd64"
+  signed = $false
+  filename = (Split-Path -Leaf $installer)
+  size = (Get-Item -LiteralPath $installer).Length
+  sha256 = $hash
+  sqlite_version = $expectedSqliteVersion
+  limitations = @("Windows 10 未实机验证", "UOS 未实机验证", "未签名测试候选")
+}
+[System.IO.File]::WriteAllText(
+  (Join-Path $artifactRoot "PartyOps_1.4.3-rc.2_windows_amd64.candidate.json"),
+  ($candidate | ConvertTo-Json -Depth 5),
   (New-Object System.Text.UTF8Encoding($false))
 )
 

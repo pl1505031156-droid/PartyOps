@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -233,11 +234,13 @@ def test_windows_host_role_uses_uac_helper_for_protected_config(
     config_path = setup_wizard.configure_host_config(
         "192.168.36.18",
         18765,
-        tmp_path / "ignored-data-dir",
+        tmp_path / "业务 数据",
     )
 
     assert config_path == program_data / "PartyOps" / "partyops.env"
     assert "-Verb RunAs" in elevated_calls[0][4]
+    encoded_data_dir = elevated_calls[0][-1]
+    assert base64.b64decode(encoded_data_dir).decode("utf-8").endswith("业务 数据")
     assert json.loads((local_config / "mode.json").read_text(encoding="utf-8"))[
         "mode"
     ] == "host"

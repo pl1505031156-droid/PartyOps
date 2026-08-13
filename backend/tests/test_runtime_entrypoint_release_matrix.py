@@ -50,6 +50,8 @@ def test_main_run_tls_agent_success_certificate_guard_and_agent_failure(monkeypa
 
     settings = SimpleNamespace(
         host="127.0.0.1",
+        network_bind_host="127.0.0.1",
+        network_advertise_host="127.0.0.1",
         port=18765,
         agent_port=18766,
         tls_enabled=True,

@@ -225,10 +225,11 @@ def test_first_run_host_http_flow_keeps_admin_creation_in_wizard(
         },
     )
     assert created[0] == 303
-    assert created[1]["Location"] == "https://192.168.8.20:18765"
+    # 跳转协议由刚写入的主机配置决定；本用例明确关闭 TLS。
+    assert created[1]["Location"] == "http://192.168.8.20:18765"
     thread.join(timeout=5)
     assert not thread.is_alive() and results == [0]
-    assert bootstrapped[0][0] == "https://192.168.8.20:18765"
+    assert bootstrapped[0][0] == "http://192.168.8.20:18765"
 
 
 def test_first_run_client_http_flow_validates_before_consuming_code(

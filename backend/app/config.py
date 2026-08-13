@@ -39,7 +39,11 @@ class Settings(BaseSettings):
     # development/test，避免开源用户直接启动时意外开启调试与弱校验。
     environment: Literal["development", "test", "production"] = "production"
     data_dir: Path = Field(default_factory=default_data_dir)
+    # host 保留为对协同电脑展示的兼容字段；bind_host 决定实际监听，
+    # advertise_host 决定证书与下发地址。旧配置未设置新字段时行为不变。
     host: str = "127.0.0.1"
+    bind_host: str = ""
+    advertise_host: str = ""
     port: int = 18765
     agent_port: int = 18766
     session_hours: int = 12
@@ -90,6 +94,14 @@ class Settings(BaseSettings):
     tls_key_file: Path | None = None
     tls_client_ca_file: Path | None = None
     tls_require_client_cert: bool = False
+
+    @property
+    def network_bind_host(self) -> str:
+        return self.bind_host.strip() or self.host
+
+    @property
+    def network_advertise_host(self) -> str:
+        return self.advertise_host.strip() or self.host
 
     @property
     def database_path(self) -> Path:

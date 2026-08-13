@@ -6,8 +6,8 @@
 
 把事项办理、跨机文件、重要档案、迎检材料、通知评论和工作留痕，收进一套真正能落地的局域网协同闭环。
 
-[![Release](https://img.shields.io/badge/release-v1.4.3--rc.1-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.1)
-[![Source](https://img.shields.io/badge/source-v1.4.3--rc.1-c58b3d?style=for-the-badge)](docs/release-readiness-1.4.3.md)
+[![Release](https://img.shields.io/badge/release-v1.4.3--rc.2-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.2)
+[![Source](https://img.shields.io/badge/source-v1.4.3--rc.2-c58b3d?style=for-the-badge)](docs/release-readiness-1.4.3.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-292520?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20UOS-c17b17?style=for-the-badge)](#安装教程)
 [![Local first](https://img.shields.io/badge/data-local--first-2f7d57?style=for-the-badge)](#安全与隐私)
@@ -18,7 +18,7 @@
 </div>
 
 > [!IMPORTANT]
-> 当前源码版本为 `1.4.3`，数据库模式为 `0018`，可下载版本为 **v1.4.3-rc.1 测试候选**。前后端行覆盖率和分支覆盖率均已达到 90% / 80% 门槛，Windows 11 冻结运行时、安装/卸载和主要浏览器流程已通过；Windows 10、UOS 双架构、20GB、24 小时长稳和正式签名仍未全部关闭，因此该候选不得用于正式全量生产部署。详见[1.4.3 发布就绪判定](docs/release-readiness-1.4.3.md)。
+> 当前源码版本为 `1.4.3`，数据库模式为 `0018`，可下载版本为 **v1.4.3-rc.2 未签名测试候选**。rc.2 修复了 Windows 自定义数据目录、主机服务启动诊断、90/180 秒就绪等待、首次管理员 10061、静态资源漏打和 UOS 离线重复包问题。Windows 10、UOS 原生安装、真实多机、24 小时长稳和正式签名仍未全部关闭，因此不得把候选版当作稳定正式版。详见[1.4.3 发布就绪判定](docs/release-readiness-1.4.3.md)。
 
 ## 30 秒了解 PartyOps
 
@@ -121,7 +121,8 @@ PartyOps 不是一套把表单搬到浏览器里的系统。它解决的是基�
 | `1.4.0` | 重要档案贡献权限、通知评论、我的工作、共享目录审批和跨平台更新适配 | 内部候选 |
 | `1.4.1` | 普通用户发布共享目录、团队/指定成员授权、双通道下载和本地 AI 分能力激活 | 内部候选 |
 | `1.4.2-rc.1` | AnyDoc / pdf-inspector 离线文档阅读、跨机文件直接阅读、权限撤销复核和发布链路收口 | 历史 Pre-release |
-| `1.4.3-rc.1` | 本机私有备忘、2026 新版细则党员发展计算、专业中文 Word 导出与单位补充材料分层 | 当前 Pre-release，NO-GO |
+| `1.4.3-rc.1` | 本机私有备忘、2026 新版细则党员发展计算、专业中文 Word 导出与单位补充材料分层 | 历史 Pre-release，已被 rc.2 取代 |
+| `1.4.3-rc.2` | 自定义数据盘、主机服务可诊断启动、单 EXE 下载、前端资源闭包及 UOS 双架构严格离线校验 | 当前 Pre-release，稳定版 NO-GO |
 
 完整变更、修复与安全说明见 [CHANGELOG.md](CHANGELOG.md)。PartyOps 不会为了看起来“已发布”而隐藏未完成门禁，版本证据、制品哈希和已知限制都会随 Release 一起公开。
 
@@ -142,24 +143,24 @@ flowchart LR
 
 ## 下载
 
-当前可下载版本为 [v1.4.3-rc.1 测试候选](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.1)：
+当前可下载版本为 [v1.4.3-rc.2 测试候选](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.2)：
 
-- [Windows 10/11 x64 安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.1/PartyOps_1.4.3_windows_amd64.exe)
-- [Windows SHA-256](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.1/PartyOps_1.4.3_windows_amd64.exe.sha256)
-- [Windows 候选验证清单](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.1/PartyOps_1.4.3_windows_amd64.candidate.json)
-- [UOS 1.4.3 原生构建套件](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.1/PartyOps-UOS-1.4.3-build-kit.zip)
-- [UOS 构建套件 SHA-256](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.1/PartyOps-UOS-1.4.3-build-kit.zip.sha256)
+- [Windows 10/11 x64 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.2/PartyOps_1.4.3-rc.2_windows_amd64.exe)
+- [Windows 候选验证清单](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.2/PartyOps_1.4.3-rc.2_windows_amd64.candidate.json)
+- [UOS 1.4.3-rc.2 双架构原生构建套件](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.2/PartyOps-UOS-1.4.3-rc.2-build-kit.zip)
+
+普通 Windows 用户只需下载一个 EXE。安装器会校验其内部载荷；最终文件大小与 SHA-256 直接显示在 Release 和官网，无需再下载第二个“校验包”。同名 `.sha256` 仅为自动化工具提供，不是安装必需步骤。
 
 UOS ZIP 是供 UOS V20 amd64/arm64 目标机原生构建的离线套件，不是可直接安装的 DEB。1.4.3 稳定正式版的目标制品为：
 
-- `PartyOps_1.4.3_windows_amd64.exe`
+- `PartyOps_1.4.3-rc.2_windows_amd64.exe`
 - `partyops_1.4.3_amd64.deb`
 - `partyops_1.4.3_arm64.deb`
 - `partyops_1.4.3.partyops-update`
 - `PartyOps-UOS-1.4.3-build-kit.zip`
 - 可选的中文向量、轻量 LLM、增强 LLM `.partyops-modelpack`
 
-只有同时附带 SHA-256、发布签名、迁移/回滚说明和真机验收记录的 Release 才是正式版。当前门禁为 **NO-GO**；`v1.4.3-rc.1` 未做 Windows Authenticode 正式签名，只能在隔离测试电脑试用，不得用于正式全量生产部署。
+只有同时附带 SHA-256、发布签名、迁移/回滚说明和真机验收记录的 Release 才是正式版。当前门禁为 **NO-GO**；`v1.4.3-rc.2` 未做 Windows Authenticode 正式签名，只能作为候选版试用。
 
 ## 安装教程
 
@@ -167,14 +168,14 @@ UOS ZIP 是供 UOS V20 amd64/arm64 目标机原生构建的离线套件，不是
 
 1. 选定一台长期在线、磁盘可靠的电脑作为主机；SQLite 数据目录不得放在网络共享盘。
 2. 为主机设置固定局域网地址或稳定主机名，并确认所有电脑使用“专用网络”。
-3. 从同一个 GitHub Release 下载制品和 `.sha256`；正式部署还必须下载签名说明。
-4. 先校验文件，再安装。以下示例中的哈希值必须与对应 Release 清单完全一致。
+3. Windows 普通用户从官网或同一个 GitHub Release 下载单个 EXE；不需要额外下载校验文件。
+4. 安装前用下面命令计算 SHA-256，并与官网或 Release 页面直接显示的值逐字核对。
 
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\PartyOps_1.4.3_windows_amd64.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\PartyOps_1.4.3_windows_amd64.exe
+Get-FileHash .\PartyOps_1.4.3-rc.2_windows_amd64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\PartyOps_1.4.3-rc.2_windows_amd64.exe
 ```
 
 UOS：
@@ -186,16 +187,16 @@ sha256sum partyops_1.4.3_amd64.deb
 
 ### Windows 10/11 x64
 
-1. 使用管理员权限运行 `PartyOps_1.4.3_windows_amd64.exe`。
-2. 安装器创建开始菜单/桌面入口、本机共享管理协议和仅限专用网络的 `18765`、`18766` 入站规则。
+1. 双击 `PartyOps_1.4.3-rc.2_windows_amd64.exe`。未签名候选出现 SmartScreen 时，先核对 SHA-256，再选择“更多信息 → 仍要运行”。
+2. 安装器先让你预选主机数据目录；建议使用 `D:\PartyOps-数据` 等本机固定磁盘目录，支持中文和空格，不支持磁盘根目录、系统目录、网络盘或移动盘。
 3. 首次打开“党建智办”，明确选择角色：
-   - **主机**：创建系统管理员，数据写入 `%PROGRAMDATA%\PartyOps`，主机服务随 Windows 启动。
-   - **协同机**：填写主机地址并完成配对，配置、接收文件和个人状态写入 `%LOCALAPPDATA%\PartyOps`，Agent 随当前用户登录启动。
+   - **主机**：再次确认数据目录；UAC 只用于写入系统配置和启动服务。数据库、附件、备份、证书、模型、缓存和日志全部进入所选目录；C 盘只保留程序和小型引导配置。
+   - **协同机**：填写主机地址并完成配对；备份、接收文件和运行日志跟随所选本机数据目录，小型入网配置保留在 `%LOCALAPPDATA%\PartyOps`。
 4. 主机管理员在“管理 → 设备协同”批准设备，并按用户、设备和目录授予能力。
 5. 协同用户在“资料 → 原始文件”点击“共享本机文件夹”，用系统选择器选中目录，再设置团队或指定人员范围。
 6. 从另一台电脑登录，确认可以浏览、打开阅读、浏览器另存为或下载到本机接收目录。
 
-`v1.4.3-rc.1` 尚未签名，Windows SmartScreen 可能阻止启动。只有在隔离测试电脑上、且实算 SHA-256 与 Release 完全一致时才可继续；正式部署遇到无签名或发布者不一致时不要安装。
+向导会依次显示“服务注册、SCM 启动、子进程启动、端口监听、健康检查、局域网地址就绪”。遇到失败先点击“复制诊断”或“打开日志”，不要先手动修改 `services.msc`。未就绪时 PartyOps 不会打开空白地址，也不会降级为普通用户进程。
 
 ### UOS V20 amd64 / arm64
 
@@ -208,9 +209,9 @@ dpkg --print-architecture
 海光、兆芯、Intel、AMD 通常使用 `amd64`；飞腾等 ARM 机器使用 `arm64`。当前候选 Release 只提供原生构建套件，须在对应 UOS 目标机解压并构建：
 
 ```bash
-sha256sum PartyOps-UOS-1.4.3-build-kit.zip
-unzip PartyOps-UOS-1.4.3-build-kit.zip
-cd PartyOps
+sha256sum PartyOps-UOS-1.4.3-rc.2-build-kit.zip
+unzip PartyOps-UOS-1.4.3-rc.2-build-kit.zip
+cd PartyOps-1.4.3-rc.2
 sudo bash packaging/uos/build-and-install.sh
 ```
 
@@ -304,7 +305,7 @@ corepack pnpm --dir frontend install --frozen-lockfile
 
 PartyOps 希望把“基层真正怎么办公”变成可以持续改进的开源产品。如果它对你有启发，欢迎点击右上角 **Star**，让更多需要本地协同、国产系统适配和党建业务闭环的团队看到它。
 
-- **想直接体验**：从 [v1.4.3-rc.1 Release](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.1) 下载候选安装器，先阅读已知限制并校验 SHA-256。
+- **想直接体验**：从 [v1.4.3-rc.2 Release](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.2) 下载单文件候选安装器，先阅读已知限制并核对页面显示的 SHA-256。
 - **发现问题**：在 [Issues](https://github.com/pl1505031156-droid/PartyOps/issues) 提交版本、系统、主机/协同机角色、复现步骤、期望/实际结果和已脱敏日志。
 - **有产品建议**：在 [Discussions](https://github.com/pl1505031156-droid/PartyOps/discussions) 讲清真实工作场景、现在怎么做、卡在哪里、哪些角色会受益。
 - **愿意贡献代码**：先阅读[贡献指南](CONTRIBUTING.md)，从 `main` 创建短分支，为修复补充回归测试，并运行 `scripts/test.ps1`。

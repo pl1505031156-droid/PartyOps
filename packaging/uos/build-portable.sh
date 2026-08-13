@@ -141,6 +141,10 @@ if [[ "$LOCAL_EMBEDDING_AVAILABLE" == "1" ]]; then
     "$ROOT/backend/requirements.txt" \
     "$ROOT/backend/requirements-local-ai.txt" \
     "$ROOT/packaging/uos/requirements-build.txt"; then
+    if [[ "$REQUIRE_LOCAL_AI_RUNTIME" == "1" ]]; then
+      echo "严格模式：$ARCH 离线依赖存在重复包、缺失项或版本冲突，拒绝构建；请清空旧目录后重新解压 rc.2 套件。" >&2
+      exit 2
+    fi
     echo "提示：$ARCH 本地语义离线依赖闭包不完整，将关闭语义重排并继续基础构建。" >&2
     LOCAL_EMBEDDING_AVAILABLE=0
   fi

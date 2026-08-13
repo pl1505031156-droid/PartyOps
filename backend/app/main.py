@@ -112,9 +112,13 @@ def configure_logging() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     configure_logging()
-    validate_bind_host(settings.host, settings.environment == "production")
+    validate_bind_host(
+        settings.network_bind_host,
+        settings.environment == "production",
+        advertised_host=settings.network_advertise_host,
+    )
     validate_transport_security(
-        host=settings.host,
+        host=settings.network_advertise_host,
         production=settings.environment == "production",
         tls_enabled=settings.tls_enabled,
     )
@@ -374,7 +378,7 @@ def run() -> None:
     import uvicorn
 
     uvicorn_options = {
-        "host": settings.host,
+        "host": settings.network_bind_host,
         "port": settings.port,
         "loop": "asyncio",
         "http": "h11",

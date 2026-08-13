@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import servicemanager
@@ -14,6 +15,68 @@ import win32service
 import win32serviceutil
 
 from app.setup_wizard import load_host_environment
+from app.windows_host_status import (
+    CHILD_EXITED,
+    DATA_DIR_DENIED,
+    PORT_IN_USE,
+    TLS_INIT_FAILED,
+    service_log_path,
+    tail_service_log,
+    write_service_status,
+)
+
+
+def _rotate_service_log(path: Path, *, max_bytes: int = 5 * 1024 * 1024) -> None:
+    """在启动子进程前轮转日志，最多保留五份，避免服务日志占满数据盘。"""
+
+    if not path.exists() or path.stat().st_size < max_bytes:
+        return
+    oldest = path.with_name(f"{path.name}.5")
+    if oldest.exists():
+        oldest.unlink()
+    for index in range(4, 0, -1):
+        source = path.with_name(f"{path.name}.{index}")
+        target = path.with_name(f"{path.name}.{index + 1}")
+        if source.exists():
+            os.replace(source, target)
+    os.replace(path, path.with_name(f"{path.name}.1"))
+
+
+def _append_service_log(data_dir: Path, message: str) -> None:
+    path = service_log_path(data_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).isoformat()
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(f"{timestamp} service {message}\n")
+
+
+def _safe_append_service_log(data_dir: Path, message: str) -> None:
+    """日志目录异常时保留 Windows 事件，监督服务自身继续存活。"""
+
+    try:
+        _append_service_log(data_dir, message)
+    except OSError as exc:
+        servicemanager.LogErrorMsg(f"PartyOps 主机服务日志不可写：{exc}")
+
+
+def _classify_child_failure(log_tail: str) -> str:
+    lowered = log_tail.lower()
+    if any(marker in lowered for marker in ("address already in use", "winerror 10048", "端口", "占用")):
+        return PORT_IN_USE
+    if any(marker in lowered for marker in ("permission denied", "access is denied", "拒绝访问", "权限")):
+        return DATA_DIR_DENIED
+    if any(marker in lowered for marker in ("ssl", "tls", "certificate", "证书", "内部 ca")):
+        return TLS_INIT_FAILED
+    return CHILD_EXITED
+
+
+def _safe_write_service_status(data_dir: Path, **values) -> None:
+    """状态文件不可写时保留 Windows 事件日志，不能让监督服务自身崩溃。"""
+
+    try:
+        write_service_status(data_dir, **values)
+    except OSError as exc:
+        servicemanager.LogErrorMsg(f"PartyOps 主机状态文件不可写：{exc}")
 
 
 def prepare_host_runtime(environment: dict[str, str], executable: Path) -> None:
@@ -86,6 +149,7 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
         super().__init__(args)
         self.stop_event = win32event.CreateEvent(None, 0, 0, None)
         self.process: subprocess.Popen | None = None
+        self.output_stream = None
 
     def SvcStop(self):  # noqa: N802 - Windows 服务协议固定命名。
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
@@ -105,6 +169,11 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
 
+    def _close_output_stream(self) -> None:
+        if self.output_stream:
+            self.output_stream.close()
+            self.output_stream = None
+
     def SvcDoRun(self):  # noqa: N802
         servicemanager.LogInfoMsg("PartyOpsHost 服务已启动，等待显式 host 配置。")
         program_data = Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
@@ -114,28 +183,87 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
         while win32event.WaitForSingleObject(self.stop_event, 5000) == win32event.WAIT_TIMEOUT:
             if not config_path.is_file() or not executable.is_file():
                 continue
-            if self.process and self.process.poll() is None:
+            if self.process:
+                exit_code = self.process.poll()
+                if exit_code is None:
+                    continue
+                self._close_output_stream()
+                environment = os.environ.copy()
+                environment.update(load_host_environment(config_path))
+                data_dir = Path(environment.get("PARTYOPS_DATA_DIR", str(program_data)))
+                detail = tail_service_log(data_dir)
+                code = _classify_child_failure(detail)
+                _safe_write_service_status(
+                    data_dir,
+                    stage="child_exited",
+                    code=code,
+                    detail=detail,
+                    exit_code=exit_code,
+                )
+                _safe_append_service_log(data_dir, f"主进程退出 exit_code={exit_code} code={code}")
+                self.process = None
+                # 让向导至少有一个轮询周期读取稳定的终止诊断，再进行自动重启。
                 continue
             environment = os.environ.copy()
             environment.update(load_host_environment(config_path))
             environment.setdefault("PARTYOPS_MODE", "host")
             environment.setdefault("PARTYOPS_DATA_DIR", str(program_data))
+            data_dir = Path(environment["PARTYOPS_DATA_DIR"])
             try:
+                data_dir.mkdir(parents=True, exist_ok=True)
+                _safe_write_service_status(data_dir, stage="preparing")
                 config_mtime = config_path.stat().st_mtime_ns
                 if prepared_config_mtime != config_mtime:
                     prepare_host_runtime(environment, executable)
                     prepared_config_mtime = config_mtime
+            except PermissionError as exc:
+                _safe_write_service_status(
+                    data_dir,
+                    stage="prepare_failed",
+                    code=DATA_DIR_DENIED,
+                    detail=str(exc),
+                )
+                servicemanager.LogErrorMsg(f"PartyOps 数据目录不可用：{exc}")
+                continue
             except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+                _safe_write_service_status(
+                    data_dir,
+                    stage="prepare_failed",
+                    code=CHILD_EXITED,
+                    detail=str(exc),
+                )
                 servicemanager.LogErrorMsg(f"PartyOps 主机系统配置未完成：{exc}")
                 continue
-            self.process = subprocess.Popen(
-                [str(executable)],
-                env=environment,
-                cwd=str(executable.parent),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW,
+            try:
+                log_path = service_log_path(data_dir)
+                _rotate_service_log(log_path)
+                _safe_append_service_log(data_dir, "正在启动 PartyOps 主进程")
+                self.output_stream = log_path.open("ab", buffering=0)
+                self.process = subprocess.Popen(
+                    [str(executable)],
+                    env=environment,
+                    cwd=str(executable.parent),
+                    stdin=subprocess.DEVNULL,
+                    stdout=self.output_stream,
+                    stderr=subprocess.STDOUT,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+            except OSError as exc:
+                self._close_output_stream()
+                code = DATA_DIR_DENIED if isinstance(exc, PermissionError) else CHILD_EXITED
+                _safe_write_service_status(
+                    data_dir,
+                    stage="child_exited",
+                    code=code,
+                    detail=str(exc),
+                )
+                servicemanager.LogErrorMsg(f"PartyOps 主进程无法启动：{exc}")
+                self.process = None
+                continue
+            _safe_write_service_status(
+                data_dir,
+                stage="child_running",
+                pid=self.process.pid,
             )
         if self.process and self.process.poll() is None:
             self._stop_child_process()
@@ -143,6 +271,7 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
                 self.process.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+        self._close_output_stream()
 
 
 if __name__ == "__main__":

@@ -12,6 +12,8 @@ import win32event
 import win32service
 import win32serviceutil
 
+from app.setup_wizard import load_host_environment
+
 
 class PartyOpsUpdaterService(win32serviceutil.ServiceFramework):
     _svc_name_ = "PartyOpsUpdateService"
@@ -45,30 +47,32 @@ class PartyOpsUpdaterService(win32serviceutil.ServiceFramework):
         runtime = Path(sys.executable).resolve().parent
         updater = runtime / "PartyOpsUpdater.exe"
         program_data = Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
-        environment = os.environ.copy()
-        environment.update(
-            {
-                "PARTYOPS_MODE": "host",
-                "PARTYOPS_ENVIRONMENT": "production",
-                "PARTYOPS_DATA_DIR": str(program_data),
-                "PARTYOPS_STRICT_SQLITE": "true",
-            }
-        )
+        config_path = program_data / "partyops.env"
         servicemanager.LogInfoMsg("PartyOpsUpdateService 已启动。")
         while win32event.WaitForSingleObject(self.stop_event, 3000) == win32event.WAIT_TIMEOUT:
-            if not updater.is_file():
+            if not updater.is_file() or not config_path.is_file():
                 continue
             if self.process and self.process.poll() is None:
                 continue
+            environment = os.environ.copy()
+            environment.update(load_host_environment(config_path))
+            environment.setdefault("PARTYOPS_MODE", "host")
+            environment.setdefault("PARTYOPS_ENVIRONMENT", "production")
+            environment.setdefault("PARTYOPS_STRICT_SQLITE", "true")
+            data_dir = Path(environment["PARTYOPS_DATA_DIR"])
+            log_path = data_dir / "logs" / "partyops-updater-service.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            output = log_path.open("ab", buffering=0)
             self.process = subprocess.Popen(
                 [str(updater)],
                 env=environment,
                 cwd=str(runtime),
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
+            output.close()
         if self.process and self.process.poll() is None:
             self._stop_child_process()
             try:

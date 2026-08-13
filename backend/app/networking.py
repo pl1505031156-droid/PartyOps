@@ -34,13 +34,32 @@ def discover_lan_addresses() -> list[str]:
     )
 
 
-def validate_bind_host(host: str, production: bool) -> None:
-    """生产模式拒绝通配或公网绑定，减少误配置暴露。"""
+def validate_bind_host(
+    host: str,
+    production: bool,
+    *,
+    advertised_host: str | None = None,
+) -> None:
+    """生产模式只允许可信局域网监听。
+
+    Windows 主机为了让本机首次配置始终可以走 127.0.0.1，可显式监听
+    0.0.0.0；此时必须同时提供可信的局域网展示地址，安装器还会把入站
+    防火墙限制在专用网络和 LocalSubnet。
+    """
 
     if not production:
         return
-    if host in {"0.0.0.0", "::"}:  # nosec B104 - 此分支显式拒绝通配绑定。
-        raise RuntimeError("生产模式必须选择明确的可信局域网 IP，不能绑定全部网卡")
+    if host in {"0.0.0.0", "::"}:  # nosec B104 - 仅配合可信展示地址和防火墙使用。
+        advertised = (advertised_host or "").strip()
+        if not advertised or advertised in {"0.0.0.0", "::"}:
+            raise RuntimeError("通配监听必须同时配置明确的可信局域网展示地址")
+        try:
+            address = ipaddress.ip_address(advertised)
+        except ValueError:
+            return
+        if not (address.is_private or address.is_loopback) or address.is_link_local:
+            raise RuntimeError("生产模式禁止向协同电脑展示公网或链路本地地址")
+        return
     try:
         address = ipaddress.ip_address(host)
     except ValueError:

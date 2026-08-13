@@ -19,8 +19,9 @@ def main() -> int:
     token = (parsed.path or parsed.netloc).strip("/")
     if parsed.scheme != "partyops-file" or not token or not token.replace("-", "").replace("_", "").isalnum():
         return 2
-    data_root = Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
-    config = load_host_environment(data_root / "partyops.env")
+    control_root = Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
+    config = load_host_environment(control_root / "partyops.env")
+    data_root = Path(config.get("PARTYOPS_DATA_DIR", str(control_root)))
     host = config.get("PARTYOPS_HOST", "127.0.0.1")
     if host not in {"127.0.0.1", "localhost"}:
         host = "127.0.0.1"

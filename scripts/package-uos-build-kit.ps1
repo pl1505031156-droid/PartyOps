@@ -3,8 +3,11 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $artifacts = Join-Path $root "artifacts"
 $stagingRoot = Join-Path $root ".build-kit"
-$staging = Join-Path $stagingRoot "PartyOps"
-$archive = Join-Path $artifacts "PartyOps-UOS-1.4.3-build-kit.zip"
+$releaseVersion = "1.4.3-rc.2"
+$releaseTag = "v1.4.3-rc.2"
+$staging = Join-Path $stagingRoot "PartyOps-$releaseVersion"
+$archive = Join-Path $artifacts "PartyOps-UOS-$releaseVersion-build-kit.zip"
+$python = Join-Path $root ".venv\Scripts\python.exe"
 
 if (-not (Test-Path -LiteralPath (Join-Path $root "frontend\dist\client\index.html"))) {
   throw "缺少前端生产构建，请先运行 scripts\build.ps1 或 pnpm build。"
@@ -24,9 +27,9 @@ foreach ($input in $requiredInputs) {
   }
 }
 
-# 本地语义重排和 llama.cpp 是可选增强能力。缺少目标架构原生组件时，
-# 构建套件仍可生成基础运行时，系统会安全降级为规则推荐与已批准的外部模型。
-# 正式交付若声明支持本地模型，仍须在对应 UOS 目标机补齐并以严格模式构建。
+# rc.2 候选套件把本地语义重排和 llama.cpp 作为强制离线输入。
+# 任一架构缺少原生组件、依赖闭包不完整或存在重复规范化包名时，
+# 都必须拒绝打包，不能再生成会在目标机上静默降级的候选套件。
 $optionalEmbeddingMissing = [System.Collections.Generic.List[string]]::new()
 $optionalLlmMissing = [System.Collections.Generic.List[string]]::new()
 $requiredWheelPrefixes = @("numpy-2.2.6-", "onnxruntime-1.22.1-", "tokenizers-0.21.4-")
@@ -43,6 +46,16 @@ foreach ($architecture in @("amd64", "arm64")) {
     if (-not (Test-Path -LiteralPath (Join-Path $root $relativePath))) {
       $optionalLlmMissing.Add($relativePath)
     }
+  }
+  & $python (Join-Path $root "scripts\validate-uos-wheelhouse.py") `
+    --architecture $architecture `
+    --wheelhouse $wheelhouse `
+    --requirements `
+    (Join-Path $root "backend\requirements.txt") `
+    (Join-Path $root "backend\requirements-local-ai.txt") `
+    (Join-Path $root "packaging\uos\requirements-build.txt")
+  if ($LASTEXITCODE -ne 0) {
+    throw "UOS $architecture 离线依赖闭包或唯一性校验失败，拒绝生成候选构建套件。"
   }
 }
 
@@ -86,13 +99,17 @@ foreach ($item in $include) {
     Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force
   }
 }
+if ($optionalEmbeddingMissing.Count -gt 0 -or $optionalLlmMissing.Count -gt 0) {
+  $allMissing = @($optionalEmbeddingMissing) + @($optionalLlmMissing)
+  throw "rc.2 严格模式要求完整双架构本地智能运行时，缺少：$($allMissing -join ', ')"
+}
 
 # 发布清单、候选验收和 Release 正文都要记录这个 ZIP 自身的最终哈希或条目数，
 # 若把它们再次放入 ZIP 会形成不可收敛的自引用。构建套件只保留安装、运维、
 # 迁移和用户文档；发布证据以 GitHub 源码与 Release 同级附件为准。
 foreach ($releaseEvidence in @(
   "docs\README.md",
-  "docs\release-notes-v1.4.3-rc.1.md",
+  "docs\release-notes-v1.4.3-rc.2.md",
   "docs\release-readiness-1.4.3.md",
   "docs\acceptance-1.4.3.md",
   "docs\artifact-manifest-1.4.3.md"
@@ -105,7 +122,8 @@ foreach ($releaseEvidence in @(
 
 $capabilityLines = @(
   "党建智办 PartyOps UOS 原生构建套件能力说明",
-  "版本：1.4.3",
+  "版本：$releaseVersion",
+  "标签：$releaseTag",
   "生成时间：$([DateTimeOffset]::Now.ToString('yyyy-MM-dd HH:mm:ss zzz'))",
   "",
   "已包含：",
@@ -116,30 +134,8 @@ $capabilityLines = @(
   "",
   "本地智能说明："
 )
-if ($optionalEmbeddingMissing.Count -eq 0) {
-  $capabilityLines += "- 双架构 numpy、ONNX Runtime 和 tokenizers 离线依赖已包含，可启用本地中文语义重排。"
-}
-else {
-  $capabilityLines += @(
-    "- 当前套件未包含完整的双架构本地语义依赖，将关闭语义重排；基础业务不受影响。",
-    "- 缺少的语义组件："
-  )
-  foreach ($missing in $optionalEmbeddingMissing) {
-    $capabilityLines += "  - $missing"
-  }
-}
-if ($optionalLlmMissing.Count -eq 0) {
-  $capabilityLines += "- 双架构官方 llama.cpp b10331 CPU 运行时、来源清单和许可文件已包含，可启用本地 LLM。"
-}
-else {
-  $capabilityLines += @(
-    "- 当前套件未包含完整的双架构 llama.cpp 运行时，将关闭本地 LLM；语义重排、规则推荐和外部 AI 不受影响。",
-    "- 如需本地 LLM，请在对应 UOS V20 目标机补齐以下文件；正式严格构建可设置 PARTYOPS_REQUIRE_LOCAL_AI_RUNTIME=1："
-  )
-  foreach ($missing in $optionalLlmMissing) {
-    $capabilityLines += "  - $missing"
-  }
-}
+$capabilityLines += "- 双架构 numpy、ONNX Runtime 和 tokenizers 离线依赖已包含，并已通过严格闭包与重复包校验。"
+$capabilityLines += "- 双架构官方 llama.cpp b10331 CPU 运行时、来源清单和许可文件已包含，可启用本地 LLM。"
 $capabilityLines += @(
   "",
   "重要边界：",
@@ -260,6 +256,25 @@ $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvar
 [System.IO.File]::WriteAllText(
   "$archive.sha256",
   "$hash  $([IO.Path]::GetFileName($archive))`n",
+  (New-Object System.Text.UTF8Encoding($false))
+)
+$sourceCommit = (& git -C $root rev-parse HEAD).Trim()
+$candidate = [ordered]@{
+  schema_version = 1
+  product = "PartyOps"
+  version = $releaseVersion
+  release_tag = $releaseTag
+  source_commit = $sourceCommit
+  platform = "uos-amd64-arm64-build-kit"
+  filename = (Split-Path -Leaf $archive)
+  size = (Get-Item -LiteralPath $archive).Length
+  sha256 = $hash
+  strict_dependency_closure = $true
+  native_deb_tested = $false
+}
+[System.IO.File]::WriteAllText(
+  (Join-Path $artifacts "PartyOps-UOS-$releaseVersion-build-kit.candidate.json"),
+  ($candidate | ConvertTo-Json -Depth 5),
   (New-Object System.Text.UTF8Encoding($false))
 )
 Write-Host "UOS 离线构建套件已生成：$archive"

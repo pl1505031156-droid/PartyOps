@@ -10,6 +10,8 @@ import webbrowser
 from pathlib import Path
 
 from app.setup_wizard import (
+    HostStartupError,
+    _start_windows_host_service,
     clear_windows_client_autostart,
     load_host_environment,
     wait_for_host_health,
@@ -51,7 +53,6 @@ def main() -> int:
         if not config.is_file():
             detached([str(runtime / "PartyOpsWizard.exe")])
             return 0
-        subprocess.run(["sc.exe", "start", "PartyOpsHost"], check=False, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
         values = load_host_environment(config)
         host = values.get("PARTYOPS_HOST", "127.0.0.1")
         port = int(values.get("PARTYOPS_PORT", "18765"))
@@ -59,10 +60,18 @@ def main() -> int:
         # 服务冷启动需要数十秒；先等服务健康再打开浏览器，
         # 避免首次配置提交时出现“目标计算机积极拒绝”（WinError 10061）。
         try:
-            url = wait_for_host_health(host, port, tls=tls)
-        except ConnectionError:
-            scheme = "https" if tls else "http"
-            url = f"{scheme}://{host}:{port}"
+            _start_windows_host_service()
+            url = wait_for_host_health(
+                host,
+                port,
+                tls=tls,
+                timeout=180.0,
+                data_dir=Path(values["PARTYOPS_DATA_DIR"]),
+            )
+        except HostStartupError:
+            # 严禁打开一个尚未就绪的地址；回到向导展示重试与诊断入口。
+            detached([str(runtime / "PartyOpsWizard.exe"), "--initial-role", "host"])
+            return 1
         webbrowser.open(url)
         return 0
     detached([str(runtime / "PartyOpsWizard.exe")])

@@ -1,8 +1,8 @@
 # PartyOps 1.4.3 部署与独立搭建
 
-最后核对：2026-08-11。本文只描述当前 `1.4.3` / 数据库 `0018`；旧版本文档仅用于迁移追溯。
+最后核对：2026-08-13。本文只描述当前 `1.4.3-rc.2` / 数据库 `0018`；旧版本文档仅用于迁移追溯。
 
-> 当前 GitHub Release 是 `v1.4.3-rc.1` 候选版，不是稳定生产版。覆盖率门禁已通过；Windows 10、UOS 双架构、20GB、24 小时长稳和正式签名证据未齐全前，不得把候选安装器用于正式业务数据。
+> 当前 GitHub Release 是 `v1.4.3-rc.2` 未签名候选版，不是稳定生产版。Windows 10、UOS 原生安装、真实多机、20GB、24 小时长稳和正式签名证据未齐全前，不得把候选版描述为稳定正式版。
 
 ## 1. 部署结构
 
@@ -16,11 +16,11 @@
 
 ### 2.1 下载与真实性校验
 
-只从同一 GitHub Release 下载安装文件、`.sha256` 和签名说明。先计算哈希：
+Windows 普通用户只下载版本化 EXE，不需要第二个校验包。官网与 GitHub Release 直接显示最终 SHA-256；安装前计算并逐字核对：
 
 ```powershell
-Get-FileHash .\PartyOps_1.4.3_windows_amd64.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\PartyOps_1.4.3_windows_amd64.exe
+Get-FileHash .\PartyOps_1.4.3-rc.2_windows_amd64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\PartyOps_1.4.3-rc.2_windows_amd64.exe
 ```
 
 ```bash
@@ -28,14 +28,14 @@ sha256sum partyops_1.4.3_amd64.deb
 dpkg-deb --info partyops_1.4.3_amd64.deb
 ```
 
-哈希不一致、正式版缺少签名或签名发布者不一致时停止安装。当前 `rc.1` Windows 文件未做 Authenticode 正式签名，只能隔离试用。
+哈希不一致时停止安装。当前 `rc.2` Windows 文件未做 Authenticode 正式签名，SmartScreen 显示未知发布者属于已知限制，不应误称为正式签名版本。
 
 ### 2.2 Windows 10/11 x64
 
-1. 以管理员身份运行 `PartyOps_1.4.3_windows_amd64.exe`。
+1. 运行 `PartyOps_1.4.3-rc.2_windows_amd64.exe`，预选本机固定磁盘数据目录，例如 `D:\PartyOps-数据`。
 2. 首次打开桌面“党建智办”，明确选择“主机”或“协同机”。不能由残留配置猜测角色。
-3. 主机模式创建首任管理员，数据位于 `%PROGRAMDATA%\PartyOps`，服务随系统启动。
-4. 协同机模式使用主机生成的限时入网码；用户配置、接收文件和日志位于 `%LOCALAPPDATA%\PartyOps`。
+3. 主机模式再次确认数据目录；数据库、附件、备份、证书、模型、缓存和日志位于该目录，服务在确认主机角色后设为随系统启动。
+4. 协同机模式使用主机生成的限时入网码；小型用户配置位于 `%LOCALAPPDATA%\PartyOps`，备份、接收文件和日志位于向导所选目录。
 5. 主机管理员在“管理 → 设备协同”确认设备、目录与成员权限。
 6. 防火墙只对“专用网络”和单位可信网段开放所需端口，不开放“公用网络”。
 
@@ -49,7 +49,7 @@ sudo apt-get install ./partyops_1.4.3_amd64.deb
 # ARM64 使用 partyops_1.4.3_arm64.deb
 ```
 
-若 Release 只提供 `PartyOps-UOS-1.4.3-build-kit.zip`，它是原生构建套件而不是 DEB。必须在对应架构的 UOS 目标机校验 ZIP 后运行套件内构建脚本，再校验生成的 DEB；不要在 x64 机器伪造 ARM64 验收结果。
+若 Release 只提供 `PartyOps-UOS-1.4.3-rc.2-build-kit.zip`，它是原生构建套件而不是 DEB。必须解压到新的 `PartyOps-1.4.3-rc.2/` 顶层目录，在对应架构的 UOS 目标机运行套件内构建脚本，再校验生成的 DEB；不要覆盖旧目录，也不要在 x64 机器伪造 ARM64 验收结果。
 
 主机系统配置位于 `/etc/partyops/partyops.env`，数据默认位于 `/var/lib/partyops`。服务检查：
 
@@ -92,6 +92,8 @@ corepack pnpm --dir frontend install --frozen-lockfile
 PARTYOPS_MODE=host
 PARTYOPS_ENVIRONMENT=production
 PARTYOPS_HOST=192.168.1.20
+PARTYOPS_BIND_HOST=0.0.0.0
+PARTYOPS_ADVERTISE_HOST=192.168.1.20
 PARTYOPS_PORT=18765
 PARTYOPS_AGENT_PORT=18766
 PARTYOPS_DATA_DIR=/var/lib/partyops
@@ -139,11 +141,14 @@ PARTYOPS_MODEL_PACK_PUBLIC_KEY=<模型包发布公钥；可与更新公钥分离
 ## 7. 故障定位
 
 - 主机日志：数据目录 `logs/partyops.log`（JSON 单行、按日轮转）。
+- Windows 主机监督日志：数据目录 `logs/partyops-host-service.log`（5 MiB × 6 份）；状态诊断为 `logs/partyops-host-status.json`。
 - 协同机日志：配置目录 `logs/partyops-agent.log`（5 MiB × 6 份）。
 - `AGENT_MTLS_REQUIRED`：设备令牌走错端口或未启用正式双向 TLS。
 - `ORIGIN_DENIED`：Cookie 写请求来自非当前服务/未允许来源。
 - `DEVICE_UPDATE_REQUIRED`：协同 Agent 与主机版本不一致，先完成签名更新。
 - `reauth_required`：设备凭据失效，需要备份本机共享配置后重新入网。
+- `SERVICE_MISSING` / `SERVICE_STOPPED`：安装器未正确注册服务或服务未运行，优先使用安装器“修复安装”。
+- `CHILD_EXITED` / `PORT_IN_USE` / `DATA_DIR_DENIED` / `TLS_INIT_FAILED` / `HEALTH_TIMEOUT`：分别检查主进程日志、端口、所选目录 ACL、内部 CA/TLS 与启动阶段；向导可直接复制诊断。
 - 恢复前先复制原始日志和备份，不要删除数据目录或覆盖数据库。
 
 ## 8. 开源与许可证

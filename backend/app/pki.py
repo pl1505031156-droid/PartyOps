@@ -31,6 +31,7 @@ def _load_key(path):
 def ensure_tls_material(settings: Settings) -> dict[str, object]:
     """按需生成并复用主机证书；密钥只存在 secrets/pki。"""
 
+    advertised_host = getattr(settings, "network_advertise_host", settings.host)
     root = settings.secrets_dir / "pki"
     ca_key_path = root / "ca.key"
     ca_cert_path = root / "ca.pem"
@@ -101,10 +102,10 @@ def ensure_tls_material(settings: Settings) -> dict[str, object]:
                 host_match = False
                 try:
                     host_match = x509.IPAddress(
-                        ipaddress.ip_address(settings.host)
+                        ipaddress.ip_address(advertised_host)
                     ) in san
                 except ValueError:
-                    host_match = x509.DNSName(settings.host) in san
+                    host_match = x509.DNSName(advertised_host) in san
                 regenerate_server = not host_match
         except (ValueError, OSError, x509.ExtensionNotFound):
             regenerate_server = True
@@ -123,11 +124,14 @@ def ensure_tls_material(settings: Settings) -> dict[str, object]:
         except (OSError, ValueError):
             pass
         try:
-            names.append(x509.IPAddress(ipaddress.ip_address(settings.host)))
+            names.append(
+                x509.IPAddress(ipaddress.ip_address(advertised_host))
+            )
         except ValueError:
             # 配置允许主机名；该名称同时加入 SAN，浏览器仍会严格校验。
-            if settings.host and settings.host not in {"0.0.0.0", "::"}:  # nosec B104 - 通配值被排除在证书 SAN 外。
-                names.append(x509.DNSName(settings.host[:253]))
+            advertised = advertised_host
+            if advertised and advertised not in {"0.0.0.0", "::"}:  # nosec B104 - 通配值被排除在证书 SAN 外。
+                names.append(x509.DNSName(advertised[:253]))
         subject = x509.Name(
             [
                 x509.NameAttribute(NameOID.ORGANIZATION_NAME, "PartyOps"),

@@ -6,6 +6,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$releaseVersion = "1.4.3-rc.2"
+$releaseTag = "v1.4.3-rc.2"
 $officialSqliteDll = Join-Path $repoRoot "vendor\windows\sqlite-3.53.4\runtime\sqlite3.dll"
 $officialSqliteVersion = "3.53.4"
 $officialSqliteSha256 = "AB57D0437795ECC757CB693F32EA224173FA9856594D95CFA6B5033E645CD1EC"
@@ -59,6 +61,10 @@ try {
       & pnpm install --frozen-lockfile
       Assert-NativeSuccess "前端依赖安装"
     }
+    $existingFrontendDist = Join-Path $repoRoot "frontend\dist"
+    if (Test-Path -LiteralPath $existingFrontendDist) {
+      Remove-Item -LiteralPath $existingFrontendDist -Recurse -Force
+    }
     & pnpm run typecheck
     Assert-NativeSuccess "前端类型检查"
     & pnpm run build
@@ -67,6 +73,8 @@ try {
     $ErrorActionPreference = $previousEap
   }
 } finally { Pop-Location }
+& $Python (Join-Path $repoRoot "scripts\validate-frontend-dist.py") (Join-Path $frontendDist "client")
+Assert-NativeSuccess "前端静态资源闭包验证"
 
 $previousEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
@@ -139,7 +147,7 @@ foreach ($entry in $entries) {
   Assert-NativeSuccess "$($entry.Name) 冻结构建"
 }
 
-$bundleRoot = Join-Path $outputRoot "PartyOps-1.4.3-windows-amd64"
+$bundleRoot = Join-Path $outputRoot "PartyOps-$releaseVersion-windows-amd64"
 if (Test-Path -LiteralPath $bundleRoot) { Remove-Item -LiteralPath $bundleRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $bundleRoot | Out-Null
 foreach ($entry in $entries) {
@@ -166,6 +174,15 @@ foreach ($notice in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
 Copy-Item -Path (Join-Path $localAiRoot "*") -Destination $bundleRoot -Force
 & (Join-Path $bundleRoot "llama-server.exe") --version | Out-Null
 Assert-NativeSuccess "llama.cpp Windows 运行时验证"
+$sourceCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
+Assert-NativeSuccess "读取源码提交"
+& $Python (Join-Path $repoRoot "scripts\generate-release-manifest.py") `
+  --root $bundleRoot `
+  --output (Join-Path $bundleRoot "release-manifest.json") `
+  --version $releaseVersion `
+  --tag $releaseTag `
+  --commit $sourceCommit
+Assert-NativeSuccess "生成嵌入式发布清单"
 
 if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw "未找到 Inno Setup 6：$InnoCompiler" }
 $env:PARTYOPS_WINDOWS_BUILD_ROOT = $bundleRoot
@@ -179,11 +196,30 @@ try {
 }
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
-$installer = Join-Path $outputRoot "PartyOps_1.4.3_windows_amd64.exe"
+$installer = Join-Path $outputRoot "PartyOps_1.4.3-rc.2_windows_amd64.exe"
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
 [System.IO.File]::WriteAllText(
   "$installer.sha256",
   "$hash  $(Split-Path -Leaf $installer)`n",
+  (New-Object System.Text.UTF8Encoding($false))
+)
+$candidate = [ordered]@{
+  schema_version = 1
+  product = "PartyOps"
+  version = $releaseVersion
+  release_tag = $releaseTag
+  source_commit = $sourceCommit
+  platform = "windows-amd64"
+  signed = $false
+  filename = (Split-Path -Leaf $installer)
+  size = (Get-Item -LiteralPath $installer).Length
+  sha256 = $hash
+  sqlite_version = $officialSqliteVersion
+  limitations = @("Windows 10 未实机验证", "UOS 未实机验证", "未签名测试候选")
+}
+[System.IO.File]::WriteAllText(
+  (Join-Path $outputRoot "PartyOps_1.4.3-rc.2_windows_amd64.candidate.json"),
+  ($candidate | ConvertTo-Json -Depth 5),
   (New-Object System.Text.UTF8Encoding($false))
 )
 Write-Host "Windows 安装器已生成：$installer"

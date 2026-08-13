@@ -647,6 +647,8 @@ def test_client_agent_networking_and_setup_helpers(
     )
     env = setup_wizard.load_host_environment(host_config)
     assert env["PARTYOPS_HOST"] == "192.168.20.5"
+    assert env["PARTYOPS_BIND_HOST"] == "0.0.0.0"
+    assert env["PARTYOPS_ADVERTISE_HOST"] == "192.168.20.5"
     with pytest.raises(ValueError):
         setup_wizard.write_host_config("8.8.8.8", 18765, tmp_path / "data")
     with pytest.raises(ValueError):
@@ -654,7 +656,9 @@ def test_client_agent_networking_and_setup_helpers(
     client_config = setup_wizard.write_client_config(
         "http://192.168.20.5:18765", "token", tmp_path / "copies", 600
     )
-    assert json.loads(client_config.read_text(encoding="utf-8"))["pairing_token"] == "token"
+    client_values = json.loads(client_config.read_text(encoding="utf-8"))
+    assert client_values["pairing_token"] == "token"
+    assert Path(client_values["receive_dir"]).parent == tmp_path / "copies"
     monkeypatch.setattr(setup_wizard.sys, "platform", "linux")
     monkeypatch.setattr(setup_wizard, "runtime_root", lambda: tmp_path)
     (tmp_path / "start.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
@@ -787,6 +791,11 @@ def test_setup_wizard_browser_flow_and_launch_helpers(
         ),
         encoding="utf-8",
     )
+    monkeypatch.setattr(
+        setup_wizard,
+        "wait_for_host_health",
+        lambda host, port, **_kwargs: f"http://{host}:{port}",
+    )
     assert setup_wizard.launch_host(config) == "http://127.0.0.1:18765"
     assert commands
 
@@ -900,6 +909,7 @@ def test_setup_wizard_persists_enrolled_device_credentials(
     config = json.loads(config_path.read_text(encoding="utf-8"))
     assert config["device_id"] == "device-1"
     assert config["agent_url"] == "https://192.168.20.5:18766"
+    assert Path(config["receive_dir"]).parent == tmp_path / "copies"
     assert Path(config["key_file"]).read_text(encoding="utf-8") == "PRIVATE KEY"
     assert (
         Path(config["certificate_file"]).read_text(encoding="utf-8")
@@ -1014,6 +1024,8 @@ def test_setup_wizard_requires_first_device_heartbeat_before_success(
         "create_browser_launch_url",
         lambda host, *_args: host,
     )
+    # 单元测试不能写真实 HKCU 登录启动项；安装行为由 Windows 打包测试覆盖。
+    monkeypatch.setattr(setup_wizard, "install_client_autostart", lambda _path: None)
 
     assert (
         setup_wizard.launch_client(config_path)

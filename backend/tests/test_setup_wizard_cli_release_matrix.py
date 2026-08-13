@@ -103,7 +103,7 @@ def test_launch_host_windows_service_success_test_fallback_and_production_failur
     monkeypatch.setattr(
         setup_wizard,
         "wait_for_host_health",
-        lambda host, port, tls=False, timeout=90.0: f"http://{host}:{port}",
+        lambda host, port, **_kwargs: f"http://{host}:{port}",
     )
     monkeypatch.setattr(
         setup_wizard,
@@ -148,9 +148,9 @@ def test_start_windows_host_service_missing_stopped_and_retry(monkeypatch) -> No
     def fake_run(command, **kwargs):
         calls.append(command)
         text = kwargs.get("text", False)
-        if "query" in command[2]:
+        if "query" in command[1]:
             # 前三次 query 返回“已停止”，之后返回“正在运行”。
-            query_count = sum(1 for c in calls if "query" in c[2])
+            query_count = sum(1 for c in calls if "query" in c[1])
             if query_count <= 3:
                 return subprocess.CompletedProcess(
                     command, 0, "STATE: 4  STOPPED\n服务已停止" if not text else "STATE: 4  STOPPED",
@@ -160,8 +160,8 @@ def test_start_windows_host_service_missing_stopped_and_retry(monkeypatch) -> No
                 command, 0, "STATE: 4  RUNNING\n服务正在运行" if not text else "STATE: 4  RUNNING",
                 "",
             )
-        if "start" in command[2]:
-            start_count = sum(1 for c in calls if "start" in c[2])
+        if "start" in command[1]:
+            start_count = sum(1 for c in calls if "start" in c[1])
             # 前两次 start 失败（模拟冷启动慢），第三次成功。
             if start_count <= 2:
                 return subprocess.CompletedProcess(
@@ -194,7 +194,7 @@ def test_start_windows_host_service_missing_stopped_and_retry(monkeypatch) -> No
     def failing_run(command, **kwargs):
         calls.append(command)
         text = kwargs.get("text", False)
-        if "query" in command[2]:
+        if "query" in command[1]:
             return subprocess.CompletedProcess(
                 command, 0, "STATE: 4  STOPPED" if not text else "STATE: 4  STOPPED", "",
             )
@@ -224,8 +224,21 @@ def test_main_dispatches_privileged_shared_root_and_normal_wizard(monkeypatch, t
     monkeypatch.setattr(setup_wizard, "windows_is_admin", lambda: True)
     written: list[tuple] = []
     monkeypatch.setattr(setup_wizard, "write_host_config", lambda *args, **kwargs: written.append((args, kwargs)))
-    privileged = _run_main(monkeypatch, ["--privileged-host-config", "--host", "192.168.8.20", "--port", "18765"])
+    data_dir = tmp_path / "业务数据"
+    privileged = _run_main(
+        monkeypatch,
+        [
+            "--privileged-host-config",
+            "--host",
+            "192.168.8.20",
+            "--port",
+            "18765",
+            "--data-dir",
+            str(data_dir),
+        ],
+    )
     assert privileged.code == 0 and written[0][0][0] == "192.168.8.20"
+    assert written[0][0][2] == data_dir
     assert written[0][1]["write_user_mode"] is False
 
     invalid_uri = _run_main(monkeypatch, ["--manage-shared-roots", "--action-uri", "https://example.test/token"])

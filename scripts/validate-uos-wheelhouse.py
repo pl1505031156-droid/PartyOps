@@ -62,7 +62,11 @@ def read_wheels(wheelhouse: Path) -> dict[str, WheelMetadata]:
             raise ValueError(f"{path.name} 缺少 Name 或 Version")
         name = canonicalize_name(raw_name)
         if name in wheels:
-            raise ValueError(f"离线目录包含重复包：{raw_name}")
+            raise ValueError(
+                f"离线目录包含重复包：{raw_name}；文件："
+                f"{wheels[name].path.name}、{path.name}。"
+                "请删除旧解压目录并重新解压当前版本套件，禁止覆盖合并。"
+            )
         wheels[name] = WheelMetadata(
             name=name,
             version=Version(raw_version),
@@ -171,11 +175,15 @@ def main() -> int:
         "--architecture", choices=("amd64", "arm64"), default="amd64"
     )
     args = parser.parse_args()
-    return validate(
-        args.wheelhouse.resolve(),
-        [path.resolve() for path in args.requirements],
-        args.architecture,
-    )
+    try:
+        return validate(
+            args.wheelhouse.resolve(),
+            [path.resolve() for path in args.requirements],
+            args.architecture,
+        )
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        print(f"UOS/Linux {args.architecture} 离线依赖校验失败：{exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

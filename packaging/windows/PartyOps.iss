@@ -1,5 +1,5 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.3"
+#define MyAppVersion "1.4.3-rc.2"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
@@ -8,6 +8,8 @@
 AppId={{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
+VersionInfoVersion=1.4.3.2
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\PartyOps
 DefaultGroupName=党建智办
@@ -15,7 +17,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 OutputDir={#OutputRoot}
-OutputBaseFilename=PartyOps_1.4.3_windows_amd64
+OutputBaseFilename=PartyOps_1.4.3-rc.2_windows_amd64
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -59,6 +61,22 @@ Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""党�
 [Code]
 var
   ServiceSetupFailed: Boolean;
+  DataDirPage: TInputDirWizardPage;
+
+procedure InitializeWizard;
+begin
+  DataDirPage := CreateInputDirPage(
+    wpSelectDir,
+    '预选主机数据目录',
+    '选择业务数据、附件、备份与日志的保存位置',
+    '如果这台电脑将作为主机，建议选择本机数据盘中的独立空文件夹。' +
+    '稍后的首次配置仍可修改；如果只作为协同机，可保持默认值。',
+    False,
+    ''
+  );
+  DataDirPage.Add('');
+  DataDirPage.Values[0] := ExpandConstant('{commonappdata}\PartyOps');
+end;
 
 procedure RunChecked(FileName, Parameters, Description: String);
 var
@@ -97,6 +115,13 @@ var
 begin
   if CurStep <> ssPostInstall then
     exit;
+  ForceDirectories(ExpandConstant('{commonappdata}\PartyOps'));
+  if not SaveStringToFile(
+    ExpandConstant('{commonappdata}\PartyOps\install-data-dir.txt'),
+    DataDirPage.Values[0],
+    False
+  ) then
+    RaiseException('保存主机数据目录预选项失败');
   RunChecked(
     ExpandConstant('{app}\PartyOpsService.exe'),
     '--startup manual ' + ServiceInstallAction('PartyOpsHost'),
