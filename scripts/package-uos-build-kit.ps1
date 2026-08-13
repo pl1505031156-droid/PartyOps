@@ -103,13 +103,50 @@ $include = @(
   ".gitignore",
   "vendor"
 )
+$excludedDirectoryNames = @(
+  "__pycache__",
+  "coverage",
+  "htmlcov",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".test-data",
+  ".venv",
+  "venv",
+  "node_modules",
+  ".run-e2e"
+)
+$excludedFileNames = @(".coverage*", "coverage*.json", "*.pyc")
 foreach ($item in $include) {
   $source = Join-Path $root $item
   if (Test-Path -LiteralPath $source) {
     $destination = Join-Path $staging $item
     $destinationParent = Split-Path -Parent $destination
     New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
-    Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force
+    if ((Get-Item -LiteralPath $source).PSIsContainer) {
+      # 从复制入口排除构建机缓存，避免只读缓存阻断发布，也避免脏目录先进入暂存区。
+      New-Item -ItemType Directory -Force -Path $destination | Out-Null
+      $robocopyArgs = @(
+        $source,
+        $destination,
+        "/E",
+        "/R:1",
+        "/W:1",
+        "/NFL",
+        "/NDL",
+        "/NJH",
+        "/NJS",
+        "/NP",
+        "/XD"
+      ) + $excludedDirectoryNames + @("/XF") + $excludedFileNames
+      & robocopy @robocopyArgs | Out-Null
+      $robocopyExitCode = $LASTEXITCODE
+      if ($robocopyExitCode -ge 8) {
+        throw "复制 UOS 构建套件目录失败：$item（robocopy 退出码 $robocopyExitCode）"
+      }
+    } else {
+      Copy-Item -LiteralPath $source -Destination $destination -Force
+    }
   }
 }
 if ($optionalEmbeddingMissing.Count -gt 0 -or $optionalLlmMissing.Count -gt 0) {
