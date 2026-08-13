@@ -335,6 +335,9 @@ def test_model_pack_signature_activation_and_resource_degradation(
     assert activated_llm.status_code == 200, activated_llm.text
     assert activated_llm.json()["active_capabilities"] == ["embedding", "llm"]
 
+    # 本用例验证资源降级，不应依赖运行测试的电脑是否碰巧安装了可选
+    # ONNX/tokenizers 组件；组件缺失另有独立发布矩阵覆盖。
+    monkeypatch.setattr("app.local_ai._embedding_runtime_available", lambda: True)
     monkeypatch.setattr("app.local_ai._available_memory_mb", lambda: 1024)
     memory_low = client.get("/api/v1/ai/runtime/status")
     assert memory_low.status_code == 200, memory_low.text

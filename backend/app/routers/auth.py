@@ -68,7 +68,11 @@ def health() -> HealthOut:
         mode=settings.mode,
         host=settings.host,
         port=settings.port,
-        service_url=service_url(settings.host, settings.port),
+        service_url=service_url(
+            settings.host,
+            settings.port,
+            tls_enabled=settings.tls_enabled,
+        ),
         sqlite=db_runtime.validate_capabilities(),
     )
 
@@ -83,7 +87,11 @@ def bootstrap_status(db: Session = Depends(get_session)) -> BootstrapStatus:
         app_name=settings.app_name,
         host=settings.host,
         port=settings.port,
-        service_url=service_url(settings.host, settings.port),
+        service_url=service_url(
+            settings.host,
+            settings.port,
+            tls_enabled=settings.tls_enabled,
+        ),
         lan_candidates=discover_lan_addresses(),
     )
 

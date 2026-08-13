@@ -59,6 +59,10 @@ def test_network_discovery_and_binding_fail_closed(monkeypatch) -> None:
     with pytest.raises(RuntimeError, match="HTTPS"):
         networking.validate_transport_security(host="partyops.local", production=True, tls_enabled=False)
     assert networking.service_url("0.0.0.0", 18765) == "http://127.0.0.1:18765"
+    assert (
+        networking.service_url("192.168.8.20", 18765, tls_enabled=True)
+        == "https://192.168.8.20:18765"
+    )
 
 
 def test_enrollment_url_requires_reachable_trusted_lan_address() -> None:

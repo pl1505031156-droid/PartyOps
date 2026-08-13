@@ -90,9 +90,12 @@ def validate_transport_security(
     raise RuntimeError("生产模式局域网服务必须启用 HTTPS，禁止明文 HTTP")
 
 
-def service_url(host: str, port: int) -> str:
+def service_url(host: str, port: int, *, tls_enabled: bool = False) -> str:
+    """返回浏览器和诊断接口应展示的主服务地址。"""
+
     shown_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host  # nosec B104 - 通配值只映射为回环展示地址。
-    return f"http://{shown_host}:{port}"
+    scheme = "https" if tls_enabled else "http"
+    return f"{scheme}://{shown_host}:{port}"
 
 
 def enrollment_service_url(

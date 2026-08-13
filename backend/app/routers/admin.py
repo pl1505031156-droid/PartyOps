@@ -571,7 +571,11 @@ def diagnostics(
     return {
         "mode": settings.mode,
         "bind": {"host": settings.host, "port": settings.port},
-        "service_url": service_url(settings.host, settings.port),
+        "service_url": service_url(
+            settings.host,
+            settings.port,
+            tls_enabled=settings.tls_enabled,
+        ),
         "lan_candidates": discover_lan_addresses(),
         "disk": {"total_bytes": usage.total, "free_bytes": usage.free},
         "counts": {
@@ -711,7 +715,11 @@ def system_status(
             "host": settings.host,
             "port": settings.port,
             "agent_port": settings.agent_port,
-            "url": service_url(settings.host, settings.port),
+            "url": service_url(
+                settings.host,
+                settings.port,
+                tls_enabled=settings.tls_enabled,
+            ),
             "sse_clients": active_stream_count(),
             "tls_enabled": settings.tls_enabled,
         },
