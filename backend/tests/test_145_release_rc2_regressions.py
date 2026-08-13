@@ -54,6 +54,20 @@ def test_windows_service_source_promotes_child_to_ready() -> None:
     assert "code=HEALTH_TIMEOUT" in service
 
 
+def test_lxml_security_version_is_explicitly_locked() -> None:
+    """文档依赖的宽松传递约束不能把候选包重新解析到已知漏洞版本。"""
+
+    root = Path(__file__).parents[2]
+    requirements = (root / "backend" / "requirements.txt").read_text(encoding="utf-8")
+    project = (root / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+    wheelhouses = list((root / "vendor" / "wheels").glob("*/lxml-*.whl"))
+
+    assert "lxml==6.1.1" in requirements
+    assert '"lxml==6.1.1"' in project
+    assert len(wheelhouses) == 2
+    assert all("lxml-6.1.1-" in path.name for path in wheelhouses)
+
+
 def test_health_probe_uses_loopback_but_returns_advertised_url(monkeypatch, tmp_path) -> None:
     requested: list[str] = []
 

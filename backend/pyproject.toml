@@ -18,6 +18,9 @@ dependencies = [
   "python-multipart==0.0.32",
   "sse-starlette==3.0.2",
   "python-docx==1.2.0",
+  # 固定安全版本，避免 python-docx 的宽松传递依赖重新解析到
+  # 受 PYSEC-2026-87 影响的 lxml 版本。
+  "lxml==6.1.1",
   "PyMuPDF==1.26.0",
   "openpyxl==3.1.5",
   "Pillow==12.3.0",

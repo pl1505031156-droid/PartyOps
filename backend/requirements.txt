@@ -8,6 +8,8 @@ argon2-cffi==25.1.0
 python-multipart==0.0.32
 sse-starlette==3.0.2
 python-docx==1.2.0
+# 固定安全版本，避免离线/在线构建回退到受 PYSEC-2026-87 影响的旧版。
+lxml==6.1.1
 PyMuPDF==1.26.0
 openpyxl==3.1.5
 Pillow==12.3.0
