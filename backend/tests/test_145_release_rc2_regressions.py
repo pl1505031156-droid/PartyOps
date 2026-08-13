@@ -174,3 +174,15 @@ def test_frontend_closure_validator_ignores_runtime_template(tmp_path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_uos_build_kit_normalizes_archive_metadata() -> None:
+    """同一源码重复构建必须得到相同 ZIP，不能嵌入当前时间。"""
+
+    script = (
+        Path(__file__).resolve().parents[2] / "scripts" / "package-uos-build-kit.ps1"
+    ).read_text(encoding="utf-8")
+
+    assert "[DateTimeOffset]::Now" not in script
+    assert '"发布基线日期：2026-08-13（内容采用可复现构建，不嵌入构建机当前时间）"' in script
+    assert "$entry.LastWriteTime = [DateTimeOffset]$normalizedTime" in script
