@@ -7,7 +7,7 @@
 | `PartyOps_1.4.3-rc.2_windows_amd64.exe` | 单文件 Windows 候选；未签名 | 见 Release 与 `candidate.json` |
 | `PartyOps_1.4.3-rc.2_windows_amd64.exe.sha256` | 可选自动化附件 | 与安装器实算一致；普通用户无需下载 |
 | `PartyOps_1.4.3-rc.2_windows_amd64.candidate.json` | 机器可读发布证据 | 记录标签、源码提交、大小、SHA-256、SQLite 与限制 |
-| `PartyOps-UOS-1.4.3-rc.2-build-kit.zip` | amd64/arm64 严格离线构建套件；不是 DEB | 338,686,387 字节；SHA-256 `cddd27af144ccb0c189db4b209bd8a77a71011a92682d9b66b66dd7543824889` |
+| `PartyOps-UOS-1.4.3-rc.2-build-kit.zip` | amd64/arm64 严格离线构建套件；不是 DEB | 338,686,659 字节；SHA-256 `a71126a873e8f6c51219c80587523a9d1c1e7e1ccf4e7488fc8ff84ff3cd0685` |
 | `PartyOps-UOS-1.4.3-rc.2-build-kit.zip.sha256` | 可选自动化附件 | 与构建套件实算一致 |
 | `PartyOps-UOS-1.4.3-rc.2-build-kit.candidate.json` | 机器可读发布证据 | 记录双架构严格闭包和未实机验证边界 |
 | `partyops_1.4.3_amd64.deb` | 未生成 | 需要 UOS amd64 真机原生构建与验收 |
