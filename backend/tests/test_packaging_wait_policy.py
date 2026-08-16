@@ -414,6 +414,10 @@ def test_linux_portable_archive_dereferences_runtime_symlinks() -> None:
         'tar --dereference --hard-dereference -cf - -C "$BUILD" PartyOps'
         in script
     )
+    assert (
+        '"$PYTHON_BIN" "$ROOT/scripts/validate-portable-tar.py"'
+        in script
+    )
     assert "validate-portable-tar.py" in (
         ROOT / "packaging" / "linux" / "build-native.sh"
     ).read_text(encoding="utf-8")

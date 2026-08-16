@@ -440,6 +440,9 @@ command -v zstd >/dev/null 2>&1 || {
 # 让下游只接收普通目录与文件，并继续由 validate-portable-tar.py 严格校验。
 tar --dereference --hard-dereference -cf - -C "$BUILD" PartyOps |
   zstd -T0 -19 -f -o "$ARTIFACTS/PartyOps-linux-$ARCH.tar.zst"
+zstd -dc -- "$ARTIFACTS/PartyOps-linux-$ARCH.tar.zst" |
+  "$PYTHON_BIN" "$ROOT/scripts/validate-portable-tar.py" \
+    --expected-root PartyOps
 (cd "$WHEELHOUSE" && find . -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum) \
   > "$ARTIFACTS/dependency-sha256-$ARCH.txt"
 (cd "$ARTIFACTS" && sha256sum "PartyOps-linux-$ARCH.tar.zst" > "SHA256SUMS.$ARCH")
