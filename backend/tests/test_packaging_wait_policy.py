@@ -446,6 +446,19 @@ def test_linux_deb_old_builder_checks_ownership_before_compat_build() -> None:
     assert "旧版 dpkg-deb 环境中的载荷并非全部 root:root" in script
 
 
+def test_linux_native_packages_preserve_frozen_runtime_and_verify_identity() -> None:
+    """RPM 不得改写冻结载荷，DEB/RPM 输出必须回读版本与架构。"""
+
+    script = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "%global __os_install_post %{nil}" in script
+    assert "dpkg-deb --field" in script
+    assert "rpm -qp --queryformat" in script
+    assert "元数据与冻结版本/架构不一致" in script
+
+
 def test_linux_ocr_uses_locked_glibc217_runtime_not_build_host() -> None:
     """Linux 制品必须封入固定 OCR，不能复用构建机的过时系统版本。"""
 

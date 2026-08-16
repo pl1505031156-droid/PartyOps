@@ -177,6 +177,7 @@ else
   RPM_PRE_SCRIPT="$(sed 's/%/%%/g' "$ROOT/packaging/linux/pre-install-stop.sh")"
   RPM_POST_SCRIPT="$(sed 's/%/%%/g' "$ROOT/packaging/linux/post-install-configure.sh")"
   cat >"$BUILD/rpmbuild/SPECS/partyops.spec" <<EOF
+%global __os_install_post %{nil}
 Name: partyops
 Version: $RPM_VERSION
 Release: %{partyops_release}
@@ -273,6 +274,19 @@ EOF
     -bb "$BUILD/rpmbuild/SPECS/partyops.spec"
   OUTPUT="$ARTIFACTS/PartyOps-1.4.3-0.rc.3.1.${RPM_ARCH}.rpm"
   cp "$BUILD/rpmbuild/RPMS/$RPM_ARCH/partyops-$RPM_VERSION-$RPM_RELEASE.$RPM_ARCH.rpm" "$OUTPUT"
+fi
+if [[ "$FORMAT" == deb ]]; then
+  PACKAGE_IDENTITY="$(dpkg-deb --field "$OUTPUT" Package Version Architecture | tr '\n' '|')"
+  [[ "$PACKAGE_IDENTITY" == "Package: partyops|Version: $DEB_VERSION|Architecture: $ARCH|" ]] || {
+    echo "DEB 元数据与冻结版本/架构不一致：$PACKAGE_IDENTITY" >&2
+    exit 2
+  }
+else
+  PACKAGE_IDENTITY="$(rpm -qp --queryformat '%{NAME}|%{VERSION}|%{RELEASE}|%{ARCH}' "$OUTPUT")"
+  [[ "$PACKAGE_IDENTITY" == "partyops|$RPM_VERSION|$RPM_RELEASE|$RPM_ARCH" ]] || {
+    echo "RPM 元数据与冻结版本/架构不一致：$PACKAGE_IDENTITY" >&2
+    exit 2
+  }
 fi
 sha256sum "$OUTPUT" >"$OUTPUT.sha256"
 echo "原生安装包已生成：$OUTPUT"
