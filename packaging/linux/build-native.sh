@@ -95,6 +95,10 @@ file "$PKG/opt/partyops/partyops" | grep -q "$EXPECTED_PAYLOAD_PATTERN" || {
   echo "便携载荷主程序架构与目标 $ARCH 不一致，拒绝封装。" >&2
   exit 2
 }
+[[ -s "$PKG/opt/partyops/update-public-key.txt" ]] || {
+  echo "便携载荷缺少更新信任公钥，拒绝生成无法应用内升级的正式包。" >&2
+  exit 2
+}
 cp "$ROOT/packaging/uos/partyops.desktop" "$ROOT/packaging/uos/partyops-file.desktop" \
   "$ROOT/packaging/uos/partyops-client.desktop" "$PKG/usr/share/applications/"
 cp "$ROOT/packaging/uos/partyops.svg" "$PKG/usr/share/icons/hicolor/scalable/apps/partyops.svg"

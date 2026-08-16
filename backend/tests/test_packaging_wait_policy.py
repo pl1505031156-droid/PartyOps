@@ -423,6 +423,17 @@ def test_linux_portable_archive_dereferences_runtime_symlinks() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_linux_native_release_requires_embedded_update_trust_key() -> None:
+    """正式 DEB/RPM 不得在缺少应用内更新信任根时继续封装。"""
+
+    script = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert '[[ -s "$PKG/opt/partyops/update-public-key.txt" ]]' in script
+    assert "拒绝生成无法应用内升级的正式包" in script
+
+
 def test_linux_ocr_uses_locked_glibc217_runtime_not_build_host() -> None:
     """Linux 制品必须封入固定 OCR，不能复用构建机的过时系统版本。"""
 

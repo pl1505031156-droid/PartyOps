@@ -42,7 +42,7 @@ RELEASE_NOTES = [
     "在线更新按当前系统与架构精确下载，不再下载其他平台安装器",
     "修复 PartyOps 协议注册表拒绝访问并提供事务回滚诊断",
     "修复数据库启动异常导致 CHILD_EXITED、乱码与管理员创建 10061",
-    "新增 Windows 个人模式、可选彻底卸载以及 Windows 7 独立 Legacy 运行时",
+    "新增 Windows 个人模式与可选彻底卸载；Win7 安全门禁未通过，本版不提供",
     "新增麒麟、UOS、deepin 的 DEB 与 openEuler RPM 双架构原生包",
     "安装后自动核对文件、前端、SQLite/FTS5、OCR、智能运行时与健康端点",
 ]
