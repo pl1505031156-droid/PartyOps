@@ -155,7 +155,17 @@ echo "PartyOps 业务数据保留在 /var/lib/partyops，卸载不会自动删�
 EOF
   chmod 0755 "$PKG/DEBIAN/preinst" "$PKG/DEBIAN/postinst" "$PKG/DEBIAN/prerm" "$PKG/DEBIAN/postrm"
   OUTPUT="$ARTIFACTS/PartyOps_1.4.3-rc.3_linux_${ARCH}.deb"
-  dpkg-deb --root-owner-group --build "$PKG" "$OUTPUT"
+  if dpkg-deb --help 2>&1 | grep -q -- '--root-owner-group'; then
+    dpkg-deb --root-owner-group --build "$PKG" "$OUTPUT"
+  else
+    # manylinux2014 的 dpkg-deb 早于 --root-owner-group。构建进程本身以
+    # 隔离 root 运行时，先逐项证明载荷所有权，再使用兼容参数封装。
+    if find "$PKG" \( ! -uid 0 -o ! -gid 0 \) -print -quit | grep -q .; then
+      echo "旧版 dpkg-deb 环境中的载荷并非全部 root:root，拒绝封装。" >&2
+      exit 2
+    fi
+    dpkg-deb --build "$PKG" "$OUTPUT"
+  fi
 else
   RPM_ARCH=x86_64
   [[ "$ARCH" == arm64 ]] && RPM_ARCH=aarch64

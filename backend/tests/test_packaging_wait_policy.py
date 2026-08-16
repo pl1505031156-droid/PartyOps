@@ -434,6 +434,18 @@ def test_linux_native_release_requires_embedded_update_trust_key() -> None:
     assert "拒绝生成无法应用内升级的正式包" in script
 
 
+def test_linux_deb_old_builder_checks_ownership_before_compat_build() -> None:
+    """glibc 2.17 构建机的旧 dpkg-deb 仅在 root:root 载荷上降级参数。"""
+
+    script = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "dpkg-deb --help" in script
+    assert "! -uid 0 -o ! -gid 0" in script
+    assert "旧版 dpkg-deb 环境中的载荷并非全部 root:root" in script
+
+
 def test_linux_ocr_uses_locked_glibc217_runtime_not_build_host() -> None:
     """Linux 制品必须封入固定 OCR，不能复用构建机的过时系统版本。"""
 
