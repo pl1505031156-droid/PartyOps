@@ -63,6 +63,20 @@ if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
   echo "未找到可用 Python 3.11，请先运行 ensure-build-environment.sh。" >&2
   exit 2
 fi
+if ! "$PYTHON_BIN" - <<'PY'
+from pathlib import Path
+import sys
+import sysconfig
+
+shared = int(sysconfig.get_config_var("Py_ENABLE_SHARED") or 0)
+library = str(sysconfig.get_config_var("LDLIBRARY") or "")
+candidate = Path(sys.base_prefix) / "lib" / library
+raise SystemExit(0 if shared == 1 and library and candidate.is_file() else 1)
+PY
+then
+  echo "发布冻结要求带共享 libpython 的 Python 3.11；当前解释器仅支持静态嵌入，无法生成可启动的 PyInstaller 载荷。" >&2
+  exit 2
+fi
 
 EXPECTED_MACHINE="x86_64"
 [[ "$ARCH" == "arm64" ]] && EXPECTED_MACHINE="aarch64"

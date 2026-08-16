@@ -284,6 +284,19 @@ def test_onnxruntime_freezing_does_not_import_runtime_during_collection() -> Non
     assert 'collect_all("onnxruntime")' not in spec
 
 
+def test_linux_freeze_rejects_python_without_shared_runtime() -> None:
+    """PyInstaller 需要共享 libpython，必须在耗时构建前给出中文诊断。"""
+
+    portable = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'sysconfig.get_config_var("Py_ENABLE_SHARED")' in portable
+    assert 'sysconfig.get_config_var("LDLIBRARY")' in portable
+    assert 'candidate = Path(sys.base_prefix) / "lib" / library' in portable
+    assert "发布冻结要求带共享 libpython 的 Python 3.11" in portable
+
+
 def test_llama_runtime_is_rebuilt_for_glibc_217_without_openssl() -> None:
     """国产 Linux 包不能复用要求新 glibc/OpenSSL 的 Ubuntu 预编译运行时。"""
 
