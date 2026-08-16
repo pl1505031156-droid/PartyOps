@@ -438,7 +438,7 @@ command -v zstd >/dev/null 2>&1 || {
 # 原生包入口拒绝 TAR 内的符号链接和其他特殊文件。PyInstaller 会为
 # 部分共享库创建相对符号链接，因此在受控构建目录内归档时显式展开，
 # 让下游只接收普通目录与文件，并继续由 validate-portable-tar.py 严格校验。
-tar --dereference -cf - -C "$BUILD" PartyOps |
+tar --dereference --hard-dereference -cf - -C "$BUILD" PartyOps |
   zstd -T0 -19 -f -o "$ARTIFACTS/PartyOps-linux-$ARCH.tar.zst"
 (cd "$WHEELHOUSE" && find . -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum) \
   > "$ARTIFACTS/dependency-sha256-$ARCH.txt"
