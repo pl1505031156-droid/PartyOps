@@ -423,6 +423,17 @@ def test_linux_portable_archive_dereferences_runtime_symlinks() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_linux_portable_release_extensions_disable_debug_location_views() -> None:
+    """manylinux2014 的旧汇编器不得收到 GCC 11 的调试定位扩展。"""
+
+    script = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'export CFLAGS="${CFLAGS:-} -O3 -g0 -fPIC"' in script
+    assert 'export CXXFLAGS="${CXXFLAGS:-} -O3 -g0 -fPIC"' in script
+
+
 def test_linux_native_release_requires_embedded_update_trust_key() -> None:
     """正式 DEB/RPM 不得在缺少应用内更新信任根时继续封装。"""
 

@@ -125,6 +125,11 @@ export CC="${CC:-$(command -v gcc)}"
 export CXX="${CXX:-$(command -v g++)}"
 export AR="${AR:-$(command -v ar)}"
 export RANLIB="${RANLIB:-$(command -v ranlib)}"
+# 发布运行时不包含调试信息。显式把 -g0 放在用户/解释器默认参数之后，
+# 避免 GCC 11 生成 CentOS 7 / manylinux2014 的 binutils 2.27 无法识别的
+# `.loc view` 指令；同时保持 x86_64 与 ARM64 构建参数一致、可复现。
+export CFLAGS="${CFLAGS:-} -O3 -g0 -fPIC"
+export CXXFLAGS="${CXXFLAGS:-} -O3 -g0 -fPIC"
 export LDSHARED="${LDSHARED:-$CC -pthread -shared -Wl,-z,noexecstack -Wl,--exclude-libs,ALL}"
 export LDCXXSHARED="${LDCXXSHARED:-$CXX -pthread -shared -Wl,-z,noexecstack}"
 echo "本机扩展编译器：$CC；链接器：$LDSHARED"
