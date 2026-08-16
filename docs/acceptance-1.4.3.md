@@ -12,7 +12,7 @@
 | 官网 | 33 项通过；行 98.38%、分支 93.30%；静态入口通过 | `website/coverage/`；生产构建须在五包清单冻结后执行 |
 | Python 依赖 | `pip check`、`uv lock --check`、pip-audit 通过，已知漏洞为 0 | 本机门禁记录 |
 | Node 生产依赖 | 业务前端、官网生产依赖已知高危漏洞均为 0 | `pnpm audit --prod --audit-level high` |
-| 源码安全 | Gitleaks 扫描 64 个提交、约 5.78 MB 已跟踪历史无泄露；Ruff 致命规则、Bandit 中高危结果为 0 | `artifacts/gitleaks-rc3-freeze-final.json`、`artifacts/bandit-rc3-freeze-final.json` |
+| 源码安全 | Gitleaks 扫描完整已跟踪历史（约 5.84 MB）无泄露；Ruff 致命规则、Bandit 中高危结果为 0 | `artifacts/gitleaks-rc3-freeze-final.json`、`artifacts/bandit-rc3-freeze-final.json` |
 | SBOM | Python、业务前端、官网 CycloneDX 1.6 均生成并可解析 | `docs/sbom-*.cdx.json` |
 | Windows 安装器语法 | Windows 10/11、Win7 x64、Win7 x86 三入口由 Inno Setup 6.7.3 编译通过 | `artifacts/inno-syntax-rc3-20260813/`；仅为语法探针 |
 
