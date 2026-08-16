@@ -1,6 +1,6 @@
 """业务枚举，字符串值同时作为 API 契约。"""
 
-from enum import StrEnum
+from .compat import StrEnum
 
 
 class UserRole(StrEnum):

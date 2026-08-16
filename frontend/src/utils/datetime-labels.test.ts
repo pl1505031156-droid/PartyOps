@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatServerTime, localInputToUtc } from "./datetime";
+import { formatServerTime, localInputToUtc, localNowInput, serverTime } from "./datetime";
 import {
   auditActionLabel,
   auditEntityLabel,
@@ -19,6 +19,10 @@ describe("北京时间与中文标签", () => {
 
   it("将北京时间输入转换为 UTC 后提交", () => {
     expect(localInputToUtc("2026-07-29 18:03")).toBe("2026-07-29T10:03:00.000Z");
+    expect(serverTime("2026-07-29T10:03:00+08:00").format("HH:mm")).toBe("10:03");
+    expect(formatServerTime("invalid", "HH:mm", "不可用")).toBe("不可用");
+    expect(formatServerTime(null, "HH:mm", "未提供")).toBe("未提供");
+    expect(localNowInput("YYYY")).toMatch(/^\d{4}$/);
   });
 
   it("普通界面不直接显示内部状态代码", () => {

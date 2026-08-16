@@ -5,8 +5,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$releaseVersion = "1.4.3-rc.2"
-$releaseTag = "v1.4.3-rc.2"
+$releaseVersion = "1.4.3-rc.3"
+$releaseTag = "v1.4.3-rc.3"
 $runtimeRoot = Join-Path $repoRoot "artifacts\windows-runtime"
 $artifactRoot = Join-Path $repoRoot "artifacts"
 $bundleRoot = Join-Path $artifactRoot "PartyOps-$releaseVersion-windows-amd64"
@@ -132,7 +132,10 @@ if ($LASTEXITCODE -ne 0) {
   throw "Inno Setup 安装器构建失败，退出码：$LASTEXITCODE"
 }
 
-$installer = Join-Path $artifactRoot "PartyOps_1.4.3-rc.2_windows_amd64.exe"
+$installer = Join-Path $artifactRoot "PartyOps_1.4.3-rc.3_windows_amd64.exe"
+if (-not (Test-Path -LiteralPath $installer)) {
+  throw "Inno 返回成功但未找到预期安装器：$installer"
+}
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
 [System.IO.File]::WriteAllText(
   "$installer.sha256",
@@ -145,16 +148,18 @@ $candidate = [ordered]@{
   version = $releaseVersion
   release_tag = $releaseTag
   source_commit = $sourceCommit
-  platform = "windows-amd64"
+  platform = "windows"
+  architecture = "amd64"
+  runtime_profile = "full"
   signed = $false
   filename = (Split-Path -Leaf $installer)
   size = (Get-Item -LiteralPath $installer).Length
   sha256 = $hash
   sqlite_version = $expectedSqliteVersion
-  limitations = @("Windows 10 未实机验证", "UOS 未实机验证", "未签名测试候选")
+  limitations = @("Windows 10 未实机验证", "未签名候选版")
 }
 [System.IO.File]::WriteAllText(
-  (Join-Path $artifactRoot "PartyOps_1.4.3-rc.2_windows_amd64.candidate.json"),
+  (Join-Path $artifactRoot "PartyOps_1.4.3-rc.3_windows_amd64.candidate.json"),
   ($candidate | ConvertTo-Json -Depth 5),
   (New-Object System.Text.UTF8Encoding($false))
 )

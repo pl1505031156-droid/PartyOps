@@ -190,6 +190,24 @@ def test_business_device_identity_never_falls_back_to_ip(client, admin) -> None:
 
 
 def test_cookie_writes_reject_hostile_origin_and_emit_security_headers(client, admin) -> None:
+    login_csrf = client.post(
+        "/api/v1/auth/login",
+        headers={"Origin": "https://attacker.invalid"},
+        json={"username": "admin", "password": "PartyOps@2026"},
+    )
+    assert login_csrf.status_code == 403
+    assert login_csrf.json()["code"] == "ORIGIN_DENIED"
+    bootstrap_csrf = client.post(
+        "/api/v1/bootstrap/host",
+        headers={"Origin": "https://attacker.invalid"},
+        json={
+            "username": "attacker",
+            "display_name": "恶意管理员",
+            "password": "PartyOps@2026",
+        },
+    )
+    assert bootstrap_csrf.status_code == 403
+    assert bootstrap_csrf.json()["code"] == "ORIGIN_DENIED"
     rejected = client.post(
         "/api/v1/auth/logout",
         headers={"Origin": "https://attacker.invalid"},

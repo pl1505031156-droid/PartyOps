@@ -128,6 +128,10 @@ def test_image_and_scanned_pdf_ocr_fallback(monkeypatch) -> None:
     invalid_text, invalid_warnings = _extract_image(b"not-an-image")
     assert invalid_text == ""
     assert invalid_warnings
+    disguised_psd = b"8BPS\x00\x01" + b"\x00" * 64
+    rejected_text, rejected_warnings = _extract_image(disguised_psd)
+    assert rejected_text == ""
+    assert "已拒绝解析" in rejected_warnings[0]
 
     pdf = fitz.open()
     pdf.new_page()

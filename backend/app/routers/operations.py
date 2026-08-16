@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, Query, Request
@@ -106,7 +108,7 @@ def require_report_draft(report: PeriodReport, operation: str) -> None:
         )
 
 
-@router.get("/period-reports", response_model=list[PeriodReportOut])
+@router.get("/period-reports", response_model=typing.List[PeriodReportOut])
 def list_period_reports(
     period_type: PeriodType | None = None,
     limit: int = Query(default=100, ge=1, le=500),
@@ -122,7 +124,7 @@ def list_period_reports(
     return [report_to_out(db, report) for report in reports]
 
 
-@router.post("/period-reports/ensure-current", response_model=list[PeriodReportOut])
+@router.post("/period-reports/ensure-current", response_model=typing.List[PeriodReportOut])
 def ensure_current_period_reports(
     request: Request,
     user: User = Depends(get_current_user),
@@ -485,7 +487,7 @@ def download_period_xlsx(
     return FileResponse(path, filename=path.name)
 
 
-@router.get("/report-templates", response_model=list[ReportTemplateOut])
+@router.get("/report-templates", response_model=typing.List[ReportTemplateOut])
 def list_report_templates(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -543,7 +545,7 @@ def patch_report_template(
     return template
 
 
-@router.get("/archive-templates", response_model=list[ArchiveTemplateOut])
+@router.get("/archive-templates", response_model=typing.List[ArchiveTemplateOut])
 def list_archive_templates(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -579,7 +581,7 @@ def journal_visible(db: Session, entry: WorkJournalEntry, user: User) -> bool:
     return bool(task and can_view_task(db, task, user))
 
 
-@router.get("/work-journal", response_model=list[WorkJournalOut])
+@router.get("/work-journal", response_model=typing.List[WorkJournalOut])
 def list_work_journal(
     task_id: str | None = None,
     created_by: str | None = None,
@@ -694,7 +696,7 @@ def patch_work_journal(
 
 @router.get(
     "/work-journal/{entry_id}/history",
-    response_model=list[WorkJournalRevisionOut],
+    response_model=typing.List[WorkJournalRevisionOut],
 )
 def work_journal_history(
     entry_id: str,
@@ -715,7 +717,7 @@ def work_journal_history(
     )
 
 
-@router.get("/notifications", response_model=list[NotificationOut])
+@router.get("/notifications", response_model=typing.List[NotificationOut])
 def list_notifications(
     unread_only: bool = False,
     notification_type: str | None = Query(default=None, max_length=48),

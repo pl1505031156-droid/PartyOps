@@ -4,11 +4,21 @@ title = "PartyOps secret scanning"
 useDefault = true
 
 [allowlist]
-description = "只排除本机生成且已由 .gitignore 禁止提交的测试/构建目录"
+description = "只排除本机生成且已由 .gitignore 禁止提交的测试、构建目录和官网本机部署凭据"
 paths = [
   '''(^|/)backend/\.test-data/''',
   '''(^|/)frontend/node_modules/''',
+  '''(^|/)frontend/dist/''',
+  '''(^|/)website/node_modules/''',
+  '''(^|/)website/dist/''',
   '''(^|/)\.venv/''',
+  '''(^|/)\.build-windows/''',
+  '''(^|/)\.build-linux/''',
+  '''(^|/)\.build-uos/''',
   '''(^|/)artifacts/''',
+  '''(^|/)build/''',
+  '''(^|/)dist/''',
   '''(^|/)output/''',
+  '''(^|/)vendor/''',
+  '''(^|[\\/])website[\\/]\.env\.local$''',
 ]

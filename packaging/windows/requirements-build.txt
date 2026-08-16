@@ -1,2 +1,5 @@
 pyinstaller==6.16.0
 pywin32==311
+# PyInstaller 6.16 在 Windows 上明确排除 2024.8.26；固定到其支持的
+# 最近版本，避免发布构建在解析依赖时才失败。
+pefile==2023.2.7

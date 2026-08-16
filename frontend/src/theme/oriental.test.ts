@@ -31,6 +31,7 @@ describe("东方四时长卷路由配置", () => {
       ["/inbox", "inbox"],
       ["/reports", "reports"],
       ["/journal", "journal"],
+      ["/party-development", "calendar"],
       ["/topics", "topic"],
       ["/workspace", "workspace"],
       ["/archives", "archives"],
@@ -39,6 +40,7 @@ describe("东方四时长卷路由配置", () => {
       ["/document-comparisons", "comparison"],
       ["/fleet/devices", "collaboration"],
       ["/fleet/transfers", "transfer"],
+      ["/fleet/inbox", "transfer"],
       ["/settings/updates", "management"],
       ["/help", "help"],
     ]);

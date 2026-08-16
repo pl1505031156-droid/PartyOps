@@ -86,6 +86,28 @@ def ensure_tls_material(settings: Settings) -> dict[str, object]:
         )
     ca_key = _load_key(ca_key_path)
     ca_cert = x509.load_pem_x509_certificate(ca_cert_path.read_bytes())
+    try:
+        constraints = ca_cert.extensions.get_extension_for_class(
+            x509.BasicConstraints
+        ).value
+        if not constraints.ca:
+            raise ValueError("PartyOps 内部 CA 证书缺少 CA 约束")
+        if (
+            ca_key.public_key().public_bytes(
+                serialization.Encoding.DER,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            != ca_cert.public_key().public_bytes(
+                serialization.Encoding.DER,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+        ):
+            raise ValueError("PartyOps 内部 CA 私钥与证书不匹配")
+        ca_cert.verify_directly_issued_by(ca_cert)
+    except (ValueError, TypeError, x509.ExtensionNotFound) as exc:
+        # 不能静默重建根 CA；那会让所有已入网设备失去信任。保留原文件并
+        # 给监督服务一个可分类的 TLS 诊断，由管理员决定恢复备份或重置。
+        raise ValueError("PartyOps 内部 CA 完整性校验失败，原证书已保留") from exc
     regenerate_server = not server_key_path.exists() or not server_cert_path.exists()
     if not regenerate_server:
         try:
@@ -198,6 +220,11 @@ def issue_device_certificate(
             "certificate_fingerprint": "",
         }
     csr = x509.load_pem_x509_csr(csr_pem.encode("utf-8"))
+    if not csr.is_signature_valid:
+        raise ValueError("设备证书请求签名无效")
+    public_key = csr.public_key()
+    if not isinstance(public_key, rsa.RSAPublicKey) or public_key.key_size < 2048:
+        raise ValueError("设备证书请求必须使用至少 2048 位 RSA 密钥")
     cert = (
         x509.CertificateBuilder()
         .subject_name(
@@ -209,7 +236,7 @@ def issue_device_certificate(
             )
         )
         .issuer_name(ca_cert.subject)
-        .public_key(csr.public_key())
+        .public_key(public_key)
         .serial_number(x509.random_serial_number())
         .not_valid_before(datetime.now(timezone.utc) - timedelta(minutes=5))
         .not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))

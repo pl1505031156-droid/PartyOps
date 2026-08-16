@@ -56,6 +56,7 @@ const commandLoading = ref(false);
 const connectionState = ref<"live" | "polling" | "offline">("live");
 const reminderPreference = ref<ReminderPreference | null>(null);
 const recentNotifications = ref<NotificationItem[]>([]);
+const pendingUpdateVersion = ref("");
 const unreadNotifications = computed(() => recentNotifications.value.filter((item) => !item.read_at).length);
 const visibleNavigationDomains = computed(() => {
   const capabilities = new Set(session.runtimeContext?.capabilities || []);
@@ -70,6 +71,24 @@ let source: EventSource | null = null;
 let polling: number | null = null;
 let commandTimer: number | null = null;
 const NAVIGATION_STORAGE_KEY = "partyops.navigation.expanded-domains";
+const ONLINE_UPDATE_TASK_KEY = "partyops.pending-online-update";
+const ONLINE_UPDATE_LAST_CHECK_KEY = "partyops.online-update-last-check";
+const ONLINE_UPDATE_RETRY_AFTER_KEY = "partyops.online-update-retry-after";
+
+function refreshPendingUpdateNotice() {
+  const raw = window.localStorage.getItem(ONLINE_UPDATE_TASK_KEY);
+  if (!raw) {
+    pendingUpdateVersion.value = "";
+    return;
+  }
+  try {
+    const pending = JSON.parse(raw) as { version?: unknown };
+    pendingUpdateVersion.value = typeof pending.version === "string" ? pending.version : "";
+  } catch {
+    window.localStorage.removeItem(ONLINE_UPDATE_TASK_KEY);
+    pendingUpdateVersion.value = "";
+  }
+}
 
 function loadExpandedDomains(): NavigationDomainKey[] {
   const storedValue = typeof window === "undefined"
@@ -202,6 +221,58 @@ async function loadNotifications() {
     recentNotifications.value = await api.get<NotificationItem[]>("/notifications?limit=8");
   } catch {
     // 通知面板不阻断业务页面，下一次实时事件或刷新会重试。
+  }
+}
+
+async function prepareProfessionalUpdate() {
+  if (session.user?.role !== "admin") return;
+  const retryAfter = Number(window.localStorage.getItem(ONLINE_UPDATE_RETRY_AFTER_KEY) || 0);
+  if (retryAfter && Date.now() < retryAfter) return;
+  const lastCheck = Number(window.localStorage.getItem(ONLINE_UPDATE_LAST_CHECK_KEY) || 0);
+  if (lastCheck && Date.now() - lastCheck < 24 * 60 * 60 * 1000) return;
+  try {
+    const release = await api.get<{ available: boolean; version: string }>("/admin/updates/online");
+    if (!release.available) {
+      window.localStorage.removeItem(ONLINE_UPDATE_TASK_KEY);
+      window.localStorage.removeItem(ONLINE_UPDATE_RETRY_AFTER_KEY);
+      window.localStorage.setItem(ONLINE_UPDATE_LAST_CHECK_KEY, Date.now().toString());
+      pendingUpdateVersion.value = "";
+      return;
+    }
+    let pendingVersion = "";
+    const rawPending = window.localStorage.getItem(ONLINE_UPDATE_TASK_KEY);
+    if (rawPending) {
+      try {
+        const pending = JSON.parse(rawPending) as { version?: unknown };
+        pendingVersion = typeof pending.version === "string" ? pending.version : "";
+      } catch {
+        window.localStorage.removeItem(ONLINE_UPDATE_TASK_KEY);
+      }
+    }
+    // 服务端 prepare 是按“版本 + SHA-256”幂等的：即使上次下载在断网或
+    // 浏览器关闭时中断，也应允许它恢复；更不能让旧版本的本地标记永久
+    // 阻挡下一次专业更新。
+    const prepared = await api.post<{ id: string; version: string }>("/admin/updates/online/prepare");
+    window.localStorage.setItem(
+      ONLINE_UPDATE_TASK_KEY,
+      JSON.stringify({
+        packageId: prepared.id,
+        version: prepared.version,
+        startedAt: new Date().toISOString(),
+      }),
+    );
+    window.localStorage.removeItem(ONLINE_UPDATE_RETRY_AFTER_KEY);
+    window.localStorage.setItem(ONLINE_UPDATE_LAST_CHECK_KEY, Date.now().toString());
+    pendingUpdateVersion.value = prepared.version;
+    if (pendingVersion !== prepared.version) {
+      Message.info(`发现 ${release.version}，已在后台下载适合本机的更新；安装前会再次请您确认`);
+    }
+  } catch {
+    // 离线办公是正常场景：失败不阻断业务，但只短暂退避，不能静默压制 24 小时。
+    window.localStorage.setItem(
+      ONLINE_UPDATE_RETRY_AFTER_KEY,
+      String(Date.now() + 15 * 60 * 1000),
+    );
   }
 }
 
@@ -346,10 +417,13 @@ watch(
 );
 
 onMounted(async () => {
+  refreshPendingUpdateNotice();
   await Promise.all([loadReminderPreference(), loadNotifications()]);
+  void prepareProfessionalUpdate();
   connectEvents();
   window.addEventListener("keydown", globalKeydown);
   window.addEventListener("partyops:command", openCommandCenter);
+  window.addEventListener("partyops:update-task-changed", refreshPendingUpdateNotice);
 });
 onBeforeUnmount(() => {
   source?.close();
@@ -357,6 +431,7 @@ onBeforeUnmount(() => {
   if (commandTimer) window.clearTimeout(commandTimer);
   window.removeEventListener("keydown", globalKeydown);
   window.removeEventListener("partyops:command", openCommandCenter);
+  window.removeEventListener("partyops:update-task-changed", refreshPendingUpdateNotice);
 });
 </script>
 
@@ -442,6 +517,15 @@ onBeforeUnmount(() => {
           <small>一个事项 · 一条责任链 · 一份最终档案 · {{ orientalDate.compact }}</small>
         </div>
         <a-space>
+          <a-button
+            v-if="pendingUpdateVersion"
+            status="warning"
+            aria-label="打开系统更新"
+            @click="router.push('/settings/updates')"
+          >
+            <template #icon><IconCloudDownload /></template>
+            {{ pendingUpdateVersion }} 更新准备中
+          </a-button>
           <a-popover trigger="click" position="br">
             <a-badge :count="unreadNotifications" :max-count="99" :dot="false">
               <a-button aria-label="打开最近通知"><template #icon><IconNotification /></template>通知</a-button>

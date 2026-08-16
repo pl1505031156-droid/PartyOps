@@ -22,6 +22,7 @@ from PIL import Image
 
 from .schemas import IntakeCandidate
 from .problems import ProblemException
+from .compat import to_thread
 
 
 DATE_PATTERNS = [
@@ -38,6 +39,16 @@ MAX_OFFICE_UNCOMPRESSED_BYTES = 500 * 1024 * 1024
 MAX_PDF_PAGES = 500
 MAX_PDF_OCR_PAGES = 20
 MAX_IMAGE_PIXELS = 50_000_000
+# Pillow 默认会按内容而不是扩展名加载大量插件。收件文件属于不可信输入，
+# 因此 PartyOps 只允许 OCR 实际用到的常见位图签名，避免把伪装成 PNG/JPEG
+# 的 PSD、FITS、GD、字体或 PDF 交给无关解码器。
+_IMAGE_SIGNATURES = (
+    b"\x89PNG\r\n\x1a\n",
+    b"\xff\xd8\xff",
+    b"BM",
+    b"II*\x00",
+    b"MM\x00*",
+)
 _PARSE_CONCURRENCY = asyncio.Semaphore(2)
 WEEKDAY_MAP = {
     "一": 0,
@@ -231,6 +242,9 @@ def _extract_pdf(data: bytes) -> tuple[str, list[str]]:
 
 
 def _extract_image(data: bytes) -> tuple[str, list[str]]:
+    is_webp = len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+    if not is_webp and not any(data.startswith(signature) for signature in _IMAGE_SIGNATURES):
+        return "", ["图片内容与支持的 PNG、JPEG、BMP、TIFF 或 WebP 格式不符，已拒绝解析。"]
     try:
         image = Image.open(io.BytesIO(data))
         if image.width * image.height > MAX_IMAGE_PIXELS:
@@ -297,7 +311,7 @@ async def parse_upload(upload: UploadFile, pasted_text: str = "") -> IntakeCandi
         )
     safe_filename = Path(upload.filename or "").name
     async with _PARSE_CONCURRENCY:
-        return await asyncio.to_thread(
+        return await to_thread(
             _parse_upload_data,
             data,
             safe_filename,

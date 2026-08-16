@@ -60,6 +60,7 @@ describe("会话状态", () => {
     get.mockRejectedValueOnce(new Error("401"));
     expect(await store.ensure()).toBeNull();
     expect(store.ready).toBe(true);
+    expect(await store.ensure()).toBeNull();
   });
 
   it("支持登录、首次设置与注销", async () => {

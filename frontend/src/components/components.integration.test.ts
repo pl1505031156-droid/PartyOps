@@ -110,6 +110,7 @@ function setupContext() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   FakeEventSource.instances = [];
   vi.stubGlobal("EventSource", FakeEventSource);
   apiMocks.get.mockImplementation(async (path: string) => {
@@ -129,7 +130,7 @@ beforeEach(() => {
 
 describe("应用壳与快捷操作", () => {
   it("按真实能力显示导航、建立事件流并响应命令面板", async () => {
-    const { pinia, router } = setupContext();
+    const { pinia, session, router } = setupContext();
     await router.push("/");
     await router.isReady();
     const wrapper = shallowMount(AppShell, {
@@ -158,6 +159,59 @@ describe("应用壳与快捷操作", () => {
     await invoke("isQuietTime");
     await invoke("loadReminderPreference");
     await invoke("loadNotifications");
+    window.localStorage.removeItem("partyops.online-update-last-check");
+    apiMocks.get.mockResolvedValueOnce({ available: true, version: "1.4.3-rc.3" });
+    apiMocks.post.mockResolvedValueOnce({ id: "online-package", version: "1.4.3-rc.3" });
+    await invoke("prepareProfessionalUpdate");
+    expect(window.localStorage.getItem("partyops.pending-online-update")).toContain("online-package");
+    expect(wrapper.text()).toContain("更新准备中");
+    window.localStorage.removeItem("partyops.online-update-last-check");
+    window.localStorage.setItem(
+      "partyops.pending-online-update",
+      JSON.stringify({ packageId: "old-package", version: "1.4.3-rc.2" }),
+    );
+    apiMocks.get.mockResolvedValueOnce({ available: true, version: "1.4.3-rc.3" });
+    apiMocks.post.mockResolvedValueOnce({ id: "new-package", version: "1.4.3-rc.3" });
+    await invoke("prepareProfessionalUpdate");
+    expect(window.localStorage.getItem("partyops.pending-online-update")).toContain("new-package");
+
+    // 专业更新检查必须覆盖普通用户、每日限频、已是最新、损坏缓存、
+    // 同版本幂等恢复和离线静默重试，避免把日常办公变成反复弹窗。
+    session.user = { ...user, role: "member" } as never;
+    await invoke("prepareProfessionalUpdate");
+    session.user = user as never;
+    window.localStorage.setItem("partyops.online-update-last-check", Date.now().toString());
+    await invoke("prepareProfessionalUpdate");
+
+    window.localStorage.setItem("partyops.online-update-last-check", "0");
+    apiMocks.get.mockResolvedValueOnce({ available: false, version: "1.4.3-rc.3" });
+    await invoke("prepareProfessionalUpdate");
+    expect(window.localStorage.getItem("partyops.pending-online-update")).toBeNull();
+
+    window.localStorage.setItem("partyops.online-update-last-check", "0");
+    window.localStorage.setItem("partyops.pending-online-update", "{损坏缓存");
+    apiMocks.get.mockResolvedValueOnce({ available: true, version: "1.4.3-rc.3" });
+    apiMocks.post.mockResolvedValueOnce({ id: "same-package", version: "1.4.3-rc.3" });
+    await invoke("prepareProfessionalUpdate");
+    expect(window.localStorage.getItem("partyops.pending-online-update")).toContain("same-package");
+
+    window.localStorage.setItem("partyops.online-update-last-check", "0");
+    window.localStorage.setItem(
+      "partyops.pending-online-update",
+      JSON.stringify({ packageId: "same-package", version: "1.4.3-rc.3" }),
+    );
+    apiMocks.get.mockResolvedValueOnce({ available: true, version: "1.4.3-rc.3" });
+    apiMocks.post.mockResolvedValueOnce({ id: "same-package", version: "1.4.3-rc.3" });
+    await invoke("prepareProfessionalUpdate");
+
+    window.localStorage.setItem("partyops.online-update-last-check", "0");
+    apiMocks.get.mockRejectedValueOnce(new Error("模拟离线"));
+    await invoke("prepareProfessionalUpdate");
+    expect(Number(window.localStorage.getItem("partyops.online-update-retry-after"))).toBeGreaterThan(Date.now());
+    const callsDuringBackoff = apiMocks.get.mock.calls.length;
+    await invoke("prepareProfessionalUpdate");
+    expect(apiMocks.get.mock.calls.length).toBe(callsDuringBackoff);
+    window.localStorage.removeItem("partyops.online-update-retry-after");
     const notification = { id: "notice-2", notification_type: "comment", title: "业务提醒", body: "请处理", entity_type: "task", entity_id: "task-1", read_at: null, created_at: now };
     await invoke("openNotification", { ...notification });
     await invoke("openNotification", { ...notification, id: "notice-3", entity_type: "transfer" });
@@ -211,5 +265,64 @@ describe("应用壳与快捷操作", () => {
     expect(wrapper.emitted("created")?.[0]?.[0]).toMatchObject({ id: "task-1" });
     expect(wrapper.emitted("update:visible")?.[0]).toEqual([false]);
     wrapper.unmount();
+  });
+
+  it("应用壳覆盖离线、静默时段、搜索失败和键盘替代路径", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 11, 12, 30, 0));
+    apiMocks.get.mockRejectedValueOnce(new Error("偏好离线")).mockRejectedValueOnce(new Error("通知离线"));
+    const { pinia, session, router } = setupContext();
+    session.runtimeContext = { ...session.runtimeContext!, capabilities: [] };
+    await router.push("/tasks/task-1");
+    await router.isReady();
+    const wrapper = shallowMount(AppShell, {
+      global: { plugins: [pinia, router, ArcoVue] },
+      slots: { default: "<main>事项详情</main>" },
+    });
+    await flushPromises();
+    const state = (wrapper.vm as unknown as { $: { setupState: Record<string, unknown> } }).$.setupState;
+    const invoke = async (name: string, ...args: unknown[]) => {
+      const action = state[name] as (...values: unknown[]) => unknown;
+      expect(action, `${name} 应存在`).toBeTypeOf("function");
+      const result = await action(...args);
+      await flushPromises();
+      return result;
+    };
+
+    expect(state.activePath).toBe("/tasks");
+    expect((state.visibleNavigationDomains as Array<{ items: unknown[] }>).every((domain) => domain.items.length > 0)).toBe(true);
+    state.reminderPreference = null;
+    expect(await invoke("isQuietTime")).toBe(false);
+    state.reminderPreference = { enabled: true, desktop_enabled: true, quiet_start: "08:00", quiet_end: "08:00" };
+    expect(await invoke("isQuietTime")).toBe(false);
+    state.reminderPreference = { enabled: true, desktop_enabled: true, quiet_start: "12:00", quiet_end: "13:00" };
+    expect(await invoke("isQuietTime")).toBe(true);
+    state.reminderPreference = { enabled: true, desktop_enabled: true, quiet_start: "23:00", quiet_end: "06:00" };
+    expect(await invoke("isQuietTime")).toBe(false);
+
+    apiMocks.get.mockRejectedValueOnce(new Error("偏好失败"));
+    await invoke("loadReminderPreference");
+    apiMocks.get.mockRejectedValueOnce(new Error("通知失败"));
+    await invoke("loadNotifications");
+    apiMocks.get.mockRejectedValueOnce(new Error("搜索失败"));
+    await invoke("searchCommandCenter", "不存在");
+    expect(state.commandResults).toEqual([]);
+    await invoke("chooseCommand", { id: "new-memo", route: "/memos" });
+    await invoke("chooseCommand", { id: "noop", route: "" });
+    await invoke("globalKeydown", new KeyboardEvent("keydown", { key: "m", ctrlKey: true, altKey: true }));
+    await invoke("globalKeydown", new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+
+    const source = FakeEventSource.instances[0];
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    source.onerror?.();
+    expect(state.connectionState).toBe("offline");
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+    source.onerror?.();
+    expect(state.connectionState).toBe("polling");
+    source.onopen?.();
+    expect(state.connectionState).toBe("live");
+
+    wrapper.unmount();
+    vi.useRealTimers();
   });
 });

@@ -34,14 +34,30 @@ if [[ ! -f "$HOST_CONFIG" ]]; then
   fail_open "未找到党建智办主机配置，请先从桌面图标进入系统。" 2
 fi
 
-set -a
-# shellcheck disable=SC1090
-source "$HOST_CONFIG"
-set +a
-HOST="${PARTYOPS_HOST:-127.0.0.1}"
-PORT="${PARTYOPS_PORT:-18765}"
+read_config_value() {
+  local key="$1"
+  awk -F= -v wanted="$key" '
+    $1 == wanted {
+      sub(/^[^=]*=/, "")
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+      if ($0 ~ /^\047.*\047$/ || $0 ~ /^".*"$/) {
+        print substr($0, 2, length($0) - 2)
+      } else {
+        print
+      }
+      exit
+    }
+  ' "$HOST_CONFIG"
+}
+
+# 配置文件只按白名单读取三个纯数据字段，禁止通过 shell source 执行内容。
+HOST="$(read_config_value PARTYOPS_HOST)"
+PORT="$(read_config_value PARTYOPS_PORT)"
+TLS_ENABLED="$(read_config_value PARTYOPS_TLS_ENABLED)"
+HOST="${HOST:-127.0.0.1}"
+PORT="${PORT:-18765}"
 SCHEME="http"
-[[ "${PARTYOPS_TLS_ENABLED:-false}" == "true" ]] && SCHEME="https"
+[[ "$TLS_ENABLED" == "true" ]] && SCHEME="https"
 [[ "$HOST" =~ ^[A-Za-z0-9.:_-]+$ && "$PORT" =~ ^[0-9]{1,5}$ ]] || {
   fail_open "党建智办主机地址配置无效。" 2
 }
@@ -57,9 +73,10 @@ if [[ "$SCHEME" == "https" ]]; then
       break
     fi
   done
-  if [[ -n "$CA_FILE" ]]; then
-    CURL_ARGS+=(--cacert "$CA_FILE")
-  fi
+  [[ -n "$CA_FILE" ]] || {
+    fail_open "党建智办内部 CA 尚未就绪，已拒绝不受信的 HTTPS 文件打开请求。" 3
+  }
+  CURL_ARGS+=(--cacert "$CA_FILE")
 fi
 
 FILE_PATH="$(

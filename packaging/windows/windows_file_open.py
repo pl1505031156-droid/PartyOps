@@ -17,7 +17,14 @@ def main() -> int:
         return 2
     parsed = urllib.parse.urlparse(sys.argv[1])
     token = (parsed.path or parsed.netloc).strip("/")
-    if parsed.scheme != "partyops-file" or not token or not token.replace("-", "").replace("_", "").isalnum():
+    if (
+        parsed.scheme != "partyops-file"
+        or not 32 <= len(token) <= 128
+        or any(
+            char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+            for char in token
+        )
+    ):
         return 2
     control_root = Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
     config = load_host_environment(control_root / "partyops.env")

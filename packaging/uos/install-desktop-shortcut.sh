@@ -40,7 +40,6 @@ fi
 
 USER_RECORD="$(getent passwd "$TARGET_USER")"
 USER_HOME="$(cut -d: -f6 <<<"$USER_RECORD")"
-USER_GROUP="$(id -gn "$TARGET_USER")"
 USER_CONFIG_HOME="$USER_HOME/.config"
 
 run_as_target_user() {
@@ -76,17 +75,16 @@ case "$DESKTOP_DIR" in
     ;;
 esac
 
-if [[ "$(id -u)" -eq 0 ]]; then
-  install -d -o "$TARGET_USER" -g "$USER_GROUP" -m 0755 "$DESKTOP_DIR"
-  install -o "$TARGET_USER" -g "$USER_GROUP" -m 0755 \
-    "$DESKTOP_ENTRY" "$DESKTOP_DIR/党建智办.desktop"
-elif [[ "$TARGET_USER" == "$(id -un)" ]]; then
-  install -d -m 0755 "$DESKTOP_DIR"
-  install -m 0755 "$DESKTOP_ENTRY" "$DESKTOP_DIR/党建智办.desktop"
-else
+if [[ "$(id -u)" -ne 0 && "$TARGET_USER" != "$(id -un)" ]]; then
   echo "普通用户只能为自己创建桌面快捷方式。" >&2
   exit 2
 fi
+# Desktop 目录及其内容完全由日常用户控制。即使安装过程中目录被替换为
+# 符号链接或 xdg-user-dir 返回了恶意路径，也只能以该用户自身权限写入，
+# 禁止 root 跟随用户可控路径形成安装时本地提权。
+run_as_target_user install -d -m 0755 "$DESKTOP_DIR"
+run_as_target_user install -m 0755 \
+  "$DESKTOP_ENTRY" "$DESKTOP_DIR/党建智办.desktop"
 
 if command -v gio >/dev/null 2>&1; then
   run_as_target_user gio set \

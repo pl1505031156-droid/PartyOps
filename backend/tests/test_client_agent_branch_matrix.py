@@ -38,7 +38,7 @@ def _http_error(code: int, payload: object) -> urllib.error.HTTPError:
     return urllib.error.HTTPError("http://host", code, "error", {}, io.BytesIO(body))
 
 
-def _write_backup(path: Path, *, item_path: str = "data.txt", content: bytes = b"ok", size=None, digest=None, fmt="partyops-backup") -> None:
+def _write_backup(path: Path, *, item_path: str = "database/partyops.db", content: bytes = b"ok", size=None, digest=None, fmt="partyops-backup") -> None:
     manifest = {
         "format": fmt,
         "files": [{

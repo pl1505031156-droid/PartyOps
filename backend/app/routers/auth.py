@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import typing
+
 import ipaddress
+import secrets
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, select
@@ -56,7 +60,41 @@ def bootstrap_request_is_local(request: Request) -> bool:
             return True
     except ValueError:
         return False
-    return remote == settings.host or remote in discover_lan_addresses()
+    # 首位管理员由配置向导固定通过 127.0.0.1 创建。服务器自己的局域网
+    # 地址不是“请求来源在本机”的证明，不能因地址碰撞、代理或错误转发放行。
+    return False
+
+
+def bootstrap_request_is_trusted(request: Request) -> bool:
+    """只接受同源浏览器或持有受保护一次性配置令牌的本机向导。"""
+
+    if not bootstrap_request_is_local(request):
+        return False
+    settings = get_settings()
+    if settings.environment == "test":
+        return True
+    expected = settings.bootstrap_token.strip()
+    supplied = request.headers.get("X-PartyOps-Bootstrap-Token", "").strip()
+    if len(expected) >= 32 and secrets.compare_digest(supplied, expected):
+        return True
+    source = request.headers.get("Origin", "").strip()
+    if not source:
+        source = request.headers.get("Referer", "").strip()
+    try:
+        parsed = urlparse(source)
+    except ValueError:
+        return False
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+    ):
+        return False
+    return (
+        f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+        == f"{request.url.scheme.lower()}://{request.url.netloc.lower()}"
+    )
 
 
 @router.get("/health", response_model=HealthOut)
@@ -102,12 +140,12 @@ def bootstrap_host(
     request: Request,
     db: Session = Depends(get_session),
 ) -> User:
-    if not bootstrap_request_is_local(request):
+    if not bootstrap_request_is_trusted(request):
         raise ProblemException(
             403,
-            "BOOTSTRAP_LOCAL_ONLY",
-            "首次配置只能在主机本机完成",
-            "请在主机桌面双击“党建智办”并完成管理员创建。",
+            "BOOTSTRAP_TRUST_REQUIRED",
+            "首次配置请求未经 PartyOps 向导确认",
+            "请从主机桌面打开党建智办配置向导，或使用主机自身页面完成管理员创建。",
         )
     password_hash = hash_password(payload.password)
     # 正式部署只运行一个 Uvicorn 进程；应用级写锁把“检查并创建”收敛为
@@ -230,7 +268,7 @@ def me(user: User = Depends(get_current_user)) -> User:
     return user
 
 
-@router.get("/users", response_model=list[UserOut])
+@router.get("/users", response_model=typing.List[UserOut])
 def active_users(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),

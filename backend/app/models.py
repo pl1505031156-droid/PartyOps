@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
     BigInteger,
@@ -96,7 +96,7 @@ class LoginSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -123,7 +123,7 @@ class UserAppearancePreference(Base):
         Enum(ArtLevel, **enum_kwargs), default=ArtLevel.STANDARD
     )
     reduce_motion: Mapped[bool] = mapped_column(Boolean, default=False)
-    theme_override: Mapped[SeasonTheme | None] = mapped_column(
+    theme_override: Mapped[Optional[SeasonTheme]] = mapped_column(
         Enum(SeasonTheme, **enum_kwargs), nullable=True
     )
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -139,7 +139,7 @@ class ClientPairing(Base):
     name: Mapped[str] = mapped_column(String(120))
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_pull_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_pull_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -155,21 +155,27 @@ class Device(Base):
     )
     architecture: Mapped[str] = mapped_column(String(16), default="")
     platform: Mapped[str] = mapped_column(String(40), default="uos")
+    platform_family: Mapped[str] = mapped_column(String(24), default="")
+    distribution: Mapped[str] = mapped_column(String(40), default="")
+    distribution_version: Mapped[str] = mapped_column(String(40), default="")
+    package_format: Mapped[str] = mapped_column(String(16), default="")
+    runtime_profile: Mapped[str] = mapped_column(String(32), default="")
+    capabilities: Mapped[List[str]] = mapped_column(JSON, default=list)
     kernel: Mapped[str] = mapped_column(String(120), default="")
     app_version: Mapped[str] = mapped_column(String(32), default="")
     agent_version: Mapped[str] = mapped_column(String(32), default="")
     local_username: Mapped[str] = mapped_column(String(120), default="")
     ip_address: Mapped[str] = mapped_column(String(64), default="")
     certificate_fingerprint: Mapped[str] = mapped_column(String(128), default="")
-    certificate_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    certificate_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     agent_token_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     allow_host_access: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_device_transfer: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_user_shares: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     disk_free_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
-    device_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    device_metadata: Mapped[Dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -184,7 +190,7 @@ class DeviceEnrollment(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -196,13 +202,13 @@ class DeviceGrant(Base):
     device_id: Mapped[str] = mapped_column(
         ForeignKey("devices.id", ondelete="CASCADE"), index=True
     )
-    user_id: Mapped[str | None] = mapped_column(
+    user_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    root_id: Mapped[str | None] = mapped_column(
+    root_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("workspace_roots.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    capabilities: Mapped[list[str]] = mapped_column(JSON, default=list)
+    capabilities: Mapped[List[str]] = mapped_column(JSON, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
@@ -221,15 +227,15 @@ class DeviceCommand(Base):
     )
     command_type: Mapped[str] = mapped_column(String(64), index=True)
     idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
-    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
-    result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    result: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     delivery_attempts: Mapped[int] = mapped_column(Integer, default=0)
-    delivered_at: Mapped[datetime | None] = mapped_column(
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class Task(Base):
@@ -253,37 +259,37 @@ class Task(Base):
     source: Mapped[str] = mapped_column(String(240), default="")
     source_kind: Mapped[str] = mapped_column(String(32), default="manual")
     category: Mapped[str] = mapped_column(String(80), default="", index=True)
-    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
-    formal_due_at: Mapped[datetime | None] = mapped_column(
+    tags: Mapped[List[str]] = mapped_column(JSON, default=list)
+    formal_due_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), index=True
     )
-    internal_due_at: Mapped[datetime | None] = mapped_column(
+    internal_due_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), index=True
     )
-    planned_start_at: Mapped[datetime | None] = mapped_column(
+    planned_start_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), index=True
     )
-    planned_end_at: Mapped[datetime | None] = mapped_column(
+    planned_end_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), index=True
     )
     work_area: Mapped[str] = mapped_column(String(100), default="", index=True)
     annual_focus: Mapped[str] = mapped_column(String(160), default="")
     reporting_scope: Mapped[str] = mapped_column(String(160), default="")
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    reviewer_id: Mapped[str | None] = mapped_column(
+    reviewer_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
     )
-    parent_task_id: Mapped[str | None] = mapped_column(
+    parent_task_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    template_id: Mapped[str | None] = mapped_column(
+    template_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("task_templates.id"), nullable=True, index=True
     )
-    recurrence_rule_id: Mapped[str | None] = mapped_column(
+    recurrence_rule_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("recurrence_rules.id"), nullable=True, index=True
     )
     experience_notes: Mapped[str] = mapped_column(Text, default="")
-    contact_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    contact_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
     allow_sensitive_content: Mapped[bool] = mapped_column(Boolean, default=False)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
@@ -292,9 +298,9 @@ class Task(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, index=True
     )
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index("ix_tasks_owner_status", "owner_id", "status"),
@@ -326,8 +332,8 @@ class TaskStep(Base):
         ForeignKey("tasks.id", ondelete="CASCADE"), index=True
     )
     title: Mapped[str] = mapped_column(String(240))
-    assignee_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
-    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    assignee_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"))
+    due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     done: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -341,9 +347,9 @@ class TaskComment(Base):
         ForeignKey("tasks.id", ondelete="CASCADE"), index=True
     )
     author_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    parent_id: Mapped[str | None] = mapped_column(ForeignKey("task_comments.id"))
+    parent_id: Mapped[Optional[str]] = mapped_column(ForeignKey("task_comments.id"))
     body: Mapped[str] = mapped_column(Text)
-    mentioned_user_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    mentioned_user_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -355,7 +361,7 @@ class TaskStatusEvent(Base):
         ForeignKey("tasks.id", ondelete="CASCADE"), index=True
     )
     actor_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    from_status: Mapped[TaskStatus | None] = mapped_column(
+    from_status: Mapped[Optional[TaskStatus]] = mapped_column(
         Enum(TaskStatus, **enum_kwargs)
     )
     to_status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus, **enum_kwargs))
@@ -370,7 +376,7 @@ class ConflictDraft(Base):
     task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     submitted_version: Mapped[int] = mapped_column(Integer)
-    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -461,7 +467,7 @@ class LocalShareAction(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -496,20 +502,20 @@ class RecurrenceRule(Base):
     template_id: Mapped[str] = mapped_column(ForeignKey("task_templates.id"))
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     kind: Mapped[RecurrenceKind] = mapped_column(Enum(RecurrenceKind, **enum_kwargs))
-    custom_days: Mapped[int | None] = mapped_column(Integer)
+    custom_days: Mapped[Optional[int]] = mapped_column(Integer)
     internal_lead_days: Mapped[int] = mapped_column(Integer, default=2)
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_task_id: Mapped[str | None] = mapped_column(
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_task_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("tasks.id"), nullable=True
     )
     notes: Mapped[str] = mapped_column(Text, default="")
-    contact_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
-    schedule_config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    max_occurrences: Mapped[int | None] = mapped_column(Integer)
+    contact_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
+    schedule_config: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    paused_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    end_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    max_occurrences: Mapped[Optional[int]] = mapped_column(Integer)
     occurrence_count: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -551,7 +557,7 @@ class ReminderPreference(Base):
     )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     advance_days: Mapped[int] = mapped_column(Integer, default=3)
-    reminder_days: Mapped[list[int]] = mapped_column(JSON, default=lambda: [7, 3, 1, 0])
+    reminder_days: Mapped[List[int]] = mapped_column(JSON, default=lambda: [7, 3, 1, 0])
     quiet_start: Mapped[str] = mapped_column(String(5), default="22:00")
     quiet_end: Mapped[str] = mapped_column(String(5), default="07:30")
     desktop_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -576,7 +582,7 @@ class ArchiveSnapshot(Base):
     )
     task_version: Mapped[int] = mapped_column(Integer)
     relative_index_path: Mapped[str] = mapped_column(String(255), unique=True)
-    manifest: Mapped[dict[str, Any]] = mapped_column(JSON)
+    manifest: Mapped[Dict[str, Any]] = mapped_column(JSON)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -586,8 +592,8 @@ class EventOutbox(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     event_type: Mapped[str] = mapped_column(String(80), index=True)
-    entity_id: Mapped[str | None] = mapped_column(String(36), index=True)
-    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -601,20 +607,20 @@ class BackupRun(Base):
     sha256: Mapped[str] = mapped_column(String(64), default="")
     status: Mapped[str] = mapped_column(String(24), default="running")
     message: Mapped[str] = mapped_column(Text, default="")
-    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    created_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    actor_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), index=True)
+    actor_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), index=True)
     action: Mapped[str] = mapped_column(String(80), index=True)
     entity_type: Mapped[str] = mapped_column(String(80), index=True)
-    entity_id: Mapped[str | None] = mapped_column(String(64), index=True)
-    detail: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    detail: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     ip_address: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
@@ -640,12 +646,12 @@ class PeriodReport(Base):
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     summary: Mapped[str] = mapped_column(Text, default="")
-    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    snapshot: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     updated_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -663,7 +669,7 @@ class PeriodReportItem(Base):
         Enum(ReportSection, **enum_kwargs), index=True
     )
     source_type: Mapped[str] = mapped_column(String(24), default="manual")
-    source_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    source_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
     title: Mapped[str] = mapped_column(String(240))
     content: Mapped[str] = mapped_column(Text, default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -687,7 +693,7 @@ class ReportTemplate(Base):
     name: Mapped[str] = mapped_column(String(160), unique=True)
     period_type: Mapped[PeriodType] = mapped_column(Enum(PeriodType, **enum_kwargs))
     description: Mapped[str] = mapped_column(Text, default="")
-    sections: Mapped[list[str]] = mapped_column(JSON, default=list)
+    sections: Mapped[List[str]] = mapped_column(JSON, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
@@ -715,13 +721,13 @@ class WorkspaceRoot(Base):
     source: Mapped[WorkspaceRootSource] = mapped_column(
         Enum(WorkspaceRootSource, **enum_kwargs), default=WorkspaceRootSource.HOST, index=True
     )
-    device_id: Mapped[str | None] = mapped_column(
+    device_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("devices.id", ondelete="SET NULL"), nullable=True, index=True
     )
     remote_key: Mapped[str] = mapped_column(String(255), default="")
     approval_status: Mapped[str] = mapped_column(String(24), default="approved", index=True)
     approval_note: Mapped[str] = mapped_column(Text, default="")
-    published_by_user_id: Mapped[str | None] = mapped_column(
+    published_by_user_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey(
             "users.id",
             ondelete="SET NULL",
@@ -732,15 +738,15 @@ class WorkspaceRoot(Base):
     )
     share_scope: Mapped[str] = mapped_column(String(16), default="team", index=True)
     semantic_content_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     selection_mode: Mapped[str] = mapped_column(
         String(16), default="all", index=True
     )
-    included_paths: Mapped[list[str]] = mapped_column(JSON, default=list)
+    included_paths: Mapped[List[str]] = mapped_column(JSON, default=list)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     read_only: Mapped[bool] = mapped_column(Boolean, default=True)
     scan_status: Mapped[str] = mapped_column(String(24), default="pending")
-    last_scan_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_scan_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     file_count: Mapped[int] = mapped_column(Integer, default=0)
     directory_count: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str] = mapped_column(Text, default="")
@@ -784,7 +790,7 @@ class WorkspaceFile(Base):
     root_id: Mapped[str] = mapped_column(
         ForeignKey("workspace_roots.id", ondelete="CASCADE"), index=True
     )
-    parent_id: Mapped[str | None] = mapped_column(
+    parent_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("workspace_files.id", ondelete="CASCADE"), index=True
     )
     relative_path: Mapped[str] = mapped_column(Text)
@@ -793,7 +799,7 @@ class WorkspaceFile(Base):
     in_scope: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     extension: Mapped[str] = mapped_column(String(32), default="", index=True)
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
-    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    modified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     device_id: Mapped[str] = mapped_column(String(32), default="")
     remote_file_key: Mapped[str] = mapped_column(String(255), default="")
     availability: Mapped[FileAvailability] = mapped_column(
@@ -803,7 +809,7 @@ class WorkspaceFile(Base):
     )
     inode: Mapped[str] = mapped_column(String(32), default="")
     mime_type: Mapped[str] = mapped_column(String(160), default="application/octet-stream")
-    sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    sha256: Mapped[Optional[str]] = mapped_column(String(64), index=True)
     status: Mapped[FileIndexStatus] = mapped_column(
         Enum(FileIndexStatus, **enum_kwargs),
         default=FileIndexStatus.PENDING,
@@ -821,8 +827,8 @@ class WorkspaceFile(Base):
         String(160), default="application/octet-stream"
     )
     archive_member_count: Mapped[int] = mapped_column(Integer, default=0)
-    indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     version: Mapped[int] = mapped_column(Integer, default=1)
 
     __table_args__ = (
@@ -870,8 +876,8 @@ class ArchiveTemplate(Base):
     name: Mapped[str] = mapped_column(String(160), unique=True)
     category: Mapped[str] = mapped_column(String(80), default="")
     description: Mapped[str] = mapped_column(Text, default="")
-    structure: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
-    material_rules: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    structure: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    material_rules: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
@@ -893,7 +899,7 @@ class ArchiveCategory(Base):
     record_mode: Mapped[ArchiveRecordMode] = mapped_column(
         Enum(ArchiveRecordMode, **enum_kwargs), default=ArchiveRecordMode.DOCUMENT
     )
-    field_schema: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    field_schema: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     directory_pattern: Mapped[str] = mapped_column(
         String(255), default="{year}/{category}"
     )
@@ -926,16 +932,16 @@ class ArchiveRecord(Base):
     document_no: Mapped[str] = mapped_column(String(160), default="", index=True)
     title: Mapped[str] = mapped_column(String(240), index=True)
     summary: Mapped[str] = mapped_column(Text, default="")
-    involved_persons: Mapped[list[str]] = mapped_column(JSON, default=list)
+    involved_persons: Mapped[List[str]] = mapped_column(JSON, default=list)
     source_unit: Mapped[str] = mapped_column(String(160), default="")
-    document_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    document_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     person_name: Mapped[str] = mapped_column(String(120), default="", index=True)
     person_identifier: Mapped[str] = mapped_column(String(120), default="", index=True)
     personnel_type: Mapped[str] = mapped_column(String(64), default="")
     organization: Mapped[str] = mapped_column(String(160), default="")
     assessment_result: Mapped[str] = mapped_column(String(80), default="")
-    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
-    custom_fields: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    tags: Mapped[List[str]] = mapped_column(JSON, default=list)
+    custom_fields: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     search_text: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[ArchiveRecordStatus] = mapped_column(
         Enum(ArchiveRecordStatus, **enum_kwargs),
@@ -950,7 +956,7 @@ class ArchiveRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
-    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint("category_id", "archive_year", "sequence_no"),
@@ -969,7 +975,7 @@ class ArchiveRecordRevision(Base):
         ForeignKey("archive_records.id", ondelete="CASCADE"), index=True
     )
     revision_no: Mapped[int] = mapped_column(Integer)
-    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    snapshot: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     change_note: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1020,10 +1026,10 @@ class ArchiveAccessGrant(Base):
     category_id: Mapped[str] = mapped_column(
         ForeignKey("archive_categories.id", ondelete="CASCADE"), index=True
     )
-    user_id: Mapped[str | None] = mapped_column(
+    user_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    device_id: Mapped[str | None] = mapped_column(
+    device_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("devices.id", ondelete="CASCADE"), nullable=True, index=True
     )
     can_view: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -1070,11 +1076,11 @@ class WorkJournalEntry(Base):
     title: Mapped[str] = mapped_column(String(240))
     content: Mapped[str] = mapped_column(Text, default="")
     event_code: Mapped[str] = mapped_column(String(64), default="", index=True)
-    event_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    event_data: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"), index=True)
-    file_id: Mapped[str | None] = mapped_column(ForeignKey("workspace_files.id"), index=True)
-    report_id: Mapped[str | None] = mapped_column(
+    task_id: Mapped[Optional[str]] = mapped_column(ForeignKey("tasks.id"), index=True)
+    file_id: Mapped[Optional[str]] = mapped_column(ForeignKey("workspace_files.id"), index=True)
+    report_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("period_reports.id"), index=True
     )
     immutable: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -1096,7 +1102,7 @@ class WorkJournalRevision(Base):
         ForeignKey("work_journal_entries.id", ondelete="CASCADE"), index=True
     )
     revision_no: Mapped[int] = mapped_column(Integer)
-    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    snapshot: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     change_note: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1115,9 +1121,9 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(240))
     body: Mapped[str] = mapped_column(Text, default="")
     entity_type: Mapped[str] = mapped_column(String(40), default="")
-    entity_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
     dedupe_key: Mapped[str] = mapped_column(String(255), unique=True)
-    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -1129,11 +1135,11 @@ class BackgroundJob(Base):
     status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str] = mapped_column(Text, default="")
-    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class AIProviderConfig(Base):
@@ -1148,7 +1154,7 @@ class AIProviderConfig(Base):
     trusted_intranet: Mapped[bool] = mapped_column(Boolean, default=False)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=60)
     version: Mapped[int] = mapped_column(Integer, default=1)
-    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_test_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     last_status: Mapped[str] = mapped_column(String(40), default="not_tested")
     last_error: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
@@ -1163,10 +1169,10 @@ class AIPolicy(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     name: Mapped[str] = mapped_column(String(120), default="默认只读策略")
-    allowed_root_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
-    allowed_task_categories: Mapped[list[str]] = mapped_column(JSON, default=list)
-    allowed_file_types: Mapped[list[str]] = mapped_column(JSON, default=list)
-    capabilities: Mapped[list[str]] = mapped_column(
+    allowed_root_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
+    allowed_task_categories: Mapped[List[str]] = mapped_column(JSON, default=list)
+    allowed_file_types: Mapped[List[str]] = mapped_column(JSON, default=list)
+    capabilities: Mapped[List[str]] = mapped_column(
         JSON,
         default=lambda: [
             AiCapability.SEARCH.value,
@@ -1191,7 +1197,7 @@ class AIDraft(Base):
     capability: Mapped[AiCapability] = mapped_column(Enum(AiCapability, **enum_kwargs))
     title: Mapped[str] = mapped_column(String(240))
     content: Mapped[str] = mapped_column(Text)
-    sources: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    sources: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1205,16 +1211,16 @@ class AIInvocation(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    provider_id: Mapped[str | None] = mapped_column(
+    provider_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("ai_provider_configs.id"), nullable=True
     )
     capability: Mapped[AiCapability] = mapped_column(Enum(AiCapability, **enum_kwargs))
     source_count: Mapped[int] = mapped_column(Integer, default=0)
-    source_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    source_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(24), index=True)
     error_code: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class AIModelPack(Base):
@@ -1231,8 +1237,8 @@ class AIModelPack(Base):
     install_key: Mapped[str] = mapped_column(String(80), unique=True)
     sha256: Mapped[str] = mapped_column(String(64))
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
-    manifest: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    capabilities: Mapped[list[str]] = mapped_column(JSON, default=list)
+    manifest: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    capabilities: Mapped[List[str]] = mapped_column(JSON, default=list)
     min_runtime_version: Mapped[str] = mapped_column(String(32), default="1.4.1")
     estimated_memory_mb: Mapped[int] = mapped_column(Integer, default=0)
     model_source: Mapped[str] = mapped_column(String(500), default="")
@@ -1245,7 +1251,7 @@ class AIModelPack(Base):
     )
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    activated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class AIModelActivation(Base):
@@ -1272,7 +1278,7 @@ class SemanticIndexCheckpoint(Base):
     model_pack_id: Mapped[str] = mapped_column(
         ForeignKey("ai_model_packs.id", ondelete="CASCADE"), index=True
     )
-    embedding_blob: Mapped[bytes | None] = mapped_column(nullable=True)
+    embedding_blob: Mapped[Optional[bytes]] = mapped_column(nullable=True)
     content_sha256: Mapped[str] = mapped_column(String(64), default="")
     indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -1304,7 +1310,7 @@ class AIRecommendation(Base):
     object_id: Mapped[str] = mapped_column(String(64), index=True)
     object_version: Mapped[int] = mapped_column(Integer, default=1)
     route: Mapped[str] = mapped_column(String(500), default="")
-    sources: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    sources: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     dedupe_key: Mapped[str] = mapped_column(String(255), unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -1325,7 +1331,7 @@ class UpgradeRecord(Base):
     backup_filename: Mapped[str] = mapped_column(String(255), default="")
     message: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class Transfer(Base):
@@ -1338,16 +1344,16 @@ class Transfer(Base):
     status: Mapped[TransferStatus] = mapped_column(
         Enum(TransferStatus, **enum_kwargs), default=TransferStatus.QUEUED, index=True
     )
-    source_device_id: Mapped[str | None] = mapped_column(
+    source_device_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("devices.id"), nullable=True, index=True
     )
-    destination_device_id: Mapped[str | None] = mapped_column(
+    destination_device_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("devices.id"), nullable=True, index=True
     )
-    source_file_id: Mapped[str | None] = mapped_column(
+    source_file_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("workspace_files.id"), nullable=True, index=True
     )
-    destination_root_id: Mapped[str | None] = mapped_column(
+    destination_root_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("workspace_roots.id"), nullable=True, index=True
     )
     original_name: Mapped[str] = mapped_column(String(255))
@@ -1358,22 +1364,22 @@ class Transfer(Base):
     total_chunks: Mapped[int] = mapped_column(Integer, default=0)
     completed_chunks: Mapped[int] = mapped_column(Integer, default=0)
     requested_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    approved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    approved_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
     approval_note: Mapped[str] = mapped_column(Text, default="")
     transit_path: Mapped[str] = mapped_column(String(255), default="")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     error_code: Mapped[str] = mapped_column(String(80), default="")
     error_message: Mapped[str] = mapped_column(Text, default="")
-    handled_by: Mapped[str | None] = mapped_column(
+    handled_by: Mapped[Optional[str]] = mapped_column(
         ForeignKey("users.id", name="fk_transfers_handled_by_users"),
         nullable=True,
     )
-    handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    handled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     linked_entity_type: Mapped[str] = mapped_column(String(40), default="")
-    linked_entity_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    linked_entity_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
     delivery_mode: Mapped[str] = mapped_column(String(24), default="managed_inbox")
     bundle_mode: Mapped[str] = mapped_column(String(24), default="single")
-    item_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    item_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
     result_name: Mapped[str] = mapped_column(String(255), default="")
     result_sha256: Mapped[str] = mapped_column(String(64), default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -1393,7 +1399,7 @@ class TransferChunk(Base):
     chunk_no: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64), default="")
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
-    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (UniqueConstraint("transfer_id", "chunk_no"),)
 
@@ -1404,8 +1410,8 @@ class SavedView(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     name: Mapped[str] = mapped_column(String(160))
     view_type: Mapped[str] = mapped_column(String(40), default="tasks")
-    filters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    columns: Mapped[list[str]] = mapped_column(JSON, default=list)
+    filters: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    columns: Mapped[List[str]] = mapped_column(JSON, default=list)
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -1421,10 +1427,10 @@ class TopicSpace(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     name: Mapped[str] = mapped_column(String(160), unique=True)
     description: Mapped[str] = mapped_column(Text, default="")
-    task_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
-    file_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
-    journal_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
-    contact_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    task_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
+    file_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
+    journal_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
+    contact_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -1440,8 +1446,8 @@ class AutomationRule(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     name: Mapped[str] = mapped_column(String(160))
     trigger: Mapped[str] = mapped_column(String(40))
-    conditions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    actions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    conditions: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    actions: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -1520,7 +1526,7 @@ class DocumentComparison(Base):
     left_file_id: Mapped[str] = mapped_column(ForeignKey("workspace_files.id"), index=True)
     right_file_id: Mapped[str] = mapped_column(ForeignKey("workspace_files.id"), index=True)
     comparison_type: Mapped[str] = mapped_column(String(24), default="text")
-    result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    result: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -1531,7 +1537,7 @@ class DuplicateGroup(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     algorithm: Mapped[str] = mapped_column(String(24), default="sha256", index=True)
     fingerprint: Mapped[str] = mapped_column(String(128), index=True)
-    file_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    file_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(24), default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -1541,7 +1547,7 @@ class HandoverExport(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     name: Mapped[str] = mapped_column(String(160))
-    scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    scope: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     filename: Mapped[str] = mapped_column(String(255), unique=True)
     sha256: Mapped[str] = mapped_column(String(64), default="")
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
@@ -1557,7 +1563,7 @@ class UpdatePackage(Base):
     version: Mapped[str] = mapped_column(String(32), index=True)
     min_version: Mapped[str] = mapped_column(String(32), default="")
     schema_revision: Mapped[str] = mapped_column(String(32), default="")
-    manifest: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    manifest: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     sha256: Mapped[str] = mapped_column(String(64), default="")
     signature_valid: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[UpdateStatus] = mapped_column(
@@ -1569,10 +1575,19 @@ class UpdatePackage(Base):
 
 class UpdateRun(Base):
     __tablename__ = "update_runs"
+    __table_args__ = (
+        Index(
+            "uq_update_runs_one_active_host",
+            "status",
+            unique=True,
+            # SQLAlchemy Enum 默认持久化枚举成员名（APPLYING），不是 API 字符串值。
+            sqlite_where=text("target_device_id IS NULL AND status = 'APPLYING'"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     package_id: Mapped[str] = mapped_column(ForeignKey("update_packages.id"), index=True)
-    target_device_id: Mapped[str | None] = mapped_column(
+    target_device_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("devices.id"), nullable=True, index=True
     )
     status: Mapped[UpdateStatus] = mapped_column(
@@ -1582,7 +1597,7 @@ class UpdateRun(Base):
     message: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class ReleaseHistory(Base):
@@ -1594,8 +1609,8 @@ class ReleaseHistory(Base):
     version: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     schema_revision: Mapped[str] = mapped_column(String(32), default="")
     title: Mapped[str] = mapped_column(String(160), default="")
-    release_notes: Mapped[list[str]] = mapped_column(JSON, default=list)
-    package_id: Mapped[str | None] = mapped_column(
+    release_notes: Mapped[List[str]] = mapped_column(JSON, default=list)
+    package_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("update_packages.id", ondelete="SET NULL"), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(String(24), default="installed", index=True)
@@ -1650,7 +1665,7 @@ class ActivityEvent(Base):
     )
     object_id: Mapped[str] = mapped_column(String(64), index=True)
     event_code: Mapped[str] = mapped_column(String(80), index=True)
-    actor_id: Mapped[str | None] = mapped_column(
+    actor_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     happened_at: Mapped[datetime] = mapped_column(
@@ -1659,9 +1674,9 @@ class ActivityEvent(Base):
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )
-    event_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    event_data: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     correlation_id: Mapped[str] = mapped_column(String(80), default="", index=True)
-    idempotency_key: Mapped[str | None] = mapped_column(
+    idempotency_key: Mapped[Optional[str]] = mapped_column(
         String(160), unique=True, nullable=True
     )
 
@@ -1679,7 +1694,7 @@ class CalendarPreference(Base):
     )
     default_view: Mapped[str] = mapped_column(String(16), default="week")
     week_starts_on: Mapped[int] = mapped_column(Integer, default=1)
-    visible_event_types: Mapped[list[str]] = mapped_column(
+    visible_event_types: Mapped[List[str]] = mapped_column(
         JSON, default=lambda: [item.value for item in CalendarEventType]
     )
     compact_weekends: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -1700,7 +1715,7 @@ class RecurrenceException(Base):
     action: Mapped[RecurrenceExceptionAction] = mapped_column(
         Enum(RecurrenceExceptionAction, **enum_kwargs)
     )
-    rescheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rescheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     reason: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1717,7 +1732,7 @@ class ProjectionCheckpoint(Base):
     processed_count: Mapped[int] = mapped_column(Integer, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[str] = mapped_column(Text, default="")
-    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -1730,7 +1745,7 @@ class OnboardingProgress(Base):
     user_id: Mapped[str] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
     )
-    completed_steps: Mapped[list[str]] = mapped_column(JSON, default=list)
+    completed_steps: Mapped[List[str]] = mapped_column(JSON, default=list)
     dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
     version: Mapped[int] = mapped_column(Integer, default=1)
     updated_at: Mapped[datetime] = mapped_column(

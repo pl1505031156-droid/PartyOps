@@ -1,11 +1,11 @@
 # PartyOps 1.4.3 安装与上线检查清单
 
-适用于 Windows 10/11 x64、UOS V20 amd64/arm64 的主机与协同机。当前 `v1.4.3-rc.2` 为未签名测试候选，未关闭项不得勾选为通过。
+适用于 Windows 10/11 x64、麒麟/UOS/deepin amd64/arm64 和 openEuler x86_64/aarch64 的主机与协同机。当前 `v1.4.3-rc.3` 为未签名候选版；国产 Linux 制品未真机验证，未关闭项不得勾选为通过。Windows 7 制品因安全门禁未通过而不在本清单的发布范围内。
 
 ## 制品
 
 - [ ] Windows 只下载一个版本化 EXE；文件来自官网国内线路或同一个 GitHub Release，没有使用聊天附件或二次转存文件。
-- [ ] 平台与架构正确：Windows x64、UOS amd64 或 UOS arm64；UOS 构建套件不能当作 DEB 安装。
+- [ ] 平台与架构正确：Windows 10/11 x64；麒麟/UOS/deepin 选择匹配架构的 DEB；openEuler 选择匹配架构的 RPM。Windows 7 本轮不提供制品。
 - [ ] 实算 SHA-256 与官网或 Release 页面直接显示的值逐字一致；`.sha256` 文件不是普通用户的必需下载项。
 - [ ] 正式版 Windows Authenticode、DEB/更新包发布签名有效；发布者符合预期。
 - [ ] Release 同时提供版本说明、迁移/回滚、SBOM、第三方声明与验收记录。

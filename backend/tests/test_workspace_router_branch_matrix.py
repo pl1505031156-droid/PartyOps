@@ -62,7 +62,8 @@ def _item(**overrides):
 
 
 def test_host_local_detection_and_runtime_capability_matrix(monkeypatch) -> None:
-    monkeypatch.setattr(workspace, "get_settings", lambda: SimpleNamespace(environment="test", host="192.168.1.10"))
+    settings = SimpleNamespace(environment="test", host="192.168.1.10", mode="host")
+    monkeypatch.setattr(workspace, "get_settings", lambda: settings)
     assert workspace.is_host_local_request(_request("testclient"))
     assert workspace.is_host_local_request(_request("127.0.0.1"))
     assert not workspace.is_host_local_request(_request("not-an-ip"))
@@ -75,6 +76,12 @@ def test_host_local_detection_and_runtime_capability_matrix(monkeypatch) -> None
     monkeypatch.setattr(workspace, "request_device", lambda *_a: None)
     host = workspace.runtime_context(_request("127.0.0.1"), staff, Db())
     assert host.node_mode == "host" and "fleet.manage" not in host.capabilities
+    settings.mode = "personal"
+    personal = workspace.runtime_context(_request("127.0.0.1"), admin, Db())
+    assert personal.node_mode == "personal"
+    assert "fleet.manage" not in personal.capabilities
+    assert "workspace.manage_host_roots" not in personal.capabilities
+    settings.mode = "host"
 
     device = SimpleNamespace(id="device-1", name="协同机", active=True, status="online", allow_user_shares=True)
     monkeypatch.setattr(workspace, "request_device", lambda *_a: device)

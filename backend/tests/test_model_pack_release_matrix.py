@@ -80,6 +80,7 @@ def test_manifest_rejects_invalid_metadata_components_and_paths(monkeypatch, tmp
 
     cases = [
         ({**manifest, "format_version": 2}, "MODEL_PACK_FORMAT_INVALID"),
+        ({**manifest, "format_version": "bad"}, "MODEL_PACK_FORMAT_INVALID"),
         ({**manifest, "files": []}, "MODEL_PACK_MANIFEST_INVALID"),
         ({**manifest, "estimated_memory_mb": "many"}, "MODEL_PACK_MEMORY_INVALID"),
         ({**manifest, "estimated_memory_mb": -1}, "MODEL_PACK_MEMORY_INVALID"),
@@ -104,7 +105,15 @@ def test_manifest_rejects_invalid_metadata_components_and_paths(monkeypatch, tmp
             assert error.value.code == code
 
     assert model_packs._safe_member("models/model.gguf").parts == ("models", "model.gguf")
-    for unsafe in ("../model", "/absolute", "folder\\model"):
+    for unsafe in (
+        "../model",
+        "/absolute",
+        "folder\\model",
+        "folder//model",
+        "model:stream",
+        "con.txt",
+        "model. ",
+    ):
         with pytest.raises(ProblemException):
             model_packs._safe_member(unsafe)
 
@@ -123,7 +132,28 @@ def test_manifest_rejects_links_too_many_files_hashes_and_unsigned(monkeypatch, 
             archive.writestr(info, value)
     with zipfile.ZipFile(link_path) as archive, pytest.raises(ProblemException) as link:
         model_packs._validate_manifest(manifest, archive)
-    assert link.value.code == "MODEL_PACK_LINK_DENIED"
+    assert link.value.code == "MODEL_PACK_SPECIAL_FILE_DENIED"
+
+    extra_path = tmp_path / "extra.pack"
+    with zipfile.ZipFile(extra_path, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        for filename, value in files.items():
+            archive.writestr(filename, value)
+        archive.writestr("unregistered.dll", b"payload")
+    with zipfile.ZipFile(extra_path) as archive, pytest.raises(ProblemException) as extra:
+        model_packs._validate_manifest(manifest, archive)
+    assert extra.value.code == "MODEL_PACK_EXTRA_FILES"
+
+    collision_path = tmp_path / "collision.pack"
+    with zipfile.ZipFile(collision_path, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        for filename, value in files.items():
+            archive.writestr(filename, value)
+        archive.writestr("Extra", b"one")
+        archive.writestr("extra", b"two")
+    with zipfile.ZipFile(collision_path) as archive, pytest.raises(ProblemException) as collision:
+        model_packs._validate_manifest(manifest, archive)
+    assert collision.value.code == "MODEL_PACK_DUPLICATE_MEMBER"
 
     normal_path = _archive(tmp_path, manifest, files, "normal.pack")
     monkeypatch.setattr(model_packs, "MAX_MEMBERS", 1)
@@ -143,6 +173,18 @@ def test_manifest_rejects_links_too_many_files_hashes_and_unsigned(monkeypatch, 
     with zipfile.ZipFile(normal_path) as archive, pytest.raises(ProblemException) as digest:
         model_packs._validate_manifest(broken, archive)
     assert digest.value.code == "MODEL_PACK_HASH_MISMATCH"
+
+    for field_value in ("many", -1):
+        invalid_size = json.loads(json.dumps(manifest))
+        invalid_size["files"]["LICENSE"]["size"] = field_value
+        with zipfile.ZipFile(normal_path) as archive, pytest.raises(ProblemException) as metadata:
+            model_packs._validate_manifest(invalid_size, archive)
+        assert metadata.value.code == "MODEL_PACK_MANIFEST_INVALID"
+    invalid_hash = json.loads(json.dumps(manifest))
+    invalid_hash["files"]["LICENSE"]["sha256"] = "not-a-sha256"
+    with zipfile.ZipFile(normal_path) as archive, pytest.raises(ProblemException) as metadata:
+        model_packs._validate_manifest(invalid_hash, archive)
+    assert metadata.value.code == "MODEL_PACK_MANIFEST_INVALID"
 
     monkeypatch.setattr(model_packs, "_manifest_signature_valid", lambda _manifest: False)
     with zipfile.ZipFile(normal_path) as archive, pytest.raises(ProblemException) as unsigned:
@@ -177,6 +219,20 @@ def test_version_install_duplicate_bad_archive_and_path_boundary(monkeypatch, tm
     with pytest.raises(ProblemException) as damaged:
         model_packs.install_model_pack(invalid, invalid.name, SimpleNamespace(id="admin"), empty_db)
     assert damaged.value.code == "MODEL_PACK_INVALID"
+
+    bounded = tmp_path / "bounded.pack"
+    with zipfile.ZipFile(bounded, "w") as archive:
+        archive.writestr("manifest.json", "{}")
+    monkeypatch.setattr(model_packs, "MAX_MODEL_PACK_BYTES", 1024 * 1024)
+    monkeypatch.setattr(model_packs, "MAX_MODEL_MANIFEST_BYTES", 1)
+    with pytest.raises(ProblemException) as manifest_large:
+        model_packs.install_model_pack(
+            bounded,
+            bounded.name,
+            SimpleNamespace(id="admin"),
+            empty_db,
+        )
+    assert manifest_large.value.code == "MODEL_PACK_MANIFEST_INVALID"
 
     settings = model_packs.get_settings()
     bad_pack = SimpleNamespace(install_key="../outside")

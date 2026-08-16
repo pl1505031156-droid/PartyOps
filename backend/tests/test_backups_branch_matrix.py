@@ -102,6 +102,15 @@ def test_zip_member_limits_paths_and_bomb_guards(monkeypatch) -> None:
     for member in (info(""), info("/absolute"), info("../escape"), info("link", mode=stat.S_IFLNK)):
         assert_problem("BACKUP_PATH_INVALID", lambda member=member: backups._validated_zip_infos(Archive([member])))
     assert_problem("BACKUP_PATH_INVALID", lambda: backups._validated_zip_infos(Archive([info("same"), info("same")])))
+    assert_problem("BACKUP_PATH_INVALID", lambda: backups._validated_zip_infos(Archive([info("Folder/a"), info("folder/A")])))
+    for name in ("folder//file", "file:stream", "con.txt", "folder/name. "):
+        assert_problem("BACKUP_PATH_INVALID", lambda name=name: backups._validated_zip_infos(Archive([info(name)])))
+    encrypted = info("encrypted")
+    encrypted.flag_bits = 1
+    assert_problem("BACKUP_PATH_INVALID", lambda: backups._validated_zip_infos(Archive([encrypted])))
+    unsupported = info("unsupported")
+    unsupported.compress_type = zipfile.ZIP_BZIP2
+    assert_problem("BACKUP_PATH_INVALID", lambda: backups._validated_zip_infos(Archive([unsupported])))
 
     settings.backup_restore_max_gb = 0
     assert_problem("BACKUP_EXPANDED_LIMIT", lambda: backups._validated_zip_infos(Archive([info("large", 1, 1)])))
@@ -159,3 +168,58 @@ def test_verify_manifest_rejects_non_object_and_bad_hash_fields(tmp_path: Path) 
         [{"path": "database/partyops.db", "size": 21, "sha256": sha256(b"different").hexdigest()}],
     )
     assert_problem("BACKUP_HASH_MISMATCH", lambda: backups.verify_backup(wrong_hash))
+
+
+def test_verify_manifest_is_bounded_and_has_stable_version_errors(
+    monkeypatch, tmp_path: Path
+) -> None:
+    oversized = tmp_path / "oversized-manifest.zip"
+    with zipfile.ZipFile(oversized, "w") as archive:
+        archive.writestr("manifest.json", "{}")
+    monkeypatch.setattr(backups, "MAX_BACKUP_MANIFEST_BYTES", 1)
+    assert_problem("BACKUP_MANIFEST_INVALID", lambda: backups.verify_backup(oversized))
+
+    monkeypatch.setattr(backups, "MAX_BACKUP_MANIFEST_BYTES", 1024 * 1024)
+    for name, manifest in (
+        (
+            "invalid-version.zip",
+            {"format": "partyops-backup", "format_version": "bad", "files": []},
+        ),
+        (
+            "zero-version.zip",
+            {"format": "partyops-backup", "format_version": 0, "files": []},
+        ),
+    ):
+        path = tmp_path / name
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("manifest.json", json.dumps(manifest))
+        assert_problem("BACKUP_MANIFEST_INVALID", lambda path=path: backups.verify_backup(path))
+
+    invalid_utf8 = tmp_path / "invalid-utf8.zip"
+    with zipfile.ZipFile(invalid_utf8, "w") as archive:
+        archive.writestr("manifest.json", b"\xff\xfe")
+    assert_problem("BACKUP_MANIFEST_INVALID", lambda: backups.verify_backup(invalid_utf8))
+
+
+def test_verify_backup_translates_payload_crc_damage(tmp_path: Path) -> None:
+    payload = b"PARTYOPS_DB_PAYLOAD_UNIQUE"
+    path = tmp_path / "crc-damaged.zip"
+    manifest = {
+        "format": "partyops-backup",
+        "format_version": 1,
+        "schema_version": "0019",
+        "files": [
+            {
+                "path": "database/partyops.db",
+                "size": len(payload),
+                "sha256": sha256(payload).hexdigest(),
+            }
+        ],
+    }
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("database/partyops.db", payload)
+    raw = path.read_bytes()
+    assert raw.count(payload) == 1
+    path.write_bytes(raw.replace(payload, b"X" + payload[1:], 1))
+    assert_problem("BACKUP_HASH_MISMATCH", lambda: backups.verify_backup(path))

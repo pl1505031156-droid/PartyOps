@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import sqlite3
 import subprocess
 from types import SimpleNamespace
 
@@ -225,7 +226,7 @@ def test_period_report_journal_templates_and_status(
     assert status.status_code == 200, status.text
     body = status.json()
     assert body["app_version"] == get_settings().app_version
-    assert body["schema_revision"] == "0018"
+    assert body["schema_revision"] == "0019"
     assert "sse_clients" in body["service"]
 
 
@@ -992,6 +993,12 @@ def test_ai_service_contracts_policy_updates_and_upgrade_record(
 def test_ai_file_scope_intake_formats_scan_failure_and_upgrade_restore(
     client: TestClient, admin: dict, monkeypatch, tmp_path: Path
 ) -> None:
+    create_task(
+        client,
+        admin["id"],
+        title="AI 可读一般事项",
+        category="基层党建",
+    )
     root_path = tmp_path / "AI授权资料"
     root_path.mkdir()
     source = root_path / "AI材料.txt"
@@ -1010,6 +1017,11 @@ def test_ai_file_scope_intake_formats_scan_failure_and_upgrade_restore(
 
     with db_runtime.session_factory() as db:
         policy = db.scalar(select(AIPolicy))
+        if policy is None:
+            # 本用例可独立运行，不依赖其他测试预先创建默认 AI 策略。
+            policy = AIPolicy(created_by=admin["id"])
+            db.add(policy)
+            db.flush()
         user = db.get(User, admin["id"])
         item = db.get(WorkspaceFile, indexed["id"])
         root_model = db.get(WorkspaceRoot, root_id)
@@ -1116,15 +1128,27 @@ def test_ai_file_scope_intake_formats_scan_failure_and_upgrade_restore(
     rollback_dir.mkdir()
     current_db = rollback_dir / "partyops.db"
     current_db.write_bytes(b"new-database")
+    restored_source = rollback_dir / "restored-source.db"
+    with sqlite3.connect(restored_source) as restored_db:
+        restored_db.execute("CREATE TABLE evidence (value TEXT NOT NULL)")
+        restored_db.execute("INSERT INTO evidence VALUES ('old-database')")
+        restored_db.commit()
+    restored_bytes = restored_source.read_bytes()
     backup_path = rollback_dir / "pre-upgrade.partyops-backup"
     import zipfile
 
     with zipfile.ZipFile(backup_path, "w") as archive:
-        archive.writestr("database/partyops.db", b"old-database")
+        archive.writestr("database/partyops.db", restored_bytes)
     fake_settings = SimpleNamespace(data_dir=rollback_dir, database_path=current_db)
+    verified_paths: list[Path] = []
     monkeypatch.setattr(upgrades, "get_settings", lambda: fake_settings)
+    monkeypatch.setattr(upgrades, "verify_backup", lambda path: verified_paths.append(path))
     monkeypatch.setattr(upgrades.db_runtime, "dispose", lambda: None)
     monkeypatch.setattr(upgrades.db_runtime, "rebuild", lambda: None)
     upgrades.restore_database_from_upgrade_backup(backup_path)
-    assert current_db.read_bytes() == b"old-database"
+    assert verified_paths == [backup_path]
+    with sqlite3.connect(current_db) as restored_db:
+        assert restored_db.execute("SELECT value FROM evidence").fetchone() == (
+            "old-database",
+        )
     assert current_db.with_suffix(".db.upgrade-failed").read_bytes() == b"new-database"

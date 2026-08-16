@@ -1,0 +1,4 @@
+-r requirements-windows7-common.in
+
+# Win7 x86 明确不安装语义重排与本地 LLM；OCR 仍由 Pillow、PyMuPDF 与
+# 系统内 Tesseract 中文运行时提供。

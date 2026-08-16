@@ -1,5 +1,7 @@
 """1.1.3 文件夹选择接入、发布历史与设备版本门禁。"""
 
+from __future__ import annotations
+
 from alembic import op
 import sqlalchemy as sa
 

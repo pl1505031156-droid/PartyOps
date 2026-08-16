@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 from fastapi import APIRouter, Depends, Header, Query, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -24,7 +26,7 @@ router = APIRouter(tags=["object-relations"])
 
 @router.get(
     "/objects/{object_type}/{object_id}/links",
-    response_model=list[ObjectLinkOut],
+    response_model=typing.List[ObjectLinkOut],
 )
 def get_object_links(
     object_type: str,
@@ -187,7 +189,7 @@ def delete_object_link(
 
 @router.get(
     "/objects/{object_type}/{object_id}/activity",
-    response_model=list[ActivityEventOut],
+    response_model=typing.List[ActivityEventOut],
 )
 def get_object_activity(
     object_type: str,

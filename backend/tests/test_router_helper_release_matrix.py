@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import stat
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -108,7 +110,7 @@ def _valid_update_manifest() -> dict:
         "format_version": 2,
         "version": "9.9.9",
         "min_version": "1.3.4",
-        "schema_revision": "0018",
+        "schema_revision": "0019",
         "release_notes": ["正式发布回归"],
         "architecture_artifacts": architecture,
         "platform_artifacts": {
@@ -125,9 +127,12 @@ def test_update_contract_rejects_incomplete_platform_version_schema_and_notes(mo
     updates._validate_manifest_contract(base)
     cases = [
         ({**base, "format": "zip"}, "UPDATE_FORMAT_INVALID"),
-        ({**base, "format_version": 3}, "UPDATE_FORMAT_VERSION_UNSUPPORTED"),
+        ({**base, "format_version": 5}, "UPDATE_FORMAT_VERSION_UNSUPPORTED"),
         ({**base, "architecture_artifacts": {"amd64": "x"}}, "UPDATE_ARCHITECTURES_INCOMPLETE"),
         ({**base, "artifacts": []}, "UPDATE_MANIFEST_INVALID"),
+        ({**base, "format_version": "bad"}, "UPDATE_FORMAT_VERSION_UNSUPPORTED"),
+        ({**base, "format_version": "4"}, "UPDATE_FORMAT_VERSION_UNSUPPORTED"),
+        ({**base, "format_version": True}, "UPDATE_FORMAT_VERSION_UNSUPPORTED"),
         ({**base, "architecture_artifacts": {"amd64": "wrong.exe", "arm64": "wrong.exe"}}, "UPDATE_ARCHITECTURE_ARTIFACT_INVALID"),
         ({**base, "platform_artifacts": []}, "UPDATE_PLATFORM_ARTIFACTS_INVALID"),
         ({**base, "platform_artifacts": {"uos": {}, "windows": {"amd64": "x"}}}, "UPDATE_UOS_ARTIFACTS_INVALID"),
@@ -184,7 +189,7 @@ def test_update_manifest_archive_guards_and_hash_validation(monkeypatch, tmp_pat
     with zipfile.ZipFile(missing_artifact, "w") as archive:
         archive.writestr("manifest.json", json.dumps(missing_artifact_manifest))
     with pytest.raises(ProblemException) as artifact_missing:
-        updates._extract_manifest(missing_artifact)
+        updates._extract_manifest(missing_artifact, require_signature=False)
     assert artifact_missing.value.code == "UPDATE_ARTIFACT_MISSING"
 
     payload = b"artifact"
@@ -194,7 +199,7 @@ def test_update_manifest_archive_guards_and_hash_validation(monkeypatch, tmp_pat
         archive.writestr("manifest.json", json.dumps(mismatch_manifest))
         archive.writestr("a.deb", payload)
     with pytest.raises(ProblemException) as hash_mismatch:
-        updates._extract_manifest(mismatch)
+        updates._extract_manifest(mismatch, require_signature=False)
     assert hash_mismatch.value.code == "UPDATE_ARTIFACT_HASH_MISMATCH"
 
 
@@ -206,3 +211,141 @@ def test_update_free_space_and_signature_fail_closed(monkeypatch, tmp_path) -> N
     settings = SimpleNamespace(update_public_key="invalid-base64")
     monkeypatch.setattr(updates, "get_settings", lambda: settings)
     assert updates._manifest_signature_valid({"signature": "invalid"}) is False
+
+    package = tmp_path / "unsigned.partyops-update"
+    manifest = {
+        "version": "9.9.9",
+        "artifacts": {"payload.exe": {"size": 7, "sha256": "0" * 64}},
+    }
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("payload.exe", b"payload")
+    monkeypatch.setattr(updates, "_validate_manifest_contract", lambda _manifest: None)
+    monkeypatch.setattr(updates, "_manifest_signature_valid", lambda _manifest: False)
+    with pytest.raises(ProblemException) as unsigned:
+        updates._extract_manifest(package)
+    assert unsigned.value.code == "UPDATE_SIGNATURE_INVALID"
+
+
+def test_update_archive_rc3_adversarial_limits(monkeypatch, tmp_path: Path) -> None:
+    for name in (
+        "",
+        "folder\\file.exe",
+        "bad\x00name",
+        "/absolute.exe",
+        "folder//file.exe",
+        "folder/./file.exe",
+        "payload.exe:stream",
+        "CON.txt",
+        "trailing. ",
+    ):
+        with pytest.raises(ProblemException) as unsafe:
+            updates._safe_zip_member(name)
+        assert unsafe.value.code == "UPDATE_PACKAGE_INVALID"
+
+    directory = zipfile.ZipInfo("folder/")
+    directory.external_attr = (stat.S_IFDIR | 0o755) << 16
+    with pytest.raises(ProblemException):
+        updates._validate_zip_entry_type(directory)
+    symlink = zipfile.ZipInfo("link")
+    symlink.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with pytest.raises(ProblemException):
+        updates._validate_zip_entry_type(symlink)
+    regular = zipfile.ZipInfo("regular")
+    regular.external_attr = (stat.S_IFREG | 0o644) << 16
+    updates._validate_zip_entry_type(regular)
+
+    encrypted = zipfile.ZipInfo("encrypted")
+    encrypted.flag_bits = 0x1
+    with pytest.raises(ProblemException) as encrypted_error:
+        updates._validate_zip_entry_type(encrypted)
+    assert encrypted_error.value.code == "UPDATE_PACKAGE_INVALID"
+
+    unsupported = zipfile.ZipInfo("unsupported")
+    unsupported.compress_type = zipfile.ZIP_BZIP2
+    with pytest.raises(ProblemException) as unsupported_error:
+        updates._validate_zip_entry_type(unsupported)
+    assert unsupported_error.value.code == "UPDATE_PACKAGE_INVALID"
+
+    bomb = zipfile.ZipInfo("bomb")
+    bomb.file_size = 101 * 1024**2
+    bomb.compress_size = 1
+    with pytest.raises(ProblemException) as compression_error:
+        updates._validate_zip_entry_type(bomb)
+    assert compression_error.value.code == "UPDATE_COMPRESSION_INVALID"
+
+    package = tmp_path / "limited.partyops-update"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("manifest.json", "{}")
+    monkeypatch.setattr(updates, "MAX_UPDATE_MEMBERS", 0)
+    with pytest.raises(ProblemException) as too_many:
+        updates._extract_manifest(package, require_signature=False)
+    assert too_many.value.code == "UPDATE_MEMBER_LIMIT"
+
+    monkeypatch.setattr(updates, "MAX_UPDATE_MEMBERS", 16)
+    monkeypatch.setattr(updates, "MAX_UPDATE_MANIFEST_BYTES", 1)
+    with pytest.raises(ProblemException) as manifest_large:
+        updates._extract_manifest(package, require_signature=False)
+    assert manifest_large.value.code == "UPDATE_MANIFEST_TOO_LARGE"
+
+    monkeypatch.setattr(updates, "MAX_UPDATE_MANIFEST_BYTES", 1024)
+    monkeypatch.setattr(updates, "_validate_manifest_contract", lambda _manifest: None)
+    manifest = {
+        "version": "9.9.9",
+        "artifacts": {"a.deb": {"size": 1, "sha256": "0" * 64}},
+    }
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("a.deb", b"a")
+        archive.writestr("unexpected.txt", b"x")
+    with pytest.raises(ProblemException) as unregistered:
+        updates._extract_manifest(package, require_signature=False)
+    assert unregistered.value.code == "UPDATE_UNREGISTERED_MEMBER"
+
+    manifest["artifacts"]["a.deb"]["size"] = "invalid"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("a.deb", b"a")
+    with pytest.raises(ProblemException) as invalid_size:
+        updates._extract_manifest(package, require_signature=False)
+    assert invalid_size.value.code == "UPDATE_ARTIFACT_SIZE_INVALID"
+
+    manifest["artifacts"]["a.deb"]["size"] = 1
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("a.deb", b"a")
+    monkeypatch.setattr(updates, "MAX_UPDATE_EXPANDED_BYTES", 0)
+    with pytest.raises(ProblemException) as expanded:
+        updates._extract_manifest(package, require_signature=False)
+    assert expanded.value.code == "UPDATE_EXPANDED_LIMIT"
+
+    collision = tmp_path / "collision.partyops-update"
+    with zipfile.ZipFile(collision, "w") as archive:
+        archive.writestr("manifest.json", "{}")
+        archive.writestr("Payload.EXE", b"a")
+        archive.writestr("payload.exe", b"b")
+    with pytest.raises(ProblemException) as duplicate:
+        updates._extract_manifest(collision, require_signature=False)
+    assert duplicate.value.code == "UPDATE_DUPLICATE_MEMBER"
+
+    monkeypatch.setattr(updates, "MAX_UPDATE_EXPANDED_BYTES", 16 * 1024**3)
+    crc_path = tmp_path / "crc.partyops-update"
+    payload = b"PARTYOPS_UPDATE_PAYLOAD_UNIQUE"
+    crc_manifest = {
+        "version": "9.9.9",
+        "artifacts": {
+            "payload.exe": {
+                "size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+        },
+    }
+    with zipfile.ZipFile(crc_path, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("manifest.json", json.dumps(crc_manifest))
+        archive.writestr("payload.exe", payload)
+    raw = crc_path.read_bytes()
+    assert raw.count(payload) == 1
+    crc_path.write_bytes(raw.replace(payload, b"X" + payload[1:], 1))
+    with pytest.raises(ProblemException) as crc_error:
+        updates._extract_manifest(crc_path, require_signature=False)
+    assert crc_error.value.code == "UPDATE_PACKAGE_INVALID"

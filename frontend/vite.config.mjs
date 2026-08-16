@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
+import legacy from "@vitejs/plugin-legacy";
 
 export default defineConfig({
   build: {
@@ -29,5 +30,13 @@ export default defineConfig({
       },
     },
   },
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    legacy({
+      // Win7 仅支持仍具备原生 ESM 的浏览器；IE11 不运行 Vue 3，入口页会显示中文升级提示。
+      modernTargets: ["Chrome >= 64", "Firefox >= 78", "Edge >= 79"],
+      modernPolyfills: true,
+      renderLegacyChunks: false,
+    }),
+  ],
 });

@@ -7,6 +7,8 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     environment: "jsdom",
     setupFiles: ["src/test/setup.ts"],
+    // 路由用例会真实加载全部懒加载页面；低性能 Win7 构建机上不应因默认 10 秒误报。
+    hookTimeout: 30_000,
     coverage: {
       provider: "v8",
       // 发布门槛必须统计所有业务页面、组件、路由和状态管理，不能只统计
@@ -15,12 +17,12 @@ export default defineConfig({
       exclude: ["src/**/*.test.ts", "src/**/*.d.ts", "src/main.ts"],
       reporter: ["text", "html", "json-summary"],
       thresholds: {
-        // Vue 模板编译器会把每个内联事件与插槽生成独立函数；发布门槛以用户要求的
-        // 全仓行/语句覆盖率 90% 为硬门禁，同时保留分支和函数的防回退下限。
+        // 发布门槛按用户要求同时约束全仓行、语句与分支覆盖率 90%。
+        // Vue 模板生成函数仍单独保留可解释的函数覆盖率防回退下限。
         lines: 90,
         functions: 45,
         statements: 90,
-        branches: 74,
+        branches: 90,
       },
     },
   },

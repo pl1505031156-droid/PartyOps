@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 import asyncio
 import hashlib
 import json
@@ -22,6 +24,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..audit import emit_event, write_audit
+from ..compat import to_thread
 from ..archive_service import can_contribute_category, category_for_record, index_archive_attachment
 from ..config import get_settings
 from ..content_security import may_render_inline
@@ -154,6 +157,12 @@ def enrollment_request_fingerprint(
             "name": payload.name.strip(),
             "csr_pem": payload.csr_pem or "",
             "architecture": payload.architecture,
+            "platform_family": payload.platform_family,
+            "distribution": payload.distribution,
+            "distribution_version": payload.distribution_version,
+            "package_format": payload.package_format,
+            "runtime_profile": payload.runtime_profile,
+            "capabilities": sorted(set(payload.capabilities or [])),
             "local_username": payload.local_username,
         },
         ensure_ascii=False,
@@ -457,7 +466,7 @@ def ensure_transfer_storage_available(incoming_bytes: int = 0) -> None:
         )
 
 
-@router.get("/admin/devices", response_model=list[DeviceOut])
+@router.get("/admin/devices", response_model=typing.List[DeviceOut])
 def list_devices(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -471,7 +480,7 @@ def list_devices(
 
 @router.get(
     "/admin/devices/version-status",
-    response_model=list[DeviceVersionStatus],
+    response_model=typing.List[DeviceVersionStatus],
 )
 def list_device_version_status(
     _admin: User = Depends(require_admin),
@@ -718,6 +727,12 @@ def enroll_device(
             status="offline",
             architecture=payload.architecture,
             platform=normalized_platform(payload.platform),
+            platform_family=payload.platform_family or "",
+            distribution=payload.distribution or "",
+            distribution_version=payload.distribution_version or "",
+            package_format=payload.package_format or "",
+            runtime_profile=payload.runtime_profile or "",
+            capabilities=sorted(set(payload.capabilities or [])),
             kernel=payload.kernel,
             app_version=payload.app_version,
             agent_version=payload.agent_version,
@@ -939,7 +954,7 @@ def queue_certificate_rotation(
     return {"device_id": device.id, "command_id": command.id, "message": "证书轮换命令已排队"}
 
 
-@router.get("/admin/device-grants", response_model=list[DeviceGrantOut])
+@router.get("/admin/device-grants", response_model=typing.List[DeviceGrantOut])
 def list_device_grants(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -1101,7 +1116,7 @@ def patch_remote_root(
     return {"id": root.id, "approval_status": root.approval_status, "approval_note": root.approval_note, "enabled": root.enabled, "version": root.version}
 
 
-@router.get("/admin/workspace/remote-roots", response_model=list[dict])
+@router.get("/admin/workspace/remote-roots", response_model=typing.List[dict])
 def list_admin_remote_roots(
     approval_status: str | None = None,
     _admin: User = Depends(require_admin),
@@ -1130,7 +1145,7 @@ def list_admin_remote_roots(
     ]
 
 
-@router.get("/devices/workspace/roots", response_model=list[dict])
+@router.get("/devices/workspace/roots", response_model=typing.List[dict])
 def list_device_roots(
     token: str | None = Header(default=None, alias="X-PartyOps-Device-Token"),
     db: Session = Depends(get_session),
@@ -1338,9 +1353,27 @@ def heartbeat(
     device = authenticated_device(token, db)
     device.status = "online"
     device.last_seen_at = utcnow()
-    for field in ("architecture", "kernel", "app_version", "agent_version", "local_username"):
+    for field in (
+        "architecture",
+        "kernel",
+        "app_version",
+        "agent_version",
+        "local_username",
+    ):
         setattr(device, field, getattr(payload, field))
+    for field in (
+        "platform_family",
+        "distribution",
+        "distribution_version",
+        "package_format",
+        "runtime_profile",
+    ):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(device, field, value)
     device.platform = normalized_platform(payload.platform)
+    if payload.capabilities is not None:
+        device.capabilities = sorted(set(payload.capabilities))
     device.ip_address = payload.ip_address or client_ip(request)
     device.disk_free_bytes = payload.disk_free_bytes
     previous_metadata = dict(device.device_metadata or {})
@@ -1539,7 +1572,7 @@ def upload_index_delta(
     }
 
 
-@router.get("/devices/commands", response_model=list[dict])
+@router.get("/devices/commands", response_model=typing.List[dict])
 def list_commands(
     token: str | None = Header(default=None, alias="X-PartyOps-Device-Token"),
     db: Session = Depends(get_session),
@@ -1668,7 +1701,7 @@ def ack_command(
     return {"acknowledged": True}
 
 
-@router.get("/transfers", response_model=list[TransferOut])
+@router.get("/transfers", response_model=typing.List[TransferOut])
 def list_transfers(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -2439,7 +2472,7 @@ async def upload_chunk(
         transfer.completed_chunks = 0
         transfer.transit_path = ""
         db.commit()
-        await asyncio.to_thread(cleanup_transfer_part, transfer.id)
+        await to_thread(cleanup_transfer_part, transfer.id)
         raise ProblemException(410, "TRANSFER_EXPIRED", "传输任务已过期", "请在主机重新发起传输。")
     if not transfer_sources_still_allowed(db, transfer):
         transfer.status = "paused"
@@ -2464,7 +2497,7 @@ async def upload_chunk(
     settings = get_settings()
     ensure_transfer_storage_available(len(body))
     part = settings.transfers_dir / f"{transfer.id}.part"
-    await asyncio.to_thread(
+    await to_thread(
         write_transfer_chunk,
         part,
         chunk_no * transfer.chunk_size,
@@ -2498,7 +2531,7 @@ async def upload_chunk(
         transfer.transit_path = str(part.name)
     cleanup_part_after_commit = False
     if transfer.total_chunks and transfer.completed_chunks >= transfer.total_chunks:
-        part_size = await asyncio.to_thread(lambda: part.stat().st_size)
+        part_size = await to_thread(lambda: part.stat().st_size)
         if part_size != transfer.size_bytes:
             transfer.status = "failed"
             transfer.error_code = "SOURCE_CHANGED"
@@ -2507,7 +2540,7 @@ async def upload_chunk(
             transfer.completed_chunks = 0
             transfer.transit_path = ""
             db.commit()
-            await asyncio.to_thread(cleanup_transfer_part, transfer.id)
+            await to_thread(cleanup_transfer_part, transfer.id)
             return {
                 "transfer_id": transfer.id,
                 "chunk_no": chunk_no,
@@ -2515,7 +2548,7 @@ async def upload_chunk(
                 "status": transfer.status,
                 "completed_chunks": transfer.completed_chunks,
             }
-        total_hash = await asyncio.to_thread(sha256_path, part)
+        total_hash = await to_thread(sha256_path, part)
         if transfer.sha256 and total_hash != transfer.sha256:
             transfer.status = "failed"
             transfer.error_code = "HASH_MISMATCH"
@@ -2535,7 +2568,7 @@ async def upload_chunk(
         transfer.version += 1
     db.commit()
     if cleanup_part_after_commit:
-        await asyncio.to_thread(cleanup_transfer_part, transfer.id)
+        await to_thread(cleanup_transfer_part, transfer.id)
     return {"transfer_id": transfer.id, "chunk_no": chunk_no, "sha256": digest, "status": transfer.status, "completed_chunks": transfer.completed_chunks}
 
 

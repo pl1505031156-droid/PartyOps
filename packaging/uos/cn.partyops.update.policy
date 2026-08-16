@@ -5,15 +5,28 @@
 <policyconfig>
   <vendor>党建智办 PartyOps</vendor>
   <vendor_url>https://localhost/partyops</vendor_url>
+  <action id="cn.partyops.personal-update">
+    <description>完成党建智办个人模式更新事务</description>
+    <message>需要管理员授权才能安装、验证并在失败时恢复党建智办</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/opt/partyops/partyops-updater</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">--linux-personal-transaction</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
   <action id="cn.partyops.update">
-    <description>安装已签名的党建智办更新包</description>
+    <description>安装已签名的党建智办终端更新包</description>
     <message>需要管理员授权才能更新党建智办</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>
-      <allow_active>auth_admin_keep</allow_active>
+      <allow_active>auth_admin</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/opt/partyops/partyops-updater</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">--install-package</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 </policyconfig>

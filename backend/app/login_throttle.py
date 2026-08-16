@@ -19,7 +19,7 @@ from .config import Settings, get_settings
 logger = logging.getLogger("partyops.auth")
 
 
-@dataclass(slots=True)
+@dataclass
 class _FailureState:
     failures: int
     window_started: float

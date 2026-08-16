@@ -29,7 +29,7 @@ def test_host_and_client_config_are_validated_and_written_atomically(
     monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "test")
     monkeypatch.setattr(setup_wizard, "discover_lan_addresses", lambda: ["192.168.8.20"])
 
-    with pytest.raises(ValueError, match="host 或 client"):
+    with pytest.raises(ValueError, match="host、personal 或 client"):
         setup_wizard.write_mode_config("server")
     with pytest.raises(ValueError, match="明确局域网地址"):
         setup_wizard.validate_host_config_selection("192.168.8.99", 18765)
@@ -55,6 +55,7 @@ def test_host_and_client_config_are_validated_and_written_atomically(
     payload = json.loads(client.read_text(encoding="utf-8"))
     assert payload["mode"] == "client"
     assert payload["host_url"] == "https://192.168.8.20:18765"
+    assert payload["updates_dir"] == str((tmp_path / "backup" / "updates").resolve())
     assert not client.with_suffix(".json.tmp").exists()
 
 
@@ -106,6 +107,7 @@ def test_device_config_preserves_identity_certificates_and_real_share(
     config = json.loads(path.read_text(encoding="utf-8"))
     assert config["device_name"] == "档案室协同机"
     assert config["shared_roots"][0]["local_path"] == str(shared.resolve())
+    assert config["updates_dir"] == str((tmp_path / "backup" / "updates").resolve())
     assert (root / "pki" / "device.key").read_text(encoding="utf-8") == "PRIVATE"
     assert installed == [root / "pki" / "ca.pem"]
 

@@ -760,11 +760,13 @@ def test_setup_wizard_browser_flow_and_launch_helpers(
     assert created_admins == [
         {
             "service_url": "http://127.0.0.1:18765",
-            "username": "admin",
-            "display_name": "系统管理员",
-            "password": "PartyOps@2026",
-        }
-    ]
+                "username": "admin",
+                "display_name": "系统管理员",
+                "password": "PartyOps@2026",
+                "ca_file": tmp_path / "data" / "secrets" / "pki" / "ca.pem",
+                "bootstrap_token": "",
+            }
+        ]
 
     executable = tmp_path / "partyops"
     executable.write_text("", encoding="utf-8")
@@ -1106,6 +1108,18 @@ def test_client_agent_rejects_corruption_and_handles_http_states(
     _write_client_manifest_backup(wrong_hash, declared_hash="0" * 64)
     with pytest.raises(ValueError, match="哈希"):
         client_agent.verify_local_backup(wrong_hash)
+
+    missing_database = tmp_path / "missing-database.partyops-backup"
+    _write_client_manifest_backup(missing_database, item_path="attachments/file.txt")
+    with pytest.raises(ValueError, match="缺少 PartyOps 数据库"):
+        client_agent.verify_local_backup(missing_database)
+
+    extra_file = tmp_path / "extra-file.partyops-backup"
+    _write_client_manifest_backup(extra_file)
+    with zipfile.ZipFile(extra_file, "a") as archive:
+        archive.writestr("attachments/not-declared.txt", b"unexpected")
+    with pytest.raises(ValueError, match="未在清单登记"):
+        client_agent.verify_local_backup(extra_file)
 
     with pytest.raises(ValueError, match="配对令牌"):
         client_agent.validate_config(
@@ -1479,8 +1493,11 @@ async def test_scheduler_runs_backup_recurrence_and_isolates_failures(
 
     event = OneCycleEvent()
     await scheduler.scheduler_loop(event)  # type: ignore[arg-type]
-    assert backups == ["automatic"]
-    assert recurrences == [admin["id"]]
+    # session 级 TestClient 自己也运行正式调度器；全量套件超过 60 秒时，
+    # 它可能恰好与这里的显式单周期重叠。断言业务调用及参数，不把调度
+    # 时钟重叠误判成产品回归。
+    assert backups and set(backups) == {"automatic"}
+    assert recurrences and set(recurrences) == {admin["id"]}
 
     class TimeoutCycleEvent:
         calls = 0

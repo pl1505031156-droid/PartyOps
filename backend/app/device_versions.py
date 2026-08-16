@@ -31,7 +31,7 @@ from .problems import ProblemException
 
 DEVICE_CONTEXT_COOKIE = "partyops_device_context"
 DEVICE_CONTEXT_SECRET_KEY = "device_context_hmac_secret"
-CURRENT_RELEASE_TITLE = "1.4.3 个人备忘与党员发展计算版"
+CURRENT_RELEASE_TITLE = "1.4.3-rc.3 多系统适配与安装诊断候选版"
 CURRENT_RELEASE_NOTES = [
     "新增严格本机私有备忘录，支持清单、置顶、标签、回收站和 AES-GCM 加密备份",
     "新增依据 2026 年 5 月新版细则的确定性党员发展时间计算、风险提示和 Word 导出",
@@ -44,8 +44,9 @@ CURRENT_RELEASE_NOTES = [
     "文件传输按创建、分块和完成三个阶段重复校验目录、设备和用户权限",
     "主机与协同机界面按运行上下文和有效能力显示，普通用户不再进入空白管理页",
     "中文向量和本地 LLM 使用分能力签名模型包，正文语义索引必须由目录显式授权",
-    "统一更新清单同时支持 UOS amd64、UOS arm64 与 Windows 10/11 x64",
-    "数据库升级到 0018，支持从 1.3.4 和 1.4.0—1.4.2 候选版升级并保留全部业务数据",
+    "统一更新清单按 Windows、Windows 7、DEB Linux、RPM Linux 与架构精确选择七类安装制品",
+    "修复 Windows 协议注册拒绝、主机子进程原始堆栈与乱码，并保留自定义数据目录",
+    "数据库升级到 0019，新增真实发行版、包格式、运行档位与能力清单且保留全部业务数据",
 ]
 
 
@@ -346,6 +347,12 @@ def start_device_update(db: Session, device: Device, actor: User | None = None) 
         )
     )
     if not command:
+        package_manifest = getattr(package, "manifest", {})
+        online_state = (
+            package_manifest.get("online_download", package_manifest)
+            if isinstance(package_manifest, dict)
+            else {}
+        )
         command = DeviceCommand(
             device_id=device.id,
             command_type="apply_update",
@@ -354,6 +361,9 @@ def start_device_update(db: Session, device: Device, actor: User | None = None) 
                 "package": package.filename,
                 "version": package.version,
                 "run_id": run.id,
+                # 协同机只接收“使用官方签名目录”这一布尔意图；下载地址、
+                # 大小和哈希由协同机用内置公钥重新读取并验证，主机不能注入 URL。
+                "official_online": online_state.get("source") == "official-online-catalog",
             },
         )
         db.add(command)

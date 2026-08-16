@@ -126,7 +126,7 @@ def test_first_run_wizard_prioritizes_reachable_role_based_setup(monkeypatch) ->
     )
     page = setup_wizard.render_page("csrf-token")
 
-    assert "第一步 · 这台电脑做什么" in page
+    assert "第一步 · 这台电脑怎么使用" in page
     assert 'data-role="host"' in page
     assert 'data-role="client"' in page
     assert 'value="192.168.36.18" selected' in page
@@ -173,6 +173,9 @@ def test_first_admin_bootstrap_uses_local_loopback_channel(monkeypatch) -> None:
     def open_request(request, **kwargs):
         captured["url"] = request.full_url
         captured["body"] = json.loads(request.data.decode("utf-8"))
+        captured["bootstrap_token"] = request.headers.get(
+            "X-partyops-bootstrap-token"
+        )
         captured["context"] = kwargs.get("context")
         return Response()
 
@@ -182,6 +185,7 @@ def test_first_admin_bootstrap_uses_local_loopback_channel(monkeypatch) -> None:
         username="Admin_01",
         display_name="首位管理员",
         password="PartyOps@2026",
+        bootstrap_token="wizard-secret-token-012345678901234567890",
     )
 
     assert captured["url"] == "https://127.0.0.1:18765/api/v1/bootstrap/host"
@@ -190,6 +194,7 @@ def test_first_admin_bootstrap_uses_local_loopback_channel(monkeypatch) -> None:
         "display_name": "首位管理员",
         "password": "PartyOps@2026",
     }
+    assert captured["bootstrap_token"] == "wizard-secret-token-012345678901234567890"
     assert captured["context"] is not None
 
 
@@ -209,6 +214,7 @@ def test_windows_host_role_uses_uac_helper_for_protected_config(
 
     monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
     monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.setenv("USERPROFILE", r"D:\Profiles\Fixture")
     monkeypatch.setattr(setup_wizard, "config_root", lambda: local_config)
     monkeypatch.setattr(
         setup_wizard,
@@ -216,6 +222,11 @@ def test_windows_host_role_uses_uac_helper_for_protected_config(
         lambda: ["192.168.36.18"],
     )
     monkeypatch.setattr(setup_wizard, "windows_is_admin", lambda: False)
+    monkeypatch.setattr(
+        setup_wizard,
+        "assert_windows_service_data_path_security",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(setup_wizard, "_executable", lambda _name: helper)
     monkeypatch.setattr(
         setup_wizard,

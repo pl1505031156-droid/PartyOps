@@ -51,7 +51,7 @@ def validate_bind_host(
         return
     if host in {"0.0.0.0", "::"}:  # nosec B104 - 仅配合可信展示地址和防火墙使用。
         advertised = (advertised_host or "").strip()
-        if not advertised or advertised in {"0.0.0.0", "::"}:
+        if not advertised or advertised in {"0.0.0.0", "::"}:  # nosec B104 - 这里只拒绝通配展示值，未绑定网络接口。
             raise RuntimeError("通配监听必须同时配置明确的可信局域网展示地址")
         try:
             address = ipaddress.ip_address(advertised)

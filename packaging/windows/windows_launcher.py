@@ -1,4 +1,4 @@
-"""Windows 桌面入口：仅依据 mode.json 启动主机或协同 Agent。"""
+"""Windows 桌面入口：依据 mode.json 启动个人、主机或协同模式。"""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from app.setup_wizard import (
     HostStartupError,
     _start_windows_host_service,
     clear_windows_client_autostart,
+    launch_personal,
     load_host_environment,
     wait_for_host_health,
 )
@@ -29,29 +30,74 @@ def detached(command: list[str]) -> None:
 
 
 def main() -> int:
+    background = "--background" in sys.argv[1:]
     runtime = Path(sys.executable).resolve().parent
-    local = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "PartyOps"
+    pending_switch = (
+        Path(os.getenv("PROGRAMDATA", "C:/ProgramData"))
+        / "PartyOps"
+        / "host-switch-pending.json"
+    )
+    if pending_switch.is_file():
+        # 上次停主机后若断电，任何角色都不得绕过恢复事务直接启动。
+        if not background:
+            detached([str(runtime / "PartyOpsWizard.exe")])
+        return 1
+    local = (
+        Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "PartyOps"
+    )
     mode_path = local / "mode.json"
     if not mode_path.is_file():
-        detached([str(runtime / "PartyOpsWizard.exe")])
+        if not background:
+            detached([str(runtime / "PartyOpsWizard.exe")])
         return 0
     try:
         mode = json.loads(mode_path.read_text(encoding="utf-8"))
     except (OSError, ValueError, json.JSONDecodeError):
-        detached([str(runtime / "PartyOpsWizard.exe")])
+        if not background:
+            detached([str(runtime / "PartyOpsWizard.exe")])
         return 0
     if mode.get("mode") == "client":
         config = local / "client.json"
         if not config.is_file():
-            detached([str(runtime / "PartyOpsWizard.exe")])
+            if not background:
+                detached([str(runtime / "PartyOpsWizard.exe")])
             return 0
-        detached([str(runtime / "PartyOpsAgent.exe"), "--config", str(config), "--once"])
+        detached(
+            [str(runtime / "PartyOpsAgent.exe"), "--config", str(config), "--once"]
+        )
+        return 0
+    if mode.get("mode") == "personal":
+        config = Path(str(mode.get("config_path") or local / "personal.env"))
+        if not config.is_file():
+            if not background:
+                detached(
+                    [str(runtime / "PartyOpsWizard.exe"), "--initial-role", "personal"]
+                )
+            return 1
+        try:
+            url = launch_personal(config)
+        except HostStartupError:
+            if not background:
+                detached(
+                    [str(runtime / "PartyOpsWizard.exe"), "--initial-role", "personal"]
+                )
+            return 1
+        if not background:
+            webbrowser.open(url)
         return 0
     if mode.get("mode") == "host":
         clear_windows_client_autostart()
-        config = Path(str(mode.get("config_path") or Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps" / "partyops.env"))
+        config = Path(
+            str(
+                mode.get("config_path")
+                or Path(os.getenv("PROGRAMDATA", "C:/ProgramData"))
+                / "PartyOps"
+                / "partyops.env"
+            )
+        )
         if not config.is_file():
-            detached([str(runtime / "PartyOpsWizard.exe")])
+            if not background:
+                detached([str(runtime / "PartyOpsWizard.exe")])
             return 0
         values = load_host_environment(config)
         host = values.get("PARTYOPS_HOST", "127.0.0.1")
@@ -70,11 +116,16 @@ def main() -> int:
             )
         except HostStartupError:
             # 严禁打开一个尚未就绪的地址；回到向导展示重试与诊断入口。
-            detached([str(runtime / "PartyOpsWizard.exe"), "--initial-role", "host"])
+            if not background:
+                detached(
+                    [str(runtime / "PartyOpsWizard.exe"), "--initial-role", "host"]
+                )
             return 1
-        webbrowser.open(url)
+        if not background:
+            webbrowser.open(url)
         return 0
-    detached([str(runtime / "PartyOpsWizard.exe")])
+    if not background:
+        detached([str(runtime / "PartyOpsWizard.exe")])
     return 0
 
 

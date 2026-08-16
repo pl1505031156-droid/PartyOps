@@ -23,10 +23,13 @@ class _HealthResponse:
         return False
 
     def read(self) -> bytes:
-        return b'{"status":"ok"}'
+        return (
+            b'{"status":"ok","mode":"host","app_version":"1.4.3-rc.3",'
+            b'"sqlite":{"safe_version":true,"fts5":true}}'
+        )
 
 
-def test_windows_service_shared_probe_marks_loopback_health(monkeypatch) -> None:
+def test_windows_service_shared_probe_marks_loopback_health(monkeypatch, tmp_path: Path) -> None:
     """监督服务重启后应自行确认 ready，不能永久停在 child_running。"""
 
     requested: list[str] = []
@@ -35,8 +38,19 @@ def test_windows_service_shared_probe_marks_loopback_health(monkeypatch) -> None
         requested.append(request.full_url)
         return _HealthResponse()
 
+    ca_file = tmp_path / "ca.pem"
+    ca_file.write_text("test-ca", encoding="utf-8")
+    monkeypatch.setattr(
+        windows_host_status.ssl,
+        "create_default_context",
+        lambda **_kwargs: object(),
+    )
     monkeypatch.setattr(windows_host_status.urllib.request, "urlopen", open_health)
-    healthy, detail = windows_host_status.probe_loopback_health(18765, tls=True)
+    healthy, detail = windows_host_status.probe_loopback_health(
+        18765,
+        tls=True,
+        ca_file=ca_file,
+    )
 
     assert healthy is True
     assert detail == ""
@@ -48,7 +62,8 @@ def test_windows_service_source_promotes_child_to_ready() -> None:
         Path(__file__).parents[2] / "packaging" / "windows" / "windows_service.py"
     ).read_text(encoding="utf-8")
 
-    assert "probe_loopback_health(port, tls=tls)" in service
+    assert "healthy, detail = probe_loopback_health(" in service
+    assert 'ca_file=(' in service
     assert 'stage="ready"' in service
     assert 'stage="health_timeout"' in service
     assert "code=HEALTH_TIMEOUT" in service

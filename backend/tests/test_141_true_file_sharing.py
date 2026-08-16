@@ -40,8 +40,8 @@ def _enroll_windows_device(client: TestClient, name: str) -> dict:
             "architecture": "amd64",
             "platform": "windows",
             "kernel": "Windows 11",
-            "app_version": "1.4.3",
-            "agent_version": "1.4.3",
+            "app_version": "1.4.3-rc.3",
+            "agent_version": "1.4.3-rc.3",
         },
     )
     assert response.status_code == 201, response.text

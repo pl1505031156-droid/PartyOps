@@ -25,6 +25,7 @@ from .schemas import serialize_api_datetime
 from .storage import resolve_blob_path
 from .spreadsheet_security import safe_spreadsheet_row
 from .task_service import can_view_task, task_to_out, visible_tasks
+from .compat import strict_zip
 
 
 STATUS_LABELS = {
@@ -218,7 +219,7 @@ def export_tasks_docx(db: Session, user: User, kind: str = "周工作清单") ->
     table = document.add_table(rows=1, cols=7)
     table.style = "Table Grid"
     headers = ["事项", "类别", "主办", "状态", "内部节点", "正式截止", "材料"]
-    for cell, label in zip(table.rows[0].cells, headers, strict=True):
+    for cell, label in strict_zip(table.rows[0].cells, headers):
         cell.text = label
         cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
         for paragraph in cell.paragraphs:
@@ -237,7 +238,7 @@ def export_tasks_docx(db: Session, user: User, kind: str = "周工作清单") ->
             task.formal_due_at.strftime("%m-%d %H:%M") if task.formal_due_at else "",
             "齐全" if output.missing_required_materials == 0 else f"缺 {output.missing_required_materials} 项",
         ]
-        for cell, value in zip(cells, values, strict=True):
+        for cell, value in strict_zip(cells, values):
             cell.text = str(value)
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
     document.save(path)

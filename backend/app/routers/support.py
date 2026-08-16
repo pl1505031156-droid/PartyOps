@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -109,7 +111,7 @@ async def intake_parse(
     return parse_text(pasted_text, "wechat")
 
 
-@router.get("/templates", response_model=list[TemplateOut])
+@router.get("/templates", response_model=typing.List[TemplateOut])
 def list_templates(
     include_inactive: bool = False,
     user: User = Depends(get_current_user),
@@ -241,7 +243,7 @@ def instantiate(
     return task_to_out(db, task)
 
 
-@router.get("/recurrences", response_model=list[RecurrenceOut])
+@router.get("/recurrences", response_model=typing.List[RecurrenceOut])
 def list_recurrences(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -324,7 +326,7 @@ def update_recurrence(
     return rule
 
 
-@router.post("/recurrences/run-due", response_model=list[str])
+@router.post("/recurrences/run-due", response_model=typing.List[str])
 def run_recurrences(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -334,7 +336,7 @@ def run_recurrences(
     return run_due_rules(db, user)
 
 
-@router.get("/knowledge", response_model=list[KnowledgeOut])
+@router.get("/knowledge", response_model=typing.List[KnowledgeOut])
 def list_knowledge(
     keyword: str | None = None,
     _user: User = Depends(get_current_user),
@@ -419,7 +421,7 @@ def delete_knowledge(
     return {"deleted": True, "id": entry_id}
 
 
-@router.get("/contacts", response_model=list[ContactOut])
+@router.get("/contacts", response_model=typing.List[ContactOut])
 def list_contacts(
     keyword: str | None = None,
     _user: User = Depends(get_current_user),
@@ -662,7 +664,7 @@ def search(
     )
 
 
-@router.get("/tasks/{task_id}/archive-snapshots", response_model=list[ArchiveSnapshotOut])
+@router.get("/tasks/{task_id}/archive-snapshots", response_model=typing.List[ArchiveSnapshotOut])
 def archive_snapshots(
     task_id: str,
     user: User = Depends(get_current_user),

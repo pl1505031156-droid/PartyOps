@@ -32,13 +32,14 @@ PACKAGES=(
   build-essential
   unzip
   tar
+  gzip
   zstd
   curl
   dpkg-dev
-  tesseract-ocr
-  tesseract-ocr-chi-sim
+  file
+  binutils
 )
-COMMANDS=(gcc g++ ar ranlib make unzip tar zstd sha256sum curl dpkg-deb systemctl tesseract)
+COMMANDS=(gcc g++ ar ranlib make unzip tar gzip zstd sha256sum curl dpkg-deb systemctl file readelf ldd)
 
 as_root() {
   if [[ "$(id -u)" -eq 0 ]]; then
@@ -56,7 +57,6 @@ system_environment_ready() {
   for command in "${COMMANDS[@]}"; do
     command -v "$command" >/dev/null 2>&1 || return 1
   done
-  tesseract --list-langs 2>/dev/null | grep -Fxq "chi_sim" || return 1
 }
 
 select_python() {
@@ -104,7 +104,7 @@ if ! system_environment_ready; then
 fi
 
 if ! system_environment_ready; then
-  echo "自动安装后系统工具仍不完整，请检查编译工具、压缩工具和 chi_sim 中文 OCR 包。" >&2
+  echo "自动安装后系统工具仍不完整，请检查编译、压缩和 ELF 检查工具。" >&2
   exit 2
 fi
 

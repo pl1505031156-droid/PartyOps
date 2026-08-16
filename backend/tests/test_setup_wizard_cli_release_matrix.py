@@ -259,9 +259,9 @@ def test_main_dispatches_privileged_shared_root_and_normal_wizard(monkeypatch, t
     )
     valid = _run_main(
         monkeypatch,
-        ["--manage-shared-roots", "--no-browser", "--action-uri", "partyops-client://manage-shares/one-time"],
+        ["--manage-shared-roots", "--no-browser", "--action-uri", f"partyops-client://manage-shares/{'x' * 43}"],
     )
-    assert valid.code == 7 and managed == [(False, "one-time")]
+    assert valid.code == 7 and managed == [(False, "x" * 43)]
 
     launched: list[tuple[bool, str]] = []
     monkeypatch.setattr(

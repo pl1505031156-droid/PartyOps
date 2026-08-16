@@ -110,4 +110,29 @@ describe("东方主题状态", () => {
       { "If-Match": "5" },
     );
   });
+
+  it("服务端缺失旧版本号时使用版本一完成兼容更新", async () => {
+    const context: AppearanceContext = {
+      effective_season: "winter",
+      art_level: "reduced",
+      reduce_motion: false,
+      theme_mode: "fixed",
+    };
+    const get = vi.spyOn(api, "get");
+    get.mockResolvedValueOnce(null).mockResolvedValueOnce(context)
+      .mockResolvedValueOnce(null).mockResolvedValueOnce(context);
+    const patch = vi.spyOn(api, "patch");
+    patch.mockResolvedValueOnce({ version: 2 }).mockResolvedValueOnce({ version: 2 });
+    const store = useAppearanceStore();
+
+    await store.saveUser({ art_level: "reduced", reduce_motion: false, theme_override: null });
+    expect(patch).toHaveBeenNthCalledWith(1, "/me/appearance", expect.any(Object), { "If-Match": "1" });
+    await store.saveAdmin({
+      theme_mode: "fixed",
+      fixed_theme: "winter",
+      default_art_level: "reduced",
+      default_reduce_motion: false,
+    });
+    expect(patch).toHaveBeenNthCalledWith(2, "/admin/appearance", expect.any(Object), { "If-Match": "1" });
+  });
 });

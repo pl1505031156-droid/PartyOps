@@ -41,6 +41,19 @@ def test_trace_origin_device_launch_and_frontend_directory(monkeypatch, tmp_path
     assert main.frontend_directory() == (tmp_path / "frontend").resolve()
 
 
+def test_production_origin_guard_rejects_missing_source_and_accepts_same_referer(monkeypatch) -> None:
+    monkeypatch.setattr(main.settings, "environment", "production")
+    request = SimpleNamespace(
+        headers={},
+        url=SimpleNamespace(scheme="https", netloc="192.168.1.8:18765"),
+    )
+    assert main._origin_allowed(request) is False
+    request.headers = {"Referer": "https://192.168.1.8:18765/setup/step-3"}
+    assert main._origin_allowed(request) is True
+    request.headers = {"Referer": "https://attacker.invalid/form"}
+    assert main._origin_allowed(request) is False
+
+
 def test_main_run_tls_agent_success_certificate_guard_and_agent_failure(monkeypatch, tmp_path) -> None:
     cert = tmp_path / "server.pem"
     key = tmp_path / "server.key"
@@ -270,4 +283,4 @@ def test_agent_upload_and_download_detect_changes_network_and_hash(monkeypatch, 
         client_agent.download_transfer(
             "https://host", "token", {"transfer_id": "download-1", "name": "file.txt"}, config
         )
-    assert size_error.value.code == "HASH_MISMATCH"
+    assert size_error.value.code == "TRANSFER_METADATA_INVALID"

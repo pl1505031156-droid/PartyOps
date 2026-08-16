@@ -23,6 +23,7 @@ function Invoke-Checked {
 }
 
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") audit --prod --audit-level high } "前端生产依赖审计"
+Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "website") audit --prod --audit-level high } "官网生产依赖审计"
 Invoke-Checked { & $python -m pip check } "Python 依赖一致性检查"
 Invoke-Checked { & $python -m pip_audit -r (Join-Path $root "backend\requirements-release.txt") } "Python 依赖审计"
 Invoke-Checked { & $python -m compileall -q (Join-Path $root "backend\app") (Join-Path $root "backend\tests") } "Python 编译检查"
@@ -30,6 +31,9 @@ Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") run typeche
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") run test:coverage } "前端覆盖率测试"
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") run test:sites } "静态入口测试"
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") run build } "前端生产构建"
+Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "website") run test:coverage } "官网覆盖率测试"
+Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "website") run test:sites } "官网静态入口测试"
+Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "website") run build } "官网生产构建"
 Push-Location (Join-Path $root "backend")
 try {
     Invoke-Checked {
@@ -41,7 +45,7 @@ try {
       & $python -m coverage json --fail-under=0 -o coverage-release.json
     } "后端覆盖率报告"
     Invoke-Checked {
-      & $python (Join-Path $root "scripts\verify-coverage.py") coverage-release.json --line 90 --branch 73
+      & $python (Join-Path $root "scripts\verify-coverage.py") coverage-release.json --line 90 --branch 90
     } "后端覆盖率门禁"
 }
 finally {

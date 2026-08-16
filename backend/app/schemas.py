@@ -1362,6 +1362,12 @@ class DeviceOut(ORMModel):
     status: str
     architecture: str
     platform: str
+    platform_family: str = ""
+    distribution: str = ""
+    distribution_version: str = ""
+    package_format: str = ""
+    runtime_profile: str = ""
+    capabilities: list[str] = Field(default_factory=list)
     kernel: str
     app_version: str
     agent_version: str
@@ -1410,7 +1416,7 @@ class DeviceUpdateGate(BaseModel):
 
 
 class RuntimeContextOut(BaseModel):
-    node_mode: str = Field(pattern=r"^(host|client|unknown)$")
+    node_mode: str = Field(pattern=r"^(host|personal|client|unknown)$")
     platform: str
     user_role: UserRole
     device_id: str | None = None
@@ -1470,6 +1476,14 @@ class DeviceGrantOut(ORMModel):
 class DeviceHeartbeat(BaseModel):
     architecture: str = Field(default="", max_length=16)
     platform: str = Field(default="uos", max_length=40)
+    # rc.2 Agent 不会上报这些 rc.3 字段。None 明确表示“旧客户端未提供”，
+    # 心跳处理必须保留数据库中的已知值，不能用空串把平台事实抹掉。
+    platform_family: str | None = Field(default=None, max_length=24)
+    distribution: str | None = Field(default=None, max_length=40)
+    distribution_version: str | None = Field(default=None, max_length=40)
+    package_format: str | None = Field(default=None, max_length=16)
+    runtime_profile: str | None = Field(default=None, max_length=32)
+    capabilities: list[str] | None = Field(default=None, max_length=32)
     kernel: str = Field(default="", max_length=120)
     app_version: str = Field(default="", max_length=32)
     agent_version: str = Field(default="", max_length=32)

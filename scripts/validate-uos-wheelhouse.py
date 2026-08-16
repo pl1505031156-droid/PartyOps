@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import email
+import re
 import sys
 import zipfile
 from collections import defaultdict, deque
@@ -12,7 +13,7 @@ from pathlib import Path
 
 from packaging.markers import default_environment
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
+from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
 
@@ -22,6 +23,46 @@ class WheelMetadata:
     version: Version
     requires_dist: tuple[str, ...]
     path: Path
+
+
+GLIBC_BASELINE = (2, 17)
+REQUIRED_SMART_RUNTIME = {"numpy", "onnxruntime", "tokenizers"}
+
+
+def validate_wheel_platform(path: Path, architecture: str) -> None:
+    """拒绝错误架构及最低 glibc 高于 2.17 的原生轮子。"""
+
+    try:
+        _, _, _, tags = parse_wheel_filename(path.name)
+    except ValueError as exc:
+        raise ValueError(f"轮子文件名无效：{path.name}") from exc
+    platforms = {tag.platform for tag in tags}
+    if platforms == {"any"}:
+        return
+    machine = "x86_64" if architecture == "amd64" else "aarch64"
+    compatible: list[tuple[int, int]] = []
+    for platform_tag in platforms:
+        if platform_tag == f"linux_{machine}":
+            raise ValueError(
+                f"{path.name} 只有通用 linux 标签，无法证明 glibc 2.17 ABI；"
+                "必须用 auditwheel 生成 manylinux2014 标签。"
+            )
+        if machine not in platform_tag:
+            continue
+        match = re.search(r"manylinux_(\d+)_(\d+)_", platform_tag)
+        if match:
+            compatible.append((int(match.group(1)), int(match.group(2))))
+            continue
+        if "manylinux2014" in platform_tag:
+            compatible.append(GLIBC_BASELINE)
+    if not compatible:
+        raise ValueError(f"{path.name} 不包含 {architecture} Linux 兼容标签")
+    if min(compatible) > GLIBC_BASELINE:
+        required = ".".join(str(part) for part in min(compatible))
+        raise ValueError(
+            f"{path.name} 最低需要 glibc {required}，高于发布基线 2.17；"
+            "必须在 manylinux2014 工具链重建，禁止仅改文件名。"
+        )
 
 
 def linux_environment(architecture: str = "amd64") -> dict[str, str]:
@@ -44,9 +85,10 @@ def linux_environment(architecture: str = "amd64") -> dict[str, str]:
     return environment
 
 
-def read_wheels(wheelhouse: Path) -> dict[str, WheelMetadata]:
+def read_wheels(wheelhouse: Path, architecture: str) -> dict[str, WheelMetadata]:
     wheels: dict[str, WheelMetadata] = {}
     for path in sorted(wheelhouse.glob("*.whl")):
+        validate_wheel_platform(path, architecture)
         with zipfile.ZipFile(path) as archive:
             metadata_names = [
                 name
@@ -106,7 +148,16 @@ def marker_applies(
 def validate(
     wheelhouse: Path, requirement_files: list[Path], architecture: str = "amd64"
 ) -> int:
-    wheels = read_wheels(wheelhouse)
+    wheels = read_wheels(wheelhouse, architecture)
+    cryptography = wheels.get("cryptography")
+    if cryptography is None or cryptography.version != Version("50.0.0"):
+        actual = cryptography.version if cryptography else "missing"
+        raise ValueError(f"cryptography 必须唯一且为 50.0.0，实际为 {actual}")
+    missing_smart = sorted(REQUIRED_SMART_RUNTIME - set(wheels))
+    if missing_smart:
+        raise ValueError(
+            f"{architecture} 本地智能运行时不完整：{', '.join(missing_smart)}"
+        )
     roots = read_roots(requirement_files)
     requested_extras: dict[str, set[str]] = defaultdict(set)
     constraints: dict[str, list[Requirement]] = defaultdict(list)

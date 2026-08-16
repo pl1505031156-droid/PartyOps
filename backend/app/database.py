@@ -612,6 +612,21 @@ def register_orm_activity(orm_execute_state) -> None:
     runtime = session.info.get("partyops_database_runtime")
     if runtime:
         runtime.enter_session_activity(session)
+        if (
+            orm_execute_state.is_insert
+            or orm_execute_state.is_update
+            or orm_execute_state.is_delete
+        ):
+            _acquire_session_write_lock(session, runtime)
+
+
+def _acquire_session_write_lock(session: Session, runtime: DatabaseRuntime) -> None:
+    """让同一进程的 SQLite 写事务排队，避免后台任务与请求互相锁死。"""
+
+    if session.info.get("partyops_write_lock_held"):
+        return
+    runtime.write_lock.acquire()
+    session.info["partyops_write_lock_held"] = True
 
 
 @event.listens_for(Session, "before_flush")
@@ -621,6 +636,7 @@ def register_flush_activity(session: Session, _flush_context, _instances) -> Non
     runtime = session.info.get("partyops_database_runtime")
     if runtime:
         runtime.enter_session_activity(session)
+        _acquire_session_write_lock(session, runtime)
 
 
 @event.listens_for(Session, "after_transaction_end")
@@ -632,6 +648,8 @@ def release_orm_activity(session: Session, transaction) -> None:
     runtime = session.info.get("partyops_database_runtime")
     if runtime:
         runtime.leave_session_activity(session)
+        if session.info.pop("partyops_write_lock_held", False):
+            runtime.write_lock.release()
 
 
 db_runtime = DatabaseRuntime()

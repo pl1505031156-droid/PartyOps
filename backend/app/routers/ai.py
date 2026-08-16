@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 import secrets
 from pathlib import PurePosixPath
 
@@ -75,7 +77,7 @@ def parse_version(value: str | None) -> int:
         raise ProblemException(400, "IF_MATCH_INVALID", "版本号无效", "If-Match 必须是整数。") from exc
 
 
-@router.get("/admin/ai/model-packs", response_model=list[AIModelPackOut])
+@router.get("/admin/ai/model-packs", response_model=typing.List[AIModelPackOut])
 def list_model_packs(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -201,7 +203,7 @@ def get_local_ai_status(
     return LocalAIRuntimeOut.model_validate(local_runtime_status(db))
 
 
-@router.get("/ai/recommendations", response_model=list[AIRecommendationOut])
+@router.get("/ai/recommendations", response_model=typing.List[AIRecommendationOut])
 def get_ai_recommendations(
     limit: int = Query(default=30, ge=1, le=100),
     user: User = Depends(get_current_user),
@@ -346,7 +348,7 @@ def test_ai_settings(
     return AIProviderOut.model_validate(provider_output(provider))
 
 
-@router.get("/ai/policies", response_model=list[AIPolicyOut])
+@router.get("/ai/policies", response_model=typing.List[AIPolicyOut])
 def list_ai_policies(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -526,7 +528,7 @@ def query_ai(
     return draft
 
 
-@router.get("/ai/drafts", response_model=list[AIDraftOut])
+@router.get("/ai/drafts", response_model=typing.List[AIDraftOut])
 def list_ai_drafts(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -562,7 +564,7 @@ def discard_ai_draft(
     return draft
 
 
-@router.get("/ai/approvals", response_model=list[AIDraftOut])
+@router.get("/ai/approvals", response_model=typing.List[AIDraftOut])
 def list_ai_approvals(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),

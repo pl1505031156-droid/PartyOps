@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 import hashlib
 import csv
 import io
@@ -106,7 +108,7 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
-@router.get("/admin/users", response_model=list[UserOut])
+@router.get("/admin/users", response_model=typing.List[UserOut])
 def list_users(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -220,7 +222,7 @@ def reset_user_password(
     return {"reset": True, "user_id": user_id}
 
 
-@router.get("/admin/audit", response_model=list[AuditOut])
+@router.get("/admin/audit", response_model=typing.List[AuditOut])
 def list_audit(
     action: str | None = None,
     actor_id: str | None = None,
@@ -267,7 +269,7 @@ def export_audit(
     )
 
 
-@router.get("/backups", response_model=list[BackupOut])
+@router.get("/backups", response_model=typing.List[BackupOut])
 def list_backups(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -387,7 +389,7 @@ def paired_notification_summary(
     }
 
 
-@router.get("/admin/pairings", response_model=list[PairingSummaryOut])
+@router.get("/admin/pairings", response_model=typing.List[PairingSummaryOut])
 def list_pairings(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -830,7 +832,7 @@ def system_status(
     }
 
 
-@router.get("/admin/jobs", response_model=list[BackgroundJobOut])
+@router.get("/admin/jobs", response_model=typing.List[BackgroundJobOut])
 def list_background_jobs(
     limit: int = Query(default=100, ge=1, le=500),
     _admin: User = Depends(require_admin),
@@ -845,7 +847,7 @@ def list_background_jobs(
     )
 
 
-@router.get("/admin/upgrades", response_model=list[dict])
+@router.get("/admin/upgrades", response_model=typing.List[dict])
 def list_upgrades(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_session),

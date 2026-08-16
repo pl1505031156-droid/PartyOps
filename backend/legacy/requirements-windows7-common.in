@@ -1,0 +1,29 @@
+# Windows 7 Python 3.8 Legacy 上游基线。
+#
+# 该输入仅用于解析可重复依赖树；cryptography 与 Pillow 的上游基线存在
+# 2026 年安全缺口，正式构建必须由 security-backports.json 中的已验证
+# PartyOps 回移轮子覆盖，否则 validate-win7-wheelhouse.py 必须阻断制品。
+fastapi<0.116
+starlette<0.42
+uvicorn<0.31
+SQLAlchemy<2.1
+# SQLAlchemy 在 Windows 同步运行时会动态依赖 greenlet；必须显式锁定，
+# 避免 x86 解析器漏写传递依赖后由旧 pip 在安装期临时联网解析。
+greenlet==3.1.1
+alembic<1.15
+pydantic-settings<2.8
+argon2-cffi<24
+python-multipart<0.1
+sse-starlette<2.2
+python-docx<1.2
+lxml==6.1.1
+PyMuPDF<1.25
+openpyxl==3.1.5
+Pillow==10.4.0
+pytesseract==0.3.13
+# 47.0.0 是最后支持 Python 3.8 的上游基线；正式 wheel 必须由
+# security-backports.json 指定的 PartyOps 回移版本覆盖。
+cryptography==47.0.0
+defusedxml==0.7.1
+httpx<0.28
+packaging==25.0

@@ -11,6 +11,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .startup_diagnostics import (
+    DATABASE_CORRUPT,
+    DATABASE_IO_FAILED,
+    DATABASE_LOCKED,
+    DATABASE_SCHEMA_FAILED,
+    DATABASE_STARTUP_FAILED,
+    DATA_DIR_FULL,
+)
+
 
 SERVICE_MISSING = "SERVICE_MISSING"
 SERVICE_STOPPED = "SERVICE_STOPPED"
@@ -25,6 +34,12 @@ TERMINAL_CODES = {
     PORT_IN_USE,
     DATA_DIR_DENIED,
     TLS_INIT_FAILED,
+    DATABASE_LOCKED,
+    DATABASE_CORRUPT,
+    DATABASE_SCHEMA_FAILED,
+    DATABASE_IO_FAILED,
+    DATA_DIR_FULL,
+    DATABASE_STARTUP_FAILED,
 }
 
 
@@ -89,8 +104,14 @@ def tail_service_log(data_dir: Path, *, max_bytes: int = 8192) -> str:
         path = service_log_path(data_dir)
         size = path.stat().st_size
         with path.open("rb") as stream:
-            stream.seek(max(0, size - max_bytes))
-            return stream.read(max_bytes).decode("utf-8", errors="replace")
+            offset = max(0, size - max_bytes)
+            stream.seek(offset)
+            text = stream.read(max_bytes).decode("utf-8", errors="replace")
+        # 从文件中部读取时丢弃第一条残行，避免 UTF-8 多字节字符被切开后
+        # 在向导中显示成乱码；完整原始日志不受影响。
+        if offset and "\n" in text:
+            text = text.split("\n", 1)[1]
+        return text
     except OSError:
         return ""
 
@@ -100,6 +121,8 @@ def probe_loopback_health(
     *,
     tls: bool,
     timeout: float = 3.0,
+    ca_file: Path | None = None,
+    expected_version: str | None = None,
 ) -> tuple[bool, str]:
     """探测本机 PartyOps 健康接口，供 Windows 监督服务持续上报阶段。
 
@@ -110,7 +133,19 @@ def probe_loopback_health(
     if not 1024 <= port <= 65534:
         return False, "主机服务端口超出允许范围"
     scheme = "https" if tls else "http"
-    context = ssl._create_unverified_context() if tls else None  # nosec B323 - 固定回环健康探测。
+    if tls and ca_file is not None:
+        if not ca_file.is_file():
+            return False, "PartyOps 内部 CA 尚未生成"
+        try:
+            # 即使目标固定为回环地址，也校验 PartyOps 自己的 CA，避免其他本机
+            # 进程抢占端口后伪造健康响应。
+            context = ssl.create_default_context(cafile=str(ca_file.resolve()))
+        except (OSError, ssl.SSLError, ValueError) as exc:
+            return False, f"PartyOps 内部 CA 无法读取：{exc}"
+    elif tls:
+        return False, "TLS 健康检查缺少 PartyOps 内部 CA"
+    else:
+        context = None
     request = urllib.request.Request(f"{scheme}://127.0.0.1:{port}/api/v1/health")
     try:
         with urllib.request.urlopen(  # nosec B310 - URL 固定为本机回环地址与健康路径。
@@ -119,7 +154,7 @@ def probe_loopback_health(
             context=context,
         ) as response:
             payload = json.loads(response.read().decode("utf-8"))
-        if isinstance(payload, dict) and payload.get("status") == "ok":
+        if health_payload_ready(payload, expected_version=expected_version):
             return True, ""
         return False, "健康检查返回内容无效"
     except (
@@ -133,3 +168,26 @@ def probe_loopback_health(
         ValueError,
     ) as exc:
         return False, str(exc)[-2000:]
+
+
+def health_payload_ready(
+    payload: object,
+    *,
+    expected_version: str | None = None,
+    expected_mode: str = "host",
+) -> bool:
+    """只有完整且模式匹配的 PartyOps 健康契约才能标记进程就绪。"""
+
+    if not isinstance(payload, dict) or expected_mode not in {"host", "personal"}:
+        return False
+    sqlite_info = payload.get("sqlite")
+    version = str(payload.get("app_version") or "").strip()
+    return bool(
+        payload.get("status") == "ok"
+        and payload.get("mode") == expected_mode
+        and isinstance(sqlite_info, dict)
+        and sqlite_info.get("safe_version") is True
+        and sqlite_info.get("fts5") is True
+        and version
+        and (expected_version is None or version == expected_version)
+    )

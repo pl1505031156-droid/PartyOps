@@ -3,28 +3,38 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS="$ROOT/artifacts"
-VERSION="${PARTYOPS_VERSION:-1.4.3}"
+VERSION="1.4.3-rc.3"
 OUT="$ARTIFACTS/partyops_${VERSION}.partyops-update"
 WORK="$(mktemp -d "$ROOT/.build-uos/update.XXXXXX")"
-trap 'rm -r -- "$WORK"' EXIT
+cleanup() {
+  status=$?
+  trap - EXIT
+  case "$WORK" in "$ROOT/.build-uos/update."*) rm -rf -- "$WORK" ;; esac
+  exit "$status"
+}
+trap cleanup EXIT
 
-[[ -n "${PARTYOPS_UPDATE_PRIVATE_KEY_FILE:-}" ]] || {
-  echo "正式更新包必须签名，请设置 PARTYOPS_UPDATE_PRIVATE_KEY_FILE。" >&2
+[[ -n "${PARTYOPS_UPDATE_PRIVATE_KEY_FILE:-}" && -f "$PARTYOPS_UPDATE_PRIVATE_KEY_FILE" ]] || {
+  echo "正式更新包必须设置有效的 PARTYOPS_UPDATE_PRIVATE_KEY_FILE。" >&2
   exit 2
 }
-[[ -f "$PARTYOPS_UPDATE_PRIVATE_KEY_FILE" ]] || {
-  echo "签名私钥文件不存在：$PARTYOPS_UPDATE_PRIVATE_KEY_FILE" >&2
-  exit 2
-}
 
-for arch in amd64 arm64; do
-  file="$ARTIFACTS/partyops_${VERSION}_${arch}.deb"
-  [[ -f "$file" ]] || { echo "缺少 $file，请先分别构建两种架构 Debian 包。" >&2; exit 2; }
-  cp -- "$file" "$WORK/"
+FILES=(
+  "PartyOps_1.4.3-rc.3_windows_amd64.exe"
+  "PartyOps_1.4.3-rc.3_windows7_amd64.exe"
+  "PartyOps_1.4.3-rc.3_windows7_x86.exe"
+  "PartyOps_1.4.3-rc.3_linux_amd64.deb"
+  "PartyOps_1.4.3-rc.3_linux_arm64.deb"
+  "PartyOps-1.4.3-0.rc.3.1.x86_64.rpm"
+  "PartyOps-1.4.3-0.rc.3.1.aarch64.rpm"
+)
+for filename in "${FILES[@]}"; do
+  [[ -f "$ARTIFACTS/$filename" ]] || {
+    echo "缺少已通过独立门禁的制品：$filename" >&2
+    exit 2
+  }
+  cp -- "$ARTIFACTS/$filename" "$WORK/"
 done
-windows_file="$ARTIFACTS/PartyOps_${VERSION}_windows_amd64.exe"
-[[ -f "$windows_file" ]] || { echo "缺少 $windows_file，请先在 Windows x64 构建安装器。" >&2; exit 2; }
-cp -- "$windows_file" "$WORK/"
 
 PYTHON="${PYTHON_BIN:-$(command -v python3)}"
 "$PYTHON" - "$WORK" "$VERSION" <<'PY'
@@ -35,42 +45,42 @@ import sys
 
 root = pathlib.Path(sys.argv[1])
 version = sys.argv[2]
-artifacts = {}
-for path in sorted([*root.glob("*.deb"), *root.glob("*.exe")]):
-    artifacts[path.name] = {
-        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        "size": path.stat().st_size,
-    }
+files = [path for path in root.iterdir() if path.suffix in {".exe", ".deb", ".rpm"}]
+artifacts = {
+    path.name: {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": path.stat().st_size}
+    for path in sorted(files)
+}
 manifest = {
     "format": "partyops-update",
-    "format_version": 2,
+    "format_version": 3,
     "version": version,
-    "min_version": "1.3.4",
-    "schema_revision": "0018",
-    "release_title": "个人备忘与党员发展计算正式发布",
-    "architecture_artifacts": {
-        "amd64": f"partyops_{version}_amd64.deb",
-        "arm64": f"partyops_{version}_arm64.deb",
-    },
+    "min_version": "1.4.3-rc.3",
+    "schema_revision": "0019",
+    "release_title": "多系统适配与专业级应用内升级",
     "platform_artifacts": {
-        "uos": {
-            "amd64": f"partyops_{version}_amd64.deb",
-            "arm64": f"partyops_{version}_arm64.deb",
+        "windows": {"amd64": "PartyOps_1.4.3-rc.3_windows_amd64.exe"},
+        "windows7": {
+            "amd64": "PartyOps_1.4.3-rc.3_windows7_amd64.exe",
+            "x86": "PartyOps_1.4.3-rc.3_windows7_x86.exe",
         },
-        "windows": {
-            "amd64": f"PartyOps_{version}_windows_amd64.exe",
+        "linux-deb": {
+            "amd64": "PartyOps_1.4.3-rc.3_linux_amd64.deb",
+            "arm64": "PartyOps_1.4.3-rc.3_linux_arm64.deb",
+        },
+        "linux-rpm": {
+            "amd64": "PartyOps-1.4.3-0.rc.3.1.x86_64.rpm",
+            "arm64": "PartyOps-1.4.3-0.rc.3.1.aarch64.rpm",
         },
     },
     "artifacts": artifacts,
     "release_notes": [
-        "新增严格本机私有备忘录，支持清单、搜索、回收站和 AES-GCM 加密导入导出",
-        "新增 2026 年 5 月新版细则确定性时间计算、风险提示、单位补充材料与 Word 导出",
-        "协同机普通用户可通过系统选择器发布、管理本机真实目录并设置团队或指定成员范围",
-        "单文件、多选与文件夹 ZIP 支持浏览器另存为及当前协同机断点接收，设备间继续由主机校验中转",
-        "主机与协同机界面统一读取运行上下文和有效能力，管理员入口对普通用户隐藏并在直达时拒绝",
-        "中文向量与本地 LLM 改为独立签名模型包，BGE 使用清单定义的 CLS 池化并按目录授权正文索引",
-        "数据库升级到 0018，支持从 1.3.4 和 1.4.0—1.4.2 候选版直接升级并在失败时恢复升级前备份",
-        "统一包同时包含 UOS amd64、UOS arm64 和 Windows x64 安装制品",
+        "新增系统内检查、后台下载和一键原位升级，失败自动回滚且不丢失业务数据",
+        "在线更新按当前系统与架构精确下载，不再下载其他平台安装器",
+        "修复 PartyOps 协议注册表拒绝访问并提供事务回滚诊断",
+        "修复数据库启动异常导致 CHILD_EXITED、乱码与管理员创建 10061",
+        "新增 Win7 SP1 x64/x86 独立 Legacy 运行时与安全回移门禁",
+        "新增麒麟、UOS、deepin 的 DEB 与 openEuler RPM 双架构原生包",
+        "安装后自动核对文件、前端、SQLite/FTS5、OCR、智能运行时与健康端点",
     ],
     "signature": "",
 }
@@ -79,8 +89,8 @@ manifest = {
     encoding="utf-8",
 )
 (root / "RELEASE-NOTES.txt").write_text(
-    f"党建智办 {version} 原位更新包\n"
-    "导入系统设置后由受限更新服务执行备份、迁移、健康检查和失败回滚。\n",
+    "党建智办 PartyOps 1.4.3-rc.3 原位更新包\n"
+    "由签名清单按系统、包格式和架构精确选包；更新失败自动保留数据并回滚程序。\n",
     encoding="utf-8",
 )
 PY
@@ -90,7 +100,6 @@ import base64
 import json
 import pathlib
 import sys
-
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -103,48 +112,28 @@ except ValueError:
     key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(key_data.strip()))
 if not isinstance(key, Ed25519PrivateKey):
     raise SystemExit("更新签名必须使用 Ed25519 私钥")
+public_key = base64.b64encode(
+    key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+).decode("ascii")
 unsigned = dict(manifest)
 unsigned.pop("signature", None)
-public_key = base64.b64encode(
-    key.public_key().public_bytes(
-        serialization.Encoding.Raw,
-        serialization.PublicFormat.Raw,
-    )
-).decode("ascii")
 unsigned["public_key"] = public_key
-canonical = json.dumps(
-    unsigned,
-    ensure_ascii=False,
-    sort_keys=True,
-    separators=(",", ":"),
-).encode("utf-8")
-manifest["signature"] = base64.b64encode(key.sign(canonical)).decode("ascii")
-manifest["public_key"] = public_key
-path.write_text(
-    json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-    encoding="utf-8",
-)
+canonical = json.dumps(unsigned, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+manifest.update(public_key=public_key, signature=base64.b64encode(key.sign(canonical)).decode("ascii"))
+path.write_text(json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 PY
-if [[ -f "$ROOT/packaging/uos/update-public-key.txt" ]]; then
-  "$PYTHON" - "$WORK/manifest.json" "$ROOT/packaging/uos/update-public-key.txt" <<'PY'
-import json
-import pathlib
-import sys
-
-manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-expected = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8").strip()
-if manifest.get("public_key") != expected:
-    raise SystemExit("签名私钥与安装包内置公钥不匹配，拒绝生成更新包")
-PY
-fi
 
 (cd "$WORK" && zip -q -r "$OUT" .)
-"$PYTHON" "$ROOT/scripts/validate-partyops-update.py" \
-  "$OUT" \
+"$PYTHON" "$ROOT/scripts/validate-partyops-update.py" "$OUT" \
   --public-key "$ROOT/packaging/uos/update-public-key.txt" \
   --expected-version "$VERSION"
-(cd "$ARTIFACTS" && sha256sum "$(basename "$OUT")" > "partyops_${VERSION}.partyops-update.sha256")
-if [[ -f "$ROOT/docs/党建智办-${VERSION}-更新说明.txt" ]]; then
-  cp -- "$ROOT/docs/党建智办-${VERSION}-更新说明.txt" "$ARTIFACTS/党建智办-${VERSION}-更新说明.txt"
-fi
-echo "更新包已生成：$OUT"
+sha256sum "$OUT" >"$OUT.sha256"
+echo "format v3 更新包已生成：$OUT"
+
+# 普通用户在线升级下载 format v4 单平台更新包；上面的 format v3 通用包
+# 仅保留给管理员离线集中分发，避免一台电脑下载七个平台的安装器。
+"$PYTHON" "$ROOT/scripts/build-platform-update-packages.py" \
+  --artifacts-dir "$ARTIFACTS" \
+  --output-dir "$ARTIFACTS" \
+  --private-key "$PARTYOPS_UPDATE_PRIVATE_KEY_FILE" \
+  --public-key "$ROOT/packaging/uos/update-public-key.txt"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi import Request
 
 from app import config
@@ -9,13 +11,13 @@ from app.login_throttle import LoginThrottle, login_throttle
 from app.routers import auth
 
 
-def _request_from(address: str) -> Request:
+def _request_from(address: str, headers: list[tuple[bytes, bytes]] | None = None) -> Request:
     return Request(
         {
             "type": "http",
             "method": "POST",
             "path": "/api/v1/bootstrap/host",
-            "headers": [],
+            "headers": headers or [],
             "client": (address, 12345),
             "server": ("partyops.local", 18765),
             "scheme": "https",
@@ -132,8 +134,33 @@ def test_bootstrap_accepts_only_host_machine(monkeypatch) -> None:
     monkeypatch.setattr(auth, "discover_lan_addresses", lambda: ["192.168.10.5"])
 
     assert auth.bootstrap_request_is_local(_request_from("127.0.0.1"))
-    assert auth.bootstrap_request_is_local(_request_from("192.168.10.5"))
+    assert not auth.bootstrap_request_is_local(_request_from("192.168.10.5"))
     assert not auth.bootstrap_request_is_local(_request_from("203.0.113.20"))
+
+
+def test_production_bootstrap_requires_same_origin_or_protected_token(monkeypatch) -> None:
+    settings = SimpleNamespace(environment="production", bootstrap_token="t" * 43)
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
+
+    assert not auth.bootstrap_request_is_trusted(_request_from("127.0.0.1"))
+    assert not auth.bootstrap_request_is_trusted(
+        _request_from("127.0.0.1", [(b"origin", b"https://attacker.invalid")])
+    )
+    assert auth.bootstrap_request_is_trusted(
+        _request_from("127.0.0.1", [(b"origin", b"https://partyops.local:18765")])
+    )
+    assert auth.bootstrap_request_is_trusted(
+        _request_from(
+            "127.0.0.1",
+            [(b"x-partyops-bootstrap-token", b"t" * 43)],
+        )
+    )
+    assert not auth.bootstrap_request_is_trusted(
+        _request_from(
+            "192.168.10.5",
+            [(b"x-partyops-bootstrap-token", b"t" * 43)],
+        )
+    )
 
 
 def test_demo_seed_is_opt_in_by_default() -> None:

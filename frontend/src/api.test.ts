@@ -87,12 +87,33 @@ describe("API 客户端", () => {
 
   it("支持无正文 POST 和缺失内容类型的二进制响应", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response("pong", { status: 200 }),
+      new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
     const result = await api.post<Blob>("/ping");
     expect(result).toBeInstanceOf(Blob);
     expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
+  });
+
+  it("保留调用方内容类型并规范化字段级错误", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await api.put("/raw", "正文", { "Content-Type": "text/plain" });
+    expect(fetchMock.mock.calls[0][1].headers.get("Content-Type")).toBe("text/plain");
+
+    expect(new ApiError(422, {
+      detail: "字段错误",
+      fields: { username: "必填", attempts: 3 },
+    })).toMatchObject({
+      message: "字段错误",
+      fields: { username: "必填", attempts: "3" },
+    });
+    expect(new ApiError(400, { fields: "invalid" }).fields).toEqual({});
   });
 
   it("在前后端版本不一致时阻止进入业务页面", async () => {

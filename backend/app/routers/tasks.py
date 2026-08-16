@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
@@ -118,7 +120,7 @@ def my_work_summary(
     }
 
 
-@router.get("/material-categories", response_model=list[MaterialCategoryOut])
+@router.get("/material-categories", response_model=typing.List[MaterialCategoryOut])
 def list_material_categories(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -180,7 +182,7 @@ def patch_task(
     return task_to_out(db, task)
 
 
-@router.get("/conflicts", response_model=list[dict])
+@router.get("/conflicts", response_model=typing.List[dict])
 def list_conflicts(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),

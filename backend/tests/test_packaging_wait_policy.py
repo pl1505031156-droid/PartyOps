@@ -6,16 +6,43 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_windows_build_tool_versions_are_resolver_compatible() -> None:
+    """发布构建依赖不能固定到 PyInstaller 明确排除的 pefile 版本。"""
+
+    requirements = (
+        ROOT / "packaging" / "windows" / "requirements-build.txt"
+    ).read_text(encoding="utf-8")
+
+    assert "pyinstaller==6.16.0" in requirements.lower()
+    assert "pefile==2023.2.7" in requirements.lower()
+    assert "pefile==2024.8.26" not in requirements.lower()
+
+
 def test_portable_smoke_waits_for_slow_uos_startup() -> None:
     script = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
         encoding="utf-8"
     )
 
-    assert 'PARTYOPS_SMOKE_TIMEOUT_SECONDS:-180' in script
+    assert "PARTYOPS_SMOKE_TIMEOUT_SECONDS:-180" in script
     assert "SMOKE_DEADLINE" in script
     assert 'kill -0 "$PID"' in script
     assert "portable-smoke-failure-$ARCH.log" in script
     assert "seq 1 30" not in script
+
+
+def test_portable_build_isolates_architecture_specific_pyinstaller_outputs() -> None:
+    """双架构构建不能共享根目录下的 build/dist，也应允许使用原生临时盘。"""
+
+    script = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'BUILD_PARENT="${PARTYOPS_BUILD_BASE:-$ROOT/.build-uos}"' in script
+    assert 'BUILD="$(mktemp -d "$BUILD_PARENT/portable.XXXXXX")"' in script
+    assert '--distpath "$PYI_DIST" --workpath "$PYI_WORK"' in script
+    assert 'cp -a "$PYI_DIST/PartyOps/." "$RUNTIME/"' in script
+    assert 'cp "$PYI_DIST/partyops-client" "$PYI_DIST/partyops-wizard"' in script
+    assert '"$ROOT/dist/PartyOps/."' not in script
 
 
 def test_installed_service_waits_for_slow_uos_startup() -> None:
@@ -23,7 +50,7 @@ def test_installed_service_waits_for_slow_uos_startup() -> None:
         encoding="utf-8"
     )
 
-    assert 'PARTYOPS_HEALTH_TIMEOUT_SECONDS:-180' in script
+    assert "PARTYOPS_HEALTH_TIMEOUT_SECONDS:-180" in script
     assert "HEALTH_DEADLINE" in script
     assert "journalctl -u partyops -n 120" in script
     assert "seq 1 30" not in script
@@ -46,9 +73,9 @@ def test_installers_verify_system_update_helper_before_success() -> None:
     one_click = (ROOT / "packaging" / "uos" / "one-click-install.sh").read_text(
         encoding="utf-8"
     )
-    configured_host = (
-        ROOT / "packaging" / "uos" / "build-and-install.sh"
-    ).read_text(encoding="utf-8")
+    configured_host = (ROOT / "packaging" / "uos" / "build-and-install.sh").read_text(
+        encoding="utf-8"
+    )
 
     assert "systemctl is-enabled --quiet partyops-updater.service" in one_click
     assert "systemctl is-active --quiet partyops-updater.service" in one_click
@@ -59,7 +86,10 @@ def test_installers_verify_system_update_helper_before_success() -> None:
 
 
 def test_debian_upgrade_recovers_only_verified_stubborn_partyops_processes() -> None:
-    script = (ROOT / "packaging" / "uos" / "build-deb.sh").read_text(
+    script = (ROOT / "packaging" / "linux" / "pre-install-stop.sh").read_text(
+        encoding="utf-8"
+    )
+    selftest = (ROOT / "packaging" / "linux" / "post-install-selftest.sh").read_text(
         encoding="utf-8"
     )
 
@@ -68,7 +98,14 @@ def test_debian_upgrade_recovers_only_verified_stubborn_partyops_processes() -> 
     assert '"/proc/$pid/stat"' in script
     assert 'kill -TERM "$pid"' in script
     assert 'kill -KILL "$pid"' in script
-    assert "拒绝终止身份不匹配的进程" in script
+    assert "身份不明时宁可中止安装也不误杀" in script
+    for lifecycle_script in (script, selftest):
+        assert '"${PARTYOPS_IN_APP_UPDATE:-0}" = "1"' in lifecycle_script
+        assert (
+            "systemctl stop partyops.service partyops-updater.service"
+            in lifecycle_script
+        )
+        assert "systemctl stop partyops.service" in lifecycle_script
 
 
 def test_runtime_and_stop_script_have_bounded_graceful_shutdown() -> None:
@@ -84,7 +121,7 @@ def test_runtime_and_stop_script_have_bounded_graceful_shutdown() -> None:
 
 def test_legacy_host_config_is_migrated_to_tls_agent_port() -> None:
     start = (ROOT / "packaging" / "uos" / "start.sh").read_text(encoding="utf-8")
-    deb = (ROOT / "packaging" / "uos" / "build-deb.sh").read_text(
+    deb = (ROOT / "packaging" / "linux" / "post-install-configure.sh").read_text(
         encoding="utf-8"
     )
 
@@ -93,6 +130,112 @@ def test_legacy_host_config_is_migrated_to_tls_agent_port() -> None:
         assert "PARTYOPS_AGENT_PORT" in script
         assert "PARTYOPS_TLS_ENABLED=true" in script
         assert "旧版主机配置已迁移" in script
+    assert "/home/*/.config/partyops/partyops.env" not in deb
+    assert "/data/home/*/.config/partyops/partyops.env" not in deb
+    assert "! -perm /022" in deb
+
+
+def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
+    """DEB/RPM 必须复用同一套停服、迁移与安装后自检脚本。"""
+
+    build = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "pre-install-stop.sh" in build
+    assert "post-install-configure.sh" in build
+    assert "post-install-selftest.sh" in build
+    assert (
+        'cp "$ROOT/packaging/linux/pre-install-stop.sh" "$PKG/DEBIAN/preinst"' in build
+    )
+    assert "%pre" in build
+    assert "%post" in build
+    assert "/opt/partyops/post-install-selftest.sh $ARCH" in build
+    assert 'DEB_VERSION="1.4.3~rc.3"' in build
+    assert "Version: $DEB_VERSION" in build
+    assert "systemd, util-linux, coreutils, iproute2" in build
+    assert "systemd, util-linux, coreutils, iproute" in build
+    assert "License: GPL-3.0-or-later AND AGPL-3.0-only" in build
+    assert "PACKAGE_UPDATER_START_FAILED" in build
+    assert "PACKAGE_HOST_RESTART_FAILED" in build
+    assert (
+        "systemctl enable --now partyops-updater.service >/dev/null 2>&1 || true"
+        not in build
+    )
+    assert build.index("systemctl restart partyops.service") < build.index(
+        "rm -f /run/partyops/restart-after-upgrade"
+    )
+    rpm_preun = build.split("%preun", 1)[1].split("%postun", 1)[0]
+    assert 'if [ "\\$1" -eq 0 ]; then' in rpm_preun
+    assert "systemctl stop partyops.service partyops-updater.service" in rpm_preun
+
+    one_click = (ROOT / "packaging" / "uos" / "one-click-install.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.3}"' in one_click
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.3}"' in one_click
+    assert 'DEB="$ARTIFACTS/PartyOps_${VERSION}_linux_${ARCH}.deb"' in one_click
+    assert '[[ "$installed_version" == "$PACKAGE_VERSION" ]]' in one_click
+    assert 'chown -R "$CURRENT_USER' not in one_click
+
+    acceptance = (ROOT / "packaging" / "uos" / "target-acceptance.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.3}"' in acceptance
+    assert 'test "$INSTALLED_VERSION" = "$PACKAGE_VERSION"' in acceptance
+    assert "LD_LIBRARY_PATH=/opt/partyops/ocr/lib" in acceptance
+
+    shortcut = (ROOT / "packaging" / "uos" / "install-desktop-shortcut.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'run_as_target_user install -d -m 0755 "$DESKTOP_DIR"' in shortcut
+    assert (
+        'run_as_target_user install -m 0755 \\\n  "$DESKTOP_ENTRY" "$DESKTOP_DIR/党建智办.desktop"'
+        in shortcut
+    )
+    assert 'install -d -o "$TARGET_USER"' not in shortcut
+
+    selftest = (ROOT / "packaging" / "linux" / "post-install-selftest.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "mktemp -d /run/partyops-package-selftest." in selftest
+    assert "mktemp -d /var/lib/partyops/" not in selftest
+    assert selftest.count("runuser -u partyops -- env") == 2
+
+    ca_helper = (ROOT / "packaging" / "uos" / "install-internal-ca.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "mktemp /run/partyops-ca." in ca_helper
+    assert 'SOURCE="$SNAPSHOT"' in ca_helper
+    assert "不是自签名证书" in ca_helper
+    assert 'CANONICAL_HOME="$(readlink -f -- "$DESKTOP_HOME"' in ca_helper
+    assert 'DESKTOP_HOME="$CANONICAL_HOME"' in ca_helper
+    assert 'run_as_desktop_user install -d -m 0700 "$NSS_DIR"' in ca_helper
+    assert 'run_as_desktop_user install -d -m 0700 "$MARKER_DIR"' in ca_helper
+    assert 'install -d -o "$DESKTOP_UID"' not in ca_helper
+    assert 'chown "$DESKTOP_UID:$DESKTOP_GID" "$MARKER_TEMP"' not in ca_helper
+    assert 'openssl verify -CAfile "$SOURCE" "$SOURCE"' in ca_helper
+    assert 'TARGET_BACKUP="$(mktemp /run/partyops-ca-backup.' in ca_helper
+    assert "TRUST_CHANGED=1" in ca_helper
+    assert "TRUST_COMMITTED=1" in ca_helper
+    assert "PartyOps CA 回滚后系统证书索引刷新失败" in ca_helper
+
+
+def test_windows_privileged_updater_uses_system_log_and_sanitized_environment() -> None:
+    service = (ROOT / "packaging" / "windows" / "windows_updater_service.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'if not key.startswith("PARTYOPS_")' in service
+    assert '"--windows-system-service"' in service
+    assert "load_host_environment" not in service
+    assert '/ "PartyOps-System"' in service
+    assert 'data_dir / "logs" / "partyops-updater-service.log"' not in service
+
+    host_service = (ROOT / "packaging" / "windows" / "windows_service.py").read_text(
+        encoding="utf-8"
+    )
+    assert "existing_code in TERMINAL_CODES" in host_service
+    assert "code = existing_code" in host_service
 
 
 def test_agent_listener_failure_stops_partial_host_startup() -> None:
@@ -103,8 +246,8 @@ def test_agent_listener_failure_stops_partial_host_startup() -> None:
     assert "设备安全端口启动失败" in main
 
 
-def test_optional_local_ai_dependencies_do_not_block_base_uos_install() -> None:
-    """本地模型组件缺失时，基础离线安装必须仍可完成。"""
+def test_strict_local_ai_dependencies_block_incomplete_linux_build() -> None:
+    """rc.3 不允许缺少任一架构智能运行时后降级生成基础包。"""
 
     base_requirements = (ROOT / "backend" / "requirements.txt").read_text(
         encoding="utf-8"
@@ -112,18 +255,41 @@ def test_optional_local_ai_dependencies_do_not_block_base_uos_install() -> None:
     portable = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
         encoding="utf-8"
     )
-    local_ai_requirements = (
-        ROOT / "backend" / "requirements-local-ai.txt"
-    ).read_text(encoding="utf-8")
+    local_ai_requirements = (ROOT / "backend" / "requirements-local-ai.txt").read_text(
+        encoding="utf-8"
+    )
 
     for package in ("numpy", "onnxruntime", "tokenizers"):
         assert f"{package}==" not in base_requirements
         assert f"{package}==" in local_ai_requirements
     assert 'if [[ "$LOCAL_EMBEDDING_AVAILABLE" == "1" ]]' in portable
     assert 'if [[ "$LOCAL_LLM_AVAILABLE" == "1" ]]' in portable
-    assert 'requirements-local-ai.txt' in portable
-    assert 'validate-uos-wheelhouse.py' in portable
-    assert "本地语义离线依赖闭包不完整" in portable
+    assert "requirements-local-ai.txt" in portable
+    assert "validate-uos-wheelhouse.py" in portable
+    assert "本地语义离线轮子" in portable
+    assert "严格模式拒绝构建" in portable
+    assert "REQUIRE_LOCAL_AI_RUNTIME=1" in portable
+
+
+def test_llama_runtime_is_rebuilt_for_glibc_217_without_openssl() -> None:
+    """国产 Linux 包不能复用要求新 glibc/OpenSSL 的 Ubuntu 预编译运行时。"""
+
+    script = (ROOT / "packaging" / "linux" / "build-llama-runtime.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert '[[ "$GLIBC_VERSION" == 2.17 ]]' in script
+    assert "-DLLAMA_OPENSSL=OFF" in script
+    assert "-static-libstdc++ -static-libgcc" in script
+    assert "-DGGML_NATIVE=OFF" in script
+    assert "partyops-llama-git-metadata" in script
+    assert "PARTYOPS_LLAMA_BUILD_BASE" in script
+    assert "rev-parse --short HEAD" in script
+    assert '-DGIT_EXECUTABLE="$FAKE_GIT"' in script
+    assert "readelf --version-info" in script
+    assert "GLIBC_2.17" in script
+    assert 'llama-server" --version' in script
+    assert "validate-portable-tar.py" in script
 
 
 def test_windows_installer_defers_host_privileges_until_role_selection() -> None:
@@ -132,20 +298,37 @@ def test_windows_installer_defers_host_privileges_until_role_selection() -> None
     installer = (ROOT / "packaging" / "windows" / "PartyOps.iss").read_text(
         encoding="utf-8"
     )
-    host_service = (
-        ROOT / "packaging" / "windows" / "windows_service.py"
-    ).read_text(encoding="utf-8")
+    host_service = (ROOT / "packaging" / "windows" / "windows_service.py").read_text(
+        encoding="utf-8"
+    )
 
-    assert installer.count("--startup manual") == 2
-    assert "--startup auto" not in installer
-    assert "start PartyOpsUpdateService" not in installer
+    assert "Result := '--startup manual '" in installer
+    assert "Result := '--startup auto '" in installer
+    assert "HostServiceStartup + ServiceInstallAction('PartyOpsHost')" in installer
+    assert (
+        "UpdateServiceStartup + ServiceInstallAction('PartyOpsUpdateService')"
+        in installer
+    )
+    assert (
+        "if UpdateServiceRunningBeforeInstall and not InAppServiceUpdate then"
+        in installer
+    )
+    assert "if UpdateServiceRunningBeforeInstall then" in installer
     assert "runasoriginaluser" in installer
     assert 'ValueName: "PartyOpsAgent"' not in installer
     assert "advfirewall firewall add rule" not in installer
     assert "sdset PartyOpsHost" in installer
     assert "remoteip=LocalSubnet" in host_service
     assert '["sc.exe", "start", "PartyOpsUpdateService"]' in host_service
+    assert "updater.returncode not in {0, 1056}" in host_service
+    assert "PartyOps 更新服务未能启动" in host_service
     assert "prepare_host_runtime(environment, executable)" in host_service
+    assert "assert_windows_service_data_path_security" in host_service
+    assert "verify_target=True" in host_service
+    assert "InAppServiceUpdate" in installer
+    assert "{param:INAPPUPDATE|0}" in installer
+    assert "PartyOpsUpdater.exe,PartyOpsUpdaterService.exe" in installer
+    assert installer.count("restartreplace") >= 2
 
 
 def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> None:
@@ -173,3 +356,108 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert installer.index("function PrepareToInstall") < installer.index(
         "procedure CurStepChanged"
     )
+    assert (
+        'Source: "{#SourcePath}\\validate-install-path.ps1"; Flags: dontcopy'
+        in installer
+    )
+    assert "function ValidateAndSecureInstallDirectory" in installer
+    assert "INSTALL_DIR_REPARSE_POINT" in installer
+    assert "INSTALL_DIR_NOT_PARTYOPS" in installer
+    assert "INSTALL_DIR_ACL_DENIED" in installer
+    assert "INSTALL_DIR_PARENT_UNSAFE" in installer
+    assert "*S-1-5-18:(OI)(CI)F" in installer
+    assert "*S-1-5-32-544:(OI)(CI)F" in installer
+    assert "*S-1-5-32-545:(OI)(CI)RX" in installer
+    assert installer.index(
+        "Result := ValidateAndSecureInstallDirectory"
+    ) < installer.index("Result := StopServiceBeforeUpgrade(")
+
+    validator = (
+        ROOT / "packaging" / "windows" / "validate-install-path.ps1"
+    ).read_text(encoding="utf-8")
+    assert "[IO.DriveType]::Fixed" in validator
+    assert "[IO.FileAttributes]::ReparsePoint" in validator
+    assert 'Join-Path $fullPath "PartyOps.exe"' in validator
+    assert "DeleteSubdirectoriesAndFiles" in validator
+    assert "FileSystemRights]::Delete" in validator
+    assert "FileSystemRights]::WriteData" in validator
+    assert "FileSystemRights]::AppendData" in validator
+    assert "FileSystemRights]::ChangePermissions" in validator
+    assert "INSTALL_DIR_EXISTING_ACL_UNSAFE" in validator
+    assert "Assert-SecureDirectoryAcl $fullPath -ForProgramDirectory" in validator
+    assert "Assert-SecureDirectoryAcl" in validator
+    assert "S-1-5-32-544" in validator
+
+
+def test_linux_wizard_freeze_includes_tcl_runtime_and_entrypoint_smoke() -> None:
+    """数据目录选择器依赖 Tcl/Tk，不能只验证主机服务就发布。"""
+
+    script = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "PYTHON_BASE_LIB" in script
+    assert 'LD_LIBRARY_PATH="$PYTHON_BASE_LIB' in script
+    assert "partyops-client partyops-wizard partyops-updater" in script
+    assert '"$RUNTIME/$entrypoint" --help' in script
+    assert "冻结入口自检失败" in script
+
+
+def test_linux_ocr_uses_locked_glibc217_runtime_not_build_host() -> None:
+    """Linux 制品必须封入固定 OCR，不能复用构建机的过时系统版本。"""
+
+    portable = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
+        encoding="utf-8"
+    )
+    builder = (ROOT / "packaging" / "linux" / "build-tesseract-runtime.sh").read_text(
+        encoding="utf-8"
+    )
+    environment = (
+        ROOT / "packaging" / "uos" / "ensure-build-environment.sh"
+    ).read_text(encoding="utf-8")
+    configured_host = (ROOT / "packaging" / "uos" / "build-and-install.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'OCR_ARCHIVE="$OCR_RUNTIME/tesseract-runtime.tar.gz"' in portable
+    assert "validate-portable-tar.py" in portable
+    assert "--expected-root tesseract-5.5.3" in portable
+    assert "command -v tesseract" not in portable
+    assert "/usr/share/tesseract" not in portable
+    assert "^tesseract 5\\.5\\.3" in portable
+    assert "chi_sim" in portable and "eng" in portable
+
+    assert "TESSERACT_VERSION=5.5.3" in builder
+    assert '[[ "$GLIBC_VERSION" == 2.17 ]]' in builder
+    assert "readelf --version-info" in builder
+    assert "GLIBC_2.17" in builder
+    assert "-static-libstdc++ -static-libgcc" in builder
+    assert "DISABLED_LEGACY_ENGINE=ON" in builder
+    assert "ENABLE_NATIVE=OFF" in builder
+    assert "validate-portable-tar.py" in builder
+    assert "ocr-smoke.pgm" in builder
+    assert "Tesseract OCR 识别链路自检通过" in builder
+    assert '[[ "$OCR_SMOKE_OUTPUT" == TEST ]]' in builder
+    assert "partyops-ocr-archive." in builder
+    assert "-type d -exec chmod 0755" in builder
+    assert "-type f -exec chmod 0644" in builder
+    for script in (environment, configured_host):
+        assert "tesseract-ocr" not in script
+        assert "command -v tesseract" not in script
+        assert "tesseract --list-langs" not in script
+
+
+def test_linux_native_packaging_accepts_only_explicit_validated_cross_payload() -> None:
+    """ARM 自检载荷可在 x86_64 封装，但必须显式授权并复核 ELF 架构。"""
+
+    native = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "PARTYOPS_ALLOW_CROSS_PACKAGE" in native
+    assert "EXPECTED_PAYLOAD_PATTERN='x86-64'" in native
+    assert "EXPECTED_PAYLOAD_PATTERN='ARM aarch64'" in native
+    assert 'file "$PKG/opt/partyops/partyops"' in native
+    assert native.count('--target "$RPM_ARCH"') == 2
+    assert "tar --zstd" not in native
+    assert 'zstd -dc -- "$PORTABLE_COPY"' in native

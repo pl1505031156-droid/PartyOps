@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "partyops"
-version = "1.4.3"
+version = "1.4.3rc3"
 description = "党建智办：基层党建工作闭环协同系统"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -28,6 +28,7 @@ dependencies = [
   "cryptography==50.0.0",
   "defusedxml==0.7.1",
   "httpx==0.28.1",
+  "packaging==25.0",
   "numpy==2.2.6",
   "onnxruntime==1.22.1",
   "tokenizers==0.21.4",
@@ -47,6 +48,6 @@ source = ["app"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-# 行覆盖率与分支覆盖率由 scripts/verify-coverage.py 分别校验；coverage.py
+# 行覆盖率与分支覆盖率均由 scripts/verify-coverage.py 按 90% 分别校验；coverage.py
 # 的单一 fail_under 会在 branch=true 时混合两个指标，无法表达发布门禁语义。
 fail_under = 0

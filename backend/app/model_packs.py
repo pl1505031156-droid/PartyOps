@@ -33,6 +33,15 @@ MODEL_PACK_FORMAT_VERSION = 1
 MAX_MODEL_PACK_BYTES = 4 * 1024**3
 MAX_UNPACKED_BYTES = 6 * 1024**3
 MAX_MEMBERS = 64
+MAX_MODEL_MANIFEST_BYTES = 1024 * 1024
+_WINDOWS_RESERVED_NAMES = {
+    "con",
+    "prn",
+    "aux",
+    "nul",
+    *(f"com{number}" for number in range(1, 10)),
+    *(f"lpt{number}" for number in range(1, 10)),
+}
 
 # 激活时会执行完整 SHA-256 校验。运行状态页需要频繁读取模型状态，不能
 # 每次都重新哈希约 2GB 的模型文件，因此缓存“路径、大小、修改时间”指纹；
@@ -59,11 +68,22 @@ def sha256_path(path: Path) -> str:
 
 
 def _safe_member(name: str) -> PurePosixPath:
-    value = PurePosixPath(name)
+    candidate = name[:-1] if name.endswith("/") else name
+    segments = candidate.split("/")
+    value = PurePosixPath(candidate)
     if (
-        value.is_absolute()
-        or ".." in value.parts
-        or not value.parts
+        not candidate
+        or value.is_absolute()
+        or any(
+            not segment
+            or segment in {".", ".."}
+            or segment.endswith((" ", "."))
+            or ":" in segment
+            or any(ord(character) < 32 for character in segment)
+            or segment.rstrip(" .").split(".", 1)[0].casefold()
+            in _WINDOWS_RESERVED_NAMES
+            for segment in segments
+        )
         or len(name) > 512
         or "\\" in name
     ):
@@ -95,7 +115,11 @@ def _manifest_signature_valid(manifest: dict) -> bool:
 
 
 def _validate_manifest(manifest: dict, archive: zipfile.ZipFile) -> tuple[dict, bool]:
-    if manifest.get("format") != "partyops-modelpack" or int(manifest.get("format_version", 0)) != MODEL_PACK_FORMAT_VERSION:
+    try:
+        format_version = int(manifest.get("format_version", 0))
+    except (TypeError, ValueError) as exc:
+        raise ProblemException(422, "MODEL_PACK_FORMAT_INVALID", "模型包格式无效", "format_version 必须是整数。") from exc
+    if manifest.get("format") != "partyops-modelpack" or format_version != MODEL_PACK_FORMAT_VERSION:
         raise ProblemException(422, "MODEL_PACK_FORMAT_INVALID", "模型包格式无效", "请选择 PartyOps 兼容的 .partyops-modelpack 文件。")
     files = manifest.get("files")
     components = manifest.get("components")
@@ -148,44 +172,88 @@ def _validate_manifest(manifest: dict, archive: zipfile.ZipFile) -> tuple[dict, 
     required.update(str(item) for item in licenses)
     if "" in required or not required.issubset(set(files)):
         raise ProblemException(422, "MODEL_PACK_FILE_MISSING", "模型文件缺失", "模型包文件与清单不一致。")
-    names = set(archive.namelist())
+    infos = archive.infolist()
+    names: set[str] = set()
+    collision_keys: set[str] = set()
     total_unpacked = 0
-    if len(names) > MAX_MEMBERS:
+    if len(infos) > MAX_MEMBERS:
         raise ProblemException(422, "MODEL_PACK_TOO_MANY_FILES", "模型包文件过多", "模型包结构不符合发布规范。")
-    for info in archive.infolist():
-        _safe_member(info.filename)
+    for info in infos:
+        relative = _safe_member(info.filename)
+        normalized = relative.as_posix()
+        collision_key = normalized.casefold()
+        if collision_key in collision_keys:
+            raise ProblemException(422, "MODEL_PACK_DUPLICATE_MEMBER", "模型包包含重复文件", "模型包成员在目标系统上会发生路径碰撞。")
+        collision_keys.add(collision_key)
+        names.add(normalized)
         if info.is_dir():
             continue
         mode = (info.external_attr >> 16) & 0o170000
-        if mode == 0o120000:
-            raise ProblemException(422, "MODEL_PACK_LINK_DENIED", "模型包包含链接文件", "模型包不允许包含符号链接。")
+        if (
+            mode not in {0, 0o100000}
+            or info.flag_bits & 0x1
+            or info.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+        ):
+            raise ProblemException(422, "MODEL_PACK_SPECIAL_FILE_DENIED", "模型包包含特殊文件", "模型包不允许链接、设备、加密或非标准压缩成员。")
         total_unpacked += info.file_size
+        if (
+            info.file_size >= 10 * 1024**2
+            and info.file_size > max(info.compress_size, 1) * 100
+        ):
+            raise ProblemException(422, "MODEL_PACK_RATIO_INVALID", "模型包压缩比例异常", "模型包可能已损坏。")
     if total_unpacked > MAX_UNPACKED_BYTES:
         raise ProblemException(413, "MODEL_PACK_TOO_LARGE", "模型包解压后过大", "模型包超过6GB解压限制。")
+    if "manifest.json" in files:
+        raise ProblemException(422, "MODEL_PACK_MANIFEST_INVALID", "模型包清单无效", "manifest.json 不能声明为模型载荷。")
+    allowed_files = {"manifest.json", *(str(filename) for filename in files)}
+    unexpected = {
+        _safe_member(info.filename).as_posix()
+        for info in infos
+        if not info.is_dir()
+    } - allowed_files
+    if unexpected:
+        raise ProblemException(422, "MODEL_PACK_EXTRA_FILES", "模型包包含未登记文件", f"未登记文件：{sorted(unexpected)[0]}")
+    # 先完成廉价的成员路径、类型和声明体积检查，以保留最具体的安全诊断；
+    # 随后验证覆盖全部文件哈希的清单签名，最后才读取大型模型载荷。
+    signature_valid = _manifest_signature_valid(manifest)
+    if not signature_valid:
+        raise ProblemException(422, "MODEL_PACK_SIGNATURE_INVALID", "模型包签名无效", "系统只接受由外部受信公钥验证通过的模型包。")
     for filename, expected in files.items():
         _safe_member(str(filename))
         if filename not in names or not isinstance(expected, dict):
             raise ProblemException(422, "MODEL_PACK_FILE_MISSING", "模型文件缺失", f"模型包缺少 {filename}。")
         info = archive.getinfo(filename)
-        # 小型 JSON/许可文本天然具有较高压缩率；只对大成员执行炸弹判定，
-        # 避免误伤正规分词器文件，同时保留总解压大小与成员数上限。
+        if info.is_dir():
+            raise ProblemException(422, "MODEL_PACK_FILE_MISSING", "模型文件缺失", f"{filename} 不是普通文件。")
+        try:
+            expected_size = int(expected.get("size", -1))
+        except (TypeError, ValueError) as exc:
+            raise ProblemException(
+                422,
+                "MODEL_PACK_MANIFEST_INVALID",
+                "模型包清单无效",
+                f"{filename} 的 size 必须是非负整数。",
+            ) from exc
+        expected_hash = str(expected.get("sha256", "")).lower()
         if (
-            info.file_size >= 10 * 1024**2
-            and info.compress_size > 0
-            and info.file_size / info.compress_size > 100
+            expected_size < 0
+            or expected_size > MAX_UNPACKED_BYTES
+            or not re.fullmatch(r"[0-9a-f]{64}", expected_hash)
         ):
-            raise ProblemException(422, "MODEL_PACK_RATIO_INVALID", "模型包压缩比例异常", "模型包可能已损坏。")
+            raise ProblemException(
+                422,
+                "MODEL_PACK_MANIFEST_INVALID",
+                "模型包清单无效",
+                f"{filename} 的大小或 SHA-256 格式无效。",
+            )
         digest = hashlib.sha256()
         size = 0
         with archive.open(filename) as source:
             while chunk := source.read(1024 * 1024):
                 size += len(chunk)
                 digest.update(chunk)
-        if size != int(expected.get("size", -1)) or digest.hexdigest() != str(expected.get("sha256", "")).lower():
+        if size != expected_size or digest.hexdigest() != expected_hash:
             raise ProblemException(422, "MODEL_PACK_HASH_MISMATCH", "模型文件校验失败", f"{filename} 的大小或哈希不一致。")
-    signature_valid = _manifest_signature_valid(manifest)
-    if not signature_valid:
-        raise ProblemException(422, "MODEL_PACK_SIGNATURE_INVALID", "模型包签名无效", "系统只接受由外部受信公钥验证通过的模型包。")
     return files, signature_valid
 
 
@@ -212,8 +280,25 @@ def install_model_pack(path: Path, original_name: str, admin: User, db: Session)
     stored_path: Path | None = None
     try:
         with zipfile.ZipFile(path) as archive:
+            manifest_infos = [
+                info for info in archive.infolist() if info.filename == "manifest.json"
+            ]
+            if (
+                len(manifest_infos) != 1
+                or manifest_infos[0].file_size > MAX_MODEL_MANIFEST_BYTES
+                or manifest_infos[0].is_dir()
+                or manifest_infos[0].flag_bits & 0x1
+                or manifest_infos[0].compress_type
+                not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+            ):
+                raise ProblemException(
+                    422,
+                    "MODEL_PACK_MANIFEST_INVALID",
+                    "模型包清单无效",
+                    "模型包必须包含唯一、未加密且不超过 1 MiB 的 manifest.json。",
+                )
             try:
-                manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+                manifest = json.loads(archive.read(manifest_infos[0]).decode("utf-8"))
             except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise ProblemException(422, "MODEL_PACK_MANIFEST_INVALID", "模型包清单无效", "模型包缺少有效 manifest.json。") from exc
             if not isinstance(manifest, dict):

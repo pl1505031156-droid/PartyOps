@@ -11,6 +11,7 @@ from pathlib import Path
 from sqlalchemy import and_, delete, func, or_, select
 
 from .backups import create_backup
+from .compat import to_thread
 from .config import get_settings
 from .database import db_runtime
 from .enums import UserRole
@@ -433,7 +434,7 @@ async def scheduler_loop(stop_event: asyncio.Event) -> None:
         try:
             # 备份、SQLite 查询及本地模型推理都是同步工作，统一转入线程，
             # 保证同一进程中的 API、SSE 和 Agent 心跳仍能及时响应。
-            last_backup_day = await asyncio.to_thread(
+            last_backup_day = await to_thread(
                 _run_scheduler_cycle,
                 settings,
                 datetime.now(),

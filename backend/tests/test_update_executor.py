@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 from contextlib import contextmanager
 import json
 import os
@@ -103,6 +104,11 @@ def test_select_artifact_checks_signature_size_hash_and_architecture(
     filename = "partyops_1.3.3_amd64.deb"
     payload = b"verified-debian-package"
     manifest = _signed_manifest(private_key, filename, payload)
+    monkeypatch.setattr(
+        update_executor,
+        "get_settings",
+        lambda: SimpleNamespace(app_version="1.3.2"),
+    )
     package = tmp_path / "partyops_1.3.3.partyops-update"
     _write_update(package, manifest, filename, payload)
     monkeypatch.setattr(
@@ -140,6 +146,11 @@ def test_select_windows_platform_artifact_keeps_legacy_uos_mapping(
     deb_name = "partyops_1.4.0_amd64.deb"
     exe_name = "PartyOps_1.4.0_windows_amd64.exe"
     payloads = {deb_name: b"uos-runtime", exe_name: b"windows-runtime"}
+    monkeypatch.setattr(
+        update_executor,
+        "get_settings",
+        lambda: SimpleNamespace(app_version="1.3.9"),
+    )
     manifest = {
         "format": "partyops-update",
         "format_version": 2,
@@ -192,9 +203,13 @@ def test_same_version_device_update_still_verifies_package(
     monkeypatch.setattr(
         update_executor,
         "get_settings",
-        lambda: SimpleNamespace(transfers_dir=transfers),
+        lambda: SimpleNamespace(transfers_dir=transfers, app_version="1.3.3"),
     )
+    # v2 清单没有平台维度；显式模拟 Linux Agent，避免 Windows 测试机
+    # 将该历史 DEB 清单按 Windows 制品解释。
+    monkeypatch.setattr(update_executor, "os", SimpleNamespace(name="posix"))
     monkeypatch.setattr(update_executor, "_architecture", lambda: "amd64")
+    monkeypatch.setattr(update_executor, "_manifest_platform_name", lambda _manifest: "uos")
     monkeypatch.setattr(update_executor, "_installed_package_version", lambda: "1.3.3")
     monkeypatch.setattr(
         update_executor,
@@ -210,7 +225,9 @@ def test_same_version_device_update_still_verifies_package(
 
     assert update_executor.install_device_package(package) is True
     assert commands == []
-    assert transfers.is_dir()
+    # 高权限更新器不再在普通用户可写的 transfers 中解压可执行制品。
+    assert not transfers.exists()
+    assert not list((tmp_path / "upgrade-backups").glob("device-*"))
 
     manifest["signature"] = base64.b64encode(b"invalid").decode("ascii")
     _write_update(package, manifest, filename, payload)
@@ -317,10 +334,10 @@ def test_read_environment_and_pending_run_are_fault_tolerant(tmp_path: Path) -> 
             "CREATE TABLE update_runs (id TEXT, target_device_id TEXT, status TEXT, created_at TEXT)"
         )
         connection.execute(
-            "INSERT INTO update_runs VALUES ('run-2', NULL, 'applying', '2026-08-03T10:01:00')"
+            "INSERT INTO update_runs VALUES ('run-2', NULL, 'APPLYING', '2026-08-03T10:01:00')"
         )
         connection.execute(
-            "INSERT INTO update_runs VALUES ('run-1', NULL, 'applying', '2026-08-03T10:00:00')"
+            "INSERT INTO update_runs VALUES ('run-1', NULL, 'APPLYING', '2026-08-03T10:00:00')"
         )
     assert update_executor._pending_run_id(data_dir) == "run-1"
 
@@ -373,8 +390,24 @@ def test_execute_host_update_success_and_failure_rollback(
     updates = tmp_path / "updates"
     updates.mkdir()
     package_path = updates / "release.partyops-update"
+    fixture_name = "partyops_1.3.3_amd64.deb"
+    fixture_payload = b"fixture"
     with zipfile.ZipFile(package_path, "w") as archive:
-        archive.writestr("manifest.json", json.dumps({"version": "1.3.3"}))
+        archive.writestr(
+            "manifest.json",
+            json.dumps(
+                {
+                    "version": "1.3.3",
+                    "artifacts": {
+                        fixture_name: {
+                            "size": len(fixture_payload),
+                            "sha256": hashlib.sha256(fixture_payload).hexdigest(),
+                        }
+                    },
+                }
+            ),
+        )
+        archive.writestr(fixture_name, fixture_payload)
     package = SimpleNamespace(
         id="package-1",
         filename=package_path.name,
@@ -425,13 +458,16 @@ def test_execute_host_update_success_and_failure_rollback(
 
     monkeypatch.setattr(update_executor, "_set_run", record_run)
     monkeypatch.setattr(update_executor, "_architecture", lambda: "amd64")
-    monkeypatch.setattr(update_executor, "_health_check", lambda: True)
+    monkeypatch.setattr(update_executor, "_manifest_platform_name", lambda _manifest: "uos")
+    monkeypatch.setattr(update_executor, "_health_check", lambda *_args: True)
     monkeypatch.setattr(update_executor, "_queue_device_updates", lambda *_args: 0)
-    monkeypatch.setattr(
-        update_executor,
-        "_run",
-        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, "", ""),
-    )
+    commands: list[list[str]] = []
+
+    def successful_command(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(update_executor, "_run", successful_command)
 
     def snapshot(destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -456,6 +492,21 @@ def test_execute_host_update_success_and_failure_rollback(
         "_select_artifact",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("拒绝制品")),
     )
+    commands_before_preflight_failure = list(commands)
     assert update_executor.execute_host_update(run.id) is False
-    assert progress_states[-1][0] == UpdateStatus.ROLLED_BACK
+    # 制品在停服和 dpkg 修改程序之前即被拒绝，此时不得伪装成“已回滚”，
+    # 更不得为了回滚一个从未发生的变更而触碰正在运行的旧版本。
+    assert progress_states[-1][0] == UpdateStatus.FAILED
+    assert "原版本保持不变" in progress_states[-1][2]
+    new_commands = commands[len(commands_before_preflight_failure) :]
+    assert new_commands == [["dpkg", "--configure", "-a"]]
+    assert not any(command[:2] == ["systemctl", "stop"] for command in new_commands)
+    assert not any(command[:2] == ["dpkg", "--unpack"] for command in new_commands)
     assert not (data_dir / ".update.lock").exists()
+
+    monkeypatch.setattr(update_executor, "_manifest_platform_name", lambda _manifest: "windows")
+    monkeypatch.setattr(update_executor, "_manifest_has_windows_artifact", lambda _manifest: False)
+    commands_before_wrong_platform = list(commands)
+    assert update_executor.execute_host_update(run.id) is False
+    assert "不包含当前 Windows" in progress_states[-1][2]
+    assert commands == commands_before_wrong_platform

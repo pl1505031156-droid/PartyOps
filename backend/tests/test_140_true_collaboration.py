@@ -127,8 +127,8 @@ def test_windows_device_root_lifecycle_and_device_archive_grant(
                 "architecture": "amd64",
                 "platform": "win32",
                 "kernel": "Windows 11 10.0.26100",
-                    "app_version": "1.4.3",
-                    "agent_version": "1.4.3",
+                    "app_version": "1.4.3-rc.3",
+                    "agent_version": "1.4.3-rc.3",
                 "local_username": "tester",
             },
         )

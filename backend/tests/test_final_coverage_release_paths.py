@@ -29,7 +29,13 @@ def test_update_platform_probe_and_dpkg_preflight_fail_closed(monkeypatch) -> No
         def OpenProcess(*_args):
             raise OSError("process table unavailable")
 
-    monkeypatch.setattr(update_executor.os, "name", "nt")
+    # 不能修改全局 os.name；失败断言发生时 pathlib 会在 Windows 上被误导
+    # 为 PosixPath，进而掩盖真正的测试失败。
+    monkeypatch.setattr(
+        update_executor,
+        "os",
+        SimpleNamespace(name="nt", getpid=os.getpid),
+    )
     monkeypatch.setattr(
         ctypes,
         "windll",
@@ -39,18 +45,14 @@ def test_update_platform_probe_and_dpkg_preflight_fail_closed(monkeypatch) -> No
     assert update_executor._process_is_running(os.getpid()) is True
     assert update_executor._process_is_running(999_999) is False
 
-    monkeypatch.setattr(update_executor.os, "name", "posix")
     monkeypatch.setattr(
-        update_executor.subprocess,
-        "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "arm64\n", ""),
+        update_executor,
+        "os",
+        SimpleNamespace(name="posix", getpid=os.getpid),
     )
+    monkeypatch.setattr(update_executor.platform, "machine", lambda: "arm64")
     assert update_executor._architecture() == "arm64"
-    monkeypatch.setattr(
-        update_executor.subprocess,
-        "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "riscv64\n", ""),
-    )
+    monkeypatch.setattr(update_executor.platform, "machine", lambda: "riscv64")
     try:
         update_executor._architecture()
     except RuntimeError as exc:
@@ -119,7 +121,10 @@ class _FakePath:
 
 def test_candidate_host_environments_filters_client_relative_invalid_duplicate_and_defaults(monkeypatch) -> None:
     values = {
-        "/etc/partyops/partyops.env": {},
+        "/etc/partyops/partyops.env": {
+            "PARTYOPS_PORT": "18765",
+            "PARTYOPS_UPDATE_PUBLIC_KEY": "attacker-controlled",
+        },
         "/home/alice/.config/partyops/partyops.env": {
             "PARTYOPS_MODE": "host",
             "PARTYOPS_DATA_DIR": "/home/alice/data",
@@ -143,13 +148,17 @@ def test_candidate_host_environments_filters_client_relative_invalid_duplicate_a
         "_read_environment",
         lambda path: dict(values.get(str(path), {})),
     )
+    monkeypatch.setattr(
+        update_executor,
+        "_trusted_system_environment_file",
+        lambda _path: True,
+    )
     result = update_executor._candidate_host_environments()
-    assert [item["PARTYOPS_DATA_DIR"] for item in result] == [
-        "/var/lib/partyops",
-        "/home/alice/data",
-    ]
+    assert [item["PARTYOPS_DATA_DIR"] for item in result] == ["/var/lib/partyops"]
     assert all(item["PARTYOPS_ENVIRONMENT"] == "production" for item in result)
     assert all(item["PARTYOPS_STRICT_SQLITE"] == "true" for item in result)
+    assert result[0]["PARTYOPS_PORT"] == "18765"
+    assert "PARTYOPS_UPDATE_PUBLIC_KEY" not in result[0]
 
 
 class _Rows:

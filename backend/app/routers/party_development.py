@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import typing
+
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, Depends, Header, Request, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -138,7 +140,7 @@ def export_docx(
     )
 
 
-@router.get("/admin/party-development/profiles", response_model=list[PartyDevelopmentProfileOut])
+@router.get("/admin/party-development/profiles", response_model=typing.List[PartyDevelopmentProfileOut])
 def list_profiles(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -214,20 +216,25 @@ def patch_profile(
     return profile_to_dict(db, profile)
 
 
-@router.delete("/admin/party-development/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/admin/party-development/profiles/{profile_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 def delete_profile(
     profile_id: str,
     request: Request,
     if_match: str | None = Header(default=None, alias="If-Match"),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
-) -> None:
+) -> Response:
     profile = _profile(db, profile_id)
     _check_version(profile, if_match)
     detail = {"active": profile.active}
     db.delete(profile)
     write_audit(db, admin, "party_development.profile_deleted", "party_development_profile", profile_id, detail, client_ip(request))
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.put("/admin/party-development/profiles/{profile_id}/items", response_model=PartyDevelopmentProfileOut)

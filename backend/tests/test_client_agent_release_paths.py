@@ -164,6 +164,113 @@ def test_shared_root_lifecycle_scan_and_path_guards(monkeypatch, tmp_path: Path)
     assert client_agent._load_scan_state(broken) == {}
 
 
+def test_open_shared_file_posix_uses_nofollow_for_every_path_component(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """模拟 Linux dir_fd 打开链，断言最终句柄不会绕过符号链接门禁。"""
+
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    resolved = shared / "子目录" / "通知.txt"
+    opened: list[tuple[object, int | None]] = []
+    closed: list[int] = []
+
+    class _PosixOs:
+        name = "posix"
+        O_RDONLY = 1
+        O_DIRECTORY = 2
+        O_NOFOLLOW = 4
+
+        @staticmethod
+        def open(path, _flags, *, dir_fd=None):
+            opened.append((path, dir_fd))
+            return 10 + len(opened) - 1
+
+        @staticmethod
+        def close(fd: int) -> None:
+            closed.append(fd)
+
+        @staticmethod
+        def fstat(_fd: int):
+            return type("_FileInfo", (), {"st_mode": 0})()
+
+        @staticmethod
+        def fdopen(fd: int, _mode: str):
+            assert fd == 12
+            return io.BytesIO(b"safe")
+
+    monkeypatch.setattr(client_agent, "os", _PosixOs)
+    monkeypatch.setattr(client_agent, "_resolve_shared_file", lambda *_args: resolved)
+    monkeypatch.setattr(
+        client_agent,
+        "_safe_shared_roots",
+        lambda _config: [{"remote_key": "share_1", "local_path": str(shared)}],
+    )
+    monkeypatch.setattr(client_agent.stat, "S_ISREG", lambda _mode: True)
+
+    with client_agent._open_shared_file(
+        {"device_id": "device-1"},
+        "device-1:share_1:子目录/通知.txt",
+    ) as handle:
+        assert handle.read() == b"safe"
+
+    assert opened == [(shared, None), ("子目录", 10), ("通知.txt", 11)]
+    assert closed == [10, 11]
+
+
+def test_open_shared_file_posix_rejects_missing_root_and_non_regular_file(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    resolved = tmp_path / "resolved"
+    monkeypatch.setattr(client_agent, "_resolve_shared_file", lambda *_args: resolved)
+
+    class _UnusedPosixOs:
+        name = "posix"
+        O_RDONLY = 1
+        O_DIRECTORY = 2
+        O_NOFOLLOW = 4
+
+    monkeypatch.setattr(client_agent, "os", _UnusedPosixOs)
+    monkeypatch.setattr(client_agent, "_safe_shared_roots", lambda _config: [])
+    with pytest.raises(client_agent.AgentCommandError) as missing_root:
+        client_agent._open_shared_file({}, "device-1:share_1:通知.txt")
+    assert missing_root.value.code == "ROOT_NOT_APPROVED"
+
+    closed: list[int] = []
+
+    class _NonRegularPosixOs(_UnusedPosixOs):
+        @staticmethod
+        def open(_path, _flags, *, dir_fd=None):
+            return 21 if dir_fd is None else 22
+
+        @staticmethod
+        def close(fd: int) -> None:
+            closed.append(fd)
+
+        @staticmethod
+        def fstat(_fd: int):
+            return type("_FileInfo", (), {"st_mode": 0})()
+
+        @staticmethod
+        def fdopen(_fd: int, _mode: str):
+            raise AssertionError("非普通文件不得转换为 Python 文件句柄")
+
+    shared = tmp_path / "shared"
+    monkeypatch.setattr(client_agent, "os", _NonRegularPosixOs)
+    monkeypatch.setattr(
+        client_agent,
+        "_safe_shared_roots",
+        lambda _config: [{"remote_key": "share_1", "local_path": str(shared)}],
+    )
+    monkeypatch.setattr(client_agent.stat, "S_ISREG", lambda _mode: False)
+    with pytest.raises(client_agent.AgentCommandError) as non_regular:
+        client_agent._open_shared_file({}, "device-1:share_1:通知.txt")
+    assert non_regular.value.code == "SOURCE_MISSING"
+    assert closed == [22, 21]
+
+
 def test_agent_heartbeat_commands_certificate_and_ack(monkeypatch, tmp_path: Path) -> None:
     shared = tmp_path / "shared"
     shared.mkdir()

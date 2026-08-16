@@ -3,7 +3,8 @@ import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Component } from "vue";
-import ArcoVue from "@arco-design/web-vue";
+import ArcoVue, { Modal } from "@arco-design/web-vue";
+import { ApiError } from "../api";
 import { dayjs } from "../utils/datetime";
 import { useSessionStore } from "../stores/session";
 
@@ -311,6 +312,34 @@ describe("核心页面真实挂载", () => {
     ["强制更新页", RequiredUpdateView, "/required-update"],
   ])("渲染%s并发出真实初始化请求", async (_name, component, path) => {
     const wrapper = await mountView(component as Component, path as string);
+    expect(wrapper.text().length).toBeGreaterThan(10);
+    expect(wrapper.html()).not.toContain("undefined");
+    wrapper.unmount();
+  });
+
+  it.each([
+    ["今日工作台", TodayView, "/"],
+    ["周工作总览", DashboardView, "/dashboard"],
+    ["工作台", WorkbenchView, "/workbench"],
+    ["事项清单", TasksView, "/tasks"],
+    ["事项详情", TaskDetailView, "/tasks/task-1"],
+    ["快速收件", InboxView, "/inbox"],
+    ["本机备忘录", MemoView, "/memos"],
+    ["周期模板", TemplatesView, "/templates"],
+    ["日历", CalendarView, "/calendar"],
+    ["党员发展计算", PartyDevelopmentView, "/party-development"],
+    ["党员发展补充材料", PartyDevelopmentSettingsView, "/party-development-settings"],
+    ["工作日志", JournalView, "/journal?tab=notifications"],
+    ["报告", ReportsView, "/reports"],
+    ["知识与联系人", KnowledgeView, "/knowledge"],
+    ["原始文件中心", WorkspaceView, "/workspace"],
+    ["重要档案", ArchivesView, "/archives"],
+    ["设备协同", FleetView, "/fleet"],
+    ["效率工具", EfficiencyView, "/efficiency"],
+    ["本地智能助手", AssistantView, "/assistant"],
+    ["通知中心", NotificationsView, "/notifications"],
+  ])("管理员富数据视图渲染%s全部治理入口", async (_name, component, path) => {
+    const wrapper = await mountView(component as Component, path as string, true);
     expect(wrapper.text().length).toBeGreaterThan(10);
     expect(wrapper.html()).not.toContain("undefined");
     wrapper.unmount();
@@ -1037,6 +1066,122 @@ describe("核心页面真实挂载", () => {
     wrapper.unmount();
   });
 
+  it("重要档案覆盖权限守卫、空值展示、表单校验和接口失败分支", async () => {
+    const wrapper = await mountView(ArchivesView, "/archives", true);
+    const state = setupState(wrapper);
+
+    state.fieldErrors = { title: "标题不能为空" };
+    expect(await runAction(state, "errorFor", "missing", "title")).toBeUndefined();
+    await runAction(state, "fieldElementId", "custom.field");
+    await runAction(state, "categoryName", "missing");
+    await runAction(state, "formatDate", null);
+    (state.recordForm as { custom_fields: Record<string, unknown> }).custom_fields = {
+      empty: null,
+      count: 0,
+    };
+    await runAction(state, "customFieldText", "empty");
+    await runAction(state, "customFieldText", "count");
+    await runAction(state, "setCustomField", "remark", "已核验");
+
+    state.selectedRecord = null;
+    await runAction(state, "openEdit");
+    await runAction(state, "openHistory");
+    await runAction(state, "restoreRecord");
+    await runAction(state, "voidAttachment", archiveAttachment);
+    state.voidReason = "";
+    await runAction(state, "voidRecord");
+    await runAction(state, "pollAttachmentRecognition", "record-1", 0);
+
+    Object.assign(state.recordForm as object, {
+      title: "",
+      category_id: "",
+      archive_year: 0,
+    });
+    await runAction(state, "saveRecord");
+    state.editingCategory = null;
+    Object.assign(state.grantForm as object, { target_id: "" });
+    await runAction(state, "saveGrant");
+    Object.assign(state.newField as object, { key: "", label: "" });
+    await runAction(state, "addField");
+    state.categoryFields = [{ key: "remark", label: "备注", type: "text", required: false, options: [] }];
+    Object.assign(state.newField as object, { key: "remark", label: "重复备注" });
+    await runAction(state, "addField");
+    Object.assign(state.categoryForm as object, { name: "", code: "" });
+    await runAction(state, "saveCategory");
+
+    state.categories = [
+      { ...archiveCategory, id: "readonly", permissions: { view: true, download: true, contribute: false, manage: false } },
+      archiveCategory,
+    ];
+    state.selectedCategoryId = "readonly";
+    await runAction(state, "openCreate");
+    expect((state.recordForm as { category_id: string }).category_id).toBe("category-1");
+
+    apiMocks.get.mockRejectedValueOnce(new Error("档案列表失败"));
+    await runAction(state, "loadRecords");
+    apiMocks.get.mockRejectedValueOnce(new Error("档案初始化失败"));
+    await runAction(state, "load");
+
+    Object.assign(state.recordForm as object, {
+      title: "异常档案",
+      category_id: "category-1",
+      archive_year: 2026,
+    });
+    apiMocks.post.mockRejectedValueOnce(new Error("档案保存失败"));
+    await runAction(state, "saveRecord");
+
+    state.editingCategory = archiveCategory;
+    Object.assign(state.grantForm as object, { target_type: "device", target_id: "device-1" });
+    apiMocks.post.mockRejectedValueOnce(new Error("授权保存失败"));
+    await runAction(state, "saveGrant");
+    state.grants = [];
+    apiMocks.patch.mockResolvedValueOnce(archiveGrant);
+    await runAction(state, "updateGrant", archiveGrant, { can_view: false });
+    apiMocks.patch.mockRejectedValueOnce(new Error("授权更新失败"));
+    await runAction(state, "updateGrant", archiveGrant, { can_view: false });
+
+    Object.assign(state.categoryForm as object, { name: "异常类别", code: "error" });
+    apiMocks.patch.mockRejectedValueOnce(new Error("类别保存失败"));
+    await runAction(state, "saveCategory");
+
+    state.selectedRecord = archiveRecord;
+    const input = { files: [new File(["scan"], "扫描件.pdf")], value: "selected" };
+    state.fileInput = input;
+    apiMocks.post.mockRejectedValueOnce(new Error("扫描件上传失败"));
+    await runAction(state, "uploadFiles", { target: input });
+    state.voidReason = "重复";
+    apiMocks.post.mockRejectedValueOnce(new Error("档案作废失败"));
+    await runAction(state, "voidRecord");
+    apiMocks.post.mockRejectedValueOnce(new Error("档案恢复失败"));
+    await runAction(state, "restoreRecord");
+    apiMocks.post.mockRejectedValueOnce(new Error("扫描件作废失败"));
+    await runAction(state, "voidAttachment", archiveAttachment);
+
+    state.selectedRecord = {
+      ...archiveRecord,
+      status: "voided",
+      document_no: "",
+      person_name: "",
+      involved_persons: [],
+      source_unit: "",
+      organization: "",
+      summary: "",
+      tags: [],
+      attachments: [],
+    };
+    state.categories = [{ ...archiveCategory, record_mode: "document" }];
+    (state.categoryForm as { access_mode: string }).access_mode = "all_users";
+    await flushPromises();
+    expect(wrapper.text()).toContain("年度考核");
+    wrapper.unmount();
+
+    const staffWrapper = await mountView(ArchivesView, "/archives");
+    const staffState = setupState(staffWrapper);
+    await runAction(staffState, "loadGrantOptions");
+    await runAction(staffState, "loadGrants", "category-1");
+    staffWrapper.unmount();
+  });
+
   it("设备协同执行入网、目录审批、授权、传输、接收转换和设备治理闭环", async () => {
     const deviceRoot = {
       ...workspaceRoot,
@@ -1326,6 +1471,7 @@ describe("核心页面真实挂载", () => {
       if (path === "/ai/policies") return [aiPolicy];
       if (path === "/workspace/roots") return [workspaceRoot];
       if (path === "/admin/updates") return [updatePackage];
+      if (path === "/admin/updates/online") return { available: true, current_version: "1.4.2", version: "1.4.3-rc.3", title: "多系统安全更新", release_notes: ["应用内升级"], published_at: now, package_size: 1024 };
       if (path === "/admin/update-runs") return [updateRun];
       if (path === "/admin/devices") return [device];
       if (path === "/admin/update-history") return [releaseHistory];
@@ -1343,6 +1489,7 @@ describe("核心页面真实挂载", () => {
     apiMocks.post.mockImplementation(async (path) => {
       if (path === "/admin/pairings") return { token: "pair-token", config: { service_url: "http://192.168.1.10:18765", token: "pair-token" } };
       if (path === "/admin/ai/model-packs" || path.includes("/activate")) return modelPack;
+      if (path === "/admin/updates/online/prepare") return { id: "package-online", version: "1.4.3-rc.3" };
       return {};
     });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("PartyOps 运行正常", { status: 200 }));
@@ -1358,6 +1505,46 @@ describe("核心页面真实挂载", () => {
     await runAction(state, "deactivateModelCapability", "embedding");
     await runAction(state, "rebuildProjections");
     await runAction(state, "uploadUpdate", new File(["update"], "partyops_1.4.2.partyops-update"));
+    await runAction(state, "checkOnlineUpdate");
+    apiMocks.get.mockResolvedValueOnce({
+      available: false,
+      target_available: false,
+      availability_message: "1.4.3-rc.3 的 linux-deb/arm64 制品尚未通过发布门禁",
+      current_version: "1.4.2",
+      version: "1.4.3-rc.3",
+      title: "多系统安全更新",
+      release_notes: ["应用内升级"],
+      published_at: now,
+    });
+    await runAction(state, "checkOnlineUpdate");
+    await flushPromises();
+    expect(wrapper.text()).toContain("当前系统暂缓提供此版本");
+    expect(wrapper.text()).toContain("linux-deb/arm64 制品尚未通过发布门禁");
+    apiMocks.get.mockResolvedValueOnce({
+      available: false,
+      target_available: false,
+      current_version: "1.4.2",
+      version: "1.4.3-rc.3",
+      title: "当前系统更新包暂缓发布",
+      release_notes: ["当前版本可继续安全使用"],
+      published_at: now,
+    });
+    await runAction(state, "checkOnlineUpdate");
+    await flushPromises();
+    expect(wrapper.text()).toContain("当前系统更新包暂缓发布");
+    await runAction(state, "prepareOnlineUpdate");
+    apiMocks.get.mockResolvedValueOnce([{ ...updatePackage, id: "package-online", version: "1.4.3-rc.3", status: "validated" }]);
+    await runAction(state, "pollOnlineUpdatePreparation");
+    await runAction(state, "updateDownloadState", { ...updatePackage, manifest: { online_download: { download_received: 5, download_total: 10 } } });
+    await runAction(state, "updateDownloadPercent", { ...updatePackage, manifest: { download_received: 5, download_total: 10 } });
+    const confirmSpy = vi.spyOn(Modal, "confirm").mockReturnValue({ close: vi.fn() } as never);
+    await runAction(state, "requestUpdate", updatePackage);
+    expect(confirmSpy).toHaveBeenCalledWith(expect.objectContaining({
+      title: "确认升级到 1.4.2",
+      okText: "自动备份并开始升级",
+      cancelText: "暂不升级",
+    }));
+    confirmSpy.mockRestore();
     await runAction(state, "applyUpdate", updatePackage);
     await runAction(state, "scheduleUpdatePoll", 60_000);
     await runAction(state, "startUpdateMonitor", "package-1", "1.4.2", false);
@@ -1396,5 +1583,1001 @@ describe("核心页面真实挂载", () => {
     wrapper.unmount();
     fetchSpy.mockRestore();
     localStorage.removeItem("partyops.pending-update");
+    localStorage.removeItem("partyops.pending-online-update");
+    localStorage.removeItem("partyops.online-update-last-check");
+  });
+
+  it("系统设置覆盖部分加载、空值守卫、失败恢复和升级终态分支", async () => {
+    apiMocks.get.mockImplementation(async (path) => {
+      if (path === "/admin/diagnostics") {
+        return {
+          mode: "host",
+          bind: { host: "127.0.0.1", port: 18765 },
+          service_url: "https://127.0.0.1:18765",
+          lan_candidates: [],
+          disk: { total_bytes: 1024, free_bytes: 512 },
+          counts: { users: 1, tasks: 0, attachments: 0, unique_files: 0 },
+          latest_backup: null,
+          fault_tips: [],
+        };
+      }
+      if (path === "/admin/system-status") return null;
+      return responseFor(path);
+    });
+    const wrapper = await mountView(SettingsView, "/settings", true);
+    const state = setupState(wrapper);
+    const pack = { id: "model-1", name: "本地模型", version: "1", capabilities: ["embedding"], active_capabilities: [] };
+    const update = { id: "package-1", filename: "partyops.partyops-update", version: "1.4.3-rc.3", schema_revision: "0019", sha256: "abc", signature_valid: true, status: "verified", created_at: now, manifest: {} };
+    const oneBackup = { id: "backup-1", filename: "backup.zip", status: "completed", created_at: now, size_bytes: 100, sha256: "abc", version: 1 };
+    const onePairing = { id: "pair-1", name: "协同终端", active: true, created_at: now, version: 1 };
+    const oneUser = { id: "user-2", username: "staff", display_name: "协同人员", role: "staff", active: true, version: 1, created_at: now };
+
+    apiMocks.get.mockRejectedValue(new Error("部分状态离线"));
+    await runAction(state, "load");
+    expect(String(state.loadWarning)).toContain("部分状态暂时不可用");
+    apiMocks.get.mockImplementation(async (path) => responseFor(path));
+
+    await runAction(state, "uploadModelPack", null);
+    await runAction(state, "uploadUpdate", null);
+    await runAction(state, "importBackup", null);
+    state.reminder = null;
+    await runAction(state, "saveReminder");
+    state.aiProvider = null;
+    await runAction(state, "saveAISettings");
+    state.editingUser = null;
+    await runAction(state, "saveUserEdit");
+    state.pairingConfig = null;
+    await runAction(state, "copyPairingConfig");
+
+    apiMocks.post.mockRejectedValueOnce(new Error("模型导入失败"));
+    await runAction(state, "uploadModelPack", new File(["model"], "bad.partyops-modelpack"));
+    apiMocks.post.mockRejectedValueOnce(new Error("模型启用失败"));
+    await runAction(state, "activateModelPack", pack, "llm");
+    apiMocks.delete.mockRejectedValueOnce(new Error("模型停用失败"));
+    await runAction(state, "deactivateModelCapability", "llm");
+    apiMocks.post.mockRejectedValueOnce(new Error("投影失败"));
+    await runAction(state, "rebuildProjections");
+    apiMocks.post.mockRejectedValueOnce(new Error("更新包失败"));
+    await runAction(state, "uploadUpdate", new File(["update"], "bad.partyops-update"));
+    apiMocks.get.mockRejectedValueOnce(new Error("官方目录离线"));
+    await runAction(state, "checkOnlineUpdate");
+    apiMocks.post.mockRejectedValueOnce(new Error("下载未启动"));
+    await runAction(state, "prepareOnlineUpdate");
+    apiMocks.post.mockRejectedValueOnce(new Error("升级排队失败"));
+    await runAction(state, "applyUpdate", update);
+    apiMocks.post.mockRejectedValueOnce(new Error("备份失败"));
+    await runAction(state, "createBackup");
+
+    state.reminder = { version: 1 };
+    apiMocks.patch.mockRejectedValueOnce(new Error("提醒失败"));
+    await runAction(state, "saveReminder");
+    state.aiProvider = { version: 1 };
+    apiMocks.patch.mockRejectedValueOnce(new Error("AI 保存失败"));
+    await runAction(state, "saveAISettings");
+    apiMocks.post.mockRejectedValueOnce(new Error("AI 测试失败"));
+    await runAction(state, "testAISettings");
+    state.aiPolicies = [];
+    apiMocks.post.mockRejectedValueOnce(new Error("策略失败"));
+    await runAction(state, "saveAIPolicy");
+    apiMocks.post.mockRejectedValueOnce(new Error("用户创建失败"));
+    await runAction(state, "createUser");
+    await runAction(state, "openUserEdit", oneUser);
+    (state.editUserForm as { password: string }).password = "";
+    apiMocks.patch.mockRejectedValueOnce(new Error("用户更新失败"));
+    await runAction(state, "saveUserEdit");
+    apiMocks.post.mockRejectedValueOnce(new Error("配对失败"));
+    await runAction(state, "createPairing");
+    apiMocks.delete.mockRejectedValueOnce(new Error("撤销失败"));
+    await runAction(state, "revokePairing", onePairing);
+    apiMocks.post.mockRejectedValueOnce(new Error("备份校验失败"));
+    await runAction(state, "verifyBackup", oneBackup);
+    apiMocks.post.mockRejectedValueOnce(new Error("恢复失败"));
+    await runAction(state, "restoreBackup", oneBackup);
+    apiMocks.post.mockRejectedValueOnce(new Error("导入失败"));
+    await runAction(state, "importBackup", new File(["backup"], "bad.zip"));
+
+    localStorage.removeItem("partyops.pending-update");
+    await runAction(state, "pollUpdateProgress");
+
+    localStorage.removeItem("partyops.pending-online-update");
+    await runAction(state, "pollOnlineUpdatePreparation");
+    localStorage.setItem("partyops.pending-online-update", "{broken");
+    await runAction(state, "pollOnlineUpdatePreparation");
+    localStorage.setItem("partyops.pending-online-update", JSON.stringify({ packageId: "package-1", version: "1.4.3-rc.3" }));
+    apiMocks.get.mockRejectedValueOnce(new Error("下载状态暂不可用"));
+    await runAction(state, "pollOnlineUpdatePreparation");
+    localStorage.setItem("partyops.pending-online-update", JSON.stringify({ packageId: "package-1", version: "1.4.3-rc.3" }));
+    apiMocks.get.mockResolvedValueOnce([{ ...update, status: "failed", manifest: { download_message: "安全下载失败" } }]);
+    await runAction(state, "pollOnlineUpdatePreparation");
+    localStorage.setItem("partyops.pending-update", JSON.stringify({ packageId: "package-1", version: "1.4.3-rc.3", includeHost: true }));
+    apiMocks.get.mockRejectedValueOnce(new Error("主机重启中"));
+    await runAction(state, "pollUpdateProgress");
+    localStorage.setItem("partyops.pending-update", JSON.stringify({ packageId: "package-1", version: "1.4.3-rc.3", includeHost: true }));
+    apiMocks.get.mockResolvedValueOnce([{ id: "run-1", package_id: "package-1", target_device_id: null, status: "failed", progress: 10, message: "已回滚", created_at: now }]);
+    await runAction(state, "pollUpdateProgress");
+    localStorage.setItem("partyops.pending-update", JSON.stringify({ packageId: "package-1", version: "1.4.3-rc.3", includeHost: false }));
+    apiMocks.get.mockResolvedValueOnce([{ id: "run-2", package_id: "package-1", target_device_id: "device-1", status: "completed", progress: 100, message: "完成", created_at: now }]);
+    await runAction(state, "pollUpdateProgress");
+
+    localStorage.setItem("partyops.pending-online-update", JSON.stringify({ packageId: "old-package", version: "1.4.3-rc.3", startedAt: "2000-01-01T00:00:00Z" }));
+    await runAction(state, "pollOnlineUpdatePreparation");
+    expect(localStorage.getItem("partyops.pending-online-update")).toBeNull();
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      localStorage.setItem("partyops.pending-online-update", JSON.stringify({ packageId: "missing-package", version: "1.4.3-rc.3", startedAt: new Date().toISOString() }));
+      apiMocks.get.mockResolvedValueOnce([]);
+      await runAction(state, "pollOnlineUpdatePreparation");
+    }
+    expect(localStorage.getItem("partyops.pending-online-update")).toBeNull();
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      localStorage.setItem("partyops.pending-online-update", JSON.stringify({ packageId: "offline-package", version: "1.4.3-rc.3", startedAt: new Date().toISOString() }));
+      apiMocks.get.mockRejectedValueOnce(new Error("连续离线"));
+      await runAction(state, "pollOnlineUpdatePreparation");
+    }
+    expect(localStorage.getItem("partyops.pending-online-update")).toBeNull();
+
+    localStorage.setItem("partyops.pending-update", JSON.stringify({ packageId: "old-package", version: "1.4.3-rc.3", includeHost: true, startedAt: "2000-01-01T00:00:00Z" }));
+    await runAction(state, "pollUpdateProgress");
+    expect(localStorage.getItem("partyops.pending-update")).toBeNull();
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      localStorage.setItem("partyops.pending-update", JSON.stringify({ packageId: "missing-package", version: "1.4.3-rc.3", includeHost: true, startedAt: new Date().toISOString() }));
+      apiMocks.get.mockResolvedValueOnce([]);
+      await runAction(state, "pollUpdateProgress");
+    }
+    expect(localStorage.getItem("partyops.pending-update")).toBeNull();
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      localStorage.setItem("partyops.pending-update", JSON.stringify({ packageId: "offline-package", version: "1.4.3-rc.3", includeHost: true, startedAt: new Date().toISOString() }));
+      apiMocks.get.mockRejectedValueOnce(new Error("连续重启"));
+      await runAction(state, "pollUpdateProgress");
+    }
+    expect(localStorage.getItem("partyops.pending-update")).toBeNull();
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("日志失败"));
+    await runAction(state, "loadLogs");
+    expect(state.logs).toBe("日志读取失败。");
+    fetchSpy.mockRestore();
+    wrapper.unmount();
+    localStorage.removeItem("partyops.pending-update");
+    localStorage.removeItem("partyops.pending-online-update");
+    localStorage.removeItem("partyops.online-update-last-check");
+  });
+
+  it("知识与联系人覆盖空表单、关键字检索和非标准接口异常", async () => {
+    const wrapper = await mountView(KnowledgeView, "/knowledge");
+    const state = setupState(wrapper);
+
+    state.keyword = "办理经验";
+    await runAction(state, "load");
+    expect(apiMocks.get).toHaveBeenCalledWith("/knowledge?keyword=%E5%8A%9E%E7%90%86%E7%BB%8F%E9%AA%8C");
+
+    await runAction(state, "openEntry");
+    await runAction(state, "createEntry");
+    await runAction(state, "openContact");
+    await runAction(state, "saveContact");
+
+    apiMocks.patch.mockRejectedValueOnce("知识保存失败");
+    await runAction(state, "openEntry", knowledge);
+    await runAction(state, "createEntry");
+    apiMocks.delete.mockRejectedValueOnce("知识删除失败");
+    await runAction(state, "deleteEntry", knowledge);
+    apiMocks.patch.mockRejectedValueOnce("联系人保存失败");
+    await runAction(state, "openContact", contact);
+    await runAction(state, "saveContact");
+    apiMocks.delete.mockRejectedValueOnce("联系人删除失败");
+    await runAction(state, "deleteContact", contact);
+
+    state.contacts = [{ ...contact, phone: "" }];
+    await flushPromises();
+    expect(wrapper.text()).toContain("未填写电话");
+    wrapper.unmount();
+  });
+
+  it("工作日志覆盖组合筛选、系统事件摘要和通知权限边界", async () => {
+    const wrapper = await mountView(JournalView, "/journal");
+    const state = setupState(wrapper);
+    const systemEntry = {
+      ...journal,
+      id: "journal-system",
+      title: "状态变更",
+      actor_name: "",
+      action_label: "",
+      entry_type: "system",
+      from_status: "",
+      to_status: "completed",
+      material_stage: "final",
+      task_id: null,
+      occurred_at: "2026-08-12T08:00:00Z",
+    };
+    state.entries = [journal, systemEntry];
+
+    state.keyword = "不存在";
+    expect((state.filteredEntries as unknown[]).length).toBe(0);
+    state.keyword = "状态变更";
+    state.actorFilter = "other-user";
+    expect((state.filteredEntries as unknown[]).length).toBe(0);
+    state.actorFilter = "user-1";
+    state.typeFilter = "manual";
+    expect((state.filteredEntries as unknown[]).length).toBe(0);
+    state.actorFilter = "";
+    state.typeFilter = "system";
+    state.dateRange = ["2026-08-13", "2026-08-14"];
+    expect((state.filteredEntries as unknown[]).length).toBe(0);
+    state.dateRange = ["2026-08-11", "2026-08-13"];
+    expect((state.filteredEntries as unknown[]).length).toBe(1);
+    expect(String(await (state.eventSummary as (value: unknown) => unknown)(systemEntry))).toContain("未设置 → completed");
+
+    await runAction(state, "openEdit", systemEntry);
+    await runAction(state, "openCreate");
+    await runAction(state, "saveEntry");
+    apiMocks.post.mockRejectedValueOnce("日志保存失败");
+    await runAction(state, "saveEntry");
+    apiMocks.get.mockRejectedValueOnce("日志加载失败");
+    await runAction(state, "load");
+    await runAction(state, "markRead", { ...notification, read_at: now, entity_type: "system", entity_id: null });
+
+    const originalNotification = window.Notification;
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: { requestPermission: vi.fn(async () => "denied") },
+    });
+    await runAction(state, "enableDesktopNotice");
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: { requestPermission: vi.fn(async () => "granted") },
+    });
+    await runAction(state, "enableDesktopNotice");
+    Object.defineProperty(window, "Notification", { configurable: true, value: originalNotification });
+    await runAction(state, "changeTab", "journal");
+    wrapper.unmount();
+  });
+
+  it("事项清单覆盖完整筛选、用户降级和批量字段失败恢复", async () => {
+    apiMocks.get.mockRejectedValueOnce(new Error("用户目录暂不可用"));
+    const wrapper = await mountView(TasksView, "/tasks");
+    const state = setupState(wrapper);
+
+    Object.assign(state, {
+      status: "in_progress",
+      owner: "user-1",
+      keyword: "重点",
+      year: 2026,
+      category: "组织工作",
+      fileName: "通知.pdf",
+      smart: "overdue",
+    });
+    await runAction(state, "load");
+    expect(String(apiMocks.get.mock.calls.at(-1)?.[0])).toContain("status=in_progress");
+    apiMocks.get.mockRejectedValueOnce("事项加载失败");
+    await runAction(state, "load");
+
+    state.savedViewName = "";
+    await runAction(state, "createSavedView");
+    state.savedViewName = "重点事项";
+    await runAction(state, "createSavedView");
+    await runAction(state, "applySavedView", { ...((responseFor("/saved-views") as unknown[])[0] as object), filters: null });
+    await runAction(state, "applySavedView", { ...((responseFor("/saved-views") as unknown[])[0] as object), filters: { year: "2026" } });
+    state.smart = "overdue";
+    await runAction(state, "applyBuiltInSmart", "overdue");
+
+    state.selectedTaskIds = [];
+    await runAction(state, "applyBatch");
+    state.selectedTaskIds = ["task-1"];
+    Object.assign(state.batchForm as object, {
+      status: "completed",
+      owner_id: "user-1",
+      internal_due_at: "2026-08-15 10:00:00",
+      planned_start_at: "2026-08-14",
+      planned_end_at: "2026-08-16",
+      tags: "年度、重点,  ",
+      note: "",
+    });
+    apiMocks.post.mockRejectedValueOnce("批量处理失败");
+    await runAction(state, "applyBatch");
+    apiMocks.post.mockResolvedValueOnce({ count: 1 });
+    await runAction(state, "applyBatch");
+    wrapper.unmount();
+  });
+
+  it("周期报告覆盖空报告守卫、自定义栏目和三种状态动作", async () => {
+    const wrapper = await mountView(ReportsView, "/reports");
+    const state = setupState(wrapper);
+
+    state.reports = [];
+    state.selectedId = "";
+    expect(state.selected).toBeUndefined();
+    expect((state.itemsFor as (section: string) => unknown[])("completed")).toEqual([]);
+    await runAction(state, "addItem");
+    await runAction(state, "saveSummary", "空报告");
+    await runAction(state, "reportAction", "lock");
+    await runAction(state, "removeItem", { id: "missing" });
+
+    const customReport = {
+      ...report,
+      start_at: "2026-08-10T00:00:00Z",
+      end_at: "2026-08-17T00:00:00Z",
+      summary: "原摘要",
+      items: [],
+      snapshot: { design: { sections: ["risk", "unknown"] } },
+    };
+    state.reports = [customReport];
+    state.selectedId = customReport.id;
+    expect((state.sectionDefinitions as unknown[]).length).toBe(1);
+    await runAction(state, "saveSummary", "原摘要");
+    await runAction(state, "reportAction", "lock");
+    await runAction(state, "reportAction", "reopen");
+
+    apiMocks.get.mockRejectedValueOnce("周期报告加载失败");
+    await runAction(state, "load", "report-1");
+    apiMocks.post.mockRejectedValueOnce("创建失败");
+    await runAction(state, "createReport");
+    apiMocks.post.mockRejectedValueOnce("添加失败");
+    await runAction(state, "addItem");
+    apiMocks.patch.mockRejectedValueOnce("摘要保存失败");
+    await runAction(state, "saveSummary", "新摘要");
+    apiMocks.post.mockRejectedValueOnce("状态操作失败");
+    await runAction(state, "reportAction", "publish");
+    apiMocks.delete.mockRejectedValueOnce("条目移除失败");
+    await runAction(state, "removeItem", { id: "report-item-1", version: 1 });
+    wrapper.unmount();
+  });
+
+  it("周期模板覆盖空值守卫、默认解析和所有失败回退", async () => {
+    const wrapper = await mountView(TemplatesView, "/templates", true);
+    const state = setupState(wrapper);
+    const occurrence = { occurrence_at: now, effective_at: now, action: "", reason: "" };
+
+    state.selected = null;
+    await runAction(state, "instantiate");
+    await runAction(state, "openTemplate");
+    await runAction(state, "saveTemplate");
+    Object.assign(state.templateForm as object, {
+      name: "异常路径模板",
+      steps_text: "收集材料\n \n复核",
+      materials_text: "|默认类别|可选\nother||必备\nreport|报送稿|必备",
+    });
+    const payload = await (state.templatePayload as () => Promise<{ materials: unknown[] }>)();
+    expect(payload.materials).toHaveLength(2);
+    await runAction(state, "saveTemplate");
+    apiMocks.post.mockRejectedValueOnce("模板保存失败");
+    await runAction(state, "saveTemplate");
+    apiMocks.post.mockRejectedValueOnce("模板实例化失败");
+    await runAction(state, "openInstantiate", template);
+    await runAction(state, "instantiate");
+
+    Object.assign(state.recurrenceForm as object, { name: "", template_id: "", owner_id: "", next_run_at: null });
+    await runAction(state, "saveRecurrence");
+    Object.assign(state.recurrenceForm as object, {
+      name: "每月台账",
+      template_id: "template-1",
+      owner_id: "user-1",
+      next_run_at: now,
+      kind: "monthly",
+      schedule_mode: "day_of_month",
+      schedule_day: 5,
+    });
+    await runAction(state, "saveRecurrence");
+    apiMocks.post.mockRejectedValueOnce("周期规则创建失败");
+    await runAction(state, "saveRecurrence");
+
+    state.templates = [];
+    state.users = [];
+    await runAction(state, "openRecurrenceCreate");
+    apiMocks.patch.mockRejectedValueOnce("周期启停失败");
+    await runAction(state, "toggleRecurrence", recurrence);
+    state.selectedRecurrence = null;
+    await runAction(state, "saveRecurrenceSettings");
+    await runAction(state, "openRecurrenceSettings", recurrence);
+    apiMocks.patch.mockRejectedValueOnce("周期设置失败");
+    await runAction(state, "saveRecurrenceSettings");
+    apiMocks.get.mockRejectedValueOnce("周期预览失败");
+    await runAction(state, "openRecurrencePreview", recurrence);
+
+    state.selectedRecurrence = null;
+    state.selectedOccurrence = null;
+    await runAction(state, "saveRecurrenceException");
+    state.selectedRecurrence = recurrence;
+    state.selectedOccurrence = occurrence;
+    Object.assign(state.exceptionForm as object, { action: "reschedule", rescheduled_at: null, reason: "临时调整" });
+    await runAction(state, "saveRecurrenceException");
+    Object.assign(state.exceptionForm as object, { action: "skip", reason: "暂停一次" });
+    apiMocks.post.mockRejectedValueOnce("例外保存失败");
+    await runAction(state, "saveRecurrenceException");
+    apiMocks.post.mockResolvedValueOnce([]);
+    await runAction(state, "runDue");
+    apiMocks.post.mockRejectedValueOnce("到期生成失败");
+    await runAction(state, "runDue");
+    wrapper.unmount();
+  });
+
+  it("AI 助手覆盖空草稿、取消选择和接口异常", async () => {
+    const wrapper = await mountView(AssistantView, "/assistant");
+    const state = setupState(wrapper);
+    state.drafts = [];
+    state.selectedDraftId = "";
+    await runAction(state, "copyDraft");
+    await runAction(state, "discardDraft");
+
+    state.fileKeyword = "";
+    await runAction(state, "searchFiles");
+    await runAction(state, "toggleFile", workspaceFile);
+    await runAction(state, "toggleFile", workspaceFile);
+    (state.form as { instruction: string }).instruction = "";
+    await runAction(state, "sendQuery", false);
+
+    apiMocks.get.mockRejectedValueOnce("AI 工作区加载失败");
+    await runAction(state, "load");
+    apiMocks.post.mockRejectedValueOnce("建议更新失败");
+    await runAction(state, "handleRecommendation", recommendation, "dismiss");
+    state.fileKeyword = "通知";
+    apiMocks.get.mockRejectedValueOnce("文件检索失败");
+    await runAction(state, "searchFiles");
+    (state.form as { instruction: string }).instruction = "整理摘要";
+    apiMocks.post.mockRejectedValueOnce("AI 请求失败");
+    await runAction(state, "sendQuery", false);
+    wrapper.unmount();
+  });
+
+  it("日历覆盖三种时间范围、偏好失败和工作日校验", async () => {
+    const wrapper = await mountView(CalendarView, "/calendar");
+    const state = setupState(wrapper);
+    state.mode = "year";
+    expect(state.range).toBeTruthy();
+    await runAction(state, "move", 1);
+    state.mode = "week";
+    expect(state.range).toBeTruthy();
+    await runAction(state, "move", -1);
+
+    state.preference = null;
+    await runAction(state, "setMode", "month");
+    state.preference = responseFor("/calendar/preferences");
+    apiMocks.patch.mockRejectedValueOnce(new Error("视图偏好失败"));
+    await runAction(state, "setMode", "year");
+    apiMocks.patch.mockRejectedValueOnce(new Error("筛选偏好失败"));
+    await runAction(state, "applyFilters");
+
+    Object.assign(state, {
+      visibleTypes: ["task_due"],
+      selectedOwners: ["user-1"],
+      selectedTopics: ["topic-1"],
+      selectedWorkAreas: ["党建协同"],
+    });
+    await runAction(state, "load");
+    (state.workdayForm as { title: string }).title = "";
+    await runAction(state, "saveWorkday");
+    (state.workdayForm as { title: string }).title = "临时调休";
+    apiMocks.post.mockRejectedValueOnce("日期设置保存失败");
+    await runAction(state, "saveWorkday");
+    apiMocks.get.mockRejectedValueOnce("工作日历加载失败");
+    await runAction(state, "load");
+    wrapper.unmount();
+  });
+
+  it("快速收件覆盖本机用户降级、附件归档和失败恢复", async () => {
+    apiMocks.get.mockRejectedValueOnce(new Error("用户目录失败"));
+    apiMocks.post.mockImplementation(async (path) => {
+      if (path === "/intake/parse") return { title: "附件事项", formal_due_at: null, requirements: [], extracted_text: "", source_kind: "", warnings: ["请人工核对"], source_filename: "", parser_label: "本地解析" };
+      if (path === "/tasks") return task;
+      if (path.endsWith("/materials")) return { id: "material-1" };
+      if (path.includes("/versions")) return task;
+      return {};
+    });
+    const wrapper = await mountView(InboxView, "/inbox");
+    const state = setupState(wrapper);
+    const file = new File(["通知正文"], "通知.txt", { type: "text/plain" });
+    await runAction(state, "selectFile", file);
+    await runAction(state, "parse");
+    const form = state.form as { title: string; ownerId: string; pastedText: string };
+    form.title = "附件事项";
+    form.ownerId = "user-1";
+    await runAction(state, "create");
+    expect(apiMocks.post).toHaveBeenCalledWith(expect.stringContaining("/versions"), expect.any(FormData));
+
+    form.title = "";
+    await runAction(state, "create");
+    form.pastedText = "失败通知";
+    apiMocks.post.mockRejectedValueOnce("解析失败");
+    await runAction(state, "parse");
+    form.title = "失败事项";
+    apiMocks.post.mockRejectedValueOnce("创建失败");
+    await runAction(state, "create");
+    wrapper.unmount();
+  });
+
+  it("强制更新页覆盖完整状态机与非标准错误", async () => {
+    const outdatedGate = responseFor("/device/update-gate") as Record<string, unknown>;
+    const wrapper = await mountView(RequiredUpdateView, "/required-update");
+    const state = setupState(wrapper);
+    for (const gate of [
+      { ...outdatedGate, state: "current", required: false, access_allowed: false },
+      { ...outdatedGate, state: "revoked", status: "failed" },
+      { ...outdatedGate, state: "outdated", status: "uploaded" },
+      { ...outdatedGate, state: "updating", status: "ready" },
+      { ...outdatedGate, state: "outdated", status: "ready", package_id: null },
+    ]) {
+      state.gate = gate;
+      expect(String(state.progressLabel).length).toBeGreaterThan(2);
+    }
+    state.gate = {
+      ...outdatedGate,
+      state: "outdated",
+      status: "",
+      current_version: "",
+      package_id: "package-1",
+      message: "",
+      release_title: "",
+      release_notes: [],
+      installed_at: null,
+      device_name: "",
+    };
+    await flushPromises();
+    expect(wrapper.text()).toContain("未上报");
+    expect(wrapper.text()).toContain("主机已准备好与本机架构匹配的签名更新包");
+    expect(wrapper.text()).toContain("待识别");
+    apiMocks.get.mockRejectedValueOnce("状态读取失败");
+    await runAction(state, "loadGate");
+    apiMocks.get.mockRejectedValueOnce(new Error("状态读取异常"));
+    await runAction(state, "loadGate");
+    apiMocks.post.mockRejectedValueOnce("更新启动失败");
+    await runAction(state, "startUpdate");
+    apiMocks.post.mockRejectedValueOnce(new Error("更新启动异常"));
+    await runAction(state, "startUpdate");
+    wrapper.unmount();
+  });
+
+  it("周工作总览覆盖空桶、字段回退和加载异常", async () => {
+    const wrapper = await mountView(DashboardView, "/dashboard");
+    const state = setupState(wrapper);
+    state.selected = "missing";
+    apiMocks.get.mockResolvedValueOnce({
+      buckets: [],
+      this_week_completed: [],
+      next_week_planned: [],
+      carry_over: [],
+      unread_notifications: 0,
+    });
+    await runAction(state, "load");
+    expect(state.selected).toBe("");
+    const noDateTask = { ...task, internal_due_at: null, formal_due_at: null };
+    expect(await (state.dueLabel as (value: unknown) => unknown)(noDateTask)).toBe("未设时限");
+    state.dashboard = {
+      buckets: [{ ...bucket, items: [{ ...noDateTask, source: "", work_area: "", category: "" }] }],
+      this_week_completed: [{ ...noDateTask, work_area: "", category: "" }],
+      next_week_planned: [{ ...noDateTask, planned_start_at: null }],
+      carry_over: [],
+      unread_notifications: 0,
+    };
+    state.buckets = (state.dashboard as { buckets: unknown[] }).buckets;
+    state.selected = "today";
+    await flushPromises();
+    expect(wrapper.text()).toContain("未填写任务来源");
+    apiMocks.get.mockRejectedValueOnce("首页加载失败");
+    await runAction(state, "load");
+    wrapper.unmount();
+  });
+
+  it("文件中心覆盖目录层级、扫描终态、下载组合和共享权限边界", async () => {
+    const directory = { ...workspaceFile, id: "folder-1", name: "子目录", relative_path: "子目录", is_directory: true, size_bytes: 0 };
+    const remoteRoot = { ...workspaceRoot, id: "remote-root", source: "device", device_id: "device-1", included_paths: [] };
+    apiMocks.get.mockImplementation(async (path) => {
+      if (path === "/workspace/roots") return [workspaceRoot];
+      if (path.startsWith("/workspace/files?")) return [directory, workspaceFile];
+      if (path.includes("/folder-options")) return [
+        { path: ".", name: "全部", depth: 0, file_count: 1, directory_count: 1 },
+        { path: "材料", name: "材料", depth: 1, file_count: 1, directory_count: 0 },
+      ];
+      if (path === "/admin/jobs?limit=20") return [{ id: "job-failed", status: "failed", message: "", payload: {} }];
+      if (path === "/transfers") return [transfer];
+      if (path.includes("/members")) return [];
+      if (path === "/collaboration/users") return [
+        { id: "user-1", username: "admin", display_name: "管理员", role: "admin", active: true, version: 1, created_at: now },
+        { id: "user-2", username: "staff", display_name: "协同人员", role: "staff", active: true, version: 1, created_at: now },
+      ];
+      if (path === "/collaboration/options") return {
+        devices: [device, { ...device, id: "inactive", active: false }, { ...device, id: "denied", allow_device_transfer: false }],
+        roots: [remoteRoot, { ...remoteRoot, id: "no-receive", permissions: { ...remoteRoot.permissions, receive: false } }],
+      };
+      return responseFor(path);
+    });
+    const openTarget = { closed: false, close: vi.fn(), document: { title: "" }, location: { href: "" } };
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(openTarget as unknown as Window);
+    const wrapper = await mountView(WorkspaceView, "/workspace", true);
+    const state = setupState(wrapper);
+
+    for (const kind of ["TextBased", "ImageBased", "Mixed", "unknown"]) {
+      expect(String(await (state.pdfTypeLabel as (value: string) => unknown)(kind))).toBeTruthy();
+    }
+    for (const status of ["pending", "running", "completed_with_errors", "failed", "indexed", "unknown"]) {
+      expect(String(await (state.rootStatusLabel as (value: string) => unknown)(status))).toBeTruthy();
+    }
+    state.folderOptions = [
+      { path: ".", name: "全部", depth: 0, file_count: 1, directory_count: 1 },
+      { path: "材料", name: "材料", depth: 1, file_count: 1, directory_count: 0 },
+    ];
+    state.folderKeyword = "材料";
+    expect((state.filteredFolderOptions as unknown[]).length).toBe(1);
+
+    await runAction(state, "openItem", directory);
+    expect((state.pathStack as unknown[]).length).toBe(1);
+    await runAction(state, "goToLevel", 0);
+    await runAction(state, "pollScan", "job-failed");
+
+    state.roots = [remoteRoot];
+    state.selectedRootId = "remote-root";
+    await runAction(state, "openSelection");
+    state.roots = [workspaceRoot];
+    state.selectedRootId = "root-1";
+    await runAction(state, "openSelection");
+    await runAction(state, "toggleFolder", "材料", "true");
+    await runAction(state, "toggleFolder", "其他", 1);
+    await runAction(state, "toggleFolder", "材料", false);
+    state.selectedFolderPaths = [];
+    await runAction(state, "saveSelection");
+    apiMocks.patch.mockRejectedValueOnce("接入范围保存失败");
+    state.selectedFolderPaths = ["材料"];
+    await runAction(state, "saveSelection");
+    apiMocks.post.mockRejectedValueOnce("扫描启动失败");
+    await runAction(state, "scanRoot");
+
+    state.selectedFile = workspaceFile;
+    apiMocks.post.mockRejectedValueOnce("文件固化失败");
+    await runAction(state, "freezeFile");
+    await runAction(state, "rootSourceLabel", { ...remoteRoot, device_id: "unknown-device" });
+    state.files = [directory, workspaceFile];
+    state.downloadBusy = true;
+    await runAction(state, "createDownload", ["file-1"], "browser", false);
+    state.downloadBusy = false;
+    apiMocks.post.mockResolvedValueOnce({ transfer_id: "transfer-1", status: "completed", delivery: "browser", content_url: "" });
+    await runAction(state, "createDownload", ["folder-1"], "browser", false);
+    apiMocks.post.mockResolvedValueOnce({ transfer_id: "transfer-1", status: "completed", delivery: "browser", content_url: "/content" });
+    await runAction(state, "createDownload", ["folder-1", "file-1"], "browser", true);
+    openTarget.closed = true;
+    apiMocks.post.mockResolvedValueOnce({ transfer_id: "transfer-1", status: "completed", delivery: "browser", content_url: "/content" });
+    await runAction(state, "createDownload", ["file-1"], "browser", false);
+
+    await runAction(state, "openSharing", workspaceRoot);
+    expect((state.sharingUsers as unknown[]).length).toBe(1);
+    (state.sharingForm as { share_scope: string }).share_scope = "team";
+    apiMocks.patch.mockResolvedValueOnce(workspaceRoot);
+    await runAction(state, "saveSharing");
+    state.sharingRoot = workspaceRoot;
+    apiMocks.patch.mockRejectedValueOnce("共享保存失败");
+    await runAction(state, "saveSharing");
+    state.selectedFile = workspaceFile;
+    state.roots = [workspaceRoot];
+    state.selectedRootId = "root-1";
+    await runAction(state, "openSend");
+    expect((state.sendDevices as unknown[]).length).toBe(1);
+    apiMocks.get.mockRejectedValueOnce("协同目标加载失败");
+    await runAction(state, "openSend");
+    openSpy.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("事项详情覆盖权限矩阵、状态动作、评论树和写入失败", async () => {
+    const wrapper = await mountView(TaskDetailView, "/tasks/task-1");
+    const state = setupState(wrapper);
+    const session = state.session as ReturnType<typeof useSessionStore>;
+    session.user = { id: "other-user", username: "staff", display_name: "其他用户", role: "staff", active: true, version: 1, created_at: now };
+    state.users = [session.user, { id: "user-1", username: "owner", display_name: "主办人", role: "staff", active: true, version: 1, created_at: now }];
+
+    const parentComment = { id: "parent-comment", author_id: "user-1", parent_id: null, body: "主评论", mentioned_user_ids: [], created_at: now };
+    const childComment = { id: "child-comment", author_id: "other-user", parent_id: "parent-comment", body: "回复", mentioned_user_ids: ["user-1"], created_at: now };
+    state.task = { ...task, comments: [parentComment, childComment], participants: [{ id: "p-1", user_id: "other-user", role: "collaborator" }] };
+    state.replyTo = "parent-comment";
+    expect((state.threadedComments as unknown[]).length).toBe(2);
+    expect(state.replyTarget).toMatchObject({ id: "parent-comment" });
+    expect((state.mentionableUsers as unknown[]).length).toBe(2);
+    expect(state.canManageTask).toBe(false);
+
+    for (const status of ["pending_receipt", "pending_breakdown", "in_progress", "waiting_feedback", "pending_review", "returned", "completed", "archived", "unknown"]) {
+      state.task = { ...task, status, reviewer_id: status === "pending_review" ? "other-user" : "" };
+      expect(Array.isArray(state.actionOptions)).toBe(true);
+    }
+    state.task = { ...task, status: "in_progress", owner_id: "other", created_by: "creator" };
+    await runAction(state, "openEdit");
+    (state.editForm as { reviewer_id: string; tags_text: string }).reviewer_id = "";
+    (state.editForm as { reviewer_id: string; tags_text: string }).tags_text = "年度、重点 复核";
+    let submittedPayload: Record<string, unknown> | undefined;
+    apiMocks.patch.mockImplementationOnce(async (_path, payload) => {
+      submittedPayload = payload as Record<string, unknown>;
+      return { ...(state.task as object), version: 2 };
+    });
+    await runAction(state, "saveEdit");
+    expect(submittedPayload).not.toHaveProperty("owner_id");
+    expect(submittedPayload).not.toHaveProperty("allow_sensitive_content");
+
+    const conflictError = new ApiError(409, { code: "VERSION_CONFLICT", detail: "版本冲突", draft_id: "draft-2" });
+    conflictError.code = "VERSION_CONFLICT";
+    conflictError.problem = { draft_id: "draft-2", current_version: "2" };
+    state.task = { ...task };
+    apiMocks.patch.mockRejectedValueOnce(conflictError);
+    await runAction(state, "saveEdit");
+    expect(state.conflict).toMatchObject({ draft_id: "draft-2" });
+
+    apiMocks.patch.mockRejectedValueOnce("步骤更新失败");
+    await runAction(state, "toggleStep", "step-1", true, 1);
+    (state.materialForm as { name: string; category: string }).name = "";
+    await runAction(state, "addMaterial");
+    Object.assign(state.materialForm as object, { name: "报送稿", category: "final" });
+    apiMocks.post.mockRejectedValueOnce("材料创建失败");
+    await runAction(state, "addMaterial");
+    Object.assign(state.subtaskForm as object, { title: "子任务", owner_id: "user-1" });
+    apiMocks.post.mockRejectedValueOnce("子任务创建失败");
+    await runAction(state, "addSubtask");
+    apiMocks.delete.mockRejectedValueOnce("参与人移除失败");
+    await runAction(state, "removeParticipant", "p-1");
+    state.notApplicableMaterial = material;
+    state.notApplicableReason = "不产生该材料";
+    apiMocks.patch.mockRejectedValueOnce("材料更新失败");
+    await runAction(state, "markNotApplicable");
+    state.uploadMaterial = material;
+    state.uploadFile = new File(["正文"], "报送稿.txt");
+    apiMocks.post.mockRejectedValueOnce("版本上传失败");
+    await runAction(state, "uploadVersion");
+    state.conflict = { draft_id: "draft-2", current_version: "2" };
+    apiMocks.post.mockRejectedValueOnce("草稿应用失败");
+    await runAction(state, "applyConflictDraft");
+    wrapper.unmount();
+  });
+
+  it("登录页覆盖连接拒绝、服务异常和字段映射", async () => {
+    const wrapper = await mountView(LoginView, "/login?redirect=/tasks&redirect=/settings");
+    const state = setupState(wrapper);
+    const session = state.session as ReturnType<typeof useSessionStore>;
+    session.bootstrap = null;
+    expect(state.connectionLabel).toBe("正在检测主机");
+
+    const focusDisplay = vi.fn();
+    const focusUser = vi.fn();
+    const focusPassword = vi.fn();
+    state.displayNameInput = { focus: focusDisplay };
+    state.usernameInput = { focus: focusUser };
+    state.passwordInput = { focus: focusPassword };
+    const fieldErrors = state.fieldErrors as Record<string, string>;
+    Object.assign(fieldErrors, { displayName: "请填写姓名", username: "请填写用户名", password: "请填写密码" });
+    await runAction(state, "focusFirstError");
+    expect(focusDisplay).toHaveBeenCalled();
+    delete fieldErrors.displayName;
+    await runAction(state, "focusFirstError");
+    delete fieldErrors.username;
+    await runAction(state, "focusFirstError");
+
+    const form = state.form as { username: string; password: string; displayName: string };
+    Object.assign(form, { username: "admin", password: "StrongPassword123!", displayName: "管理员" });
+    apiMocks.post.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await runAction(state, "submit");
+    apiMocks.post.mockRejectedValueOnce(new Error("WinError 10061 积极拒绝"));
+    await runAction(state, "submit");
+    apiMocks.post.mockRejectedValueOnce("无法进入系统");
+    await runAction(state, "submit");
+
+    const fieldError = new ApiError(400, { code: "VALIDATION_ERROR", fields: { username: "用户名不可用", unknown: "忽略" } });
+    fieldError.fields = { username: "用户名不可用", unknown: "忽略" };
+    apiMocks.post.mockRejectedValueOnce(fieldError);
+    await runAction(state, "submit");
+    expect(fieldErrors.username).toBe("用户名不可用");
+    wrapper.unmount();
+  });
+
+  it("通知中心覆盖全部筛选与四类跳转", async () => {
+    const wrapper = await mountView(NotificationsView, "/notifications");
+    const state = setupState(wrapper);
+    state.typeFilter = "comment";
+    state.unreadOnly = true;
+    await runAction(state, "load");
+    expect(String(apiMocks.get.mock.calls.at(-1)?.[0])).toContain("unread_only=true");
+    apiMocks.get.mockRejectedValueOnce("通知加载失败");
+    await runAction(state, "load");
+    await runAction(state, "openItem", { ...notification, read_at: now, entity_type: "transfer" });
+    await runAction(state, "openItem", { ...notification, read_at: now, entity_type: "workspace_root" });
+    await runAction(state, "openItem", { ...notification, read_at: now, entity_type: "other" });
+    await runAction(state, "openItem", { ...notification, read_at: null, entity_type: "task", entity_id: "task-1" });
+    wrapper.unmount();
+  });
+
+  it("设备协同覆盖方向矩阵、入网阶段和治理失败回滚", async () => {
+    const hostRoot = { ...workspaceRoot, source: "host", permissions: { ...workspaceRoot.permissions, download: true, upload: false, share: false } };
+    const deviceRoot = { ...workspaceRoot, id: "device-root", source: "device", device_id: "device-1", permissions: { ...workspaceRoot.permissions, download: true, upload: true, share: true } };
+    const wrapper = await mountView(FleetView, "/fleet", true);
+    const state = setupState(wrapper);
+    const session = state.session as ReturnType<typeof useSessionStore>;
+    state.roots = [hostRoot, deviceRoot];
+
+    for (const direction of ["host_to_device", "device_to_host", "device_to_device"]) {
+      (state.transferForm as { direction: string }).direction = direction;
+      expect(Array.isArray(state.sourceRoots)).toBe(true);
+    }
+    (state.transferForm as { destination_device_id: string }).destination_device_id = "";
+    expect((state.destinationRoots as unknown[]).length).toBe(1);
+    (state.transferForm as { destination_device_id: string }).destination_device_id = "other-device";
+    expect((state.destinationRoots as unknown[]).length).toBe(0);
+
+    session.bootstrap = null;
+    expect(state.enrollmentHostOptions).toEqual([]);
+    state.enrollment = null;
+    expect(state.enrollmentStep).toBe(1);
+    state.enrollment = { code: "CODE", host_url: "https://host", expires_at: now, ca_fingerprint: "abc" };
+    state.enrollmentStatus = { status: "pending", device_id: null, device_name: "", device_status: "", last_seen_at: null };
+    expect(state.enrollmentStep).toBe(2);
+    state.enrollmentStatus = { status: "enrolled", device_id: "device-1", device_name: "协同机", device_status: "offline", last_seen_at: now };
+    expect(state.enrollmentStep).toBe(3);
+    (state.enrollmentStatus as { device_status: string }).device_status = "online";
+    expect(state.enrollmentStep).toBe(4);
+
+    Object.defineProperty(window, "isSecureContext", { configurable: true, value: false });
+    Object.defineProperty(document, "execCommand", { configurable: true, value: vi.fn(() => false) });
+    await runAction(state, "copyEnrollmentCode");
+    Object.defineProperty(document, "execCommand", { configurable: true, value: vi.fn(() => true) });
+    await runAction(state, "copyEnrollmentCode");
+
+    const pendingRoot = { id: "pending", name: "待审批", device_id: "device-1", remote_key: "r", approval_status: "pending", approval_note: "", enabled: false, file_count: 0, last_scan_at: null, version: 1 };
+    await runAction(state, "approveRoot", pendingRoot, "rejected");
+    apiMocks.patch.mockRejectedValueOnce("目录审批失败");
+    await runAction(state, "approveRoot", pendingRoot, "approved");
+    apiMocks.post.mockRejectedValueOnce("本机工具失败");
+    await runAction(state, "openLocalShareManager");
+    apiMocks.patch.mockRejectedValueOnce("授权切换失败");
+    await runAction(state, "toggleGrant", { ...deviceGrant });
+
+    apiMocks.get.mockResolvedValueOnce([{ ...workspaceFile, is_directory: true }, workspaceFile]);
+    await runAction(state, "loadSourceFiles", "root-1");
+    expect((state.sourceFiles as unknown[]).length).toBe(1);
+    Object.assign(state.transferForm as object, { direction: "host_to_device", source_file_id: "file-1", destination_device_id: "" });
+    await runAction(state, "createTransfer");
+    (state.transferForm as { destination_device_id: string }).destination_device_id = "device-1";
+    apiMocks.post.mockRejectedValueOnce("传输创建失败");
+    await runAction(state, "createTransfer");
+    apiMocks.post.mockRejectedValueOnce("文件固化失败");
+    await runAction(state, "freezeTransfer", { ...transfer });
+
+    apiMocks.get.mockResolvedValueOnce({ items: [{ ...task, materials: [material] }] });
+    apiMocks.get.mockRejectedValueOnce(new Error("档案暂不可用"));
+    await runAction(state, "openAttach", { ...transfer });
+    expect(state.archiveTargets).toEqual([]);
+    Object.assign(state.attachForm as object, { target_type: "archive", target_id: "record-1" });
+    apiMocks.post.mockRejectedValueOnce("接收转换失败");
+    await runAction(state, "attachReceivedFile");
+
+    session.bootstrap = { configured: true, mode: "host", app_name: "PartyOps", host: "127.0.0.1", port: 18765, service_url: "https://127.0.0.1:18765", lan_candidates: ["192.168.1.10"] };
+    await runAction(state, "openEnrollment");
+    expect((state.enrollmentForm as { advertised_host: string }).advertised_host).toBe("192.168.1.10");
+    apiMocks.get.mockRejectedValueOnce("网络信息失败");
+    await runAction(state, "openEnrollment");
+    apiMocks.get.mockResolvedValueOnce({ status: "expired", device_id: null, device_name: "", device_status: "", last_seen_at: null });
+    await runAction(state, "checkEnrollmentStatus", "expired");
+    apiMocks.get.mockRejectedValueOnce(new Error("短暂断线"));
+    await runAction(state, "checkEnrollmentStatus", "retry");
+    apiMocks.delete.mockRejectedValueOnce("设备删除失败");
+    state.deleteTarget = { ...device };
+    await runAction(state, "deleteDevice");
+    wrapper.unmount();
+  });
+
+  it("重要档案覆盖字段归一化、授权矩阵和保存失败原子性", async () => {
+    const restrictedCategory = { ...archiveCategory, id: "restricted-category", permissions: { view: true, download: true, contribute: false, manage: false } };
+    const inactiveUser = { id: "inactive-user", username: "off", display_name: "停用人员", role: "staff", active: false, version: 1, created_at: now };
+    const inactiveDevice = { ...device, id: "inactive-device", name: "停用设备", active: false };
+    apiMocks.get.mockImplementation(async (path) => {
+      if (path === "/archives/categories") return [restrictedCategory, archiveCategory];
+      if (path === "/archives/years") return { years: [{ year: 2025, count: 0, categories: [] }] };
+      if (path === "/admin/users") return [{ id: "user-2", username: "staff", display_name: "协同人员", role: "staff", active: true, version: 1, created_at: now }, inactiveUser];
+      if (path === "/admin/devices") return [device, inactiveDevice];
+      if (path.includes("/grants")) return [archiveGrant];
+      if (path.startsWith("/archives/records?")) return [archiveRecord];
+      if (path === "/archives/records/record-1") return archiveRecord;
+      return responseFor(path);
+    });
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    const wrapper = await mountView(ArchivesView, "/archives", true);
+    const state = setupState(wrapper);
+
+    state.fieldErrors = { title: "请填写标题", category_id: "请选择类别" };
+    expect(await (state.errorFor as (...keys: string[]) => unknown)("missing", "title")).toBe("请填写标题");
+    expect(await (state.errorFor as (...keys: string[]) => unknown)("missing")).toBe("");
+    expect(await (state.fieldElementId as (key: string) => unknown)("person.name/中文")).toBe("archive-field-person-name---");
+    await runAction(state, "focusFirstError");
+    state.fieldErrors = {};
+    await runAction(state, "focusFirstError");
+    expect(await (state.categoryName as (id: string) => unknown)("missing")).toBe("未分类");
+    expect(await (state.formatDate as (value: string | null) => unknown)(null)).toBe("—");
+    expect(await (state.formatDate as (value: string | null) => unknown)(now)).toBe("2026-08-11");
+    (state.recordForm as { custom_fields: Record<string, unknown> }).custom_fields.test = null;
+    expect(await (state.customFieldText as (key: string) => unknown)("test")).toBe("");
+    await runAction(state, "setCustomField", "test", 42);
+    expect(await (state.customFieldText as (key: string) => unknown)("test")).toBe("42");
+
+    await runAction(state, "loadGrantOptions");
+    expect((state.grantUsers as unknown[]).length).toBe(1);
+    expect((state.grantDevices as unknown[]).length).toBe(1);
+    state.selectedCategoryId = "category-1";
+    state.keyword = "张三";
+    await runAction(state, "loadRecords");
+    const recordQueries = apiMocks.get.mock.calls.filter((call) => String(call[0]).startsWith("/archives/records?"));
+    expect(String(recordQueries.at(-1)?.[0])).toContain("keyword=%E5%BC%A0%E4%B8%89");
+    apiMocks.get.mockRejectedValueOnce("档案列表失败");
+    await runAction(state, "loadRecords");
+
+    state.categories = [restrictedCategory, archiveCategory];
+    state.selectedCategoryId = "restricted-category";
+    await runAction(state, "openCreate");
+    expect((state.recordForm as { category_id: string }).category_id).toBe("category-1");
+    Object.assign(state.recordForm as object, { title: "", category_id: "", archive_year: 0 });
+    expect(await (state.saveRecord as () => Promise<boolean>)()).toBe(false);
+    Object.assign(state.recordForm as object, {
+      title: "年度归档",
+      category_id: "category-1",
+      archive_year: 2026,
+      sequence_no: 0,
+      document_date: "",
+      involved_persons: "张三、 李四,\n",
+      tags: "年度、重点,",
+    });
+    const payload = await (state.payloadFromForm as () => Promise<Record<string, unknown>>)();
+    expect(payload.sequence_no).toBeUndefined();
+    expect(payload.document_date).toBeNull();
+
+    const validationError = new ApiError(422, { code: "VALIDATION_ERROR", fields: { title: "标题重复" } });
+    validationError.fields = { title: "标题重复" };
+    apiMocks.post.mockRejectedValueOnce(validationError);
+    expect(await (state.saveRecord as () => Promise<boolean>)()).toBe(false);
+    expect(state.fieldErrors).toMatchObject({ title: "标题重复" });
+    apiMocks.post.mockRejectedValueOnce("档案保存失败");
+    expect(await (state.saveRecord as () => Promise<boolean>)()).toBe(false);
+
+    state.editingCategory = null;
+    Object.assign(state.grantForm as object, { target_id: "" });
+    await runAction(state, "saveGrant");
+    state.editingCategory = archiveCategory;
+    Object.assign(state.grantForm as object, { target_type: "device", target_id: "device-1" });
+    await runAction(state, "saveGrant");
+    apiMocks.post.mockRejectedValueOnce("授权保存失败");
+    Object.assign(state.grantForm as object, { target_type: "user", target_id: "user-2" });
+    await runAction(state, "saveGrant");
+    state.grantUsers = [];
+    state.grantDevices = [];
+    expect(await (state.grantTargetLabel as (grant: unknown) => unknown)({ ...archiveGrant, user_id: "missing", device_id: null })).toBe("已停用用户");
+    expect(await (state.grantTargetLabel as (grant: unknown) => unknown)({ ...archiveGrant, user_id: null, device_id: "missing" })).toBe("已移除设备");
+    state.grants = [];
+    await runAction(state, "updateGrant", archiveGrant, { active: false });
+    apiMocks.patch.mockRejectedValueOnce("授权更新失败");
+    await runAction(state, "updateGrant", archiveGrant, { active: false });
+
+    Object.assign(state.newField as object, { key: "", label: "" });
+    await runAction(state, "addField");
+    state.categoryFields = [{ key: "name", label: "姓名", type: "text", required: true, options: [] }];
+    Object.assign(state.newField as object, { key: "name", label: "重复", type: "text", required: false, options: "" });
+    await runAction(state, "addField");
+    Object.assign(state.newField as object, { key: "level", label: "等级", type: "select", required: false, options: "优秀、称职," });
+    await runAction(state, "addField");
+    Object.assign(state.categoryForm as object, { name: "", code: "" });
+    expect(await (state.saveCategory as () => Promise<boolean>)()).toBe(false);
+    Object.assign(state.categoryForm as object, { name: "自定义档案", code: "CUSTOM" });
+    state.editingCategory = null;
+    await (state.saveCategory as () => Promise<boolean>)();
+    apiMocks.post.mockRejectedValueOnce("类别保存失败");
+    await (state.saveCategory as () => Promise<boolean>)();
+
+    state.selectedRecord = null;
+    await runAction(state, "uploadFiles", { target: { files: [new File(["扫描"], "scan.pdf")] } });
+    state.selectedRecord = archiveRecord;
+    apiMocks.post.mockRejectedValueOnce("扫描件上传失败");
+    await runAction(state, "uploadFiles", { target: { files: [new File(["扫描"], "scan.pdf")] } });
+    state.voidReason = "";
+    expect(await (state.voidRecord as () => Promise<boolean>)()).toBe(false);
+    state.voidReason = "重复档案";
+    apiMocks.post.mockRejectedValueOnce("档案作废失败");
+    expect(await (state.voidRecord as () => Promise<boolean>)()).toBe(false);
+    apiMocks.post.mockRejectedValueOnce("档案恢复失败");
+    await runAction(state, "restoreRecord");
+    apiMocks.post.mockRejectedValueOnce("扫描件作废失败");
+    await runAction(state, "voidAttachment", archiveAttachment);
+    state.selectedCategoryId = "";
+    await runAction(state, "exportYear");
+    expect(openSpy).toHaveBeenCalled();
+    openSpy.mockRestore();
+    wrapper.unmount();
   });
 });

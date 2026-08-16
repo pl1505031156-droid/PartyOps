@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -11,8 +12,6 @@ import servicemanager
 import win32event
 import win32service
 import win32serviceutil
-
-from app.setup_wizard import load_host_environment
 
 
 class PartyOpsUpdaterService(win32serviceutil.ServiceFramework):
@@ -48,23 +47,48 @@ class PartyOpsUpdaterService(win32serviceutil.ServiceFramework):
         updater = runtime / "PartyOpsUpdater.exe"
         program_data = Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
         config_path = program_data / "partyops.env"
+        mode_path = program_data / "mode.json"
         servicemanager.LogInfoMsg("PartyOpsUpdateService 已启动。")
-        while win32event.WaitForSingleObject(self.stop_event, 3000) == win32event.WAIT_TIMEOUT:
-            if not updater.is_file() or not config_path.is_file():
+        while (
+            win32event.WaitForSingleObject(self.stop_event, 3000)
+            == win32event.WAIT_TIMEOUT
+        ):
+            if (
+                not updater.is_file()
+                or not config_path.is_file()
+                or not mode_path.is_file()
+            ):
+                continue
+            try:
+                if (
+                    json.loads(mode_path.read_text(encoding="utf-8")).get("mode")
+                    != "host"
+                ):
+                    continue
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
                 continue
             if self.process and self.process.poll() is None:
                 continue
-            environment = os.environ.copy()
-            environment.update(load_host_environment(config_path))
-            environment.setdefault("PARTYOPS_MODE", "host")
-            environment.setdefault("PARTYOPS_ENVIRONMENT", "production")
-            environment.setdefault("PARTYOPS_STRICT_SQLITE", "true")
-            data_dir = Path(environment["PARTYOPS_DATA_DIR"])
-            log_path = data_dir / "logs" / "partyops-updater-service.log"
+            # 更新器入口会通过显式系统服务参数，从 HKLM 定位 ProgramData，
+            # 并独立回读/校验受保护配置。这里不再把可信边界寄托在继承环境上。
+            environment = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("PARTYOPS_")
+            }
+            environment["PYTHONUTF8"] = "1"
+            # SYSTEM 日志不能写入可自定义的数据目录；目录联接可能把追加写入
+            # 引向其他系统文件。系统事务目录由安装器设置为仅管理员/SYSTEM。
+            log_path = (
+                Path(os.getenv("PROGRAMDATA", "C:/ProgramData"))
+                / "PartyOps-System"
+                / "logs"
+                / "partyops-updater-service.log"
+            )
             log_path.parent.mkdir(parents=True, exist_ok=True)
             output = log_path.open("ab", buffering=0)
             self.process = subprocess.Popen(
-                [str(updater)],
+                [str(updater), "--windows-system-service"],
                 env=environment,
                 cwd=str(runtime),
                 stdin=subprocess.DEVNULL,

@@ -211,6 +211,30 @@ def test_pki_generates_dns_certificate_and_device_certificate(monkeypatch, tmp_p
     assert "BEGIN CERTIFICATE" in issued["certificate_pem"]
     assert len(issued["certificate_fingerprint"]) == 64
 
+    weak_key = rsa.generate_private_key(public_exponent=65537, key_size=1024)
+    weak_csr = (
+        x509.CertificateSigningRequestBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "device-1")]))
+        .sign(weak_key, hashes.SHA256())
+        .public_bytes(serialization.Encoding.PEM)
+        .decode("utf-8")
+    )
+    with pytest.raises(ValueError, match="2048"):
+        pki.issue_device_certificate(settings, "device-1", weak_csr)
+
+    invalid_der = bytearray(
+        x509.CertificateSigningRequestBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "device-1")]))
+        .sign(key, hashes.SHA256())
+        .public_bytes(serialization.Encoding.DER)
+    )
+    invalid_der[-1] ^= 1
+    invalid_csr = x509.load_der_x509_csr(bytes(invalid_der)).public_bytes(
+        serialization.Encoding.PEM
+    ).decode("utf-8")
+    with pytest.raises(ValueError, match="签名无效"):
+        pki.issue_device_certificate(settings, "device-1", invalid_csr)
+
 
 class _RelationDb:
     def __init__(self, link=None, rows=None, actors=None):

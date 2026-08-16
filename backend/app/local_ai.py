@@ -119,8 +119,8 @@ def local_ai_readiness(
     """
 
     settings = get_settings()
-    if settings.mode != "host":
-        return {"ready": False, "state": "host_only", "message": "本地智能仅在主机运行"}
+    if settings.mode not in {"host", "personal"}:
+        return {"ready": False, "state": "host_only", "message": "本地智能仅在主机或个人模式运行"}
     available = _available_memory_mb()
     busy, reason = _system_busy(db)
     if busy:

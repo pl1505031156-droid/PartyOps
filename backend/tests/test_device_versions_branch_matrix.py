@@ -163,12 +163,22 @@ def test_start_update_guards_creation_and_command_requeue(monkeypatch) -> None:
     with pytest.raises(ProblemException):
         device_versions.start_device_update(db, device)
 
-    package = SimpleNamespace(id="package-1", filename="release.partyops-update", version="1.4.3", created_by="admin")
+    package = SimpleNamespace(
+        id="package-1",
+        filename="release.partyops-update",
+        version="1.4.3",
+        created_by="admin",
+        manifest={
+            "online_download": {"source": "official-online-catalog"}
+        },
+    )
     monkeypatch.setattr(device_versions, "latest_target_package", lambda _db: package)
     db.scalar_values = [None, None]
     run = device_versions.start_device_update(db, device)
     assert run.status == UpdateStatus.APPLYING and run.progress == 5
     assert len(db.added) == 2 and device.status == "updating"
+    assert db.added[1].payload["official_online"] is True
+    assert "package_url" not in db.added[1].payload
 
     existing_run = SimpleNamespace(id="run-2", status=UpdateStatus.FAILED, progress=10, message="")
     command = SimpleNamespace(status="failed", result={"old": True}, completed_at="x", delivered_at="x")

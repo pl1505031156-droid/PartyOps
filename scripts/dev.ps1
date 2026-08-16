@@ -26,6 +26,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $env:PARTYOPS_ENVIRONMENT = "development"
 $env:PARTYOPS_SEED_DEMO = "true"
+$env:PARTYOPS_ALLOWED_ORIGINS = "http://127.0.0.1:4173,http://localhost:4173"
 Start-Process -FilePath $python -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "18765" -WorkingDirectory (Join-Path $root "backend") -WindowStyle Hidden
 Start-Process -FilePath $corepack -ArgumentList "pnpm", "--dir", (Join-Path $root "frontend"), "dev", "--host", "127.0.0.1", "--port", "4173" -WorkingDirectory (Join-Path $root "frontend") -WindowStyle Hidden
 

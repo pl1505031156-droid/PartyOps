@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 import ipaddress
 import os
 import secrets
@@ -203,7 +205,16 @@ def runtime_context(
     """返回同一套导航和操作按钮所需的运行位置与有效能力。"""
 
     device = request_device(request, db)
-    node_mode = "client" if device else ("host" if is_host_local_request(request) else "unknown")
+    settings = get_settings()
+    node_mode = (
+        "client"
+        if device
+        else (
+            settings.mode
+            if settings.mode in {"host", "personal"} and is_host_local_request(request)
+            else "unknown"
+        )
+    )
     capabilities = {
         "workspace.browse",
         "workspace.download.browser",
@@ -218,14 +229,14 @@ def runtime_context(
         capabilities.update(
             {
                 "admin.access",
-                "workspace.manage_host_roots",
                 "workspace.manage_all_roots",
-                "fleet.manage",
                 "updates.manage",
                 "backups.manage",
                 "ai.manage",
             }
         )
+        if node_mode == "host":
+            capabilities.update({"workspace.manage_host_roots", "fleet.manage"})
     return RuntimeContextOut(
         node_mode=node_mode,
         platform="windows" if os.name == "nt" else "uos",
@@ -289,7 +300,7 @@ def create_local_share_action(
     )
 
 
-@router.get("/collaboration/users", response_model=list[UserOut])
+@router.get("/collaboration/users", response_model=typing.List[UserOut])
 def list_collaboration_users(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -301,7 +312,7 @@ def list_collaboration_users(
     )
 
 
-@router.get("/workspace/roots", response_model=list[WorkspaceRootOut])
+@router.get("/workspace/roots", response_model=typing.List[WorkspaceRootOut])
 def list_workspace_roots(
     request: Request,
     user: User = Depends(get_current_user),
@@ -383,7 +394,7 @@ def patch_workspace_root_sharing(
 
 @router.get(
     "/workspace/roots/{root_id}/members",
-    response_model=list[WorkspaceRootMemberOut],
+    response_model=typing.List[WorkspaceRootMemberOut],
 )
 def list_workspace_root_members(
     root_id: str,
@@ -403,7 +414,7 @@ def list_workspace_root_members(
 
 @router.put(
     "/workspace/roots/{root_id}/members",
-    response_model=list[WorkspaceRootMemberOut],
+    response_model=typing.List[WorkspaceRootMemberOut],
 )
 def replace_workspace_root_members(
     root_id: str,
@@ -555,7 +566,7 @@ def create_workspace_root(
 
 @router.get(
     "/workspace/roots/{root_id}/folder-options",
-    response_model=list[WorkspaceFolderOption],
+    response_model=typing.List[WorkspaceFolderOption],
 )
 def list_workspace_folder_options(
     root_id: str,
@@ -850,7 +861,7 @@ def scan_workspace_now(
     return result
 
 
-@router.get("/workspace/files", response_model=list[WorkspaceFileOut])
+@router.get("/workspace/files", response_model=typing.List[WorkspaceFileOut])
 def list_workspace_files(
     request: Request,
     root_id: str,
@@ -889,7 +900,7 @@ def get_workspace_file(
     return workspace_file_out(db, item, user, device_id)
 
 
-@router.get("/workspace/search", response_model=list[WorkspaceFileOut])
+@router.get("/workspace/search", response_model=typing.List[WorkspaceFileOut])
 def search_workspace(
     request: Request,
     keyword: str = "",

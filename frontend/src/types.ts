@@ -676,7 +676,7 @@ export interface Transfer {
 }
 
 export interface RuntimeContext {
-  node_mode: "host" | "client" | "unknown";
+  node_mode: "host" | "personal" | "client" | "unknown";
   platform: "windows" | "uos" | string;
   user_role: "admin" | "staff";
   device_id: string | null;

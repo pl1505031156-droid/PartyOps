@@ -16,12 +16,13 @@ mkdir -p "$ROOT/artifacts"
     *) echo "不支持的处理器架构：$(uname -m)" >&2; exit 2 ;;
   esac
   echo "architecture=$ARCH"
-  VERSION="${PARTYOPS_VERSION:-1.4.3}"
+  VERSION="${PARTYOPS_VERSION:-1.4.3-rc.3}"
+  PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.3}"
   INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' partyops)"
   INSTALLED_ARCH="$(dpkg-query -W -f='${Architecture}' partyops)"
   echo "installed_version=$INSTALLED_VERSION"
   echo "installed_architecture=$INSTALLED_ARCH"
-  test "$INSTALLED_VERSION" = "$VERSION"
+  test "$INSTALLED_VERSION" = "$PACKAGE_VERSION"
   test "$INSTALLED_ARCH" = "$ARCH"
   test -x /opt/partyops/desktop-launcher.sh
   test -f /usr/share/applications/partyops.desktop
@@ -32,10 +33,10 @@ mkdir -p "$ROOT/artifacts"
   LD_LIBRARY_PATH=/opt/partyops /opt/partyops/llama-server --version >/dev/null
   grep -q '^Exec=/opt/partyops/desktop-launcher.sh$' \
     /usr/share/applications/partyops.desktop
-  DEB="$ROOT/artifacts/partyops_${VERSION}_${ARCH}.deb"
+  DEB="$ROOT/artifacts/PartyOps_1.4.3-rc.3_linux_${ARCH}.deb"
   if [[ -f "$DEB" ]]; then
     test "$(dpkg-deb -f "$DEB" Architecture)" = "$ARCH"
-    test "$(dpkg-deb -f "$DEB" Version)" = "$VERSION"
+    test "$(dpkg-deb -f "$DEB" Version)" = "$PACKAGE_VERSION"
     (cd "$ROOT/artifacts" && sha256sum -c "SHA256SUMS.$ARCH")
   fi
   ldd --version 2>&1 | sed -n '1p'
@@ -57,7 +58,8 @@ mkdir -p "$ROOT/artifacts"
   fi
   test -x /opt/partyops/ocr/bin/tesseract
   test -f /opt/partyops/ocr/tessdata/chi_sim.traineddata
-  TESSDATA_PREFIX=/opt/partyops/ocr/tessdata \
+  LD_LIBRARY_PATH=/opt/partyops/ocr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} \
+    TESSDATA_PREFIX=/opt/partyops/ocr/tessdata \
     /opt/partyops/ocr/bin/tesseract --list-langs 2>/dev/null | grep -Fx "chi_sim"
   df -h /var/lib/partyops
 

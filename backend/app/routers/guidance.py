@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 import ipaddress
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -261,7 +263,7 @@ def patch_onboarding(
 
 @router.get(
     "/admin/projections/status",
-    response_model=list[ProjectionCheckpointOut],
+    response_model=typing.List[ProjectionCheckpointOut],
 )
 def projection_status(
     _admin: User = Depends(require_admin),

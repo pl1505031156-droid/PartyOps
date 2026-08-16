@@ -1,30 +1,43 @@
 param(
   [string]$Python = "python",
   [string]$SqliteDll = "",
-  [string]$InnoCompiler = ""
+  [string]$SqliteSha256 = "",
+  [string]$InnoCompiler = "",
+  [ValidateSet("", "amd64", "x86")][string]$LegacyArchitecture = ""
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$releaseVersion = "1.4.3-rc.2"
-$releaseTag = "v1.4.3-rc.2"
+$releaseVersion = "1.4.3-rc.3"
+$releaseTag = "v1.4.3-rc.3"
+$isLegacy = [bool]$LegacyArchitecture
+$targetArchitecture = if ($isLegacy) { $LegacyArchitecture } else { "amd64" }
+$runtimeProfile = if (-not $isLegacy) { "full" } elseif ($targetArchitecture -eq "amd64") { "legacy-full" } else { "legacy-core" }
+$platformFamily = if ($isLegacy) { "windows7" } else { "windows" }
+$artifactSuffix = if ($isLegacy) { "windows7-$targetArchitecture" } else { "windows-amd64" }
 $officialSqliteDll = Join-Path $repoRoot "vendor\windows\sqlite-3.53.4\runtime\sqlite3.dll"
 $officialSqliteVersion = "3.53.4"
 $officialSqliteSha256 = "AB57D0437795ECC757CB693F32EA224173FA9856594D95CFA6B5033E645CD1EC"
 if (-not $SqliteDll) { $SqliteDll = $officialSqliteDll }
+if (-not $SqliteSha256) { $SqliteSha256 = $officialSqliteSha256 }
+$SqliteSha256 = $SqliteSha256.ToUpperInvariant()
 if (-not (Test-Path -LiteralPath $SqliteDll)) {
   throw "缺少经校验的 SQLite $officialSqliteVersion 运行时：$SqliteDll；请先执行 scripts/prepare-windows-build.ps1。"
 }
 $SqliteDll = (Resolve-Path -LiteralPath $SqliteDll).Path
 $actualSqliteSha256 = (Get-FileHash -LiteralPath $SqliteDll -Algorithm SHA256).Hash
-if ($actualSqliteSha256 -ne $officialSqliteSha256) {
+if ($actualSqliteSha256 -ne $SqliteSha256) {
   throw "SQLite DLL SHA-256 不匹配，拒绝把来源不明的数据库运行时写入正式安装包。"
 }
 $providedSqliteVersion = & $Python -c "import ctypes,sys; lib=ctypes.WinDLL(sys.argv[1]); lib.sqlite3_libversion.restype=ctypes.c_char_p; print(lib.sqlite3_libversion().decode())" $SqliteDll
 if ($LASTEXITCODE -ne 0 -or $providedSqliteVersion -ne $officialSqliteVersion) {
   throw "SQLite DLL 版本应为 $officialSqliteVersion，实际为 $providedSqliteVersion。"
 }
-$buildRoot = Join-Path $repoRoot "artifacts\windows-runtime"
+$buildRoot = if ($isLegacy) {
+  Join-Path $repoRoot "artifacts\windows-runtime-$artifactSuffix"
+} else {
+  Join-Path $repoRoot "artifacts\windows-runtime"
+}
 $outputRoot = Join-Path $repoRoot "artifacts"
 $frontendDist = Join-Path $repoRoot "frontend\dist"
 $localAiRoot = Join-Path $repoRoot "vendor\windows\local-ai\llama-b10331"
@@ -60,18 +73,20 @@ if (-not $InnoCompiler) {
     "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
   ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 }
-foreach ($runtimeFile in @("llama-server.exe", "llama-server-impl.dll", "llama-common.dll", "llama.dll", "ggml.dll", "LICENSE", "SOURCE.json")) {
-  if (-not (Test-Path -LiteralPath (Join-Path $localAiRoot $runtimeFile))) {
-    throw "缺少经固定版本校验的 Windows 本地 LLM 运行时：$runtimeFile"
+if ($runtimeProfile -ne "legacy-core") {
+  foreach ($runtimeFile in @("llama-server.exe", "llama-server-impl.dll", "llama-common.dll", "llama.dll", "ggml.dll", "LICENSE", "SOURCE.json")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $localAiRoot $runtimeFile))) {
+      throw "缺少经固定版本校验的 Windows 本地 LLM 运行时：$runtimeFile"
+    }
   }
 }
 
 Push-Location (Join-Path $repoRoot "frontend")
 try {
-  # 使用系统 pnpm（corepack 在当前构建环境不可用）。
-  # 依赖已完整存在时跳过 install，避免在受控环境中触发多余的网络与清理操作。
-  $pnpm = Get-Command pnpm -ErrorAction SilentlyContinue
-  if (-not $pnpm) { throw "未找到 pnpm，无法构建前端。请先安装 pnpm 或启用 corepack。" }
+  # 由 package.json 固定 pnpm 版本，避免系统全局 pnpm 与锁文件格式不一致。
+  $corepackCommand = Get-Command corepack -ErrorAction SilentlyContinue
+  if (-not $corepackCommand) { throw "未找到 Corepack，无法使用项目固定的 pnpm 构建前端。" }
+  $corepack = $corepackCommand.Source
   $viteBin = Join-Path (Join-Path $repoRoot "frontend") "node_modules\.bin\vite.cmd"
   # pnpm.ps1 shim 会把子进程 stderr 写入错误流，在 $ErrorActionPreference=Stop
   # 下被当作 NativeCommandError 抛出，导致构建误判失败；这里临时放行并
@@ -80,16 +95,16 @@ try {
   $ErrorActionPreference = "Continue"
   try {
     if (-not (Test-Path -LiteralPath $viteBin)) {
-      & pnpm install --frozen-lockfile
+      & $corepack pnpm install --frozen-lockfile
       Assert-NativeSuccess "前端依赖安装"
     }
     $existingFrontendDist = Join-Path $repoRoot "frontend\dist"
     if (Test-Path -LiteralPath $existingFrontendDist) {
       Remove-Item -LiteralPath $existingFrontendDist -Recurse -Force
     }
-    & pnpm run typecheck
+    & $corepack pnpm run typecheck
     Assert-NativeSuccess "前端类型检查"
-    & pnpm run build
+    & $corepack pnpm run build
     Assert-NativeSuccess "前端生产构建"
   } finally {
     $ErrorActionPreference = $previousEap
@@ -98,14 +113,16 @@ try {
 & $Python (Join-Path $repoRoot "scripts\validate-frontend-dist.py") (Join-Path $frontendDist "client")
 Assert-NativeSuccess "前端静态资源闭包验证"
 
-$previousEap = $ErrorActionPreference
-$ErrorActionPreference = "Continue"
-try {
-  & $Python -m pip install -r (Join-Path $repoRoot "backend\requirements.txt") -r (Join-Path $repoRoot "backend\requirements-local-ai.txt") -r (Join-Path $PSScriptRoot "requirements-build.txt")
-} finally {
-  $ErrorActionPreference = $previousEap
+if (-not $isLegacy) {
+  $previousEap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $Python -m pip install -r (Join-Path $repoRoot "backend\requirements.txt") -r (Join-Path $repoRoot "backend\requirements-local-ai.txt") -r (Join-Path $PSScriptRoot "requirements-build.txt")
+  } finally {
+    $ErrorActionPreference = $previousEap
+  }
+  Assert-NativeSuccess "Windows Python 构建依赖安装"
 }
-Assert-NativeSuccess "Windows Python 构建依赖安装"
 $sqliteVersion = & $Python -c "import sqlite3; print(sqlite3.sqlite_version)"
 Assert-NativeSuccess "开发运行时 SQLite 版本读取"
 Write-Host "开发 Python SQLite=$sqliteVersion；正式冻结运行时固定使用 SQLite $providedSqliteVersion。"
@@ -113,15 +130,19 @@ Write-Host "开发 Python SQLite=$sqliteVersion；正式冻结运行时固定使
 if (Test-Path -LiteralPath $buildRoot) { Remove-Item -LiteralPath $buildRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
+# 所有入口统一使用 onedir，并在 bundleRoot 合并同版本的 _internal 运行时。
+# onefile 会把约 80MB Python/原生依赖重复嵌入每个辅助程序，使安装器、应用内
+# 更新包和弱网续传无谓膨胀；共享运行时仍由发布清单逐文件校验，不降低完整性。
 $entries = @(
   @{ Name = "PartyOps"; Script = "packaging\uos\entrypoint.py"; Mode = "onedir" },
-  @{ Name = "PartyOpsAgent"; Script = "packaging\uos\client_entrypoint.py" },
-  @{ Name = "PartyOpsWizard"; Script = "packaging\uos\wizard_entrypoint.py" },
-  @{ Name = "PartyOpsUpdater"; Script = "packaging\uos\updater_entrypoint.py" },
-  @{ Name = "PartyOpsLauncher"; Script = "packaging\windows\windows_launcher.py" },
-  @{ Name = "PartyOpsFileOpen"; Script = "packaging\windows\windows_file_open.py" },
-  @{ Name = "PartyOpsService"; Script = "packaging\windows\windows_service.py" },
-  @{ Name = "PartyOpsUpdaterService"; Script = "packaging\windows\windows_updater_service.py" }
+  @{ Name = "PartyOpsAgent"; Script = "packaging\uos\client_entrypoint.py"; Mode = "onedir" },
+  @{ Name = "PartyOpsWizard"; Script = "packaging\uos\wizard_entrypoint.py"; Mode = "onedir" },
+  @{ Name = "PartyOpsUpdater"; Script = "packaging\uos\updater_entrypoint.py"; Mode = "onedir" },
+  @{ Name = "PartyOpsLauncher"; Script = "packaging\windows\windows_launcher.py"; Mode = "onedir" },
+  @{ Name = "PartyOpsDataCleanup"; Script = "packaging\windows\data_cleanup.py"; Mode = "onedir" },
+  @{ Name = "PartyOpsFileOpen"; Script = "packaging\windows\windows_file_open.py"; Mode = "onedir" },
+  @{ Name = "PartyOpsService"; Script = "packaging\windows\windows_service.py"; Mode = "onedir" },
+  @{ Name = "PartyOpsUpdaterService"; Script = "packaging\windows\windows_updater_service.py"; Mode = "onedir" }
 )
 
 # 统一的 PartyOps 品牌图标：嵌入所有可执行文件，桌面/开始菜单/资源管理器
@@ -153,12 +174,19 @@ foreach ($entry in $entries) {
       "--add-data", "$(Join-Path $repoRoot 'backend\alembic.ini');."
     )
   }
-  foreach ($module in @(
+  $hiddenModules = @(
     "pysqlite3", "pysqlite3.dbapi2", "sqlalchemy.dialects.sqlite.pysqlite",
     "uvicorn.logging", "uvicorn.loops.asyncio", "uvicorn.protocols.http.h11_impl",
-    "cryptography", "cryptography.fernet", "httpx", "win32timezone",
-    "numpy", "onnxruntime", "tokenizers"
-  )) { $arguments += @("--hidden-import", $module) }
+    "cryptography", "cryptography.fernet", "httpx", "win32timezone"
+  )
+  if ($runtimeProfile -ne "legacy-core") {
+    $hiddenModules += @("numpy", "onnxruntime", "tokenizers")
+  } else {
+    foreach ($excluded in @("numpy", "onnxruntime", "tokenizers")) {
+      $arguments += @("--exclude-module", $excluded)
+    }
+  }
+  foreach ($module in $hiddenModules) { $arguments += @("--hidden-import", $module) }
   $arguments += @("--add-binary", "$SqliteDll;.")
   $arguments += (Join-Path $repoRoot $entry.Script)
   # PyInstaller 会把进度/警告写入 stderr，在 $ErrorActionPreference=Stop 下
@@ -173,7 +201,7 @@ foreach ($entry in $entries) {
   Assert-NativeSuccess "$($entry.Name) 冻结构建"
 }
 
-$bundleRoot = Join-Path $outputRoot "PartyOps-$releaseVersion-windows-amd64"
+$bundleRoot = Join-Path $outputRoot "PartyOps-$releaseVersion-$artifactSuffix"
 if (Test-Path -LiteralPath $bundleRoot) { Remove-Item -LiteralPath $bundleRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $bundleRoot | Out-Null
 foreach ($entry in $entries) {
@@ -187,7 +215,7 @@ Copy-Item -LiteralPath $SqliteDll -Destination (Join-Path $bundleRoot "sqlite3.d
 $internalRoot = Join-Path $bundleRoot "_internal"
 New-Item -ItemType Directory -Path $internalRoot -Force | Out-Null
 Copy-Item -LiteralPath $SqliteDll -Destination (Join-Path $internalRoot "sqlite3.dll") -Force
-if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $internalRoot "sqlite3.dll")).Hash -ne $officialSqliteSha256) {
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $internalRoot "sqlite3.dll")).Hash -ne $SqliteSha256) {
   throw "冻结运行时中的 SQLite DLL 与经校验输入不一致。"
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\uos\update-public-key.txt") -Destination $bundleRoot -Force
@@ -198,9 +226,11 @@ foreach ($notice in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
   if (-not (Test-Path -LiteralPath $noticePath)) { throw "发布包缺少开源声明文件：$notice" }
   Copy-Item -LiteralPath $noticePath -Destination $bundleRoot -Force
 }
-Copy-Item -Path (Join-Path $localAiRoot "*") -Destination $bundleRoot -Force
-& (Join-Path $bundleRoot "llama-server.exe") --version | Out-Null
-Assert-NativeSuccess "llama.cpp Windows 运行时验证"
+if ($runtimeProfile -ne "legacy-core") {
+  Copy-Item -Path (Join-Path $localAiRoot "*") -Destination $bundleRoot -Force
+  & (Join-Path $bundleRoot "llama-server.exe") --version | Out-Null
+  Assert-NativeSuccess "llama.cpp Windows 运行时验证"
+}
 $sourceCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
 Assert-NativeSuccess "读取源码提交"
 & $Python (Join-Path $repoRoot "scripts\generate-release-manifest.py") `
@@ -217,13 +247,24 @@ $env:PARTYOPS_WINDOWS_OUTPUT_ROOT = $outputRoot
 $previousEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
-  & $InnoCompiler (Join-Path $PSScriptRoot "PartyOps.iss")
+  $innoScript = if (-not $isLegacy) {
+    Join-Path $PSScriptRoot "PartyOps.iss"
+  } elseif ($targetArchitecture -eq "amd64") {
+    Join-Path $PSScriptRoot "PartyOps-Win7-x64.iss"
+  } else {
+    Join-Path $PSScriptRoot "PartyOps-Win7-x86.iss"
+  }
+  & $InnoCompiler $innoScript
 } finally {
   $ErrorActionPreference = $previousEap
 }
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
-$installer = Join-Path $outputRoot "PartyOps_1.4.3-rc.2_windows_amd64.exe"
+$installerBase = if ($isLegacy) { "PartyOps_1.4.3-rc.3_windows7_$targetArchitecture" } else { "PartyOps_1.4.3-rc.3_windows_amd64" }
+$installer = Join-Path $outputRoot "$installerBase.exe"
+if (-not (Test-Path -LiteralPath $installer)) {
+  throw "Inno 返回成功但未找到预期安装器：$installer"
+}
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
 [System.IO.File]::WriteAllText(
   "$installer.sha256",
@@ -236,16 +277,18 @@ $candidate = [ordered]@{
   version = $releaseVersion
   release_tag = $releaseTag
   source_commit = $sourceCommit
-  platform = "windows-amd64"
+  platform = $platformFamily
+  architecture = $targetArchitecture
+  runtime_profile = $runtimeProfile
   signed = $false
   filename = (Split-Path -Leaf $installer)
   size = (Get-Item -LiteralPath $installer).Length
   sha256 = $hash
   sqlite_version = $officialSqliteVersion
-  limitations = @("Windows 10 未实机验证", "UOS 未实机验证", "未签名测试候选")
+  limitations = if ($isLegacy) { @("Windows 7 未执行运行验收", "仅限受控局域网", "未签名候选版") } else { @("Windows 10 未实机验证", "未签名候选版") }
 }
 [System.IO.File]::WriteAllText(
-  (Join-Path $outputRoot "PartyOps_1.4.3-rc.2_windows_amd64.candidate.json"),
+  (Join-Path $outputRoot "$installerBase.candidate.json"),
   ($candidate | ConvertTo-Json -Depth 5),
   (New-Object System.Text.UTF8Encoding($false))
 )

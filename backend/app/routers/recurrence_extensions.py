@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 from fastapi import APIRouter, Depends, Header, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,7 +22,7 @@ from .router_utils import client_ip, parse_if_match
 router = APIRouter(tags=["recurrence-exceptions"])
 
 
-@router.get("/recurrences/{rule_id}/preview", response_model=list[dict])
+@router.get("/recurrences/{rule_id}/preview", response_model=typing.List[dict])
 def get_recurrence_preview(
     rule_id: str,
     count: int = Query(default=12, ge=1, le=60),

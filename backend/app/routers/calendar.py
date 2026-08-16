@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, Query
@@ -28,7 +30,7 @@ from .router_utils import aware_utc, parse_if_match
 router = APIRouter(tags=["calendar"])
 
 
-@router.get("/calendar/events", response_model=list[CalendarEventOut])
+@router.get("/calendar/events", response_model=typing.List[CalendarEventOut])
 def list_calendar_events(
     start: datetime = Query(),
     end: datetime = Query(),
@@ -95,7 +97,7 @@ def patch_calendar_preferences(
     return item
 
 
-@router.get("/calendar/workdays", response_model=list[WorkCalendarEntryOut])
+@router.get("/calendar/workdays", response_model=typing.List[WorkCalendarEntryOut])
 def list_calendar_workdays(
     year: int | None = Query(default=None, ge=1900, le=2200),
     _user: User = Depends(get_current_user),
@@ -107,7 +109,7 @@ def list_calendar_workdays(
     return list(db.scalars(statement).all())
 
 
-@router.post("/calendar/workdays/import", response_model=list[WorkCalendarEntryOut])
+@router.post("/calendar/workdays/import", response_model=typing.List[WorkCalendarEntryOut])
 def import_calendar_workdays(
     payload: WorkCalendarImport,
     admin: User = Depends(require_admin),

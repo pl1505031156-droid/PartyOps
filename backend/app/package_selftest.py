@@ -1,0 +1,111 @@
+"""原生安装包配置阶段使用的离线运行时自检。"""
+
+from __future__ import annotations
+
+import importlib
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+ASSET_PATTERN = re.compile(r"(?:src|href)=[\"']/?([^\"'#?]+)")
+
+
+def _runtime_contents(runtime: Path) -> Path:
+    internal = runtime / "_internal"
+    return internal if internal.is_dir() else runtime
+
+
+def run_selftest(runtime: Path) -> dict[str, object]:
+    """验证冻结资源、数据库、OCR 与本地智能运行时，任一失败即抛错。"""
+
+    contents = _runtime_contents(runtime)
+    frontend = contents / "frontend"
+    index = frontend / "index.html"
+    if not index.is_file():
+        raise RuntimeError("前端入口缺失")
+    html = index.read_text(encoding="utf-8")
+    missing_assets = sorted(
+        asset for asset in ASSET_PATTERN.findall(html) if not (frontend / asset).is_file()
+    )
+    if missing_assets:
+        raise RuntimeError(f"前端静态资源缺失：{', '.join(missing_assets)}")
+
+    from app.database import db_runtime
+
+    sqlite = db_runtime.validate_capabilities()
+    if not sqlite.get("safe_version") or not sqlite.get("fts5"):
+        raise RuntimeError("SQLite 安全版本或 FTS5 自检失败")
+
+    ocr = runtime / "ocr" / "bin" / "tesseract"
+    language = runtime / "ocr" / "tessdata" / "chi_sim.traineddata"
+    if not ocr.is_file() or not language.is_file():
+        raise RuntimeError("中文 OCR 运行时不完整")
+    ocr_environment = os.environ.copy()
+    ocr_environment["TESSDATA_PREFIX"] = str(language.parent)
+    ocr_environment["LD_LIBRARY_PATH"] = os.pathsep.join(
+        part
+        for part in (
+            str(runtime / "ocr" / "lib"),
+            ocr_environment.get("LD_LIBRARY_PATH", ""),
+        )
+        if part
+    )
+    ocr_result = subprocess.run(
+        [str(ocr), "--list-langs"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=ocr_environment,
+        timeout=30,
+    )
+    if ocr_result.returncode != 0 or "chi_sim" not in ocr_result.stdout.split():
+        raise RuntimeError("中文 OCR 语言包无法加载")
+
+    smart_versions: dict[str, str] = {}
+    for package in ("numpy", "onnxruntime", "tokenizers"):
+        module = importlib.import_module(package)
+        smart_versions[package] = str(getattr(module, "__version__", "unknown"))
+    llama = runtime / "llama-server"
+    if not llama.is_file():
+        raise RuntimeError("本地 LLM 运行时缺失")
+    llama_environment = os.environ.copy()
+    llama_environment["LD_LIBRARY_PATH"] = os.pathsep.join(
+        part
+        for part in (str(runtime), llama_environment.get("LD_LIBRARY_PATH", ""))
+        if part
+    )
+    llama_result = subprocess.run(
+        [str(llama), "--version"],
+        check=False,
+        capture_output=True,
+        env=llama_environment,
+        timeout=30,
+    )
+    if llama_result.returncode != 0:
+        raise RuntimeError("本地 LLM 运行时无法启动")
+
+    return {
+        "passed": True,
+        "architecture": os.uname().machine if hasattr(os, "uname") else "windows",
+        "sqlite": sqlite,
+        "frontend_assets": len(ASSET_PATTERN.findall(html)),
+        "ocr": "chi_sim",
+        "smart_runtime": smart_versions,
+        "llama": "passed",
+    }
+
+
+def main(runtime: Path | None = None) -> int:
+    try:
+        result = run_selftest(runtime or Path(sys.executable).resolve().parent)
+    except Exception as exc:  # 自检入口必须返回稳定中文摘要，完整异常由调用方记录。
+        print(json.dumps({"passed": False, "error": str(exc)}, ensure_ascii=False))
+        return 2
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    return 0

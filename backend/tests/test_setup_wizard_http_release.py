@@ -9,6 +9,7 @@ import re
 import threading
 import urllib.parse
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -299,3 +300,132 @@ def test_first_run_client_http_flow_validates_before_consuming_code(
     assert not thread.is_alive() and results == [0]
     assert calls[0][0] == "enroll" and calls[1][0] == "write"
     assert opened.get(timeout=2) == "https://192.168.8.20:18765/device-ready"
+
+
+def test_first_run_personal_http_diagnostics_errors_and_admin_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """新手向导所有辅助动作都返回中文结果，失败后可在原页直接重试。"""
+
+    program_data = tmp_path / "ProgramData"
+    config_path = program_data / "PartyOps" / "partyops.env"
+    config_path.parent.mkdir(parents=True)
+    data_dir = tmp_path / "个人 数据"
+    config_path.write_text(
+        f"PARTYOPS_DATA_DIR={data_dir}\nPARTYOPS_PORT=18775\n",
+        encoding="utf-8",
+    )
+    personal_config = tmp_path / "personal.env"
+    personal_config.write_text(
+        f"PARTYOPS_DATA_DIR={data_dir}\nPARTYOPS_PORT=18775\nPARTYOPS_BOOTSTRAP_TOKEN=bootstrap\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.setattr(setup_wizard, "_choose_system_folder", lambda: data_dir)
+    monkeypatch.setattr(
+        setup_wizard,
+        "resolve_host_url",
+        lambda *_args: (_ for _ in ()).throw(ValueError("主机地址不可用")),
+    )
+    statuses = iter(
+        [
+            {"stage": "preparing"},
+            {"stage": "child_running"},
+            {"stage": "child_exited", "code": "CHILD_EXITED"},
+            {"stage": "ready"},
+        ]
+    )
+    monkeypatch.setattr(setup_wizard, "read_service_status", lambda _path: next(statuses))
+    monkeypatch.setattr(setup_wizard, "service_log_path", lambda root: root / "logs" / "service.log")
+    monkeypatch.setattr(
+        setup_wizard,
+        "socket",
+        SimpleNamespace(
+            create_connection=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                OSError("not-listening")
+            )
+        ),
+    )
+    opened_logs: list[Path] = []
+    monkeypatch.setattr(setup_wizard.os, "startfile", lambda path: opened_logs.append(Path(path)), raising=False)
+    monkeypatch.setattr(setup_wizard, "write_personal_config", lambda *_args: personal_config)
+    monkeypatch.setattr(setup_wizard, "launch_personal", lambda _path: "http://127.0.0.1:18775")
+    monkeypatch.setattr(
+        setup_wizard,
+        "load_host_environment",
+        lambda path: (
+            {
+                "PARTYOPS_DATA_DIR": str(data_dir),
+                "PARTYOPS_PORT": "18775",
+                "PARTYOPS_BOOTSTRAP_TOKEN": "bootstrap",
+            }
+            if path in {config_path, personal_config}
+            else {}
+        ),
+    )
+    attempts: list[str] = []
+
+    def bootstrap(_url: str, **_values) -> None:
+        attempts.append(_values["username"])
+        if len(attempts) == 1:
+            raise ValueError("密码强度不足，请修改后重试")
+
+    monkeypatch.setattr(setup_wizard, "bootstrap_first_admin", bootstrap)
+    monkeypatch.setattr(setup_wizard.time, "sleep", lambda _seconds: None)
+
+    url, thread, results, _opened = _start_local_tool(
+        monkeypatch,
+        lambda: setup_wizard.run_wizard(True, "personal"),
+    )
+    page = _request(url)[2]
+    csrf = _csrf(page)
+    assert _request(url, "POST", {"csrf": "wrong", "mode": "personal"})[0] == 400
+    browse = _request(url, "POST", {"csrf": csrf, "mode": "browse_data_dir"})
+    assert json.loads(browse[2])["path"] == str(data_dir)
+    check = _request(url, "POST", {"csrf": csrf, "mode": "check_client", "host_url": "bad"})
+    assert check[0] == 400 and "主机地址不可用" in check[2]
+    for expected in ("service", "child"):
+        status = _request(url, "POST", {"csrf": csrf, "mode": "host_status"})
+        assert json.loads(status[2])["ui_stage"] == expected
+    exited = _request(url, "POST", {"csrf": csrf, "mode": "host_status"})
+    assert json.loads(exited[2])["code"] == "CHILD_EXITED"
+    ready = _request(url, "POST", {"csrf": csrf, "mode": "host_status"})
+    assert json.loads(ready[2])["ui_stage"] == "ready"
+    opened = _request(url, "POST", {"csrf": csrf, "mode": "open_host_logs"})
+    assert json.loads(opened[2])["opened"] is True and opened_logs
+    assert _request(url, "POST", {"csrf": csrf, "mode": "unknown"})[0] == 400
+
+    configured = _request(
+        url,
+        "POST",
+        {"csrf": csrf, "mode": "personal", "port": "18775", "data_dir": str(data_dir)},
+    )
+    assert configured[0] == 200 and "创建首位管理员" in configured[2]
+    first = _request(
+        url,
+        "POST",
+        {
+            "csrf": csrf,
+            "mode": "bootstrap_admin",
+            "username": "admin",
+            "display_name": "管理员",
+            "password": "weak",
+        },
+    )
+    assert first[0] == 400 and "密码强度不足" in first[2]
+    second = _request(
+        url,
+        "POST",
+        {
+            "csrf": csrf,
+            "mode": "bootstrap_admin",
+            "username": "admin",
+            "display_name": "管理员",
+            "password": "PartyOps@2026",
+        },
+    )
+    assert second[0] == 303 and second[1]["Location"] == "http://127.0.0.1:18775"
+    thread.join(timeout=5)
+    assert not thread.is_alive() and results == [0]
+    assert attempts == ["admin", "admin"]

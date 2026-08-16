@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 import hashlib
 import json
 import re
@@ -491,7 +493,7 @@ def batch_tasks(
     return {"updated": changed, "count": len(changed)}
 
 
-@router.get("/saved-views", response_model=list[SavedViewOut])
+@router.get("/saved-views", response_model=typing.List[SavedViewOut])
 def list_saved_views(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -535,7 +537,7 @@ def delete_saved_view(
     return {"deleted": True}
 
 
-@router.get("/topics", response_model=list[TopicSpaceOut])
+@router.get("/topics", response_model=typing.List[TopicSpaceOut])
 def list_topics(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -585,7 +587,7 @@ def patch_topic(
     return topic
 
 
-@router.get("/automation-rules", response_model=list[AutomationRuleOut])
+@router.get("/automation-rules", response_model=typing.List[AutomationRuleOut])
 def list_automation_rules(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -644,7 +646,7 @@ def delete_automation_rule(
     return {"deleted": True}
 
 
-@router.get("/work-calendar", response_model=list[WorkCalendarEntryOut])
+@router.get("/work-calendar", response_model=typing.List[WorkCalendarEntryOut])
 def list_calendar(
     year: int | None = None,
     user: User = Depends(get_current_user),
@@ -914,7 +916,7 @@ def compare_documents(
     return comparison
 
 
-@router.get("/document-comparisons", response_model=list[DocumentComparisonOut])
+@router.get("/document-comparisons", response_model=typing.List[DocumentComparisonOut])
 def list_document_comparisons(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -925,7 +927,7 @@ def list_document_comparisons(
     return list(db.scalars(statement.order_by(DocumentComparison.created_at.desc()).limit(100)).all())
 
 
-@router.post("/duplicates/scan", response_model=list[DuplicateGroupOut])
+@router.post("/duplicates/scan", response_model=typing.List[DuplicateGroupOut])
 def scan_duplicates(
     user: User = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -993,7 +995,7 @@ def scan_duplicates(
     return result
 
 
-@router.get("/duplicates", response_model=list[DuplicateGroupOut])
+@router.get("/duplicates", response_model=typing.List[DuplicateGroupOut])
 def list_duplicates(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),

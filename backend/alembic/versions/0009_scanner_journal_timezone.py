@@ -1,5 +1,7 @@
 """1.1.2 全类型文件索引与结构化工作日志。"""
 
+from __future__ import annotations
+
 from alembic import op
 import sqlalchemy as sa
 

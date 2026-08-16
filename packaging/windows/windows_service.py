@@ -14,14 +14,17 @@ import win32event
 import win32service
 import win32serviceutil
 
-from app.setup_wizard import load_host_environment
+from app.setup_wizard import assert_windows_service_data_path_security, load_host_environment
+from app import __version__
 from app.windows_host_status import (
     CHILD_EXITED,
     DATA_DIR_DENIED,
     HEALTH_TIMEOUT,
     PORT_IN_USE,
     TLS_INIT_FAILED,
+    TERMINAL_CODES,
     probe_loopback_health,
+    read_service_status,
     service_log_path,
     tail_service_log,
     write_service_status,
@@ -131,7 +134,7 @@ def prepare_host_runtime(environment: dict[str, str], executable: Path) -> None:
     if firewall.returncode != 0:
         raise RuntimeError("专用网络防火墙规则配置失败")
     # 协同机由 Agent 按用户确认更新；只有主机需要常驻系统级更新监督器。
-    subprocess.run(
+    updater = subprocess.run(
         ["sc.exe", "start", "PartyOpsUpdateService"],
         check=False,
         stdin=subprocess.DEVNULL,
@@ -140,6 +143,10 @@ def prepare_host_runtime(environment: dict[str, str], executable: Path) -> None:
         timeout=30,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
+    # 1056 表示服务已经运行；除此之外不能把主机伪装成“配置完成”，否则
+    # 用户之后永远收不到更新且界面没有任何诊断。
+    if updater.returncode not in {0, 1056}:
+        raise RuntimeError("PartyOps 更新服务未能启动")
 
 
 class PartyOpsHostService(win32serviceutil.ServiceFramework):
@@ -203,7 +210,16 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
                             self.child_environment.get("PARTYOPS_TLS_ENABLED", "").lower()
                             == "true"
                         )
-                        healthy, detail = probe_loopback_health(port, tls=tls)
+                        healthy, detail = probe_loopback_health(
+                            port,
+                            tls=tls,
+                            expected_version=__version__,
+                            ca_file=(
+                                self.child_data_dir / "secrets" / "pki" / "ca.pem"
+                                if tls and self.child_data_dir is not None
+                                else None
+                            ),
+                        )
                         if healthy:
                             _safe_write_service_status(
                                 self.child_data_dir,
@@ -237,7 +253,15 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
                 environment.update(load_host_environment(config_path))
                 data_dir = Path(environment.get("PARTYOPS_DATA_DIR", str(program_data)))
                 detail = tail_service_log(data_dir)
-                code = _classify_child_failure(detail)
+                # 主进程在数据库迁移失败等场景会先写入稳定诊断。不能在进程
+                # 退出后把它覆盖成泛化 CHILD_EXITED，否则用户又只能看到堆栈。
+                existing = read_service_status(data_dir)
+                existing_code = str((existing or {}).get("code", ""))
+                if existing_code in TERMINAL_CODES:
+                    code = existing_code
+                    detail = str((existing or {}).get("detail", "")) or detail
+                else:
+                    code = _classify_child_failure(detail)
                 _safe_write_service_status(
                     data_dir,
                     stage="child_exited",
@@ -257,9 +281,18 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
             environment.update(load_host_environment(config_path))
             environment.setdefault("PARTYOPS_MODE", "host")
             environment.setdefault("PARTYOPS_DATA_DIR", str(program_data))
+            # Windows 服务没有交互控制台，冻结 Python 仍可能继承系统代码页。
+            # 强制 UTF-8 后，中文异常与监督服务写入的 UTF-8 日志保持一致。
+            environment["PYTHONUTF8"] = "1"
+            environment["PYTHONIOENCODING"] = "utf-8"
+            environment["PYTHONUNBUFFERED"] = "1"
             data_dir = Path(environment["PARTYOPS_DATA_DIR"])
             try:
                 data_dir.mkdir(parents=True, exist_ok=True)
+                assert_windows_service_data_path_security(
+                    data_dir,
+                    verify_target=True,
+                )
                 _safe_write_service_status(data_dir, stage="preparing")
                 config_mtime = config_path.stat().st_mtime_ns
                 if prepared_config_mtime != config_mtime:

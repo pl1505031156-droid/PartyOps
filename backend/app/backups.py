@@ -23,7 +23,49 @@ from .problems import ProblemException
 
 
 FORMAT_VERSION = 1
-SCHEMA_VERSION = "0018"
+SCHEMA_VERSION = "0019"
+MAX_BACKUP_MANIFEST_BYTES = 1024 * 1024
+_WINDOWS_RESERVED_NAMES = {
+    "con",
+    "prn",
+    "aux",
+    "nul",
+    *(f"com{number}" for number in range(1, 10)),
+    *(f"lpt{number}" for number in range(1, 10)),
+}
+
+
+def _portable_zip_name(member: zipfile.ZipInfo) -> tuple[str, str]:
+    """返回规范成员名和跨平台碰撞键，拒绝 Windows 特殊路径语义。"""
+
+    raw = member.filename
+    is_directory = member.is_dir()
+    candidate = raw[:-1] if is_directory and raw.endswith("/") else raw
+    segments = candidate.split("/")
+    invalid_segment = any(
+        not segment
+        or segment in {".", ".."}
+        or segment.endswith((" ", "."))
+        or ":" in segment
+        or any(ord(character) < 32 for character in segment)
+        or segment.rstrip(" .").split(".", 1)[0].casefold()
+        in _WINDOWS_RESERVED_NAMES
+        for segment in segments
+    )
+    if (
+        not candidate
+        or "\\" in raw
+        or raw.startswith("/")
+        or invalid_segment
+    ):
+        raise ProblemException(
+            400,
+            "BACKUP_PATH_INVALID",
+            "备份包无效",
+            "备份包含不可移植、越界或具有特殊文件系统语义的路径。",
+        )
+    normalized = "/".join(segments)
+    return normalized, normalized.casefold()
 
 
 def current_schema_version() -> str:
@@ -75,19 +117,16 @@ def _validated_zip_infos(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     expanded = 0
     expanded_limit = settings.backup_restore_max_gb * 1024**3
     for member in infos:
-        name = member.filename.replace("\\", "/")
-        parts = PurePosixPath(name).parts
+        name, collision_key = _portable_zip_name(member)
         mode = (member.external_attr >> 16) & 0o170000
         if (
-            not name
-            or "\x00" in name
-            or name.startswith("/")
-            or ".." in parts
-            or name in seen
-            or mode == stat.S_IFLNK
+            collision_key in seen
+            or mode not in {0, stat.S_IFREG, stat.S_IFDIR}
+            or member.flag_bits & 0x1
+            or member.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
         ):
-            raise ProblemException(400, "BACKUP_PATH_INVALID", "备份包无效", "备份包含非法路径、链接或重复成员。")
-        seen.add(name)
+            raise ProblemException(400, "BACKUP_PATH_INVALID", "备份包无效", "备份包含非法路径、特殊文件、加密成员或跨平台重复成员。")
+        seen.add(collision_key)
         expanded += max(0, int(member.file_size))
         if expanded > expanded_limit:
             raise ProblemException(400, "BACKUP_EXPANDED_LIMIT", "备份包无效", "备份解压体积超过安全上限。")
@@ -102,7 +141,8 @@ def _safe_zip_members(archive: zipfile.ZipFile, destination: Path) -> None:
     root = destination.resolve()
     infos = _validated_zip_infos(archive)
     for member in infos:
-        target = (root / member.filename).resolve()
+        normalized, _collision_key = _portable_zip_name(member)
+        target = (root / Path(*PurePosixPath(normalized).parts)).resolve()
         if root != target and root not in target.parents:
             raise ProblemException(
                 400, "BACKUP_PATH_INVALID", "备份包无效", "备份包含越界路径。"
@@ -255,15 +295,33 @@ def verify_backup(path: Path) -> dict[str, object]:
         raise ProblemException(400, "BACKUP_INVALID", "备份包无效", "文件不是有效备份包。")
     with zipfile.ZipFile(path) as archive:
         infos = _validated_zip_infos(archive)
+        manifest_infos = [item for item in infos if item.filename == "manifest.json"]
+        if len(manifest_infos) != 1 or manifest_infos[0].file_size > MAX_BACKUP_MANIFEST_BYTES:
+            raise ProblemException(
+                400,
+                "BACKUP_MANIFEST_INVALID",
+                "备份清单无效",
+                "备份必须包含唯一且不超过 1 MiB 的 manifest.json。",
+            )
         try:
-            manifest = json.loads(archive.read("manifest.json"))
-        except (KeyError, json.JSONDecodeError) as exc:
+            manifest = json.loads(archive.read(manifest_infos[0]).decode("utf-8"))
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError, zipfile.BadZipFile) as exc:
             raise ProblemException(
                 400, "BACKUP_MANIFEST_INVALID", "备份清单无效", "缺少有效 manifest.json。"
             ) from exc
         if not isinstance(manifest, dict) or manifest.get("format") != "partyops-backup":
             raise ProblemException(400, "BACKUP_FORMAT_INVALID", "备份格式不匹配", "请选择党建智办备份。")
-        if int(manifest.get("format_version", 0)) > FORMAT_VERSION:
+        try:
+            format_version = int(manifest.get("format_version", 0))
+        except (TypeError, ValueError) as exc:
+            raise ProblemException(
+                400, "BACKUP_MANIFEST_INVALID", "备份清单无效", "format_version 必须是整数。"
+            ) from exc
+        if format_version < 1:
+            raise ProblemException(
+                400, "BACKUP_MANIFEST_INVALID", "备份清单无效", "format_version 必须是正整数。"
+            )
+        if format_version > FORMAT_VERSION:
             raise ProblemException(
                 409, "BACKUP_TOO_NEW", "备份版本过新", "请使用更高版本的党建智办恢复。"
             )
@@ -296,10 +354,18 @@ def verify_backup(path: Path) -> dict[str, object]:
             seen.add(item_path)
             digest = hashlib.sha256()
             size = 0
-            with archive.open(str(item["path"])) as source:
-                while chunk := source.read(1024 * 1024):
-                    digest.update(chunk)
-                    size += len(chunk)
+            try:
+                with archive.open(str(item["path"])) as source:
+                    while chunk := source.read(1024 * 1024):
+                        digest.update(chunk)
+                        size += len(chunk)
+            except zipfile.BadZipFile as exc:
+                raise ProblemException(
+                    400,
+                    "BACKUP_HASH_MISMATCH",
+                    "备份校验失败",
+                    f"文件 CRC 损坏：{item_path}",
+                ) from exc
             try:
                 expected_size = int(item["size"])
                 expected_hash = str(item["sha256"]).lower()
@@ -326,10 +392,21 @@ def verify_backup(path: Path) -> dict[str, object]:
                 "备份包含未登记文件",
                 "备份包与清单不一致，已拒绝恢复。",
             )
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as handle:
-            with archive.open("database/partyops.db") as source:
-                shutil.copyfileobj(source, handle, length=1024 * 1024)
-            integrity_path = Path(handle.name)
+        integrity_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as handle:
+                integrity_path = Path(handle.name)
+                with archive.open("database/partyops.db") as source:
+                    shutil.copyfileobj(source, handle, length=1024 * 1024)
+        except zipfile.BadZipFile as exc:
+            if integrity_path is not None:
+                integrity_path.unlink(missing_ok=True)
+            raise ProblemException(
+                400,
+                "BACKUP_HASH_MISMATCH",
+                "备份校验失败",
+                "数据库载荷 CRC 损坏。",
+            ) from exc
         try:
             connection = sqlite3_dbapi.connect(integrity_path)
             try:

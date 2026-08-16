@@ -100,7 +100,7 @@ def test_process_lock_environment_and_health_helpers(monkeypatch, tmp_path: Path
     database = data_dir / "partyops.db"
     with sqlite3.connect(database) as connection:
         connection.execute("CREATE TABLE update_runs (id TEXT, target_device_id TEXT, status TEXT, created_at TEXT)")
-        connection.execute("INSERT INTO update_runs VALUES ('run-1', NULL, 'applying', '2026-08-11')")
+        connection.execute("INSERT INTO update_runs VALUES ('run-1', NULL, 'APPLYING', '2026-08-11')")
     assert update_executor._pending_run_id(data_dir) == "run-1"
 
     settings = _settings(tmp_path / "health")
@@ -109,6 +109,12 @@ def test_process_lock_environment_and_health_helpers(monkeypatch, tmp_path: Path
     # SimpleNamespace 的特殊方法不参与协议查找，因此用明确响应对象。
     class Response:
         status = 200
+
+        def read(self, _size=-1):
+            return (
+                b'{"status":"ok","mode":"host","app_version":"1.4.3-rc.3",'
+                b'"sqlite":{"safe_version":true,"fts5":true}}'
+            )
 
         def __enter__(self):
             return self
@@ -121,8 +127,27 @@ def test_process_lock_environment_and_health_helpers(monkeypatch, tmp_path: Path
     assert update_executor._manifest_has_windows_artifact({"platform_artifacts": {"windows": {"amd64": "PartyOps.exe"}}})
     assert not update_executor._manifest_has_windows_artifact({})
 
-    monkeypatch.setattr(update_executor, "_run", lambda command, timeout=120: subprocess.CompletedProcess(command, 0, "", ""))
+    installer_commands: list[list[str]] = []
+    monkeypatch.setattr(
+        update_executor,
+        "_run",
+        lambda command, timeout=120: installer_commands.append(command)
+        or subprocess.CompletedProcess(command, 0, "", ""),
+    )
     assert update_executor._run_windows_installer(tmp_path / "PartyOps.exe")
+    assert "/INAPPUPDATE=1" not in installer_commands[-1]
+    assert update_executor._run_windows_installer(
+        tmp_path / "PartyOps.exe", service_handoff=True
+    )
+    assert installer_commands[-1][-1] == "/INAPPUPDATE=1"
+    monkeypatch.setattr(
+        update_executor,
+        "_run",
+        lambda command, timeout=120: subprocess.CompletedProcess(
+            command, 1056, "已经运行", ""
+        ),
+    )
+    assert update_executor._start_windows_host_service_after_update()
     monkeypatch.setattr(update_executor, "get_settings", lambda: SimpleNamespace(update_public_key="fixed-key"))
     assert update_executor._trusted_public_key() == "fixed-key"
 
@@ -134,7 +159,11 @@ def test_windows_host_update_success_and_rollback(monkeypatch, tmp_path: Path) -
     cache = settings.data_dir / "installer-cache"
     cache.mkdir()
     (cache / "current.exe").write_bytes(b"old-installer")
+    (cache / "current.exe.sha256").write_text(
+        update_executor._hash(cache / "current.exe"), encoding="ascii"
+    )
     states: list[tuple[UpdateStatus, int, str]] = []
+    monkeypatch.setattr(update_executor, "_windows_installer_cache", lambda: cache)
 
     def select_artifact(_package, _manifest, _architecture, target, _platform):
         target.write_bytes(b"new-installer")
@@ -142,12 +171,20 @@ def test_windows_host_update_success_and_rollback(monkeypatch, tmp_path: Path) -
 
     monkeypatch.setattr(update_executor, "get_settings", lambda: settings)
     monkeypatch.setattr(update_executor, "_select_artifact", select_artifact)
-    monkeypatch.setattr(update_executor, "_run_windows_installer", lambda _path: True)
-    monkeypatch.setattr(update_executor, "_health_check", lambda: True)
+    handoffs: list[bool] = []
+
+    def install_and_seed(path: Path, **kwargs) -> bool:
+        handoffs.append(bool(kwargs.get("service_handoff")))
+        update_executor._cache_verified_rollback_artifact(path, cache / "current.exe")
+        return True
+
+    monkeypatch.setattr(update_executor, "_run_windows_installer", install_and_seed)
+    monkeypatch.setattr(update_executor, "_health_check", lambda *_args: True)
     monkeypatch.setattr(update_executor, "_run", lambda command, timeout=120: subprocess.CompletedProcess(command, 0, "", ""))
     monkeypatch.setattr(update_executor, "_set_run", lambda _id, *, status, progress, message: states.append((status, progress, message)))
     monkeypatch.setattr(update_executor.db_runtime, "session_factory", lambda: _Session())
     assert update_executor._execute_windows_host_update("run-success", package_path, {})
+    assert handoffs == [True]
     assert (cache / "current.exe").read_bytes() == b"new-installer"
     assert any(progress == 80 for _, progress, _ in states)
     assert not (settings.data_dir / ".update.lock").exists()
@@ -156,10 +193,23 @@ def test_windows_host_update_success_and_rollback(monkeypatch, tmp_path: Path) -
     failure_cache = failure_settings.data_dir / "installer-cache"
     failure_cache.mkdir()
     (failure_cache / "current.exe").write_bytes(b"rollback-installer")
+    (failure_cache / "current.exe.sha256").write_text(
+        update_executor._hash(failure_cache / "current.exe"), encoding="ascii"
+    )
     installer_results = iter([False, True])
     failure_states: list[UpdateStatus] = []
     monkeypatch.setattr(update_executor, "get_settings", lambda: failure_settings)
-    monkeypatch.setattr(update_executor, "_run_windows_installer", lambda _path: next(installer_results))
+    monkeypatch.setattr(update_executor, "_windows_installer_cache", lambda: failure_cache)
+    monkeypatch.setattr(
+        update_executor,
+        "_restore_database_snapshot",
+        lambda source, destination: destination.write_bytes(source.read_bytes()),
+    )
+    monkeypatch.setattr(
+        update_executor,
+        "_run_windows_installer",
+        lambda _path, **_kwargs: next(installer_results),
+    )
     monkeypatch.setattr(update_executor, "_set_run", lambda _id, *, status, progress, message: failure_states.append(status))
     assert not update_executor._execute_windows_host_update("run-failure", package_path, {})
     assert failure_states[-1] == UpdateStatus.ROLLED_BACK
@@ -240,7 +290,7 @@ def test_windows_process_architecture_key_and_installer_branches(monkeypatch, tm
     monkeypatch.setattr(update_executor.platform, "machine", lambda: "AMD64")
     assert update_executor._architecture() == "amd64"
     monkeypatch.setattr(update_executor.platform, "machine", lambda: "arm64")
-    with pytest.raises(RuntimeError, match="仅支持 x64"):
+    with pytest.raises(RuntimeError, match="当前系统架构不在 PartyOps 支持范围"):
         update_executor._architecture()
 
     runtime = tmp_path / "PartyOps.exe"
@@ -267,6 +317,7 @@ def test_artifact_manifest_version_snapshot_and_queue_guards(monkeypatch, tmp_pa
         archive.writestr(name, payload)
 
     base = {
+        "version": "1.4.3-rc.3",
         "architecture_artifacts": {"amd64": name},
         "artifacts": {
             name: {

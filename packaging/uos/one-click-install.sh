@@ -56,8 +56,6 @@ if [[ -z "$CURRENT_USER" || ! "$CURRENT_USER" =~ ^[A-Za-z0-9._-]+$ ]] ||
   exit 2
 fi
 
-CURRENT_GROUP="$(id -gn "$CURRENT_USER")"
-
 as_root() {
   if [[ "$(id -u)" -eq 0 ]]; then
     "$@"
@@ -118,8 +116,8 @@ verify_installed_package() {
   local installed_version installed_arch updater_deadline
   installed_version="$(dpkg-query -W -f='${Version}' partyops)"
   installed_arch="$(dpkg-query -W -f='${Architecture}' partyops)"
-  [[ "$installed_version" == "$VERSION" ]] || {
-    echo "安装后版本不一致：期望 $VERSION，实际 $installed_version" >&2
+  [[ "$installed_version" == "$PACKAGE_VERSION" ]] || {
+    echo "安装后版本不一致：期望 $PACKAGE_VERSION，实际 $installed_version" >&2
     return 2
   }
   [[ "$installed_arch" == "$ARCH" ]] || {
@@ -169,7 +167,7 @@ install_or_upgrade_package() {
   if dpkg-query -W -f='${Version}' partyops >/dev/null 2>&1; then
     installed_version="$(dpkg-query -W -f='${Version}' partyops)"
   fi
-  if [[ "$installed_version" == "$VERSION" ]]; then
+  if [[ "$installed_version" == "$PACKAGE_VERSION" ]]; then
     echo "检测到同版本 $VERSION，将执行修复性重装并保留现有业务数据。"
     as_root apt-get install --reinstall -y "$DEB"
   else
@@ -194,8 +192,9 @@ if [[ "$ARCH" != "amd64" && "$ARCH" != "arm64" ]]; then
   echo "党建智办仅支持 amd64 和 ARM64；本机架构为：$ARCH" >&2
   exit 2
 fi
-VERSION="${PARTYOPS_VERSION:-1.4.3}"
-DEB="$ARTIFACTS/partyops_${VERSION}_${ARCH}.deb"
+VERSION="${PARTYOPS_VERSION:-1.4.3-rc.3}"
+PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.3}"
+DEB="$ARTIFACTS/PartyOps_${VERSION}_linux_${ARCH}.deb"
 
 if [[ -f "$DEB" && "$FORCE_REBUILD" != "1" ]]; then
   PACKAGE_ARCH="$(dpkg-deb -f "$DEB" Architecture)"
@@ -211,12 +210,12 @@ if [[ -f "$DEB" && "$FORCE_REBUILD" != "1" ]]; then
 else
   OTHER_ARCH="amd64"
   [[ "$ARCH" == "amd64" ]] && OTHER_ARCH="arm64"
-  if [[ "$FORCE_REBUILD" != "1" && -f "$ARTIFACTS/partyops_${VERSION}_${OTHER_ARCH}.deb" ]]; then
+  if [[ "$FORCE_REBUILD" != "1" && -f "$ARTIFACTS/PartyOps_${VERSION}_linux_${OTHER_ARCH}.deb" ]]; then
     echo "本机为 $ARCH，但目录中只有 ${OTHER_ARCH} 安装包。" >&2
     if [[ "$ARCH" == "arm64" ]]; then
-      echo "请复制 partyops_${VERSION}_arm64.deb；D2000/8 必须使用 ARM64 包，禁止 --force-architecture。" >&2
+      echo "请复制 PartyOps_${VERSION}_linux_arm64.deb；飞腾设备必须使用 ARM64 包，禁止 --force-architecture。" >&2
     else
-      echo "请复制 partyops_${VERSION}_amd64.deb。" >&2
+      echo "请复制 PartyOps_${VERSION}_linux_amd64.deb。" >&2
     fi
     exit 2
   fi
@@ -242,10 +241,6 @@ run_stage "安装或原位升级党建智办 $VERSION" \
 run_stage "创建应用菜单与桌面入口" \
   as_root /opt/partyops/install-desktop-shortcut.sh "$CURRENT_USER"
 run_stage "核验安装、应用入口和系统内更新助手" verify_installed_package
-if [[ "$(id -u)" -eq 0 ]]; then
-  chown -R "$CURRENT_USER:$CURRENT_GROUP" "$ARTIFACTS"
-fi
-
 echo
 echo "安装完成：党建智办 $VERSION（$ARCH），应用菜单和桌面入口均已创建。"
 echo "首次双击会出现“配置为主机 / 配置为协同终端”向导。"

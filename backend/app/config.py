@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "党建智办"
-    app_version: str = "1.4.3"
-    mode: Literal["host", "client"] = "host"
+    app_version: str = "1.4.3-rc.3"
+    mode: Literal["host", "personal", "client"] = "host"
     # 未显式配置时按生产边界运行。开发脚本和自动化测试会主动设置
     # development/test，避免开源用户直接启动时意外开启调试与弱校验。
     environment: Literal["development", "test", "production"] = "production"
@@ -69,8 +69,19 @@ class Settings(BaseSettings):
     # 旧式只读备份令牌仅用于兼容早期终端。设置固定有效期，避免令牌
     # 泄露后永久可用；新版设备证书通道不受此值影响。
     backup_pairing_ttl_days: int = Field(default=365, ge=1, le=3650)
-    allowed_origins: str = "http://127.0.0.1:4173,http://localhost:4173"
+    # 冻结运行时与生产部署均为同源，默认不信任任何跨域页面。开发脚本会
+    # 显式加入本机 Vite 端口，避免把开发便利永久带进生产攻击面。
+    allowed_origins: str = ""
+    # Windows 配置向导通过无浏览器的本机 HTTPS 请求创建首位管理员。该随机
+    # 令牌只保存在受保护控制配置中，用于区分向导与恶意网页发起的 localhost CSRF。
+    bootstrap_token: str = ""
     update_public_key: str = ""
+    update_catalog_url: str = "https://www.partyops.cn/releases/update-v3.json"
+    update_download_hosts: str = (
+        "partyops.cn,www.partyops.cn,github.com,objects.githubusercontent.com,"
+        "github-releases.githubusercontent.com,"
+        "bde850578a4c471bb62a0b2a5801d769.gz1.agentos-app.net"
+    )
     model_pack_public_key: str = ""
     local_ai_port: int = 18767
     local_ai_max_threads: int = 4

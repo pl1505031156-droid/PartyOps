@@ -3,8 +3,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS="$ROOT/artifacts"
-mkdir -p "$ROOT/.build-uos"
-BUILD="$(mktemp -d "$ROOT/.build-uos/portable.XXXXXX")"
+BUILD_PARENT="${PARTYOPS_BUILD_BASE:-$ROOT/.build-uos}"
+mkdir -p "$BUILD_PARENT"
+BUILD_PARENT="$(cd "$BUILD_PARENT" && pwd -P)"
+BUILD="$(mktemp -d "$BUILD_PARENT/portable.XXXXXX")"
+PYI_DIST="$BUILD/pyinstaller-dist"
+PYI_WORK="$BUILD/pyinstaller-work"
 ARCH="${PARTYOPS_BUILD_ARCH:-$(dpkg --print-architecture 2>/dev/null || true)}"
 if [[ -z "$ARCH" ]]; then
   case "$(uname -m)" in
@@ -22,7 +26,9 @@ if [[ "$ARCH" == "amd64" && ! -d "$WHEELHOUSE" ]]; then
 fi
 LOCAL_AI_RUNTIME="$ROOT/vendor/local-ai/$ARCH"
 LOCAL_AI_ARCHIVE="$LOCAL_AI_RUNTIME/llama-runtime.tar.gz"
-REQUIRE_LOCAL_AI_RUNTIME="${PARTYOPS_REQUIRE_LOCAL_AI_RUNTIME:-0}"
+OCR_RUNTIME="$ROOT/vendor/ocr/$ARCH"
+OCR_ARCHIVE="$OCR_RUNTIME/tesseract-runtime.tar.gz"
+REQUIRE_LOCAL_AI_RUNTIME=1
 SQLITE_ARCHIVE="$ROOT/vendor/sqlite-amalgamation-3510300.zip"
 PYSQLITE_ARCHIVE="$ROOT/vendor/pysqlite3-0.5.4.tar.gz"
 PID=""
@@ -35,7 +41,7 @@ cleanup_build() {
     wait "$PID" 2>/dev/null || true
   fi
   case "$BUILD" in
-    "$ROOT/.build-uos/portable."*)
+    "$BUILD_PARENT/portable."*)
       rm -rf -- "$BUILD"
       ;;
     *)
@@ -69,48 +75,43 @@ if ! "$PYTHON_BIN" - "$GLIBC_VERSION" <<'PY'
 import sys
 
 current = tuple(int(part) for part in sys.argv[1].split(".")[:2])
-raise SystemExit(0 if current >= (2, 28) else 1)
+raise SystemExit(0 if current == (2, 17) else 1)
 PY
 then
-  echo "当前 glibc $GLIBC_VERSION 低于离线安全依赖要求的 2.28。" >&2
+  echo "正式构建必须在 glibc 2.17 的 manylinux2014 工具链中运行；当前为 $GLIBC_VERSION。" >&2
   exit 2
 fi
-if [[ ! -f /etc/os-version && ! -f /etc/uos-release ]] &&
-  ! grep -Eiq '(^ID=.*uos|uniontech|统信)' /etc/os-release 2>/dev/null; then
-  echo "未检测到 UOS 标识；为避免 glibc 不兼容，拒绝继续。" >&2
-  exit 2
-fi
-for required in "$SQLITE_ARCHIVE" "$PYSQLITE_ARCHIVE" "$WHEELHOUSE"; do
+for required in "$SQLITE_ARCHIVE" "$PYSQLITE_ARCHIVE" "$WHEELHOUSE" "$OCR_ARCHIVE"; do
   [[ -e "$required" ]] || { echo "缺少离线构建输入：$required" >&2; exit 2; }
 done
 LOCAL_EMBEDDING_AVAILABLE=1
 for wheel_prefix in numpy onnxruntime tokenizers; do
   if ! compgen -G "$WHEELHOUSE/${wheel_prefix}-*.whl" >/dev/null; then
-    echo "提示：缺少 $ARCH 本地语义离线轮子 ${wheel_prefix}，将关闭语义重排。" >&2
-    LOCAL_EMBEDDING_AVAILABLE=0
+    echo "缺少 $ARCH 本地语义离线轮子 ${wheel_prefix}，严格模式拒绝构建。" >&2
+    exit 2
   fi
 done
 LOCAL_LLM_AVAILABLE=1
 case "$ARCH" in
-  amd64) EXPECTED_LLAMA_SHA256="9984060517edf7c2436991d8f635804586530b4642490fd4afc61ffad1d9f638" ;;
-  arm64) EXPECTED_LLAMA_SHA256="b4330d32023f721fa290d80f48c56b9f4691674af8712fd0ef4c93ab2e81d71b" ;;
+  amd64) EXPECTED_LLAMA_SHA256="dfb51ab3c3d0ca61054a4c2df37fc27d037f9f2c3284300ef743875fd8731d9f" ;;
+  arm64) EXPECTED_LLAMA_SHA256="0fad023bd95e1a26bdaa972b737ff636091e75eb2e743ab98ee726ec0c64ad0f" ;;
 esac
 if [[ ! -f "$LOCAL_AI_ARCHIVE" ]] ||
   [[ "$(sha256sum "$LOCAL_AI_ARCHIVE" | awk '{print $1}')" != "$EXPECTED_LLAMA_SHA256" ]]; then
-  echo "提示：缺少或校验失败的 $ARCH llama.cpp b10331 运行时，将关闭本地 LLM。" >&2
-  LOCAL_LLM_AVAILABLE=0
+  echo "缺少或校验失败的 $ARCH llama.cpp b10331 运行时，严格模式拒绝构建。" >&2
+  exit 2
 fi
 if [[ ! -f "$LOCAL_AI_RUNTIME/LICENSE" || ! -f "$LOCAL_AI_RUNTIME/SOURCE.json" ]]; then
-  echo "提示：缺少 llama.cpp 许可文件，将关闭本地 LLM。" >&2
-  LOCAL_LLM_AVAILABLE=0
+  echo "缺少 llama.cpp 许可文件，严格模式拒绝构建。" >&2
+  exit 2
 fi
 # 部分 Windows 解压/重打包工具会把清单改成 CRLF。校验前只规范行尾，
 # 避免 sha256sum 把不可见的 \r 误认为文件名的一部分。
 sed -i 's/\r$//' "$ROOT/vendor/SHA256SUMS"
 (cd "$ROOT/vendor" && sha256sum -c SHA256SUMS)
-if ! command -v tesseract >/dev/null 2>&1; then
-  echo "未检测到 Tesseract；图片 OCR 验收前需安装 tesseract-ocr 与中文语言包。" >&2
-fi
+gzip -dc "$OCR_ARCHIVE" |
+  "$PYTHON_BIN" "$ROOT/scripts/validate-portable-tar.py" \
+    --expected-root tesseract-5.5.3 --max-members 1000 --max-bytes 536870912
 
 # python-build-standalone 由 Clang 构建，其 sysconfig 会默认调用 clang/llvm-ar。
 # UOS 的 build-essential 提供 GCC 工具链，因此为本机扩展显式覆盖编译与链接命令。
@@ -133,28 +134,16 @@ mkdir -p "$ARTIFACTS"
 PY="$BUILD/venv/bin/python"
 "$PY" -m pip install --no-index --find-links "$WHEELHOUSE" \
   -r "$ROOT/packaging/uos/requirements-build.txt"
-if [[ "$LOCAL_EMBEDDING_AVAILABLE" == "1" ]]; then
-  if ! "$PY" "$ROOT/scripts/validate-uos-wheelhouse.py" \
-    --architecture "$ARCH" \
-    --wheelhouse "$WHEELHOUSE" \
-    --requirements \
-    "$ROOT/backend/requirements.txt" \
-    "$ROOT/backend/requirements-local-ai.txt" \
-    "$ROOT/packaging/uos/requirements-build.txt"; then
-    if [[ "$REQUIRE_LOCAL_AI_RUNTIME" == "1" ]]; then
-      echo "严格模式：$ARCH 离线依赖存在重复包、缺失项或版本冲突，拒绝构建；请清空旧目录后重新解压 rc.2 套件。" >&2
-      exit 2
-    fi
-    echo "提示：$ARCH 本地语义离线依赖闭包不完整，将关闭语义重排并继续基础构建。" >&2
-    LOCAL_EMBEDDING_AVAILABLE=0
-  fi
-fi
-if [[ "$REQUIRE_LOCAL_AI_RUNTIME" == "1" && (
-  "$LOCAL_EMBEDDING_AVAILABLE" != "1" || "$LOCAL_LLM_AVAILABLE" != "1"
-) ]]; then
-  echo "严格模式要求完整的 $ARCH 本地智能运行时，当前输入不完整，拒绝构建。" >&2
-  exit 2
-fi
+"$PY" "$ROOT/scripts/validate-uos-wheelhouse.py" \
+  --architecture "$ARCH" \
+  --wheelhouse "$WHEELHOUSE" \
+  --requirements \
+  "$ROOT/backend/requirements.txt" \
+  "$ROOT/backend/requirements-local-ai.txt" \
+  "$ROOT/packaging/uos/requirements-build.txt" || {
+    echo "严格模式：$ARCH 离线依赖存在重复包、错误架构、glibc 超限、缺失项或版本冲突，拒绝构建。" >&2
+    exit 2
+  }
 
 mkdir -p "$BUILD/sqlite" "$BUILD/pysqlite3"
 unzip -q "$SQLITE_ARCHIVE" -d "$BUILD/sqlite"
@@ -208,12 +197,20 @@ elif [[ ! -f "$ROOT/frontend/dist/client/index.html" ]]; then
 fi
 (
   cd "$ROOT"
-  "$PY" -m PyInstaller --noconfirm --clean "$ROOT/packaging/uos/partyops.spec"
+  # python-build-standalone 将 Tcl/Tk 放在自身 lib 目录。如果构建时未
+  # 显式加入动态库搜索路径，PyInstaller 会生成一个缺少
+  # libtcl/libtk 的向导程序，只有用户点击“选择数据目录”时才崩溃。
+  # 发布构建必须在冻结时解析并封入这两个库。
+  PYTHON_BASE_LIB="$("$PY" -c 'from pathlib import Path; import sys; print(Path(sys.executable).resolve().parents[1] / "lib")')"
+  LD_LIBRARY_PATH="$PYTHON_BASE_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    "$PY" -m PyInstaller --noconfirm --clean \
+      --distpath "$PYI_DIST" --workpath "$PYI_WORK" \
+      "$ROOT/packaging/uos/partyops.spec"
 )
 
 RUNTIME="$BUILD/PartyOps"
 mkdir -p "$RUNTIME"
-cp -a "$ROOT/dist/PartyOps/." "$RUNTIME/"
+cp -a "$PYI_DIST/PartyOps/." "$RUNTIME/"
 
 # 打包完整性断言：冒烟测试之前先确认关键数据已随运行时打包，避免
 # spec 漏配导致"构建成功、启动即失败"。1.3.3 曾因漏打包 alembic 在
@@ -248,8 +245,8 @@ verify_runtime_bundle() {
   echo "便携运行时打包完整性核验通过（alembic 迁移 $bundled_versions 个）。"
 }
 verify_runtime_bundle "$RUNTIME" || exit 2
-cp "$ROOT/dist/partyops-client" "$ROOT/dist/partyops-wizard" \
-  "$ROOT/dist/partyops-updater" "$RUNTIME/"
+cp "$PYI_DIST/partyops-client" "$PYI_DIST/partyops-wizard" \
+  "$PYI_DIST/partyops-updater" "$RUNTIME/"
 cp "$ROOT/packaging/uos/start.sh" "$ROOT/packaging/uos/stop.sh" \
   "$ROOT/packaging/uos/desktop-launcher.sh" \
   "$ROOT/packaging/uos/open-local-file.sh" \
@@ -277,8 +274,9 @@ done
 cp -a "$ROOT/docs" "$RUNTIME/"
 
 mkdir -p "$RUNTIME/licenses"
-# llama.cpp 固定为官方 b10331 CPU 制品；在 UOS 目标机解包后立即执行版本
-# 验证。模型本身通过签名 .partyops-modelpack 独立导入，主程序包不携带权重。
+# llama.cpp 固定为官方 b10331 标签源码，并由 glibc 2.17 工具链重建 CPU
+# 运行时；解包后立即执行版本验证。模型通过签名 .partyops-modelpack 独立
+# 导入，主程序包不携带权重。
 if [[ "$LOCAL_LLM_AVAILABLE" == "1" ]]; then
   mkdir -p "$BUILD/llama-runtime"
   tar -xzf "$LOCAL_AI_ARCHIVE" -C "$BUILD/llama-runtime"
@@ -304,47 +302,69 @@ fi
   echo "缺失的增强能力不会影响任务、文件、档案、协同、规则推荐和外部 AI。"
 } >"$RUNTIME/local-ai-capabilities.txt"
 
-# 将 OCR 引擎、运行库和中文语言数据随应用一并交付，安装机无需联网补包。
+# 将固定官方源码重建的 OCR 引擎与中英文语言数据随应用一并交付。
+# 禁止从构建机复制系统 Tesseract：manylinux2014 环境里的系统版本可能
+# 已停止维护，也会让不同时间生成的制品内容无法复现。
 OCR_ROOT="$RUNTIME/ocr"
 mkdir -p "$OCR_ROOT/bin" "$OCR_ROOT/lib" "$OCR_ROOT/tessdata" "$OCR_ROOT/licenses"
-TESSERACT_BIN="$(command -v tesseract)"
-cp -L "$TESSERACT_BIN" "$OCR_ROOT/bin/tesseract"
-while read -r library; do
-  [[ -f "$library" ]] || continue
-  case "$(basename "$library")" in
-    libc.so.*|ld-linux*.so.*|libpthread.so.*|libdl.so.*|librt.so.*|libm.so.*) continue ;;
-  esac
-  cp -L "$library" "$OCR_ROOT/lib/$(basename "$library")"
-done < <(ldd "$TESSERACT_BIN" | awk '/=> \// {print $3} /^\// {print $1}')
-TESSDATA_SOURCE=""
-for candidate in \
-  /usr/share/tesseract-ocr/5/tessdata \
-  /usr/share/tesseract-ocr/4.00/tessdata \
-  /usr/share/tesseract-ocr/tessdata \
-  /usr/share/tessdata; do
-  if [[ -f "$candidate/chi_sim.traineddata" ]]; then
-    TESSDATA_SOURCE="$candidate"
-    break
-  fi
-done
-[[ -n "$TESSDATA_SOURCE" ]] || {
-  echo "未找到 chi_sim.traineddata，无法生成自带中文 OCR 的安装包。" >&2
+mkdir -p "$BUILD/ocr-runtime"
+tar -xzf "$OCR_ARCHIVE" -C "$BUILD/ocr-runtime" \
+  --no-same-owner --no-same-permissions
+OCR_SOURCE_DIR="$(find "$BUILD/ocr-runtime" -mindepth 1 -maxdepth 1 \
+  -type d -name 'tesseract-5.5.3' -print -quit)"
+[[ -n "$OCR_SOURCE_DIR" && -x "$OCR_SOURCE_DIR/bin/tesseract" ]] || {
+  echo "固定 OCR 运行时缺少 Tesseract 5.5.3 可执行文件。" >&2
   exit 2
 }
-cp "$TESSDATA_SOURCE/chi_sim.traineddata" "$OCR_ROOT/tessdata/"
-[[ -f "$TESSDATA_SOURCE/eng.traineddata" ]] &&
-  cp "$TESSDATA_SOURCE/eng.traineddata" "$OCR_ROOT/tessdata/"
-for copyright in /usr/share/doc/tesseract-ocr/copyright /usr/share/doc/tesseract-ocr-chi-sim/copyright; do
-  [[ -f "$copyright" ]] && cp "$copyright" "$OCR_ROOT/licenses/$(basename "$(dirname "$copyright")")-copyright"
-done
+cp -a "$OCR_SOURCE_DIR/bin/tesseract" "$OCR_ROOT/bin/"
+cp -a "$OCR_SOURCE_DIR/tessdata/." "$OCR_ROOT/tessdata/"
+cp -a "$OCR_SOURCE_DIR/licenses/." "$OCR_ROOT/licenses/"
+EXPECTED_OCR_PATTERN=x86-64
+[[ "$ARCH" == arm64 ]] && EXPECTED_OCR_PATTERN='ARM aarch64'
+file "$OCR_ROOT/bin/tesseract" | grep -q "$EXPECTED_OCR_PATTERN" || {
+  echo "OCR ELF 架构与目标 $ARCH 不一致。" >&2
+  exit 2
+}
+if ldd "$OCR_ROOT/bin/tesseract" 2>&1 | grep -q 'not found'; then
+  echo "OCR 运行时存在缺失的动态库依赖。" >&2
+  exit 2
+fi
+if ldd "$OCR_ROOT/bin/tesseract" |
+  grep -Eq 'lib(tesseract|lept|png|z|stdc\+\+|gcc_s)\.so'; then
+  echo "OCR/图像/C++ 运行库未静态封入 Tesseract，拒绝构建。" >&2
+  exit 2
+fi
+OCR_VERSION="$(TESSDATA_PREFIX="$OCR_ROOT/tessdata" \
+  "$OCR_ROOT/bin/tesseract" --version 2>&1)"
+grep -q '^tesseract 5\.5\.3' <<<"$OCR_VERSION" || {
+  echo "OCR 版本不是已冻结的 Tesseract 5.5.3。" >&2
+  exit 2
+}
+OCR_LANGS="$(TESSDATA_PREFIX="$OCR_ROOT/tessdata" \
+  "$OCR_ROOT/bin/tesseract" --list-langs 2>&1)"
+grep -qx chi_sim <<<"$OCR_LANGS" && grep -qx eng <<<"$OCR_LANGS" || {
+  echo "OCR 中英文离线语言数据未完整加载。" >&2
+  exit 2
+}
 chmod 0755 "$RUNTIME/partyops" "$RUNTIME/partyops-client" "$RUNTIME/partyops-wizard" \
   "$RUNTIME/partyops-updater" \
   "$RUNTIME/start.sh" "$RUNTIME/stop.sh" "$RUNTIME/desktop-launcher.sh" \
   "$RUNTIME/open-local-file.sh" \
-  "$RUNTIME/install-desktop-shortcut.sh" "$RUNTIME/install-internal-ca.sh"
+  "$RUNTIME/install-desktop-shortcut.sh" "$RUNTIME/install-internal-ca.sh" \
+  "$OCR_ROOT/bin/tesseract"
 if [[ "$LOCAL_LLM_AVAILABLE" == "1" ]]; then
   chmod 0755 "$RUNTIME/llama-server"
 fi
+
+# 回归解压后的单文件入口，特别防止向导程序在构建时
+# 遗漏 Tcl/Tk 动态库。这里不打开图形窗口，仅要求冻结运行时
+# 能完成导入、解析中文命令行并正常退出。
+for entrypoint in partyops-client partyops-wizard partyops-updater; do
+  "$RUNTIME/$entrypoint" --help >/dev/null 2>&1 || {
+    echo "冻结入口自检失败：$entrypoint" >&2
+    exit 2
+  }
+done
 
 SMOKE_PORT="$("$PY" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
 SMOKE_TIMEOUT_SECONDS="${PARTYOPS_SMOKE_TIMEOUT_SECONDS:-180}"
@@ -408,8 +428,16 @@ kill "$PID"
 wait "$PID" || true
 PID=""
 
-tar --zstd -cf "$ARTIFACTS/PartyOps-uos-$ARCH.tar.zst" -C "$BUILD" PartyOps
+command -v zstd >/dev/null 2>&1 || {
+  echo "缺少 zstd，无法生成严格模式便携载荷。" >&2
+  exit 2
+}
+# CentOS/manylinux2014 自带的 GNU tar 版本较旧，不支持 --zstd。使用
+# POSIX tar 流交给固定的 zstd 程序，输出仍是标准 .tar.zst，且不依赖
+# 构建机 tar 的可选压缩参数。
+tar -cf - -C "$BUILD" PartyOps |
+  zstd -T0 -19 -f -o "$ARTIFACTS/PartyOps-linux-$ARCH.tar.zst"
 (cd "$WHEELHOUSE" && find . -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum) \
   > "$ARTIFACTS/dependency-sha256-$ARCH.txt"
-(cd "$ARTIFACTS" && sha256sum "PartyOps-uos-$ARCH.tar.zst" > "SHA256SUMS.$ARCH")
-echo "便携包已生成：$ARTIFACTS/PartyOps-uos-$ARCH.tar.zst"
+(cd "$ARTIFACTS" && sha256sum "PartyOps-linux-$ARCH.tar.zst" > "SHA256SUMS.$ARCH")
+echo "便携包已生成：$ARTIFACTS/PartyOps-linux-$ARCH.tar.zst"

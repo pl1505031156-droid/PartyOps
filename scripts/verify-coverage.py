@@ -11,7 +11,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="校验 PartyOps 后端覆盖率发布门禁")
     parser.add_argument("report", type=Path)
     parser.add_argument("--line", type=float, default=90.0)
-    parser.add_argument("--branch", type=float, default=80.0)
+    parser.add_argument("--branch", type=float, default=90.0)
     args = parser.parse_args()
 
     payload = json.loads(args.report.read_text(encoding="utf-8"))

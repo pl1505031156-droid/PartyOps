@@ -35,4 +35,23 @@ describe("设备协同中心数据加载", () => {
 
     await expect(fetchFleetSnapshot(get)).rejects.toThrow("设备列表不可用");
   });
+
+  it("所有辅助接口失败时保留核心设备并逐项标注缺失面板", async () => {
+    const get = vi.fn((path: string) => (
+      path === "/admin/devices"
+        ? Promise.resolve([device])
+        : Promise.reject(new Error(`${path} 不可用`))
+    ));
+
+    const snapshot = await fetchFleetSnapshot(get);
+
+    expect(snapshot).toEqual({
+      devices: [device],
+      config: undefined,
+      grants: undefined,
+      transfers: undefined,
+      versionStatuses: undefined,
+      failedSections: ["设备上限", "目录授权", "传输队列", "版本状态"],
+    });
+  });
 });

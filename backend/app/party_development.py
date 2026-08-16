@@ -30,6 +30,7 @@ from .schemas import (
     PartyDevelopmentNodeOut,
     PartyDevelopmentResultOut,
 )
+from .compat import strict_zip
 
 
 RULE_VERSION = "2026.05"
@@ -693,11 +694,11 @@ def _apply_official_table_geometry(table: Any, widths_dxa: list[int]) -> None:
         column.set(qn("w:w"), str(width))
         grid.append(column)
 
-    for column, width in zip(table.columns, widths_dxa, strict=True):
+    for column, width in strict_zip(table.columns, widths_dxa):
         column.width = Twips(width)
     for row in table.rows:
         row.height = None
-        for cell, width in zip(row.cells, widths_dxa, strict=True):
+        for cell, width in strict_zip(row.cells, widths_dxa):
             cell.width = Twips(width)
             cell_properties = cell._tc.get_or_add_tcPr()
             _set_ooxml_width(cell_properties, "w:tcW", width)
@@ -763,7 +764,7 @@ def export_result_docx(result: PartyDevelopmentResultOut, exports_dir: Path) -> 
         table.style = "Table Grid"
         column_widths_dxa = [1984, 1701, 1134, 4025]
         headers = ["工作节点", "时间安排", "办理状态", "条款依据"]
-        for cell, text in zip(table.rows[0].cells, headers, strict=True):
+        for cell, text in strict_zip(table.rows[0].cells, headers):
             _set_table_cell_text(cell, text, header=True)
         _prevent_row_split(table.rows[0], repeat_header=True)
         for node in grouped_nodes[phase]:
@@ -774,7 +775,7 @@ def export_result_docx(result: PartyDevelopmentResultOut, exports_dir: Path) -> 
                 _format_status(node.status),
                 f"{node.article}：{node.basis}",
             ]
-            for index, (cell, value) in enumerate(zip(row.cells, values, strict=True)):
+            for index, (cell, value) in enumerate(strict_zip(row.cells, values)):
                 alignment = WD_ALIGN_PARAGRAPH.CENTER if index in {1, 2} else WD_ALIGN_PARAGRAPH.LEFT
                 _set_table_cell_text(cell, value, alignment=alignment)
             _prevent_row_split(row)

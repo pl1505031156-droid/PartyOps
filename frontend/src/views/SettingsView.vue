@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { IconCloudDownload, IconDownload, IconPlus, IconRefresh, IconSafe, IconUpload } from "@arco-design/web-vue/es/icon";
-import { Message } from "@arco-design/web-vue";
+import { Message, Modal } from "@arco-design/web-vue";
 import { api, downloadUrl } from "../api";
 import { useSessionStore } from "../stores/session";
 import { useAppearanceStore } from "../stores/appearance";
@@ -136,6 +136,16 @@ const updatePackages = ref<Array<{
   manifest: {
     release_title?: string;
     release_notes?: string[];
+    download_state?: string;
+    download_message?: string;
+    download_received?: number;
+    download_total?: number;
+    online_download?: {
+      download_state?: string;
+      download_message?: string;
+      download_received?: number;
+      download_total?: number;
+    };
   };
 }>>([]);
 const updateRuns = ref<Array<{
@@ -151,9 +161,33 @@ const updateDevices = ref<Device[]>([]);
 const releaseHistory = ref<ReleaseHistory[]>([]);
 const updateInput = ref<HTMLInputElement | null>(null);
 const updatePolling = ref(false);
+const onlineUpdateChecking = ref(false);
+const onlineUpdatePreparing = ref(false);
+const onlineUpdate = ref<{
+  available: boolean;
+  target_available?: boolean;
+  availability_message?: string;
+  current_version: string;
+  version: string;
+  title: string;
+  release_notes: string[];
+  published_at: string;
+  package_size: number;
+} | null>(null);
 const projectionRebuilding = ref(false);
 const UPDATE_TASK_KEY = "partyops.pending-update";
+const ONLINE_UPDATE_TASK_KEY = "partyops.pending-online-update";
+const ONLINE_UPDATE_LAST_CHECK_KEY = "partyops.online-update-last-check";
 let updatePollTimer: number | undefined;
+let onlineUpdatePollTimer: number | undefined;
+let onlineUpdatePollFailures = 0;
+let onlineUpdateMissingPolls = 0;
+let updatePollFailures = 0;
+let updateMissingPolls = 0;
+const PREPARE_POLL_DEADLINE_MS = 30 * 60 * 1000;
+const APPLY_POLL_DEADLINE_MS = 60 * 60 * 1000;
+const MAX_POLL_FAILURES = 8;
+const MAX_MISSING_POLLS = 8;
 const userForm = reactive({ username: "", display_name: "", password: "", role: "staff" });
 const editingUser = ref<User | null>(null);
 const editUserForm = reactive({ display_name: "", role: "staff", active: true, password: "" });
@@ -397,6 +431,127 @@ async function uploadUpdate(file: File | null) {
   }
 }
 
+async function checkOnlineUpdate(showMessage = true) {
+  onlineUpdateChecking.value = true;
+  try {
+    onlineUpdate.value = await api.get<typeof onlineUpdate.value>("/admin/updates/online");
+    localStorage.setItem(ONLINE_UPDATE_LAST_CHECK_KEY, Date.now().toString());
+    if (showMessage) {
+      if (onlineUpdate.value?.available) {
+        Message.success(`发现新版本 ${onlineUpdate.value.version}`);
+      } else if (onlineUpdate.value?.target_available === false) {
+        Message.warning(onlineUpdate.value.availability_message || "当前系统的更新包暂未通过发布门禁");
+      } else {
+        Message.success(`当前 ${onlineUpdate.value?.current_version || "版本"} 已是最新`);
+      }
+    }
+  } catch (error) {
+    if (showMessage) {
+      Message.error(error instanceof Error ? error.message : "暂时无法检查官方更新，请稍后重试");
+    }
+  } finally {
+    onlineUpdateChecking.value = false;
+  }
+}
+
+function scheduleOnlineUpdatePoll(delay = 1500) {
+  window.clearTimeout(onlineUpdatePollTimer);
+  onlineUpdatePollTimer = window.setTimeout(pollOnlineUpdatePreparation, delay);
+}
+
+function pollStartedAt(value: unknown): number {
+  if (typeof value !== "string") return Date.now();
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+function stopOnlineUpdateMonitor(message: string) {
+  window.clearTimeout(onlineUpdatePollTimer);
+  localStorage.removeItem(ONLINE_UPDATE_TASK_KEY);
+  window.dispatchEvent(new CustomEvent("partyops:update-task-changed"));
+  onlineUpdatePreparing.value = false;
+  onlineUpdatePollFailures = 0;
+  onlineUpdateMissingPolls = 0;
+  Message.warning(message);
+}
+
+async function prepareOnlineUpdate() {
+  onlineUpdatePreparing.value = true;
+  try {
+    const prepared = await api.post<{ id: string; version: string }>("/admin/updates/online/prepare");
+    localStorage.setItem(
+      ONLINE_UPDATE_TASK_KEY,
+      JSON.stringify({
+        packageId: prepared.id,
+        version: prepared.version,
+        startedAt: new Date().toISOString(),
+      }),
+    );
+    onlineUpdatePollFailures = 0;
+    onlineUpdateMissingPolls = 0;
+    window.dispatchEvent(new CustomEvent("partyops:update-task-changed"));
+    Message.success("已开始安全下载；可以继续使用系统，下载完成后再确认安装");
+    scheduleOnlineUpdatePoll(500);
+  } catch (error) {
+    onlineUpdatePreparing.value = false;
+    Message.error(error instanceof Error ? error.message : "更新包下载未能开始");
+  }
+}
+
+async function pollOnlineUpdatePreparation() {
+  const raw = localStorage.getItem(ONLINE_UPDATE_TASK_KEY);
+  if (!raw) {
+    onlineUpdatePreparing.value = false;
+    return;
+  }
+  let pending: { packageId: string; version: string; startedAt?: string };
+  try {
+    pending = JSON.parse(raw);
+  } catch {
+    localStorage.removeItem(ONLINE_UPDATE_TASK_KEY);
+    window.dispatchEvent(new CustomEvent("partyops:update-task-changed"));
+    onlineUpdatePreparing.value = false;
+    return;
+  }
+  if (Date.now() - pollStartedAt(pending.startedAt) >= PREPARE_POLL_DEADLINE_MS) {
+    stopOnlineUpdateMonitor("下载校验超过 30 分钟，状态已停止跟踪；当前版本未受影响，可重试或打开诊断日志。");
+    return;
+  }
+  try {
+    updatePackages.value = await api.get<typeof updatePackages.value>("/admin/updates");
+    const prepared = updatePackages.value.find((item) => item.id === pending.packageId);
+    onlineUpdatePollFailures = 0;
+    onlineUpdateMissingPolls = prepared ? 0 : onlineUpdateMissingPolls + 1;
+    if (prepared?.status === "validated") {
+      localStorage.removeItem(ONLINE_UPDATE_TASK_KEY);
+      window.dispatchEvent(new CustomEvent("partyops:update-task-changed"));
+      onlineUpdatePreparing.value = false;
+      Message.success(`${pending.version} 已下载并通过双重校验，请确认后开始升级`);
+      return;
+    }
+    if (prepared?.status === "failed") {
+      localStorage.removeItem(ONLINE_UPDATE_TASK_KEY);
+      window.dispatchEvent(new CustomEvent("partyops:update-task-changed"));
+      onlineUpdatePreparing.value = false;
+      const state = prepared.manifest as { download_message?: string };
+      Message.warning(state.download_message || "安全下载未完成；当前版本未受影响，可稍后重试");
+      return;
+    }
+  } catch {
+    onlineUpdatePollFailures += 1;
+  }
+  if (onlineUpdatePollFailures >= MAX_POLL_FAILURES) {
+    stopOnlineUpdateMonitor("连续 8 次无法读取下载状态，已停止自动等待；任务不会重复执行，可稍后重试或查看日志。");
+    return;
+  }
+  if (onlineUpdateMissingPolls >= MAX_MISSING_POLLS) {
+    stopOnlineUpdateMonitor("服务器未找到对应下载任务，已停止自动等待；请重新检查更新或查看日志。");
+    return;
+  }
+  onlineUpdatePreparing.value = true;
+  scheduleOnlineUpdatePoll(Math.min(15_000, 1500 * 2 ** Math.min(onlineUpdatePollFailures, 3)));
+}
+
 async function applyUpdate(item: typeof updatePackages.value[number]) {
   const onlineOrActiveDevices = updateDevices.value.filter((device) => device.active);
   const targetDeviceIds = onlineOrActiveDevices.map((device) => device.id);
@@ -425,8 +580,19 @@ function startUpdateMonitor(packageId: string, version: string, includeHost: boo
     UPDATE_TASK_KEY,
     JSON.stringify({ packageId, version, includeHost, startedAt: new Date().toISOString() }),
   );
+  updatePollFailures = 0;
+  updateMissingPolls = 0;
   updatePolling.value = true;
   scheduleUpdatePoll(1500);
+}
+
+function stopUpdateMonitor(message: string) {
+  window.clearTimeout(updatePollTimer);
+  localStorage.removeItem(UPDATE_TASK_KEY);
+  updatePolling.value = false;
+  updatePollFailures = 0;
+  updateMissingPolls = 0;
+  Message.warning(message);
 }
 
 async function pollUpdateProgress() {
@@ -435,7 +601,7 @@ async function pollUpdateProgress() {
     updatePolling.value = false;
     return;
   }
-  let pending: { packageId: string; version: string; includeHost: boolean };
+  let pending: { packageId: string; version: string; includeHost: boolean; startedAt?: string };
   try {
     pending = JSON.parse(raw);
   } catch {
@@ -443,9 +609,15 @@ async function pollUpdateProgress() {
     updatePolling.value = false;
     return;
   }
+  if (Date.now() - pollStartedAt(pending.startedAt) >= APPLY_POLL_DEADLINE_MS) {
+    stopUpdateMonitor("升级状态已等待 60 分钟，系统停止自动轮询以免无限等待；请打开诊断日志确认结果后再操作。");
+    return;
+  }
   try {
     updateRuns.value = await api.get<typeof updateRuns.value>("/admin/update-runs");
     const relevant = updateRuns.value.filter((run) => run.package_id === pending.packageId);
+    updatePollFailures = 0;
+    updateMissingPolls = relevant.length ? 0 : updateMissingPolls + 1;
     const hostRun = relevant.find((run) => !run.target_device_id);
     const terminalStates = new Set(["completed", "failed", "rolled_back"]);
     const finished = relevant.length > 0 && relevant.every((run) => terminalStates.has(run.status));
@@ -473,15 +645,46 @@ async function pollUpdateProgress() {
       return;
     }
   } catch {
-    // 主机安装和重启期间短暂无法访问是正常现象，任务编号保存在浏览器中。
+    // 主机安装和重启期间短暂无法访问是正常现象；连续失败才停止自动轮询。
+    updatePollFailures += 1;
+  }
+  if (updatePollFailures >= MAX_POLL_FAILURES) {
+    stopUpdateMonitor("连续 8 次无法读取升级状态，结果暂时未知；系统不会自动重复安装，请查看日志后再重试。");
+    return;
+  }
+  if (updateMissingPolls >= MAX_MISSING_POLLS) {
+    stopUpdateMonitor("服务器未找到对应升级任务，已停止自动等待；请查看更新记录和诊断日志。");
+    return;
   }
   updatePolling.value = true;
-  scheduleUpdatePoll();
+  scheduleUpdatePoll(Math.min(30_000, 3000 * 2 ** Math.min(updatePollFailures, 3)));
 }
 
 function updateTargetName(deviceId: string | null): string {
   if (!deviceId) return "主机";
   return updateDevices.value.find((device) => device.id === deviceId)?.name || "已移除设备";
+}
+
+function requestUpdate(item: typeof updatePackages.value[number]) {
+  const enabledDevices = updateDevices.value.filter((device) => device.active).length;
+  Modal.confirm({
+    title: `确认升级到 ${item.version}`,
+    content: `系统将先建立一致性备份，再升级本机${enabledDevices ? `并为 ${enabledDevices} 台协同电脑排队` : ""}。期间页面可能短暂断开；失败会自动恢复上一版本和数据。是否现在开始？`,
+    okText: "自动备份并开始升级",
+    cancelText: "暂不升级",
+    maskClosable: false,
+    onOk: () => applyUpdate(item),
+  });
+}
+
+function updateDownloadState(item: typeof updatePackages.value[number]) {
+  return item.manifest.online_download || item.manifest;
+}
+
+function updateDownloadPercent(item: typeof updatePackages.value[number]): number {
+  const state = updateDownloadState(item);
+  const total = Number(state.download_total || 0);
+  return total > 0 ? Math.min(100, Math.round(Number(state.download_received || 0) * 100 / total)) : 0;
 }
 
 async function createBackup() {
@@ -694,9 +897,20 @@ onMounted(async () => {
       updatePolling.value = true;
       scheduleUpdatePoll(500);
     }
+    if (localStorage.getItem(ONLINE_UPDATE_TASK_KEY)) {
+      onlineUpdatePreparing.value = true;
+      scheduleOnlineUpdatePoll(500);
+    }
+    const lastOnlineCheck = Number(localStorage.getItem(ONLINE_UPDATE_LAST_CHECK_KEY) || 0);
+    if (!lastOnlineCheck || Date.now() - lastOnlineCheck >= 24 * 60 * 60 * 1000) {
+      void checkOnlineUpdate(false);
+    }
   }
 });
-onBeforeUnmount(() => window.clearTimeout(updatePollTimer));
+onBeforeUnmount(() => {
+  window.clearTimeout(updatePollTimer);
+  window.clearTimeout(onlineUpdatePollTimer);
+});
 </script>
 
 <template>
@@ -832,15 +1046,37 @@ onBeforeUnmount(() => window.clearTimeout(updatePollTimer));
 
       <a-tab-pane v-if="session.user?.role === 'admin'" key="updates" title="系统更新">
         <div class="tab-toolbar">
-          <p>主机是唯一更新权威：先完成主机备份、迁移和健康检查，再要求全部协同电脑更新到同一版本。</p>
+          <p>在系统内完成检查、下载、校验、安装和失败回滚；无需重新到官网下载安装包。</p>
           <a-space>
+            <a-button :loading="onlineUpdateChecking" @click="checkOnlineUpdate()"><template #icon><IconRefresh /></template>检查官方更新</a-button>
             <a-button aria-label="导入 PartyOps 更新包" @click="updateInput?.click()"><template #icon><IconUpload /></template>导入 .partyops-update</a-button>
             <input ref="updateInput" type="file" accept=".partyops-update" hidden @change="uploadUpdate(($event.target as HTMLInputElement).files?.[0] || null)" />
           </a-space>
         </div>
+        <section v-if="onlineUpdate" class="online-update-card" :class="{ available: onlineUpdate.available }">
+          <div>
+            <small>当前 {{ onlineUpdate.current_version }} · 官方目录签名已验证</small>
+            <strong>{{ onlineUpdate.available ? `可更新到 ${onlineUpdate.version}` : onlineUpdate.target_available === false ? "当前系统暂缓提供此版本" : "当前已是最新版本" }}</strong>
+            <p>{{ onlineUpdate.availability_message || onlineUpdate.title }}<template v-if="onlineUpdate.published_at"> · {{ onlineUpdate.published_at }}</template></p>
+            <ul v-if="onlineUpdate.release_notes?.length" class="compact-notes">
+              <li v-for="note in onlineUpdate.release_notes?.slice(0, 5) || []" :key="note">{{ note }}</li>
+            </ul>
+          </div>
+          <a-button
+            v-if="onlineUpdate.available"
+            type="primary"
+            :loading="onlineUpdatePreparing"
+            @click="prepareOnlineUpdate"
+          >
+            <template #icon><IconCloudDownload /></template>安全下载更新
+          </a-button>
+        </section>
         <a-alert type="info" class="update-note">
-          1.0.0 电脑没有更新中心，需先手动原位安装一次带更新助手的桥接包；已安装 1.1.3
-          及以上版本后，只由主机导入签名更新包，全部协同电脑按主机版本自动校验和更新。
+          系统会先验证官方目录签名，再验证整个更新包和其中每个安装程序的 Ed25519 签名、大小与 SHA-256。
+          点击“开始升级”后自动备份；安装或健康检查失败会恢复上一版本和数据。只有旧版缺少更新助手时才需手工安装一次桥接包。
+        </a-alert>
+        <a-alert v-if="onlineUpdatePreparing" type="info" class="update-note">
+          更新包正在后台安全下载。可以继续处理其他工作，离开本页不会中断；下载完成后仍需您确认才会安装。
         </a-alert>
         <a-alert v-if="updatePolling" type="warning" class="update-note">
           升级正在进行。主机重启期间页面会自动等待，服务恢复后自动载入新版，无需重复点击。
@@ -859,12 +1095,25 @@ onBeforeUnmount(() => window.clearTimeout(updatePollTimer));
                 <ul v-if="record.manifest?.release_notes?.length" class="compact-notes">
                   <li v-for="note in record.manifest.release_notes.slice(0, 3)" :key="note">{{ note }}</li>
                 </ul>
+                <template v-if="updateDownloadState(record).download_total">
+                  <a-progress :percent="updateDownloadPercent(record) / 100" size="small" />
+                  <small class="update-content">{{ updateDownloadState(record).download_message }}</small>
+                </template>
               </template>
             </a-table-column>
-            <a-table-column title="签名"><template #cell="{ record }">{{ record.signature_valid ? "已验证" : "开发环境未配置签名" }}</template></a-table-column>
+            <a-table-column title="签名"><template #cell="{ record }">{{ record.signature_valid ? "已验证" : "未通过，不能安装" }}</template></a-table-column>
             <a-table-column title="状态"><template #cell="{ record }">{{ zhLabel(record.status) }}</template></a-table-column>
             <a-table-column title="校验值"><template #cell="{ record }"><code>{{ record.sha256.slice(0, 16) }}…</code></template></a-table-column>
-            <a-table-column title="操作"><template #cell="{ record }"><a-button size="mini" type="primary" :disabled="record.status === 'applying'" @click="applyUpdate(record)">开始升级</a-button></template></a-table-column>
+            <a-table-column title="操作">
+              <template #cell="{ record }">
+                <a-button
+                  size="mini"
+                  type="primary"
+                  :disabled="!record.signature_valid || record.status !== 'validated' || updatePolling"
+                  @click="requestUpdate(record)"
+                >{{ record.status === "validated" ? "开始升级" : "等待校验完成" }}</a-button>
+              </template>
+            </a-table-column>
           </template>
         </a-table>
         <h3 class="subheading">已安装版本历史</h3>
@@ -1176,6 +1425,36 @@ onBeforeUnmount(() => window.clearTimeout(updatePollTimer));
   color: var(--muted);
   font-size: 11px;
   line-height: 1.65;
+}
+
+.online-update-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  background: rgba(251, 248, 241, 0.78);
+}
+
+.online-update-card.available {
+  border-left: 4px solid var(--cinnabar);
+}
+
+.online-update-card small,
+.online-update-card strong {
+  display: block;
+}
+
+.online-update-card strong {
+  margin: 6px 0;
+  font-size: 18px;
+}
+
+.online-update-card p {
+  margin: 0;
+  color: var(--muted);
 }
 
 .release-history {

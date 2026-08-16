@@ -36,7 +36,8 @@ source "$ROOT/.partyops-build.env"
 export PYTHON_BIN PARTYOPS_BUILD_ARCH
 ARCH="${PARTYOPS_BUILD_ARCH:-$(dpkg --print-architecture)}"
 
-for command in gcc g++ ar ranlib make unzip tar zstd sha256sum curl dpkg-deb systemctl tesseract; do
+for command in gcc g++ ar ranlib make unzip tar gzip zstd sha256sum curl \
+  dpkg-deb systemctl file readelf ldd; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "缺少目标机构建/安装命令：$command" >&2
     exit 2
@@ -46,10 +47,6 @@ done
   echo "选定的 Python 3.11 缺少 venv 模块，无法创建离线构建环境。" >&2
   exit 2
 }
-if ! tesseract --list-langs 2>/dev/null | grep -Fxq "chi_sim"; then
-  echo "缺少 Tesseract 简体中文语言包 chi_sim，无法保证扫描件中文识别。" >&2
-  exit 2
-fi
 AVAILABLE_KIB="$(df -Pk "$ROOT" | awk 'NR==2 {print $4}')"
 if [[ ! "$AVAILABLE_KIB" =~ ^[0-9]+$ ]] || ((AVAILABLE_KIB < 4 * 1024 * 1024)); then
   echo "构建目录可用空间不足 4 GiB，请释放空间后重试。" >&2
@@ -61,8 +58,8 @@ bash "$ROOT/packaging/uos/build-portable.sh"
 bash "$ROOT/packaging/uos/build-deb.sh"
 (cd "$ROOT/artifacts" && sha256sum -c "SHA256SUMS.$ARCH")
 
-VERSION="${PARTYOPS_VERSION:-1.4.3}"
-as_root apt-get install -y "$ROOT/artifacts/partyops_${VERSION}_${ARCH}.deb"
+VERSION="${PARTYOPS_VERSION:-1.4.3-rc.3}"
+as_root apt-get install -y "$ROOT/artifacts/PartyOps_1.4.3-rc.3_linux_${ARCH}.deb"
 CONFIG="$(mktemp)"
 trap 'rm -f "$CONFIG"' EXIT
 cat > "$CONFIG" <<EOF

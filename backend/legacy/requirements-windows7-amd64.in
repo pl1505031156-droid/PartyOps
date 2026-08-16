@@ -1,0 +1,6 @@
+-r requirements-windows7-common.in
+
+# Win7 x64 完整主机保留语义重排与本地 LLM。
+numpy==1.24.4
+onnxruntime<1.20
+tokenizers<0.21

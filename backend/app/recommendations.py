@@ -22,6 +22,7 @@ from .enums import (
 )
 from .local_ai import embedding_runtime, local_ai_readiness
 from .model_packs import active_model_pack
+from .compat import strict_zip
 from .models import (
     AIRecommendation,
     ArchiveRecord,
@@ -401,7 +402,7 @@ def index_semantic_batch(db: Session, limit: int = 8) -> int:
     def encode_group(group: list[tuple[str, str, int, str, str]]) -> None:
         try:
             vectors = embedding_runtime.encode(pack, [item[3] for item in group])
-            successful.extend(zip(group, vectors, strict=True))
+            successful.extend(strict_zip(group, vectors))
         except Exception as exc:  # 单条坏数据不能放大为整个调度批次故障
             if len(group) > 1:
                 middle = len(group) // 2
@@ -517,7 +518,7 @@ def semantic_rerank_search_items(
             continue
         scores[key] = sum(
             left * right
-            for left, right in zip(query_vector, vector, strict=True)
+            for left, right in strict_zip(query_vector, vector)
         )
     if not scores:
         return items

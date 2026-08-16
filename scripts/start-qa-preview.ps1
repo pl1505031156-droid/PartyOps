@@ -10,7 +10,7 @@ $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $runtimeRoot = if ($Source) {
   ""
 } else {
-  (Resolve-Path (Join-Path $projectRoot "artifacts\PartyOps-1.4.3-rc.2-windows-amd64")).Path
+  (Resolve-Path (Join-Path $projectRoot "artifacts\PartyOps-1.4.3-rc.3-windows-amd64")).Path
 }
 if (-not $DataRoot) { $DataRoot = Join-Path $projectRoot ".run-chrome-141" }
 New-Item -ItemType Directory -Path $DataRoot -Force | Out-Null

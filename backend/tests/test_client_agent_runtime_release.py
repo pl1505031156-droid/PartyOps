@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 import sys
 import urllib.error
@@ -76,12 +77,11 @@ def test_apply_update_windows_download_helper_success_and_failures(
     monkeypatch.setattr(client_agent.os, "name", "nt")
     package = b"signed-update-package"
     monkeypatch.setattr(client_agent, "_urlopen", lambda *_args: _Response(package))
-    commands: list[list[str]] = []
+    commands: list[tuple[Path, Path]] = []
     monkeypatch.setattr(
-        client_agent.subprocess,
-        "run",
-        lambda command, **_kwargs: commands.append(command)
-        or subprocess.CompletedProcess(command, 0, "", ""),
+        client_agent,
+        "_run_windows_elevated_update",
+        lambda updater, target: commands.append((updater, target)) or True,
     )
     config = {"updates_dir": str(tmp_path / "updates")}
     assert client_agent.apply_update_command(
@@ -89,12 +89,12 @@ def test_apply_update_windows_download_helper_success_and_failures(
     )["ok"] is True
     target = tmp_path / "updates" / "partyops_1.4.2.partyops-update"
     assert target.read_bytes() == package
-    assert "-Verb RunAs" in commands[0][4]
+    assert commands == [(helper, target)]
 
     monkeypatch.setattr(
-        client_agent.subprocess,
-        "run",
-        lambda command, **_kwargs: subprocess.CompletedProcess(command, 1, "", "denied"),
+        client_agent,
+        "_run_windows_elevated_update",
+        lambda _updater, _target: False,
     )
     failed = client_agent.apply_update_command(
         "https://host", "token", {"package": "partyops_1.4.2.partyops-update"}, config
@@ -119,6 +119,281 @@ def test_apply_update_windows_download_helper_success_and_failures(
             "https://host", "token", {"package": "partyops_1.4.2.partyops-update"}, config
         )
     assert interrupted.value.code == "NETWORK_INTERRUPTED" and interrupted.value.retryable
+
+
+def test_apply_update_official_catalog_is_selected_and_verified_on_client(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """协同机必须自行验签选包，不能使用主机命令注入的下载地址。"""
+
+    executable = tmp_path / "PartyOpsAgent.exe"
+    executable.write_bytes(b"agent")
+    helper = tmp_path / "PartyOpsUpdater.exe"
+    helper.write_bytes(b"updater")
+    package = b"official-signed-platform-update"
+    package_hash = hashlib.sha256(package).hexdigest()
+    catalog = {
+        "available": True,
+        "version": "1.4.3-rc.4",
+        "package_url": "https://www.partyops.cn/releases/windows-amd64.partyops-update",
+        "package_size": len(package),
+        "package_sha256": package_hash,
+    }
+    opened: list[str] = []
+
+    from app.routers import updates
+
+    monkeypatch.setattr(client_agent.sys, "executable", str(executable))
+    monkeypatch.setattr(client_agent.os, "name", "nt")
+    monkeypatch.setattr(updates, "fetch_online_update_catalog", lambda: catalog)
+    monkeypatch.setattr(
+        updates,
+        "_open_trusted_update_url",
+        lambda url: opened.append(url)
+        or _Response(package, {"Content-Length": str(len(package))}),
+    )
+    installed: list[Path] = []
+    monkeypatch.setattr(
+        client_agent,
+        "_run_windows_elevated_update",
+        lambda _helper, target: installed.append(target) or True,
+    )
+
+    result = client_agent.apply_update_command(
+        "https://host.invalid",
+        "host-token",
+        {
+            "official_online": True,
+            "version": "1.4.3-rc.4",
+            "package": "https://attacker.invalid/injected.partyops-update",
+        },
+        {"updates_dir": str(tmp_path / "updates")},
+    )
+
+    assert result["ok"] is True
+    assert opened == [catalog["package_url"]]
+    assert len(installed) == 1
+    assert installed[0].read_bytes() == package
+    assert "attacker.invalid" not in installed[0].name
+
+
+def test_apply_update_official_download_resumes_and_reuses_verified_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """协同机断网后续传，同一已校验包再次执行时不重复下载。"""
+
+    from app.routers import updates
+
+    executable = tmp_path / "PartyOpsAgent.exe"
+    executable.write_bytes(b"agent")
+    helper = tmp_path / "PartyOpsUpdater.exe"
+    helper.write_bytes(b"updater")
+    monkeypatch.setattr(client_agent.sys, "executable", str(executable))
+    monkeypatch.setattr(client_agent.os, "name", "nt")
+    package = b"official-platform-update-with-resume"
+    digest = hashlib.sha256(package).hexdigest()
+    version = "1.4.3-rc.4"
+    catalog = {
+        "available": True,
+        "version": version,
+        "package_url": "https://www.partyops.cn/releases/windows-amd64.partyops-update",
+        "package_size": len(package),
+        "package_sha256": digest,
+    }
+    monkeypatch.setattr(updates, "fetch_online_update_catalog", lambda: catalog)
+    updates_dir = tmp_path / "updates"
+    updates_dir.mkdir()
+    filename = f"official-{version}-{digest[:12]}.partyops-update"
+    resume_at = 9
+    (updates_dir / f".{filename}.part").write_bytes(package[:resume_at])
+    seen_headers: list[dict[str, str] | None] = []
+
+    def open_range(_url: str, *, extra_headers=None):
+        seen_headers.append(extra_headers)
+        response = _Response(
+            package[resume_at:],
+            {
+                "Content-Length": str(len(package) - resume_at),
+                "Content-Range": f"bytes {resume_at}-{len(package) - 1}/{len(package)}",
+            },
+        )
+        response.status = 206
+        return response
+
+    monkeypatch.setattr(updates, "_open_trusted_update_url", open_range)
+    installed: list[Path] = []
+    monkeypatch.setattr(
+        client_agent,
+        "_run_windows_elevated_update",
+        lambda _helper, target: installed.append(target) or True,
+    )
+    payload = {"official_online": True, "version": version}
+    config = {"updates_dir": str(updates_dir)}
+
+    assert client_agent.apply_update_command("https://host", "token", payload, config)["ok"]
+    assert seen_headers == [{"Range": f"bytes={resume_at}-"}]
+    assert installed[-1].read_bytes() == package
+
+    monkeypatch.setattr(
+        updates,
+        "_open_trusted_update_url",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("不应重复下载")),
+    )
+    assert client_agent.apply_update_command("https://host", "token", payload, config)["ok"]
+    assert len(installed) == 2
+
+
+def test_apply_update_official_catalog_fails_closed_on_version_or_hash_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from app.routers import updates
+
+    config = {"updates_dir": str(tmp_path / "updates")}
+    monkeypatch.setattr(
+        updates,
+        "fetch_online_update_catalog",
+        lambda: {
+            "available": True,
+            "version": "9.9.9",
+            "package_url": "https://www.partyops.cn/releases/update.partyops-update",
+            "package_size": 4,
+            "package_sha256": hashlib.sha256(b"good").hexdigest(),
+        },
+    )
+    with pytest.raises(client_agent.AgentCommandError) as version_error:
+        client_agent.apply_update_command(
+            "https://host", "token", {"official_online": True, "version": "1.4.3-rc.4"}, config
+        )
+    assert version_error.value.code == "UPDATE_CATALOG_UNAVAILABLE"
+
+    monkeypatch.setattr(
+        updates,
+        "fetch_online_update_catalog",
+        lambda: {
+            "available": True,
+            "version": "1.4.3-rc.4",
+            "package_url": "https://www.partyops.cn/releases/update.partyops-update",
+            "package_size": 4,
+            "package_sha256": hashlib.sha256(b"good").hexdigest(),
+        },
+    )
+    monkeypatch.setattr(
+        updates,
+        "_open_trusted_update_url",
+        lambda _url: _Response(b"evil", {"Content-Length": "4"}),
+    )
+    with pytest.raises(client_agent.AgentCommandError) as hash_error:
+        client_agent.apply_update_command(
+            "https://host", "token", {"official_online": True, "version": "1.4.3-rc.4"}, config
+        )
+    assert hash_error.value.code == "UPDATE_PACKAGE_HASH_MISMATCH"
+
+
+@pytest.mark.parametrize(
+    ("headers", "body", "expected_code"),
+    [
+        ({"Content-Encoding": "gzip", "Content-Length": "4"}, b"good", "UPDATE_PACKAGE_ENCODING_INVALID"),
+        ({"Content-Length": "bad"}, b"good", "UPDATE_PACKAGE_LENGTH_INVALID"),
+        ({"Content-Length": "-1"}, b"good", "UPDATE_PACKAGE_LENGTH_INVALID"),
+        ({"Content-Length": "3"}, b"good", "UPDATE_PACKAGE_LENGTH_MISMATCH"),
+        ({"Content-Length": "4"}, b"x", "UPDATE_PACKAGE_LENGTH_MISMATCH"),
+        ({"Content-Length": "4"}, b"evil", "UPDATE_PACKAGE_HASH_MISMATCH"),
+    ],
+)
+def test_apply_update_official_download_response_guards(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    headers: dict[str, str],
+    body: bytes,
+    expected_code: str,
+) -> None:
+    from app.routers import updates
+
+    catalog = {
+        "available": True,
+        "version": "1.4.3-rc.4",
+        "package_url": "https://www.partyops.cn/releases/update.partyops-update",
+        "package_size": 4,
+        "package_sha256": hashlib.sha256(b"good").hexdigest(),
+    }
+    monkeypatch.setattr(updates, "fetch_online_update_catalog", lambda: catalog)
+    monkeypatch.setattr(
+        updates,
+        "_open_trusted_update_url",
+        lambda _url: _Response(body, headers),
+    )
+    with pytest.raises(client_agent.AgentCommandError) as error:
+        client_agent.apply_update_command(
+            "https://host",
+            "token",
+            {"official_online": True, "version": "1.4.3-rc.4"},
+            {"updates_dir": str(tmp_path / "updates")},
+        )
+    assert error.value.code == expected_code
+    assert not list((tmp_path / "updates").glob("*.part"))
+
+
+def test_apply_update_official_download_space_size_and_network_guards(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from app.routers import updates
+
+    package = b"good"
+    catalog = {
+        "available": True,
+        "version": "1.4.3-rc.4",
+        "package_url": "https://www.partyops.cn/releases/update.partyops-update",
+        "package_size": len(package),
+        "package_sha256": hashlib.sha256(package).hexdigest(),
+    }
+    monkeypatch.setattr(updates, "fetch_online_update_catalog", lambda: catalog)
+    monkeypatch.setattr(
+        updates,
+        "_open_trusted_update_url",
+        lambda _url: _Response(package, {"Content-Length": str(len(package))}),
+    )
+    monkeypatch.setattr(
+        client_agent.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(free=1),
+    )
+    with pytest.raises(client_agent.AgentCommandError) as disk_error:
+        client_agent.apply_update_command(
+            "https://host", "token", {"official_online": True, "version": "1.4.3-rc.4"},
+            {"updates_dir": str(tmp_path / "disk")},
+        )
+    assert disk_error.value.code == "UPDATE_DISK_FULL"
+
+    monkeypatch.setattr(
+        client_agent.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(free=10**12),
+    )
+    monkeypatch.setattr(client_agent, "MAX_UPDATE_PACKAGE_BYTES", 3)
+    with pytest.raises(client_agent.AgentCommandError) as size_error:
+        client_agent.apply_update_command(
+            "https://host", "token", {"official_online": True, "version": "1.4.3-rc.4"},
+            {"updates_dir": str(tmp_path / "size")},
+        )
+    assert size_error.value.code == "UPDATE_PACKAGE_TOO_LARGE"
+
+    monkeypatch.setattr(client_agent, "MAX_UPDATE_PACKAGE_BYTES", 4 * 1024**3)
+    monkeypatch.setattr(
+        updates,
+        "_open_trusted_update_url",
+        lambda _url: (_ for _ in ()).throw(urllib.error.URLError("offline")),
+    )
+    with pytest.raises(client_agent.AgentCommandError) as network_error:
+        client_agent.apply_update_command(
+            "https://host", "token", {"official_online": True, "version": "1.4.3-rc.4"},
+            {"updates_dir": str(tmp_path / "network")},
+        )
+    assert network_error.value.code == "NETWORK_INTERRUPTED"
+    assert network_error.value.retryable is True
 
 
 def test_device_command_dispatch_ack_retry_and_restart(

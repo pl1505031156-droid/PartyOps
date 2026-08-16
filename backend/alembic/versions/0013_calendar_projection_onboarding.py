@@ -4,6 +4,8 @@ Revision ID: 0013
 Revises: 0012
 """
 
+from __future__ import annotations
+
 from alembic import op
 import sqlalchemy as sa
 

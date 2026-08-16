@@ -1,26 +1,33 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.3-rc.2"
+#define MyAppVersion "1.4.3-rc.3"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
+#ifndef PartyOpsOutputBase
+  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.3_windows_amd64"
+#endif
 
 [Setup]
 AppId={{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
-VersionInfoVersion=1.4.3.2
+VersionInfoVersion=1.4.3.3
 AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://www.partyops.cn/
 AppSupportURL=https://www.partyops.cn/guide
 AppUpdatesURL=https://www.partyops.cn/
 DefaultDirName={autopf}\PartyOps
 DefaultGroupName=党建智办
+#ifdef PartyOpsX86
+ArchitecturesAllowed=x86compatible
+#else
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#endif
 PrivilegesRequired=admin
 OutputDir={#OutputRoot}
-OutputBaseFilename=PartyOps_1.4.3-rc.2_windows_amd64
+OutputBaseFilename={#PartyOpsOutputBase}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern dynamic hidebevels
@@ -42,7 +49,7 @@ WizardSmallImageFile={#BuildRoot}\partyops-1024.png
 Name: "chinesesimp"; MessagesFile: "{#SourcePath}\languages\ChineseSimplified.isl"
 
 [Messages]
-BeveledLabel=PartyOps 1.4.3-rc.2 · 未签名候选版
+BeveledLabel=PartyOps 1.4.3-rc.3 · 未签名候选版
 WelcomeLabel1=欢迎使用党建智办 PartyOps 安装向导
 WelcomeLabel2=本向导将安装 [name/ver]。%n%n程序安装目录和业务数据目录可以分别选择；升级时会保留原有选择。安装前会自动安全停止旧服务。
 SelectDirDesc=选择 PartyOps 程序安装目录
@@ -65,25 +72,24 @@ StatusRunProgram=正在完成服务配置…
 ; 协同机的 LocalAppData 由以原用户身份运行的向导按需创建，避免管理员安装
 ; 错把目录建进管理员账户，也避免 Inno Setup 的跨用户目录告警。
 Name: "{commonappdata}\PartyOps"; Permissions: admins-full system-full
+Name: "{commonappdata}\PartyOps-System"; Permissions: admins-full system-full
 
 [Files]
-Source: "{#BuildRoot}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#BuildRoot}\*"; Excludes: "PartyOpsUpdater.exe,PartyOpsUpdaterService.exe"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; 主机应用内升级期间这两个进程仍承载事务。Windows 不能覆盖正在运行的
+; EXE，因此仅它们使用系统重启替换；主程序、前端和其余组件立即生效。
+Source: "{#BuildRoot}\PartyOpsUpdater.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace
+Source: "{#BuildRoot}\PartyOpsUpdaterService.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace
+Source: "{#SourcePath}\validate-install-path.ps1"; Flags: dontcopy
 
 [Icons]
 Name: "{group}\党建智办"; Filename: "{app}\PartyOpsLauncher.exe"; IconFilename: "{app}\partyops.ico"
 Name: "{group}\管理本机共享文件夹"; Filename: "{app}\PartyOpsWizard.exe"; Parameters: "--manage-shared-roots"; IconFilename: "{app}\partyops.ico"
 Name: "{commondesktop}\党建智办"; Filename: "{app}\PartyOpsLauncher.exe"; IconFilename: "{app}\partyops.ico"
 
-[Registry]
-Root: HKCR; Subkey: "partyops-file"; ValueType: string; ValueName: ""; ValueData: "URL:PartyOps File Protocol"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "partyops-file"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
-Root: HKCR; Subkey: "partyops-file\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PartyOpsFileOpen.exe"" ""%1"""
-Root: HKCR; Subkey: "partyops-client"; ValueType: string; ValueName: ""; ValueData: "URL:PartyOps Client Protocol"; Flags: uninsdeletekey
-Root: HKCR; Subkey: "partyops-client"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
-Root: HKCR; Subkey: "partyops-client\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PartyOpsWizard.exe"" --manage-shared-roots --action-uri ""%1"""
-
 [Run]
 Filename: "{app}\PartyOpsLauncher.exe"; Description: "启动党建智办配置向导"; Flags: nowait postinstall skipifsilent runasoriginaluser
+Filename: "{app}\PartyOpsLauncher.exe"; Parameters: "--background"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [UninstallRun]
 Filename: "{app}\PartyOpsService.exe"; Parameters: "--wait=30 stop"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "StopHostService"
@@ -93,9 +99,382 @@ Filename: "{app}\PartyOpsUpdaterService.exe"; Parameters: "remove"; Flags: runhi
 Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""党建智办主机"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveFirewallRule"
 
 [Code]
+type
+  TRegistryValueBackup = record
+    RootKey: Integer;
+    Subkey: String;
+    ValueName: String;
+    Existed: Boolean;
+    ValueData: String;
+  end;
+  TRegistryKeyBackup = record
+    RootKey: Integer;
+    Subkey: String;
+    Existed: Boolean;
+    ExportPath: String;
+  end;
+
 var
   ServiceSetupFailed: Boolean;
+  InAppServiceUpdate: Boolean;
   DataDirPage: TInputDirWizardPage;
+  RegistryBackups: array[0..19] of TRegistryValueBackup;
+  RegistryBackupCount: Integer;
+  RegistryKeyBackups: array[0..3] of TRegistryKeyBackup;
+  RegistryKeyBackupCount: Integer;
+  ProtocolRegistryWritten: Boolean;
+  HostServiceExistedBeforeInstall: Boolean;
+  UpdateServiceExistedBeforeInstall: Boolean;
+  HostServiceRunningBeforeInstall: Boolean;
+  UpdateServiceRunningBeforeInstall: Boolean;
+  HostServiceStartTypeBeforeInstall: Cardinal;
+  UpdateServiceStartTypeBeforeInstall: Cardinal;
+  HostServiceDelayedBeforeInstall: Cardinal;
+  UpdateServiceDelayedBeforeInstall: Cardinal;
+  RestartPreviousServicesOnExit: Boolean;
+  InstallCompletedSuccessfully: Boolean;
+  InstallerCachePath: String;
+  InstallerCachePreviousPath: String;
+  InstallerCacheIncomingPath: String;
+  InstallerCacheHashPath: String;
+  InstallerCacheHashPreviousPath: String;
+  InstallerCacheHashIncomingPath: String;
+  InstallerCacheHadPrevious: Boolean;
+  InstallerCacheHashHadPrevious: Boolean;
+  InstallerCacheTransactionActive: Boolean;
+  DataMarkerPath: String;
+  DataMarkerPreviousPath: String;
+  DataMarkerHadPrevious: Boolean;
+  DataMarkerTransactionActive: Boolean;
+  DeleteAllDataOnUninstall: Boolean;
+
+const
+  PartyOpsAppId = '{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}';
+  ClassesPrefix = 'Software\Classes\';
+
+#ifdef PartyOpsLegacy
+function IsInstalledUpdateInRoot(RootKey: Integer; UpdateId: String): Boolean;
+var
+  PackageNames: TArrayOfString;
+  I: Integer;
+begin
+  Result := False;
+  if not RegGetSubkeyNames(
+    RootKey,
+    'SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\Packages',
+    PackageNames
+  ) then
+    exit;
+  for I := 0 to GetArrayLength(PackageNames) - 1 do
+    if Pos(Lowercase(UpdateId), Lowercase(PackageNames[I])) > 0 then
+    begin
+      Result := True;
+      exit;
+    end;
+end;
+
+function ValidateWindows7Prerequisites(var ErrorMessage: String): Boolean;
+var
+  Version: TWindowsVersion;
+  HasLoaderUpdate: Boolean;
+begin
+  Result := False;
+  GetWindowsVersionEx(Version);
+  { Legacy 安装器可在更高版本 Windows 上运行；只有 Windows 7 需要旧系统前置项。 }
+  if (Version.Major = 6) and (Version.Minor = 1) then
+  begin
+    if Version.ServicePackMajor < 1 then
+    begin
+      ErrorMessage := '[WIN7_SP1_REQUIRED] 当前系统不是 Windows 7 SP1。请先安装 SP1 后重新运行 PartyOps 安装器。';
+      exit;
+    end;
+    HasLoaderUpdate := IsInstalledUpdateInRoot(HKLM, 'KB2533623');
+    if IsWin64 then
+      HasLoaderUpdate := HasLoaderUpdate or IsInstalledUpdateInRoot(HKLM64, 'KB2533623');
+    if not HasLoaderUpdate then
+    begin
+      ErrorMessage := '[WIN7_KB2533623_REQUIRED] 未检测到 KB2533623。请从微软更新目录安装与系统位数匹配的补丁并重启，再运行 PartyOps。';
+      exit;
+    end;
+    if not FileExists(ExpandConstant('{sys}\ucrtbase.dll')) then
+    begin
+      ErrorMessage := '[WIN7_UCRT_REQUIRED] 未检测到 Universal CRT。请安装微软 Universal C Runtime 更新并重启，再运行 PartyOps。';
+      exit;
+    end;
+  end;
+  Result := True;
+end;
+#endif
+
+function RegistryRootName(RootKey: Integer): String;
+begin
+  if RootKey = HKA then
+    Result := 'HKA'
+  else if RootKey = HKLM then
+    Result := 'HKLM'
+  else
+    Result := 'HKCU';
+end;
+
+function IsPartyOpsProtocol(RootKey: Integer; ProtocolName: String): Boolean;
+var
+  BaseKey, CommandValue, AppIdValue, ExpectedCommand: String;
+begin
+  BaseKey := ClassesPrefix + ProtocolName;
+  if not RegKeyExists(RootKey, BaseKey) then
+  begin
+    Result := True;
+    exit;
+  end;
+  CommandValue := '';
+  AppIdValue := '';
+  RegQueryStringValue(RootKey, BaseKey + '\shell\open\command', '', CommandValue);
+  RegQueryStringValue(RootKey, BaseKey, 'PartyOps.AppId', AppIdValue);
+  if ProtocolName = 'partyops-file' then
+    ExpectedCommand := '"' + ExpandConstant('{app}\PartyOpsFileOpen.exe') + '" "%1"'
+  else
+    ExpectedCommand := '"' + ExpandConstant('{app}\PartyOpsWizard.exe') +
+      '" --manage-shared-roots --action-uri "%1"';
+  Result :=
+    (CompareText(AppIdValue, PartyOpsAppId) = 0) or
+    (CompareText(CommandValue, ExpectedCommand) = 0);
+end;
+
+function ValidateProtocolOwnership(var ErrorMessage: String): Boolean;
+var
+  ProtocolName: String;
+  RootIndex, ProtocolIndex, RootKey: Integer;
+begin
+  Result := False;
+  for RootIndex := 0 to 1 do
+  begin
+    if RootIndex = 0 then RootKey := HKLM else RootKey := HKCU;
+    for ProtocolIndex := 0 to 1 do
+    begin
+      if ProtocolIndex = 0 then ProtocolName := 'partyops-file'
+      else ProtocolName := 'partyops-client';
+      if not IsPartyOpsProtocol(RootKey, ProtocolName) then
+      begin
+        ErrorMessage := '[PROTOCOL_REGISTRY_CONFLICT] 检测到外部程序占用了 ' +
+          RegistryRootName(RootKey) + '\' + ClassesPrefix + ProtocolName +
+          '。安装器没有覆盖该协议，请联系管理员确认归属。';
+        exit;
+      end;
+    end;
+  end;
+  Result := True;
+end;
+
+function ProbeRegistryRoot(RootKey: Integer; var ErrorMessage: String): Boolean;
+var
+  ProbeKey, ProbeValue: String;
+begin
+  Result := False;
+  ProbeKey := ClassesPrefix + 'PartyOps.RegistryProbe.' + PartyOpsAppId;
+  RegDeleteKeyIncludingSubkeys(RootKey, ProbeKey);
+  if not RegWriteStringValue(RootKey, ProbeKey, '', 'PartyOps registry preflight') then
+  begin
+    ErrorMessage := '[PROTOCOL_REGISTRY_DENIED] 无法写入 ' + RegistryRootName(RootKey) +
+      '\' + ClassesPrefix + '。请确认安装器已获管理员权限，且安全软件未阻止注册协议。';
+    exit;
+  end;
+  if (not RegQueryStringValue(RootKey, ProbeKey, '', ProbeValue)) or
+     (ProbeValue <> 'PartyOps registry preflight') then
+  begin
+    RegDeleteKeyIncludingSubkeys(RootKey, ProbeKey);
+    ErrorMessage := '[PROTOCOL_REGISTRY_VERIFY_FAILED] 注册表写入后回读不一致，安装已安全停止。';
+    exit;
+  end;
+  if not RegDeleteKeyIncludingSubkeys(RootKey, ProbeKey) then
+  begin
+    ErrorMessage := '[PROTOCOL_REGISTRY_VERIFY_FAILED] 注册表可写性探测项无法清理，安装已安全停止。';
+    exit;
+  end;
+  Result := True;
+end;
+
+function PreflightProtocolRegistry(var ErrorMessage: String): Boolean;
+begin
+  Result := ValidateProtocolOwnership(ErrorMessage);
+  if not Result then exit;
+  Result := ProbeRegistryRoot(HKA, ErrorMessage);
+  if not Result then exit;
+  { 只有当前用户已有历史覆盖键时才修复 HKCU；主注册始终写入管理员 HKA
+    对应的 HKLM\Software\Classes，不再使用不推荐的 HKCR。 }
+  if RegKeyExists(HKCU, ClassesPrefix + 'partyops-file') or
+     RegKeyExists(HKCU, ClassesPrefix + 'partyops-client') then
+    Result := ProbeRegistryRoot(HKCU, ErrorMessage);
+end;
+
+procedure BackupRegistryKey(RootKey: Integer; Subkey: String);
+var
+  FullKey, ExportPath: String;
+  ResultCode: Integer;
+begin
+  RegistryKeyBackups[RegistryKeyBackupCount].RootKey := RootKey;
+  RegistryKeyBackups[RegistryKeyBackupCount].Subkey := Subkey;
+  RegistryKeyBackups[RegistryKeyBackupCount].Existed := RegKeyExists(RootKey, Subkey);
+  ExportPath := ExpandConstant('{tmp}\partyops-protocol-backup-') +
+    IntToStr(RegistryKeyBackupCount) + '.reg';
+  DeleteFile(ExportPath);
+  RegistryKeyBackups[RegistryKeyBackupCount].ExportPath := ExportPath;
+  if RegistryKeyBackups[RegistryKeyBackupCount].Existed then
+  begin
+    if (RootKey = HKA) or (RootKey = HKLM) then
+      FullKey := 'HKEY_LOCAL_MACHINE\' + Subkey
+    else
+      FullKey := 'HKEY_CURRENT_USER\' + Subkey;
+    ResultCode := -1;
+    if (not Exec(
+      ExpandConstant('{sys}\reg.exe'),
+      'export "' + FullKey + '" "' + ExportPath + '" /y',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+    )) or (ResultCode <> 0) or (not FileExists(ExportPath)) then
+      RaiseException(
+        '[PROTOCOL_REGISTRY_BACKUP_FAILED] 无法完整备份 ' + FullKey +
+        '，安装在写入前已停止。'
+      );
+  end;
+  RegistryKeyBackupCount := RegistryKeyBackupCount + 1;
+end;
+
+procedure BackupRegistryValue(RootKey: Integer; Subkey, ValueName: String);
+var
+  ValueData: String;
+begin
+  RegistryBackups[RegistryBackupCount].RootKey := RootKey;
+  RegistryBackups[RegistryBackupCount].Subkey := Subkey;
+  RegistryBackups[RegistryBackupCount].ValueName := ValueName;
+  RegistryBackups[RegistryBackupCount].Existed :=
+    RegQueryStringValue(RootKey, Subkey, ValueName, ValueData);
+  RegistryBackups[RegistryBackupCount].ValueData := ValueData;
+  RegistryBackupCount := RegistryBackupCount + 1;
+end;
+
+procedure RollbackProtocolRegistry;
+var
+  I, ResultCode: Integer;
+  FullKey, VerifyPath, BackupHash, VerifyHash, FailureDetail: String;
+begin
+  FailureDetail := '';
+  for I := RegistryKeyBackupCount - 1 downto 0 do
+  begin
+    if RegKeyExists(RegistryKeyBackups[I].RootKey, RegistryKeyBackups[I].Subkey) and
+       (not RegDeleteKeyIncludingSubkeys(
+        RegistryKeyBackups[I].RootKey,
+        RegistryKeyBackups[I].Subkey
+      )) then
+    begin
+      FailureDetail := FailureDetail + '无法删除半写入键 ' +
+        RegistryKeyBackups[I].Subkey + '；';
+      continue;
+    end;
+    if RegistryKeyBackups[I].Existed then
+    begin
+      ResultCode := -1;
+      if (not Exec(
+        ExpandConstant('{sys}\reg.exe'),
+        'import "' + RegistryKeyBackups[I].ExportPath + '"',
+        '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+      )) or (ResultCode <> 0) then
+      begin
+        FailureDetail := FailureDetail + '无法导入原键 ' +
+          RegistryKeyBackups[I].Subkey + '；';
+        continue;
+      end;
+      if (RegistryKeyBackups[I].RootKey = HKA) or
+         (RegistryKeyBackups[I].RootKey = HKLM) then
+        FullKey := 'HKEY_LOCAL_MACHINE\' + RegistryKeyBackups[I].Subkey
+      else
+        FullKey := 'HKEY_CURRENT_USER\' + RegistryKeyBackups[I].Subkey;
+      VerifyPath := RegistryKeyBackups[I].ExportPath + '.verify';
+      DeleteFile(VerifyPath);
+      ResultCode := -1;
+      if (not Exec(
+        ExpandConstant('{sys}\reg.exe'),
+        'export "' + FullKey + '" "' + VerifyPath + '" /y',
+        '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+      )) or (ResultCode <> 0) or (not FileExists(VerifyPath)) then
+      begin
+        FailureDetail := FailureDetail + '无法回读恢复键 ' +
+          RegistryKeyBackups[I].Subkey + '；';
+        continue;
+      end;
+      BackupHash := GetSHA256OfFile(RegistryKeyBackups[I].ExportPath);
+      VerifyHash := GetSHA256OfFile(VerifyPath);
+      if (BackupHash = '') or (CompareText(BackupHash, VerifyHash) <> 0) then
+        FailureDetail := FailureDetail + '恢复键回读不一致 ' +
+          RegistryKeyBackups[I].Subkey + '；';
+      DeleteFile(VerifyPath);
+    end
+    else if RegKeyExists(
+      RegistryKeyBackups[I].RootKey, RegistryKeyBackups[I].Subkey
+    ) then
+      FailureDetail := FailureDetail + '新增键仍有残留 ' +
+        RegistryKeyBackups[I].Subkey + '；';
+  end;
+  if FailureDetail <> '' then
+    RaiseException(
+      '[PROTOCOL_REGISTRY_ROLLBACK_FAILED] 协议注册未能完整恢复：' + FailureDetail +
+      '备份保留在安装器临时目录，可供诊断。'
+    );
+  for I := 0 to RegistryKeyBackupCount - 1 do
+    DeleteFile(RegistryKeyBackups[I].ExportPath);
+  RegistryBackupCount := 0;
+  RegistryKeyBackupCount := 0;
+  ProtocolRegistryWritten := False;
+end;
+
+procedure WriteProtocolValue(RootKey: Integer; Subkey, ValueName, ValueData: String);
+begin
+  if not RegWriteStringValue(RootKey, Subkey, ValueName, ValueData) then
+  begin
+    RollbackProtocolRegistry;
+    RaiseException('[PROTOCOL_REGISTRY_DENIED] 无法写入 ' + RegistryRootName(RootKey) +
+      '\' + Subkey + '。安装已回滚，没有保留半安装协议。');
+  end;
+end;
+
+procedure RegisterProtocolAtRoot(
+  RootKey: Integer; ProtocolName, DisplayName, CommandValue: String
+);
+var
+  BaseKey, CommandKey, Verified: String;
+begin
+  BaseKey := ClassesPrefix + ProtocolName;
+  CommandKey := BaseKey + '\shell\open\command';
+  BackupRegistryKey(RootKey, BaseKey);
+  WriteProtocolValue(RootKey, BaseKey, '', DisplayName);
+  WriteProtocolValue(RootKey, BaseKey, 'URL Protocol', '');
+  WriteProtocolValue(RootKey, BaseKey, 'PartyOps.AppId', PartyOpsAppId);
+  WriteProtocolValue(RootKey, BaseKey, 'PartyOps.InstallPath', ExpandConstant('{app}'));
+  WriteProtocolValue(RootKey, CommandKey, '', CommandValue);
+  if (not RegQueryStringValue(RootKey, CommandKey, '', Verified)) or
+     (CompareText(Verified, CommandValue) <> 0) then
+  begin
+    RollbackProtocolRegistry;
+    RaiseException('[PROTOCOL_REGISTRY_VERIFY_FAILED] ' + ProtocolName +
+      ' 写入后回读不一致。安装已回滚。');
+  end;
+end;
+
+procedure RegisterPartyOpsProtocols;
+var
+  FileCommand, ClientCommand: String;
+begin
+  RegistryBackupCount := 0;
+  RegistryKeyBackupCount := 0;
+  FileCommand := '"' + ExpandConstant('{app}\PartyOpsFileOpen.exe') + '" "%1"';
+  ClientCommand := '"' + ExpandConstant('{app}\PartyOpsWizard.exe') +
+    '" --manage-shared-roots --action-uri "%1"';
+  RegisterProtocolAtRoot(HKA, 'partyops-file', 'URL:PartyOps File Protocol', FileCommand);
+  RegisterProtocolAtRoot(HKA, 'partyops-client', 'URL:PartyOps Client Protocol', ClientCommand);
+  if RegKeyExists(HKCU, ClassesPrefix + 'partyops-file') then
+    RegisterProtocolAtRoot(HKCU, 'partyops-file', 'URL:PartyOps File Protocol', FileCommand);
+  if RegKeyExists(HKCU, ClassesPrefix + 'partyops-client') then
+    RegisterProtocolAtRoot(HKCU, 'partyops-client', 'URL:PartyOps Client Protocol', ClientCommand);
+  ProtocolRegistryWritten := True;
+end;
 
 function UnquoteEnvironmentValue(Value: String): String;
 var
@@ -147,7 +526,10 @@ var
   PreviousDataDir: String;
   PreviousDataDirLines: TArrayOfString;
 begin
-  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.2 安装向导';
+  InAppServiceUpdate := CompareText(
+    ExpandConstant('{param:INAPPUPDATE|0}'), '1'
+  ) = 0;
+  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.3 安装向导';
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     '选择 PartyOps 业务数据目录',
@@ -169,7 +551,7 @@ begin
       PreviousDataDir := Trim(PreviousDataDirLines[0]);
   end;
   if PreviousDataDir = '' then
-    PreviousDataDir := ExpandConstant('{commonappdata}\PartyOps');
+    PreviousDataDir := ExpandConstant('{commonappdata}\PartyOps-Data');
   DataDirPage.Values[0] := PreviousDataDir;
 end;
 
@@ -182,6 +564,70 @@ begin
     'query ' + ServiceName,
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode
   ) and (ResultCode = 0);
+end;
+
+function ServiceIsRunning(ServiceName: String): Boolean;
+var
+  PowerShell, Parameters: String;
+  ResultCode: Integer;
+begin
+  PowerShell := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+  Parameters := '-NoLogo -NoProfile -NonInteractive -Command ' +
+    AddQuotes('$s=Get-Service -Name ' + AddQuotes(ServiceName) +
+      ' -ErrorAction SilentlyContinue; if($s -and $s.Status -eq ''Running''){exit 0}else{exit 3}');
+  Result := FileExists(PowerShell) and
+    Exec(PowerShell, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and
+    (ResultCode = 0);
+end;
+
+procedure SnapshotServiceConfiguration(
+  ServiceName: String; var StartType, DelayedAutoStart: Cardinal
+);
+var
+  ServiceKey: String;
+begin
+  StartType := 3;
+  DelayedAutoStart := 0;
+  ServiceKey := 'SYSTEM\CurrentControlSet\Services\' + ServiceName;
+  RegQueryDWordValue(HKLM, ServiceKey, 'Start', StartType);
+  RegQueryDWordValue(HKLM, ServiceKey, 'DelayedAutoStart', DelayedAutoStart);
+end;
+
+function ServiceStartupArgument(
+  Existed: Boolean; StartType, DelayedAutoStart: Cardinal
+): String;
+begin
+  if not Existed then
+    Result := '--startup manual '
+  else if StartType = 4 then
+    Result := '--startup disabled '
+  else if (StartType = 2) and (DelayedAutoStart <> 0) then
+    Result := '--startup delayed '
+  else if StartType = 2 then
+    Result := '--startup auto '
+  else
+    Result := '--startup manual ';
+end;
+
+procedure RestoreServiceStartup(
+  ServiceName: String; Existed: Boolean; StartType, DelayedAutoStart: Cardinal
+);
+var
+  ResultCode: Integer;
+  StartValue: String;
+begin
+  if not Existed then
+    exit;
+  if StartType = 4 then StartValue := 'disabled'
+  else if StartType = 2 then StartValue := 'auto'
+  else StartValue := 'demand';
+  Exec(ExpandConstant('{sys}\sc.exe'), 'config ' + ServiceName + ' start= ' + StartValue,
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if (StartType = 2) and (DelayedAutoStart <> 0) then
+    RegWriteDWordValue(
+      HKLM, 'SYSTEM\CurrentControlSet\Services\' + ServiceName,
+      'DelayedAutoStart', DelayedAutoStart
+    );
 end;
 
 function StopServiceBeforeUpgrade(
@@ -214,17 +660,205 @@ begin
   end;
 end;
 
-function PrepareToInstall(var NeedsRestart: Boolean): String;
+function InstallPathValidationMessage(ResultCode: Integer): String;
 begin
+  case ResultCode of
+    2: Result := '[INSTALL_DIR_INVALID] 程序目录必须是本机固定磁盘上的具体文件夹，不能直接使用磁盘根目录。';
+    3: Result := '[INSTALL_DIR_REPARSE_POINT] 程序目录及其父目录、现有内容不能包含符号链接或目录联接。';
+    4: Result := '[INSTALL_DIR_NOT_PARTYOPS] 所选程序目录不是空目录，也不是可识别的 PartyOps 旧安装目录。';
+    6: Result := '[INSTALL_DIR_PARENT_UNSAFE] 所选路径的磁盘或父目录允许普通用户删除子项，不能安全承载系统服务。请改选受管理员保护的固定磁盘目录。';
+  else
+    Result := '[INSTALL_DIR_CHECK_FAILED] 无法完成程序目录安全检查，请更换目录后重试。';
+  end;
+end;
+
+function ValidateAndSecureInstallDirectory: String;
+var
+  AppDir, Validator, PowerShell, Parameters: String;
+  ResultCode: Integer;
+begin
+  Result := '';
+  AppDir := ExpandConstant('{app}');
+  ExtractTemporaryFile('validate-install-path.ps1');
+  Validator := ExpandConstant('{tmp}\validate-install-path.ps1');
+  PowerShell := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+  Parameters := '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' +
+    AddQuotes(Validator) + ' -Path ' + AddQuotes(AppDir);
+  if (not FileExists(PowerShell)) or
+     (not Exec(PowerShell, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or
+     (ResultCode <> 0) then
+  begin
+    Result := InstallPathValidationMessage(ResultCode);
+    exit;
+  end;
+  if not ForceDirectories(AppDir) then
+  begin
+    Result := '[INSTALL_DIR_CREATE_FAILED] 无法创建所选程序目录，请检查磁盘和权限。';
+    exit;
+  end;
+  { 新建目录后再次检查，收窄普通用户在首次检查与目录创建之间替换路径的窗口。 }
+  if (not Exec(PowerShell, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or
+     (ResultCode <> 0) then
+  begin
+    Result := InstallPathValidationMessage(ResultCode);
+    exit;
+  end;
+  if (not Exec(
+    ExpandConstant('{sys}\icacls.exe'),
+    AddQuotes(AppDir) + ' /setowner *S-1-5-32-544 /T /C /Q',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+  )) or (ResultCode <> 0) then
+  begin
+    Result := '[INSTALL_DIR_ACL_DENIED] 无法把程序目录所有权交给管理员，安装已停止。';
+    exit;
+  end;
+  if (not Exec(
+    ExpandConstant('{sys}\icacls.exe'),
+    AddQuotes(AppDir) + ' /inheritance:r /grant:r ' +
+      '*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F ' +
+      '*S-1-5-32-545:(OI)(CI)RX /T /C /Q',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+  )) or (ResultCode <> 0) then
+  begin
+    Result := '[INSTALL_DIR_ACL_DENIED] 无法保护程序目录写权限，安装已停止。';
+    exit;
+  end;
+  { ACL 收敛后最后回查；普通用户仍可读取并执行，但不能替换服务二进制。 }
+  if (not Exec(PowerShell, Parameters + ' -VerifyTargetAcl', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or
+     (ResultCode <> 0) then
+    Result := InstallPathValidationMessage(ResultCode);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  RegistryError: String;
+begin
+#ifdef PartyOpsLegacy
+  if not ValidateWindows7Prerequisites(RegistryError) then
+  begin
+    Result := RegistryError;
+    exit;
+  end;
+#endif
+  WizardForm.StatusLabel.Caption := '正在检查并保护自定义程序目录…';
+  Result := ValidateAndSecureInstallDirectory;
+  if Result <> '' then
+    exit;
+  HostServiceExistedBeforeInstall := ServiceExists('PartyOpsHost');
+  UpdateServiceExistedBeforeInstall := ServiceExists('PartyOpsUpdateService');
+  HostServiceRunningBeforeInstall :=
+    HostServiceExistedBeforeInstall and ServiceIsRunning('PartyOpsHost');
+  UpdateServiceRunningBeforeInstall :=
+    UpdateServiceExistedBeforeInstall and ServiceIsRunning('PartyOpsUpdateService');
+  SnapshotServiceConfiguration(
+    'PartyOpsHost', HostServiceStartTypeBeforeInstall, HostServiceDelayedBeforeInstall
+  );
+  SnapshotServiceConfiguration(
+    'PartyOpsUpdateService', UpdateServiceStartTypeBeforeInstall,
+    UpdateServiceDelayedBeforeInstall
+  );
   WizardForm.StatusLabel.Caption := '正在安全停止旧版 PartyOps 服务…';
+  if not PreflightProtocolRegistry(RegistryError) then
+  begin
+    Result := RegistryError;
+    exit;
+  end;
+  RestartPreviousServicesOnExit :=
+    HostServiceExistedBeforeInstall or UpdateServiceExistedBeforeInstall;
   Result := StopServiceBeforeUpgrade(
     'PartyOpsHost', 'PartyOpsService.exe', 'PartyOps 主机服务'
   );
   if Result <> '' then
     exit;
-  Result := StopServiceBeforeUpgrade(
-    'PartyOpsUpdateService', 'PartyOpsUpdaterService.exe', 'PartyOps 更新服务'
+  if not InAppServiceUpdate then
+    Result := StopServiceBeforeUpgrade(
+      'PartyOpsUpdateService', 'PartyOpsUpdaterService.exe', 'PartyOps 更新服务'
+    );
+end;
+
+procedure RemoveOwnedProtocol(RootKey: Integer; ProtocolName: String);
+var
+  BaseKey, AppIdValue, InstallPathValue: String;
+begin
+  BaseKey := ClassesPrefix + ProtocolName;
+  if not RegKeyExists(RootKey, BaseKey) then
+    exit;
+  AppIdValue := '';
+  InstallPathValue := '';
+  RegQueryStringValue(RootKey, BaseKey, 'PartyOps.AppId', AppIdValue);
+  RegQueryStringValue(RootKey, BaseKey, 'PartyOps.InstallPath', InstallPathValue);
+  { 只清理由当前 AppId 且当前安装路径共同证明归属的键，避免删除外部同名协议。 }
+  if (CompareText(AppIdValue, PartyOpsAppId) = 0) and
+     (CompareText(InstallPathValue, ExpandConstant('{app}')) = 0) then
+    RegDeleteKeyIncludingSubkeys(RootKey, BaseKey);
+end;
+
+function RunDataCleanup(Scope: String; CheckOnly: Boolean): Boolean;
+var
+  Parameters: String;
+  ResultCode: Integer;
+begin
+  Parameters := '--scope ' + Scope;
+  if CheckOnly then
+    Parameters := Parameters + ' --check';
+  ResultCode := -1;
+  { ExecAsOriginalUser 官方不支持卸载阶段。清理器以提升后的卸载令牌运行，
+    并自行枚举已登记配置目录与已加载用户启动项，同时逐项核验归属。 }
+  Result := Exec(
+    ExpandConstant('{app}\PartyOpsDataCleanup.exe'),
+    Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode
   );
+  Result := Result and (ResultCode = 0);
+end;
+
+function InitializeUninstall(): Boolean;
+var
+  Choice: Integer;
+begin
+  DeleteAllDataOnUninstall := False;
+  Choice := MsgBox(
+    '请选择卸载方式：' + #13#10 + #13#10 +
+    '“是”＝彻底卸载：删除程序、服务、当前账号配置以及经 PartyOps 标记的数据库、附件、备份、证书、模型、缓存和日志。此操作不可恢复，请先确认备份可用。' + #13#10 + #13#10 +
+    '“否”＝仅删除程序：保留全部业务数据，方便以后重装继续使用。' + #13#10 + #13#10 +
+    '“取消”＝暂不卸载。',
+    mbConfirmation, MB_YESNOCANCEL
+  );
+  if Choice = IDCANCEL then
+  begin
+    Result := False;
+    exit;
+  end;
+  DeleteAllDataOnUninstall := Choice = IDYES;
+  if DeleteAllDataOnUninstall then
+  begin
+    if not RunDataCleanup('all', True) then
+    begin
+      MsgBox(
+        '[UNINSTALL_DATA_PREFLIGHT_FAILED] 本机 PartyOps 数据目录未通过完整安全检查。为防止误删，卸载尚未开始；可改选“仅删除程序”保留数据。',
+        mbError, MB_OK
+      );
+      Result := False;
+      exit;
+    end;
+  end;
+  Result := True;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep <> usUninstall then
+    exit;
+  if not RunDataCleanup('runtime', False) then
+    RaiseException('[UNINSTALL_RUNTIME_CLEANUP_FAILED] PartyOps 用户进程或自启动项未能安全清理，卸载已停止。');
+  if DeleteAllDataOnUninstall then
+  begin
+    if not RunDataCleanup('all', False) then
+      RaiseException('[UNINSTALL_DATA_FAILED] 本机 PartyOps 数据未能按唯一清单安全删除，卸载已停止。');
+  end;
+  RemoveOwnedProtocol(HKA, 'partyops-file');
+  RemoveOwnedProtocol(HKA, 'partyops-client');
+  RemoveOwnedProtocol(HKCU, 'partyops-file');
+  RemoveOwnedProtocol(HKCU, 'partyops-client');
 end;
 
 procedure RunChecked(FileName, Parameters, Description: String);
@@ -237,6 +871,204 @@ begin
     ServiceSetupFailed := True;
     RaiseException(Description + '失败，退出码：' + IntToStr(ResultCode));
   end;
+end;
+
+procedure RollbackInstallerCache;
+begin
+  if not InstallerCacheTransactionActive then
+    exit;
+  DeleteFile(InstallerCachePath);
+  DeleteFile(InstallerCacheHashPath);
+  if InstallerCacheHadPrevious and FileExists(InstallerCachePreviousPath) then
+    RenameFile(InstallerCachePreviousPath, InstallerCachePath)
+  else
+    DeleteFile(InstallerCachePreviousPath);
+  if InstallerCacheHashHadPrevious and FileExists(InstallerCacheHashPreviousPath) then
+    RenameFile(InstallerCacheHashPreviousPath, InstallerCacheHashPath)
+  else
+    DeleteFile(InstallerCacheHashPreviousPath);
+  DeleteFile(InstallerCacheIncomingPath);
+  DeleteFile(InstallerCacheHashIncomingPath);
+  InstallerCacheTransactionActive := False;
+end;
+
+procedure BeginInstallerCacheTransaction;
+var
+  SystemRoot, CacheDirectory, SourceInstaller, SourceHash, IncomingHash: String;
+begin
+  { 回滚安装器会被 SYSTEM 执行，必须与普通用户可写的自定义业务数据隔离。 }
+  SystemRoot := ExpandConstant('{commonappdata}\PartyOps-System');
+  CacheDirectory := AddBackslash(SystemRoot) + 'installer-cache';
+  if not ForceDirectories(CacheDirectory) then
+    RaiseException('[INSTALLER_CACHE_DENIED] 无法创建升级回滚缓存目录：' + CacheDirectory);
+  RunChecked(
+    ExpandConstant('{sys}\icacls.exe'),
+    '"' + SystemRoot + '" /inheritance:r /grant:r ' +
+      '*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F',
+    '保护 PartyOps 系统事务目录权限'
+  );
+  RunChecked(
+    ExpandConstant('{sys}\icacls.exe'),
+    '"' + CacheDirectory + '" /inheritance:r /grant:r ' +
+      '*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F',
+    '保护安装器回滚缓存权限'
+  );
+  InstallerCachePath := AddBackslash(CacheDirectory) + 'current.exe';
+  InstallerCachePreviousPath := InstallerCachePath + '.previous';
+  InstallerCacheIncomingPath := InstallerCachePath + '.incoming';
+  InstallerCacheHashPath := InstallerCachePath + '.sha256';
+  InstallerCacheHashPreviousPath := InstallerCacheHashPath + '.previous';
+  InstallerCacheHashIncomingPath := InstallerCacheHashPath + '.incoming';
+  SourceInstaller := ExpandConstant('{srcexe}');
+  DeleteFile(InstallerCacheIncomingPath);
+  DeleteFile(InstallerCacheHashIncomingPath);
+  { 如果上次被外部强制中断，优先保留 current；只有 current 缺失时才
+    恢复 previous，避免把一个已经提交的新缓存意外降级。 }
+  if (not FileExists(InstallerCachePath)) and FileExists(InstallerCachePreviousPath) then
+    RenameFile(InstallerCachePreviousPath, InstallerCachePath)
+  else
+    DeleteFile(InstallerCachePreviousPath);
+  if (not FileExists(InstallerCacheHashPath)) and FileExists(InstallerCacheHashPreviousPath) then
+    RenameFile(InstallerCacheHashPreviousPath, InstallerCacheHashPath)
+  else
+    DeleteFile(InstallerCacheHashPreviousPath);
+  if not CopyFile(SourceInstaller, InstallerCacheIncomingPath, False) then
+    RaiseException('[INSTALLER_CACHE_COPY_FAILED] 无法保存当前安装器，已拒绝不可回滚安装。');
+  SourceHash := GetSHA256OfFile(SourceInstaller);
+  IncomingHash := GetSHA256OfFile(InstallerCacheIncomingPath);
+  if (SourceHash = '') or (CompareText(SourceHash, IncomingHash) <> 0) then
+  begin
+    DeleteFile(InstallerCacheIncomingPath);
+    RaiseException('[INSTALLER_CACHE_VERIFY_FAILED] 安装器回滚缓存校验失败，安装已停止。');
+  end;
+  if not SaveStringToFile(InstallerCacheHashIncomingPath, Lowercase(SourceHash), False) then
+  begin
+    DeleteFile(InstallerCacheIncomingPath);
+    RaiseException('[INSTALLER_CACHE_VERIFY_FAILED] 无法保存安装器校验值，安装已停止。');
+  end;
+  InstallerCacheHadPrevious := FileExists(InstallerCachePath);
+  InstallerCacheHashHadPrevious := FileExists(InstallerCacheHashPath);
+  if InstallerCacheHadPrevious and
+     (not RenameFile(InstallerCachePath, InstallerCachePreviousPath)) then
+  begin
+    DeleteFile(InstallerCacheIncomingPath);
+    DeleteFile(InstallerCacheHashIncomingPath);
+    RaiseException('[INSTALLER_CACHE_SWITCH_FAILED] 无法保护旧版安装器缓存，安装已停止。');
+  end;
+  if InstallerCacheHashHadPrevious and
+     (not RenameFile(InstallerCacheHashPath, InstallerCacheHashPreviousPath)) then
+  begin
+    if InstallerCacheHadPrevious then
+      RenameFile(InstallerCachePreviousPath, InstallerCachePath);
+    DeleteFile(InstallerCacheIncomingPath);
+    DeleteFile(InstallerCacheHashIncomingPath);
+    RaiseException('[INSTALLER_CACHE_SWITCH_FAILED] 无法保护旧版安装器校验值，安装已停止。');
+  end;
+  if not RenameFile(InstallerCacheIncomingPath, InstallerCachePath) then
+  begin
+    if InstallerCacheHadPrevious then
+      RenameFile(InstallerCachePreviousPath, InstallerCachePath);
+    if InstallerCacheHashHadPrevious then
+      RenameFile(InstallerCacheHashPreviousPath, InstallerCacheHashPath);
+    DeleteFile(InstallerCacheIncomingPath);
+    DeleteFile(InstallerCacheHashIncomingPath);
+    RaiseException('[INSTALLER_CACHE_SWITCH_FAILED] 无法原子切换安装器缓存，安装已停止。');
+  end;
+  if not RenameFile(InstallerCacheHashIncomingPath, InstallerCacheHashPath) then
+  begin
+    DeleteFile(InstallerCachePath);
+    if InstallerCacheHadPrevious then
+      RenameFile(InstallerCachePreviousPath, InstallerCachePath);
+    if InstallerCacheHashHadPrevious then
+      RenameFile(InstallerCacheHashPreviousPath, InstallerCacheHashPath);
+    DeleteFile(InstallerCacheHashIncomingPath);
+    RaiseException('[INSTALLER_CACHE_SWITCH_FAILED] 无法原子切换安装器校验值，安装已停止。');
+  end;
+  InstallerCacheTransactionActive := True;
+end;
+
+procedure RollbackDataMarker;
+begin
+  if not DataMarkerTransactionActive then
+    exit;
+  DeleteFile(DataMarkerPath);
+  if DataMarkerHadPrevious and FileExists(DataMarkerPreviousPath) then
+    RenameFile(DataMarkerPreviousPath, DataMarkerPath)
+  else
+    DeleteFile(DataMarkerPreviousPath);
+  DataMarkerTransactionActive := False;
+end;
+
+procedure BeginDataMarkerTransaction;
+var
+  SelectedDataDir: TArrayOfString;
+begin
+  if not ForceDirectories(ExpandConstant('{commonappdata}\PartyOps')) then
+    RaiseException('[DATA_MARKER_DENIED] 无法创建 PartyOps 系统引导目录。');
+  DataMarkerPath := ExpandConstant('{commonappdata}\PartyOps\install-data-dir.txt');
+  DataMarkerPreviousPath := DataMarkerPath + '.previous';
+  DeleteFile(DataMarkerPreviousPath);
+  DataMarkerHadPrevious := FileExists(DataMarkerPath);
+  if DataMarkerHadPrevious and
+     (not RenameFile(DataMarkerPath, DataMarkerPreviousPath)) then
+    RaiseException('[DATA_MARKER_BACKUP_FAILED] 无法保护原数据目录配置，安装已停止。');
+  SetArrayLength(SelectedDataDir, 1);
+  SelectedDataDir[0] := DataDirPage.Values[0];
+  if not SaveStringsToUTF8File(DataMarkerPath, SelectedDataDir, False) then
+  begin
+    if DataMarkerHadPrevious then
+      RenameFile(DataMarkerPreviousPath, DataMarkerPath);
+    RaiseException('[DATA_MARKER_WRITE_FAILED] 保存主机数据目录预选项失败。');
+  end;
+  DataMarkerTransactionActive := True;
+end;
+
+procedure CommitPostInstallTransactions;
+begin
+  DeleteFile(InstallerCachePreviousPath);
+  DeleteFile(InstallerCacheIncomingPath);
+  DeleteFile(InstallerCacheHashPreviousPath);
+  DeleteFile(InstallerCacheHashIncomingPath);
+  DeleteFile(DataMarkerPreviousPath);
+  InstallerCacheTransactionActive := False;
+  DataMarkerTransactionActive := False;
+end;
+
+procedure RollbackPostInstall;
+var
+  ResultCode: Integer;
+  HostExecutable, UpdateExecutable: String;
+begin
+  RollbackDataMarker;
+  RollbackInstallerCache;
+  if ProtocolRegistryWritten then
+    RollbackProtocolRegistry;
+  HostExecutable := ExpandConstant('{app}\PartyOpsService.exe');
+  UpdateExecutable := ExpandConstant('{app}\PartyOpsUpdaterService.exe');
+  if FileExists(UpdateExecutable) then
+  begin
+    if not UpdateServiceExistedBeforeInstall then
+    begin
+      Exec(UpdateExecutable, '--wait=15 stop', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec(UpdateExecutable, 'remove', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+  end;
+  if FileExists(HostExecutable) then
+  begin
+    if not HostServiceExistedBeforeInstall then
+    begin
+      Exec(HostExecutable, '--wait=15 stop', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec(HostExecutable, 'remove', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+  end;
+  RestoreServiceStartup(
+    'PartyOpsHost', HostServiceExistedBeforeInstall,
+    HostServiceStartTypeBeforeInstall, HostServiceDelayedBeforeInstall
+  );
+  RestoreServiceStartup(
+    'PartyOpsUpdateService', UpdateServiceExistedBeforeInstall,
+    UpdateServiceStartTypeBeforeInstall, UpdateServiceDelayedBeforeInstall
+  );
 end;
 
 function GetCustomSetupExitCode: Integer;
@@ -258,50 +1090,142 @@ begin
     Result := 'install';
 end;
 
+procedure ProtectSystemControlDirectories;
+var
+  ControlRoot, TransactionRoot: String;
+begin
+  ControlRoot := ExpandConstant('{commonappdata}\PartyOps');
+  TransactionRoot := ExpandConstant('{commonappdata}\PartyOps-System');
+  if not ForceDirectories(ControlRoot) then
+    RaiseException('[CONTROL_DIR_CREATE_FAILED] 无法创建 PartyOps 系统控制目录');
+  if not ForceDirectories(TransactionRoot) then
+    RaiseException('[TRANSACTION_DIR_CREATE_FAILED] 无法创建 PartyOps 系统事务目录');
+  RunChecked(
+    ExpandConstant('{sys}\icacls.exe'),
+    '"' + ControlRoot + '" /setowner *S-1-5-32-544 /T /C /Q',
+    '保护 PartyOps 系统控制目录所有权'
+  );
+  RunChecked(
+    ExpandConstant('{sys}\icacls.exe'),
+    '"' + ControlRoot + '" /inheritance:r /grant:r ' +
+      '*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F ' +
+      '*S-1-5-32-545:(OI)(CI)RX /T /C /Q',
+    '保护 PartyOps 系统控制目录写权限'
+  );
+  RunChecked(
+    ExpandConstant('{sys}\icacls.exe'),
+    '"' + TransactionRoot + '" /setowner *S-1-5-32-544 /T /C /Q',
+    '保护 PartyOps 系统事务目录所有权'
+  );
+  RunChecked(
+    ExpandConstant('{sys}\icacls.exe'),
+    '"' + TransactionRoot + '" /inheritance:r /grant:r ' +
+      '*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F /T /C /Q',
+    '保护 PartyOps 系统事务目录写权限'
+  );
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
-  SelectedDataDir: TArrayOfString;
+  ErrorMessage, HostServiceStartup, UpdateServiceStartup: String;
 begin
+  if CurStep = ssDone then
+  begin
+    CommitPostInstallTransactions;
+    InstallCompletedSuccessfully := True;
+    RestartPreviousServicesOnExit := False;
+    exit;
+  end;
   if CurStep <> ssPostInstall then
     exit;
-  ForceDirectories(ExpandConstant('{commonappdata}\PartyOps'));
-  SetArrayLength(SelectedDataDir, 1);
-  SelectedDataDir[0] := DataDirPage.Values[0];
-  if not SaveStringsToUTF8File(
-    ExpandConstant('{commonappdata}\PartyOps\install-data-dir.txt'),
-    SelectedDataDir,
-    False
-  ) then
-    RaiseException('保存主机数据目录预选项失败');
-  RunChecked(
-    ExpandConstant('{app}\PartyOpsService.exe'),
-    '--startup manual ' + ServiceInstallAction('PartyOpsHost'),
-    '安装 PartyOps 主机服务'
-  );
-  RunChecked(
-    ExpandConstant('{sys}\sc.exe'),
-    'failure PartyOpsHost reset= 86400 actions= restart/5000/restart/15000/',
-    '配置 PartyOps 主机服务恢复策略'
-  );
-  RunChecked(
-    ExpandConstant('{sys}\sc.exe'),
-    'sdset PartyOpsHost "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)"',
-    '配置 PartyOps 主机服务启动权限'
-  );
-  RunChecked(
-    ExpandConstant('{app}\PartyOpsUpdaterService.exe'),
-    '--startup manual ' + ServiceInstallAction('PartyOpsUpdateService'),
-    '安装 PartyOps 更新服务'
-  );
-  RunChecked(
-    ExpandConstant('{sys}\sc.exe'),
-    'failure PartyOpsUpdateService reset= 86400 actions= restart/5000/restart/15000/',
-    '配置 PartyOps 更新服务恢复策略'
-  );
-  Exec(
-    ExpandConstant('{sys}\netsh.exe'),
-    'advfirewall firewall delete rule name="党建智办主机"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
-  );
+  try
+    ProtectSystemControlDirectories;
+    RegisterPartyOpsProtocols;
+    HostServiceStartup := ServiceStartupArgument(
+      HostServiceExistedBeforeInstall,
+      HostServiceStartTypeBeforeInstall,
+      HostServiceDelayedBeforeInstall
+    );
+    UpdateServiceStartup := ServiceStartupArgument(
+      UpdateServiceExistedBeforeInstall,
+      UpdateServiceStartTypeBeforeInstall,
+      UpdateServiceDelayedBeforeInstall
+    );
+    RunChecked(
+      ExpandConstant('{app}\PartyOpsService.exe'),
+      HostServiceStartup + ServiceInstallAction('PartyOpsHost'),
+      '安装 PartyOps 主机服务'
+    );
+    RunChecked(
+      ExpandConstant('{sys}\sc.exe'),
+      'failure PartyOpsHost reset= 86400 actions= restart/5000/restart/15000/',
+      '配置 PartyOps 主机服务恢复策略'
+    );
+    RunChecked(
+      ExpandConstant('{sys}\sc.exe'),
+      'sdset PartyOpsHost "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)"',
+      '配置 PartyOps 主机服务启动权限'
+    );
+    RunChecked(
+      ExpandConstant('{app}\PartyOpsUpdaterService.exe'),
+      UpdateServiceStartup + ServiceInstallAction('PartyOpsUpdateService'),
+      '安装 PartyOps 更新服务'
+    );
+    RunChecked(
+      ExpandConstant('{sys}\sc.exe'),
+      'failure PartyOpsUpdateService reset= 86400 actions= restart/5000/restart/15000/',
+      '配置 PartyOps 更新服务恢复策略'
+    );
+    { 当前安装器和数据目录标记都采用同目录临时文件 + 旧值保留。
+      只有 Inno 进入 ssDone 才提交，后续任一步失败都会恢复原值。 }
+    BeginInstallerCacheTransaction;
+    BeginDataMarkerTransaction;
+    Exec(
+      ExpandConstant('{sys}\netsh.exe'),
+      'advfirewall firewall delete rule name="党建智办主机"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+    );
+    if HostServiceRunningBeforeInstall then
+      RunChecked(
+        ExpandConstant('{sys}\sc.exe'), 'start PartyOpsHost',
+        '恢复升级前运行的 PartyOps 主机服务'
+      );
+    if UpdateServiceRunningBeforeInstall and not InAppServiceUpdate then
+      RunChecked(
+        ExpandConstant('{sys}\sc.exe'), 'start PartyOpsUpdateService',
+        '恢复升级前运行的 PartyOps 更新服务'
+      );
+  except
+    ErrorMessage := GetExceptionMessage;
+    RollbackPostInstall;
+    RaiseException(ErrorMessage);
+  end;
+end;
+
+procedure DeinitializeSetup;
+var
+  ResultCode: Integer;
+begin
+  { 只有在 Inno 完成自身文件回滚后才恢复升级前已有服务，避免服务过早
+    启动并锁住正在还原的旧二进制。新安装创建的服务已在异常处理中删除。 }
+  if RestartPreviousServicesOnExit and not InstallCompletedSuccessfully then
+  begin
+    RollbackDataMarker;
+    RollbackInstallerCache;
+    RestoreServiceStartup(
+      'PartyOpsHost', HostServiceExistedBeforeInstall,
+      HostServiceStartTypeBeforeInstall, HostServiceDelayedBeforeInstall
+    );
+    RestoreServiceStartup(
+      'PartyOpsUpdateService', UpdateServiceExistedBeforeInstall,
+      UpdateServiceStartTypeBeforeInstall, UpdateServiceDelayedBeforeInstall
+    );
+    if HostServiceRunningBeforeInstall then
+      Exec(ExpandConstant('{sys}\sc.exe'), 'start PartyOpsHost', '', SW_HIDE,
+        ewWaitUntilTerminated, ResultCode);
+    if UpdateServiceRunningBeforeInstall then
+      Exec(ExpandConstant('{sys}\sc.exe'), 'start PartyOpsUpdateService', '', SW_HIDE,
+        ewWaitUntilTerminated, ResultCode);
+  end;
 end;

@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.config import get_settings
+from app.versioning import parse_release_version
 
 
 def test_device_enrollment_heartbeat_permissions_and_workbench(
@@ -213,7 +214,7 @@ def test_saved_views_topics_calendar_and_handover(client: TestClient, admin: dic
 
 def test_update_package_validation_and_queue(client: TestClient, admin: dict, monkeypatch) -> None:
     current_version = get_settings().app_version
-    major, minor, patch = (int(part) for part in current_version.split("."))
+    major, minor, patch = parse_release_version(current_version).release
     update_version = f"{major}.{minor}.{patch + 1}"
     artifacts = {
         f"partyops_{update_version}_amd64.deb": b"amd64-placeholder",
@@ -234,7 +235,7 @@ def test_update_package_validation_and_queue(client: TestClient, admin: dict, mo
         "format_version": 2,
         "version": update_version,
         "min_version": "1.1.1",
-        "schema_revision": "0018",
+        "schema_revision": "0019",
         "architecture_artifacts": {
             "amd64": f"partyops_{update_version}_amd64.deb",
             "arm64": f"partyops_{update_version}_arm64.deb",

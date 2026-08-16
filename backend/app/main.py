@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import errno
+import os
 import json
 import logging
 import sys
@@ -39,7 +41,7 @@ from .scheduler import scheduler_loop
 from .seed import seed_templates
 from .models import User, utcnow
 from .enums import UserRole
-from .networking import validate_bind_host, validate_transport_security
+from .networking import discover_lan_addresses, validate_bind_host, validate_transport_security
 from .schemas import serialize_api_datetime
 from sqlalchemy import select
 from .upgrades import (
@@ -48,9 +50,94 @@ from .upgrades import (
     restore_database_from_upgrade_backup,
     upgrade_required,
 )
+from .startup_diagnostics import classify_database_startup_error
 
 
 settings = get_settings()
+
+_lan_address_cache: tuple[float, tuple[str, ...]] = (0.0, ())
+_lan_address_cache_lock = threading.Lock()
+
+
+def cached_lan_addresses(ttl_seconds: float = 30.0) -> tuple[str, ...]:
+    """缓存昂贵的网卡枚举；安全 Host 校验最多延迟一个短 TTL 感知变化。"""
+
+    global _lan_address_cache
+    now = time.monotonic()
+    cached_at, values = _lan_address_cache
+    if now - cached_at < ttl_seconds:
+        return values
+    with _lan_address_cache_lock:
+        cached_at, values = _lan_address_cache
+        if now - cached_at >= ttl_seconds:
+            values = tuple(discover_lan_addresses())
+            _lan_address_cache = (now, values)
+    return values
+
+
+class DataDirectoryInstanceLock:
+    """阻止两个 PartyOps 运行时同时操作同一业务数据根。"""
+
+    def __init__(self, data_dir: Path) -> None:
+        self.path = data_dir / ".partyops-instance.lock"
+        self.handle = None
+
+    def acquire(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = self.path.open("a+b")
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (OSError, BlockingIOError) as exc:
+            handle.close()
+            if getattr(exc, "errno", None) in {
+                errno.EACCES,
+                errno.EAGAIN,
+                errno.EDEADLK,
+            } or os.name == "nt":
+                raise RuntimeError(
+                    "[INSTANCE_ALREADY_RUNNING] 当前数据目录已有 PartyOps 在运行；"
+                    "请先退出旧模式后重试。"
+                ) from exc
+            raise
+        handle.seek(0)
+        handle.truncate()
+        handle.write(str(os.getpid()).encode("ascii"))
+        handle.flush()
+        self.handle = handle
+
+    def release(self) -> None:
+        handle, self.handle = self.handle, None
+        if handle is None:
+            return
+        try:
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+    def __del__(self) -> None:
+        try:
+            self.release()
+        except OSError:
+            pass
 
 # FastAPI 对显式 Pydantic 响应会使用 schemas.BaseModel 的统一序列化器，
 # 但少量聚合接口返回普通字典。为这类响应登记同一 datetime 编码规则，
@@ -109,8 +196,9 @@ def configure_logging() -> None:
     root.setLevel(logging.INFO)
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
+def _initialize_runtime() -> dict[str, object]:
+    """执行可失败的同步启动阶段；调用方负责释放实例锁。"""
+
     configure_logging()
     validate_bind_host(
         settings.network_bind_host,
@@ -127,12 +215,34 @@ async def lifespan(_app: FastAPI):
     try:
         db_runtime.create_schema()
     except Exception as exc:
+        code, public_detail = classify_database_startup_error(exc)
         if upgrade_backup:
             restore_database_from_upgrade_backup(upgrade_backup)
+            try:
+                record_upgrade(
+                    from_revision,
+                    upgrade_backup,
+                    status="rolled_back",
+                    message=f"{code}: {public_detail}",
+                )
+            except Exception:
+                logging.getLogger("partyops").exception("upgrade_rollback_record_failed")
         logging.getLogger("partyops").exception(
-            "schema_upgrade_failed from_revision=%s", from_revision
+            "schema_upgrade_failed code=%s from_revision=%s", code, from_revision
         )
-        raise RuntimeError("数据库升级失败，已恢复升级前数据。") from exc
+        if os.name == "nt":
+            try:
+                from .windows_host_status import write_service_status
+
+                write_service_status(
+                    settings.data_dir,
+                    stage="schema_failed",
+                    code=code,
+                    detail=public_detail,
+                )
+            except OSError:
+                logging.getLogger("partyops").exception("startup_status_write_failed")
+        raise RuntimeError(f"[{code}] {public_detail}") from exc
     if upgrade_backup:
         record_upgrade(from_revision, upgrade_backup, status="completed")
     capabilities = db_runtime.validate_capabilities()
@@ -146,12 +256,33 @@ async def lifespan(_app: FastAPI):
         ensure_current_release(db)
         db.commit()
     logging.getLogger("partyops").info("database_ready %s", capabilities)
-    stop_event = asyncio.Event()
-    scheduler = asyncio.create_task(scheduler_loop(stop_event))
-    yield
-    stop_event.set()
-    await scheduler
-    db_runtime.dispose()
+    return capabilities
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    instance_lock = DataDirectoryInstanceLock(settings.data_dir)
+    instance_lock.acquire()
+    scheduler: asyncio.Task | None = None
+    stop_event: asyncio.Event | None = None
+    try:
+        _initialize_runtime()
+        stop_event = asyncio.Event()
+        scheduler = asyncio.create_task(scheduler_loop(stop_event))
+    except BaseException:
+        db_runtime.dispose()
+        instance_lock.release()
+        raise
+    try:
+        yield
+    finally:
+        assert stop_event is not None and scheduler is not None
+        stop_event.set()
+        try:
+            await scheduler
+        finally:
+            db_runtime.dispose()
+            instance_lock.release()
 
 
 app = FastAPI(
@@ -202,12 +333,27 @@ def _origin_allowed(request: Request) -> bool:
 
     origin = request.headers.get("Origin", "").strip()
     if not origin:
-        return True
+        origin = request.headers.get("Referer", "").strip()
+        if not origin:
+            # 测试夹具和显式非生产调试客户端可以省略来源；生产浏览器请求
+            # 必须携带 Origin/Referer，CLI 则应使用 Bearer 或专用设备令牌。
+            return settings.environment != "production"
+        allow_path = True
+    else:
+        allow_path = False
     try:
         parsed = urlparse(origin)
     except ValueError:
         return False
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+        or (not allow_path and parsed.path not in {"", "/"})
+        or parsed.query
+        or parsed.fragment
+    ):
         return False
     normalized = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
     request_origin = f"{request.url.scheme.lower()}://{request.url.netloc.lower()}"
@@ -215,12 +361,55 @@ def _origin_allowed(request: Request) -> bool:
     return normalized == request_origin or normalized in configured
 
 
+def _host_allowed(request: Request) -> bool:
+    """生产环境拒绝 DNS 重绑定和伪造 Host，只接受本机真实服务地址。"""
+
+    if settings.environment != "production":
+        return True
+    hostname = (request.url.hostname or "").strip().rstrip(".").lower()
+    allowed = {"127.0.0.1", "::1", "localhost"}
+    for value in (
+        settings.host,
+        settings.network_bind_host,
+        settings.network_advertise_host,
+        *cached_lan_addresses(),
+    ):
+        candidate = str(value).strip().rstrip(".").lower()
+        if candidate and candidate not in {"0.0.0.0", "::"}:  # nosec B104 - 这里只比较受信主机名，未创建监听套接字。
+            allowed.add(candidate)
+    return hostname in allowed
+
+
 @app.middleware("http")
 async def trace_requests(request: Request, call_next):
     request.state.trace_id = normalize_trace_id(request.headers.get("X-Trace-Id"))
+    if not _host_allowed(request):
+        return _apply_security_headers(
+            JSONResponse(
+                status_code=421,
+                content={
+                    "type": "https://partyops.local/problems/HOST_DENIED",
+                    "title": "请求主机地址被拒绝",
+                    "detail": "请使用 PartyOps 配置向导显示的本机或局域网地址访问。",
+                    "code": "HOST_DENIED",
+                    "trace_id": request.state.trace_id,
+                },
+                media_type="application/problem+json",
+            ),
+            request,
+        )
+    authorization = request.headers.get("Authorization", "").strip().lower()
+    non_browser_write = (
+        authorization.startswith("bearer ")
+        or bool(request.headers.get("X-PartyOps-Device-Token"))
+        or (
+            request.url.path == "/api/v1/bootstrap/host"
+            and bool(request.headers.get("X-PartyOps-Bootstrap-Token"))
+        )
+    )
     if (
         request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
-        and (request.cookies.get("partyops_session") or request.cookies.get(DEVICE_CONTEXT_COOKIE))
+        and not non_browser_write
         and not _origin_allowed(request)
     ):
         return _apply_security_headers(
@@ -229,7 +418,7 @@ async def trace_requests(request: Request, call_next):
                 content={
                     "type": "https://partyops.local/problems/ORIGIN_DENIED",
                     "title": "请求来源被拒绝",
-                    "detail": "Cookie 鉴权写请求必须来自当前 PartyOps 服务。",
+                    "detail": "浏览器写请求必须来自当前 PartyOps 服务；本机工具需使用专用安全令牌。",
                     "code": "ORIGIN_DENIED",
                     "trace_id": request.state.trace_id,
                 },

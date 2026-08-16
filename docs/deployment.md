@@ -1,13 +1,13 @@
 # PartyOps 1.4.3 部署与独立搭建
 
-最后核对：2026-08-13。本文只描述当前 `1.4.3-rc.2` / 数据库 `0018`；旧版本文档仅用于迁移追溯。
+最后核对：2026-08-16。本文只描述当前 `1.4.3-rc.3` / 数据库 `0019`；旧版本文档仅用于迁移追溯。
 
-> 当前 GitHub Release 是 `v1.4.3-rc.2` 未签名候选版，不是稳定生产版。Windows 10、UOS 原生安装、真实多机、20GB、24 小时长稳和正式签名证据未齐全前，不得把候选版描述为稳定正式版。
+> `v1.4.3-rc.3` 是未签名候选版，不是稳定生产版。国产 Linux 新增制品标为“未真机验证”；Windows 7 因安全回移依赖未达到零高危门禁，本轮不发布。
 
 ## 1. 部署结构
 
 - 一台主机运行后端、SQLite、受管附件、备份、审计与更新服务。
-- Windows 10/11 x64 或 UOS amd64/arm64 协同机通过 Agent 接入。
+- Windows 10/11 x64、麒麟/UOS/deepin 或 openEuler amd64/arm64 协同机通过 Agent 接入。
 - 浏览器业务端口默认 `18765`；设备 Agent 双向 TLS 端口默认 `18766`。
 - 只允许可信局域网，不支持也不应配置公网端口映射、SMB 匿名共享或设备直连。
 - 主机数据库必须位于本机可靠磁盘，不能放在 NAS、云盘同步目录或网络共享盘。
@@ -19,37 +19,47 @@
 Windows 普通用户只下载版本化 EXE，不需要第二个校验包。官网与 GitHub Release 直接显示最终 SHA-256；安装前计算并逐字核对：
 
 ```powershell
-Get-FileHash .\PartyOps_1.4.3-rc.2_windows_amd64.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\PartyOps_1.4.3-rc.2_windows_amd64.exe
+Get-FileHash .\PartyOps_1.4.3-rc.3_windows_amd64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\PartyOps_1.4.3-rc.3_windows_amd64.exe
 ```
 
 ```bash
-sha256sum partyops_1.4.3_amd64.deb
-dpkg-deb --info partyops_1.4.3_amd64.deb
+sha256sum PartyOps_1.4.3-rc.3_linux_amd64.deb
+dpkg-deb --info PartyOps_1.4.3-rc.3_linux_amd64.deb
 ```
 
-哈希不一致时停止安装。当前 `rc.2` Windows 文件未做 Authenticode 正式签名，SmartScreen 显示未知发布者属于已知限制，不应误称为正式签名版本。
+哈希不一致时停止安装。当前 `rc.3` Windows 文件未做 Authenticode 正式签名，SmartScreen 显示未知发布者属于已知限制，不应误称为正式签名版本。
 
 ### 2.2 Windows 10/11 x64
 
-1. 运行 `PartyOps_1.4.3-rc.2_windows_amd64.exe`，预选本机固定磁盘数据目录，例如 `D:\PartyOps-数据`。
-2. 首次打开桌面“党建智办”，明确选择“主机”或“协同机”。不能由残留配置猜测角色。
+1. 运行 `PartyOps_1.4.3-rc.3_windows_amd64.exe`，程序目录与业务数据目录都可选择本机固定磁盘路径，例如 `E:\PartyOps` 与 `D:\PartyOps-数据`。
+2. 首次打开桌面“党建智办”，明确选择“个人使用（新手推荐）”“主机”或“协同机”。个人使用不申请管理员权限且只监听回环地址。
 3. 主机模式再次确认数据目录；数据库、附件、备份、证书、模型、缓存和日志位于该目录，服务在确认主机角色后设为随系统启动。
 4. 协同机模式使用主机生成的限时入网码；小型用户配置位于 `%LOCALAPPDATA%\PartyOps`，备份、接收文件和日志位于向导所选目录。
 5. 主机管理员在“管理 → 设备协同”确认设备、目录与成员权限。
 6. 防火墙只对“专用网络”和单位可信网段开放所需端口，不开放“公用网络”。
 
-### 2.3 UOS V20 amd64/arm64
+### 2.3 麒麟 / UOS / deepin DEB
 
 确认架构后安装匹配包：
 
 ```bash
-dpkg --print-architecture
-sudo apt-get install ./partyops_1.4.3_amd64.deb
-# ARM64 使用 partyops_1.4.3_arm64.deb
+uname -m
+sudo apt install ./PartyOps_1.4.3-rc.3_linux_amd64.deb
+# aarch64 / ARM64 使用 PartyOps_1.4.3-rc.3_linux_arm64.deb
 ```
 
-若 Release 只提供 `PartyOps-UOS-1.4.3-rc.2-build-kit.zip`，它是原生构建套件而不是 DEB。必须解压到新的 `PartyOps-1.4.3-rc.2/` 顶层目录，在对应架构的 UOS 目标机运行套件内构建脚本，再校验生成的 DEB；不要覆盖旧目录，也不要在 x64 机器伪造 ARM64 验收结果。
+每台电脑只下载一个原生包，不再下载构建套件或额外校验包。包管理器配置阶段会执行架构、文件清单、前端资源、SQLite/FTS5、中文 OCR、本地智能、更新服务和回环健康端点自检；失败时服务保持停止并返回中文诊断。
+
+### 2.4 openEuler RPM
+
+```bash
+uname -m
+sudo dnf install ./PartyOps-1.4.3-0.rc.3.1.x86_64.rpm
+# aarch64 使用 PartyOps-1.4.3-0.rc.3.1.aarch64.rpm
+```
+
+不要使用 `--force-architecture`，也不要关闭 SELinux、防火墙或系统安全策略。安装器只生成最小必要规则。
 
 主机系统配置位于 `/etc/partyops/partyops.env`，数据默认位于 `/var/lib/partyops`。服务检查：
 

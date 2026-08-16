@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 import sys
+import urllib.error
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -39,12 +41,24 @@ def _settings(tmp_path: Path) -> SimpleNamespace:
 
 
 def _package(path: Path, manifest: dict, artifact_name: str, payload: bytes = b"artifact") -> None:
+    manifest = dict(manifest)
+    manifest.setdefault(
+        "artifacts",
+        {
+            artifact_name: {
+                "size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+        },
+    )
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("manifest.json", json.dumps(manifest))
         archive.writestr(artifact_name, payload)
 
 
 def test_lock_signature_architecture_and_platform_guards(monkeypatch, tmp_path: Path) -> None:
+    os_proxy = SimpleNamespace(**vars(os))
+    monkeypatch.setattr(update_executor, "os", os_proxy)
     lock = tmp_path / ".update.lock"
     lock.write_text("{", encoding="utf-8")
     monkeypatch.setattr(update_executor.time, "time", lambda: 1_000.0)
@@ -69,18 +83,10 @@ def test_lock_signature_architecture_and_platform_guards(monkeypatch, tmp_path: 
     assert update_executor._trusted_public_key() == ""
     assert not update_executor._verify_manifest_signature({})
 
-    monkeypatch.setattr(update_executor.os, "name", "posix")
-    monkeypatch.setattr(
-        update_executor.subprocess,
-        "run",
-        lambda *_a, **_k: subprocess.CompletedProcess([], 0, "arm64\n", ""),
-    )
+    monkeypatch.setattr(os_proxy, "name", "posix")
+    monkeypatch.setattr(update_executor.platform, "machine", lambda: "arm64")
     assert update_executor._architecture() == "arm64"
-    monkeypatch.setattr(
-        update_executor.subprocess,
-        "run",
-        lambda *_a, **_k: subprocess.CompletedProcess([], 0, "riscv64\n", ""),
-    )
+    monkeypatch.setattr(update_executor.platform, "machine", lambda: "riscv64")
     with pytest.raises(RuntimeError, match="支持范围"):
         update_executor._architecture()
 
@@ -95,17 +101,29 @@ def test_windows_update_lock_and_unrecoverable_failure(monkeypatch, tmp_path: Pa
     package.write_bytes(b"package")
     states = []
     monkeypatch.setattr(update_executor, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        update_executor,
+        "_windows_installer_cache",
+        lambda: settings.data_dir / "installer-cache",
+    )
     monkeypatch.setattr(update_executor, "_acquire_update_lock", lambda _path: False)
     assert not update_executor._execute_windows_host_update("locked", package, {})
 
     monkeypatch.setattr(update_executor, "_acquire_update_lock", lambda path: path.write_text("lock", encoding="utf-8") or True)
     monkeypatch.setattr(update_executor, "_select_artifact", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("invalid")))
-    monkeypatch.setattr(update_executor, "_run", lambda command, **_k: subprocess.CompletedProcess(command, 0, "", ""))
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        update_executor,
+        "_run",
+        lambda command, **_k: commands.append(command)
+        or subprocess.CompletedProcess(command, 0, "", ""),
+    )
     monkeypatch.setattr(update_executor, "_set_run", lambda _id, **kwargs: states.append(kwargs))
     monkeypatch.setattr(update_executor, "_restore_managed_tree", lambda *_a: None)
     assert not update_executor._execute_windows_host_update("no-rollback", package, {})
     assert states[-1]["status"] == UpdateStatus.FAILED
-    assert "回滚不可用" in states[-1]["message"]
+    assert "原版本保持不变" in states[-1]["message"]
+    assert commands == []
     assert not (settings.data_dir / ".update.lock").exists()
 
 
@@ -129,8 +147,19 @@ def test_uos_device_install_matrix(monkeypatch, tmp_path: Path, dpkg_ready: bool
     monkeypatch.setattr(update_executor, "get_settings", lambda: settings)
     monkeypatch.setattr(update_executor, "_architecture", lambda: "amd64")
     monkeypatch.setattr(update_executor, "_manifest_has_windows_artifact", lambda *_a, **_k: False)
+    monkeypatch.setattr(update_executor, "_manifest_platform_name", lambda _manifest: "linux-deb")
     monkeypatch.setattr(update_executor, "_select_artifact", lambda _p, _m, _a, target, _platform: target.write_bytes(b"deb") or target)
-    monkeypatch.setattr(update_executor, "_installed_package_version", lambda: "1.4.2-1")
+    installed_versions = iter(["1.4.2-1", "1.4.3"])
+    monkeypatch.setattr(
+        update_executor,
+        "_installed_package_version",
+        lambda: next(installed_versions, "1.4.2-1"),
+    )
+    monkeypatch.setattr(
+        update_executor,
+        "_create_installed_package_snapshot",
+        lambda target: target.write_bytes(b"rollback-deb"),
+    )
     monkeypatch.setattr(update_executor, "_ensure_dpkg_ready", lambda: dpkg_ready)
 
     def run(command, **_kwargs):
@@ -183,3 +212,154 @@ def test_windows_device_install_and_supervisor_matrix(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(update_executor.sys, "frozen", True, raising=False)
     assert update_executor.run_supervisor(once=True) == 0
     assert launched[-1] == [sys.executable, "--run-id", "run-frozen"]
+
+
+def test_process_lock_and_public_key_edge_matrix(monkeypatch, tmp_path: Path) -> None:
+    os_proxy = SimpleNamespace(**vars(os))
+    os_proxy.name = "posix"
+    monkeypatch.setattr(update_executor, "os", os_proxy)
+
+    assert not update_executor._process_is_running(0)
+    monkeypatch.setattr(os_proxy, "kill", lambda *_a: None)
+    assert update_executor._process_is_running(42)
+    monkeypatch.setattr(
+        os_proxy,
+        "kill",
+        lambda *_a: (_ for _ in ()).throw(ProcessLookupError()),
+    )
+    assert not update_executor._process_is_running(42)
+    monkeypatch.setattr(
+        os_proxy,
+        "kill",
+        lambda *_a: (_ for _ in ()).throw(PermissionError()),
+    )
+    assert update_executor._process_is_running(42)
+    monkeypatch.setattr(
+        os_proxy,
+        "kill",
+        lambda *_a: (_ for _ in ()).throw(OSError()),
+    )
+    assert not update_executor._process_is_running(42)
+
+    missing = tmp_path / "missing.lock"
+    assert update_executor._update_lock_is_stale(missing)
+    live = tmp_path / "live.lock"
+    live.write_text(json.dumps({"pid": 42, "boot_id": "same"}), encoding="utf-8")
+    monkeypatch.setattr(update_executor, "_system_boot_id", lambda: "same")
+    monkeypatch.setattr(update_executor, "_process_is_running", lambda _pid: True)
+    assert not update_executor._update_lock_is_stale(live)
+    assert not update_executor._acquire_update_lock(live)
+    monkeypatch.setattr(update_executor, "_process_is_running", lambda _pid: False)
+    assert update_executor._acquire_update_lock(live)
+    assert json.loads(live.read_text(encoding="utf-8"))["pid"] == os.getpid()
+
+    monkeypatch.setattr(
+        update_executor,
+        "get_settings",
+        lambda: SimpleNamespace(update_public_key=" configured-key "),
+    )
+    assert update_executor._trusted_public_key() == "configured-key"
+
+
+def test_in_app_package_manager_marks_transaction(monkeypatch) -> None:
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(update_executor, "_run", run)
+    result = update_executor._run_linux_package_manager(
+        ["dpkg", "--configure", "partyops"], timeout=300
+    )
+    assert result.returncode == 0
+    assert calls == [
+        (
+            ["dpkg", "--configure", "partyops"],
+            {
+                "timeout": 300,
+                "environment": {"PARTYOPS_IN_APP_UPDATE": "1"},
+            },
+        )
+    ]
+
+
+def test_package_manager_health_and_platform_edge_matrix(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        update_executor,
+        "_run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            1 if command[0] == "dpkg-query" else 0,
+            "1.4.3-0.rc.3.1" if command[0] == "rpm" else "",
+            "",
+        ),
+    )
+    assert update_executor._installed_package_version() == ""
+    assert update_executor._installed_rpm_version() == "1.4.3-0.rc.3.1"
+    monkeypatch.setattr(update_executor.shutil, "which", lambda _name: None)
+    assert not update_executor._install_rpm(tmp_path / "partyops.rpm")
+    monkeypatch.setattr(
+        update_executor.shutil,
+        "which",
+        lambda name: "/usr/bin/dnf" if name == "dnf" else None,
+    )
+    assert update_executor._install_rpm(tmp_path / "partyops.rpm")
+
+    settings = _settings(tmp_path / "health")
+    monkeypatch.setattr(update_executor, "get_settings", lambda: settings)
+
+    class Response:
+        status = 200
+
+        def read(self, _size=-1):
+            return (
+                b'{"status":"ok","mode":"host","app_version":"1.4.3-rc.3",'
+                b'"sqlite":{"safe_version":true,"fts5":true}}'
+            )
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(update_executor.urllib.request, "urlopen", lambda *_a, **_k: Response())
+    assert update_executor._health_check()
+    monkeypatch.setattr(
+        update_executor.urllib.request,
+        "urlopen",
+        lambda *_a, **_k: (_ for _ in ()).throw(urllib.error.URLError("offline")),
+    )
+    assert not update_executor._health_check()
+
+    monkeypatch.setattr(
+        update_executor,
+        "detect_platform_info",
+        lambda: SimpleNamespace(platform_family="unsupported", package_format="unknown"),
+    )
+    monkeypatch.setattr(update_executor, "update_platform_key", lambda _info: "")
+    with pytest.raises(RuntimeError, match="无法匹配"):
+        update_executor._manifest_platform_name({"format_version": 3})
+
+
+def test_environment_parser_ignores_invalid_and_preserves_safe_values(tmp_path: Path) -> None:
+    environment = tmp_path / "partyops.env"
+    environment.write_text(
+        "\n".join(
+            [
+                "# 注释",
+                "IGNORED=value",
+                "PARTYOPS_MODE=host",
+                "PARTYOPS_DATA_DIR='/data/PartyOps 资料'",
+                "PARTYOPS_BAD='unterminated",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert update_executor._read_environment(tmp_path / "missing.env") == {}
+    values = update_executor._read_environment(environment)
+    assert values == {
+        "PARTYOPS_MODE": "host",
+        "PARTYOPS_DATA_DIR": "/data/PartyOps 资料",
+    }

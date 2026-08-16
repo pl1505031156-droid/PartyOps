@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import hashlib
+import http.client
 import json
 import logging
 import mimetypes
@@ -18,6 +19,7 @@ import stat
 import subprocess
 import sys
 import threading
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -35,13 +37,22 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from .enrollment_codes import normalize_enrollment_code as _normalize_enrollment_code
+from .platform_info import detect_platform_info
 
 from .schemas import serialize_api_datetime
 
 
-AGENT_VERSION = "1.4.3"
+AGENT_VERSION = "1.4.3-rc.3"
 _ACTIVE_SSL_CONTEXT = None
 HEARTBEAT_INTERVAL_SECONDS = 15
+MAX_UPDATE_PACKAGE_BYTES = 4 * 1024**3
+MAX_TRANSFER_BYTES = 20 * 1024**3
+MAX_TRANSFER_CHUNK_BYTES = 16 * 1024**2
+MAX_BACKUP_DOWNLOAD_BYTES = 100 * 1024**3
+MAX_BACKUP_EXPANDED_BYTES = 500 * 1024**3
+MAX_BACKUP_MEMBERS = 200_000
+MAX_BACKUP_MANIFEST_BYTES = 1024**2
+BACKUP_FREE_SPACE_RESERVE_BYTES = 512 * 1024**2
 COMMAND_POLL_INTERVAL_SECONDS = 5
 logger = logging.getLogger("partyops.client_agent")
 
@@ -98,6 +109,49 @@ class AgentCommandError(RuntimeError):
         self.retryable = retryable
 
 
+def _validated_transfer_id(value: object) -> str:
+    """把主机下发的传输编号限制为单一路径段，禁止逃逸终端暂存目录。"""
+
+    transfer_id = str(value)
+    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+    if not transfer_id or len(transfer_id) > 64 or any(char not in allowed for char in transfer_id):
+        raise AgentCommandError("TRANSFER_ID_INVALID", "主机下发的传输编号无效")
+    return transfer_id
+
+
+def _validated_transfer_geometry(
+    status: dict[str, object],
+    fallback: dict[str, object] | None = None,
+) -> tuple[int, int, int]:
+    """约束主机下发的分块几何，避免异常状态触发超大读、长循环或越界写。"""
+
+    fallback = fallback or {}
+    try:
+        chunk_size = int(status.get("chunk_size", fallback.get("chunk_size", 0)))
+        total_chunks = int(status.get("total_chunks", fallback.get("total_chunks", 0)))
+        size_bytes = int(status.get("size_bytes", fallback.get("size_bytes", 0)))
+    except (TypeError, ValueError) as exc:
+        raise AgentCommandError("TRANSFER_METADATA_INVALID", "主机返回的传输参数无效") from exc
+    expected_chunks = (
+        (size_bytes + chunk_size - 1) // chunk_size
+        if chunk_size > 0 and size_bytes
+        else 0
+    )
+    if (
+        chunk_size <= 0
+        or chunk_size > MAX_TRANSFER_CHUNK_BYTES
+        or size_bytes < 0
+        or size_bytes > MAX_TRANSFER_BYTES
+        or total_chunks < 0
+        or total_chunks != expected_chunks
+    ):
+        raise AgentCommandError(
+            "TRANSFER_METADATA_INVALID",
+            "主机返回的分块大小或总长度不一致",
+        )
+    return chunk_size, total_chunks, size_bytes
+
+
 def _urlopen(request, timeout: int):
     target = request.full_url if isinstance(request, urllib.request.Request) else str(request)
     parsed = urllib.parse.urlparse(target)
@@ -129,23 +183,94 @@ def verify_local_backup(path: Path) -> dict[str, object]:
     if not zipfile.is_zipfile(path):
         raise ValueError("下载内容不是有效备份包")
     with zipfile.ZipFile(path) as archive:
-        manifest = json.loads(archive.read("manifest.json"))
-        if manifest.get("format") != "partyops-backup":
+        infos = archive.infolist()
+        if len(infos) > MAX_BACKUP_MEMBERS:
+            raise ValueError("备份文件数量超过终端安全限制")
+        names = [info.filename for info in infos]
+        if len(names) != len(set(names)):
+            raise ValueError("备份包含重复文件")
+        expanded = 0
+        for info in infos:
+            name = info.filename.replace("\\", "/")
+            relative = PurePosixPath(name)
+            mode = (info.external_attr >> 16) & 0o170000
+            if (
+                not name
+                or "\x00" in name
+                or relative.is_absolute()
+                or ".." in relative.parts
+                or mode not in {0, stat.S_IFREG, stat.S_IFDIR}
+            ):
+                raise ValueError("备份包含非法路径或特殊文件")
+            expanded += max(0, info.file_size)
+            if expanded > MAX_BACKUP_EXPANDED_BYTES:
+                raise ValueError("备份展开体积超过终端安全限制")
+            if (
+                info.file_size > 100 * 1024**2
+                and info.file_size > max(info.compress_size, 1) * 1000
+            ):
+                raise ValueError("备份成员压缩比异常")
+        manifest_info = next(
+            (info for info in infos if info.filename == "manifest.json"),
+            None,
+        )
+        if manifest_info is None or manifest_info.file_size > MAX_BACKUP_MANIFEST_BYTES:
+            raise ValueError("备份清单缺失或体积异常")
+        manifest = json.loads(archive.read(manifest_info))
+        if not isinstance(manifest, dict) or manifest.get("format") != "partyops-backup":
             raise ValueError("备份格式不匹配")
-        for item in manifest.get("files", []):
-            item_path = str(item["path"])
-            if item_path.startswith("/") or ".." in Path(item_path).parts:
+        files = manifest.get("files", [])
+        if not isinstance(files, list) or len(files) > MAX_BACKUP_MEMBERS:
+            raise ValueError("备份清单文件列表无效")
+        verified_names: set[str] = set()
+        for item in files:
+            if not isinstance(item, dict):
+                raise ValueError("备份清单文件记录无效")
+            try:
+                item_path = str(item["path"])
+                expected_size = int(item["size"])
+                expected_hash = str(item["sha256"]).lower()
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("备份清单文件校验字段无效") from exc
+            relative = PurePosixPath(item_path)
+            if (
+                not item_path
+                or "\\" in item_path
+                or relative.is_absolute()
+                or ".." in relative.parts
+                or item_path in verified_names
+            ):
                 raise ValueError("备份清单包含非法路径")
+            verified_names.add(item_path)
+            if (
+                expected_size < 0
+                or expected_size > MAX_BACKUP_EXPANDED_BYTES
+                or len(expected_hash) != 64
+                or any(character not in "0123456789abcdef" for character in expected_hash)
+            ):
+                raise ValueError(f"备份文件校验字段无效：{item_path}")
             digest = hashlib.sha256()
             size = 0
             with archive.open(item_path) as source:
                 while chunk := source.read(1024 * 1024):
                     digest.update(chunk)
                     size += len(chunk)
-            if size != int(item["size"]):
+                    if size > expected_size:
+                        raise ValueError(f"备份文件超过清单大小：{item_path}")
+            if size != expected_size:
                 raise ValueError(f"备份文件大小不匹配：{item_path}")
-            if digest.hexdigest() != item["sha256"]:
+            if digest.hexdigest() != expected_hash:
                 raise ValueError(f"备份文件哈希不匹配：{item_path}")
+        if "database/partyops.db" not in verified_names:
+            raise ValueError("备份缺少 PartyOps 数据库")
+        allowed_members = verified_names | {"manifest.json", "config/config.json"}
+        unexpected = [
+            info.filename
+            for info in infos
+            if not info.is_dir() and info.filename not in allowed_members
+        ]
+        if unexpected:
+            raise ValueError("备份包含未在清单登记的文件")
     return manifest
 
 
@@ -196,20 +321,13 @@ def configure_ssl_context(config: dict[str, object]) -> None:
 
 
 def device_metadata() -> dict[str, object]:
-    machine = platform.machine().lower()
-    architecture = {
-        "x86_64": "amd64",
-        "amd64": "amd64",
-        "aarch64": "arm64",
-        "arm64": "arm64",
-    }.get(machine, machine[:16])
+    info = detect_platform_info()
     try:
         disk_free = shutil.disk_usage(Path.home()).free
     except OSError:
         disk_free = 0
     return {
-        "architecture": architecture,
-        "platform": "uos" if sys.platform.startswith("linux") else "windows" if sys.platform == "win32" else sys.platform,
+        **info,
         "kernel": platform.release()[:120],
         "app_version": AGENT_VERSION,
         "agent_version": AGENT_VERSION,
@@ -1055,6 +1173,7 @@ def rotate_device_certificate(
 
 
 def get_transfer_status(host_url: str, token: str, transfer_id: str) -> dict[str, object]:
+    transfer_id = _validated_transfer_id(transfer_id)
     result = _json_request(
         f"{host_url.rstrip('/')}/api/v1/devices/transfers/{urllib.parse.quote(transfer_id)}/status",
         token=token,
@@ -1071,7 +1190,7 @@ def upload_transfer(
     payload: dict[str, object],
     config: dict[str, object],
 ) -> dict[str, object]:
-    transfer_id = str(payload.get("transfer_id", ""))
+    transfer_id = _validated_transfer_id(payload.get("transfer_id", ""))
     remote_file_key = str(payload.get("remote_file_key", ""))
     source_path = _resolve_shared_file(config, remote_file_key)
     before = source_path.stat(follow_symlinks=False)
@@ -1089,8 +1208,10 @@ def upload_transfer(
         for value in status.get("completed_chunks", [])
         if isinstance(value, int) or str(value).isdigit()
     }
-    chunk_size = int(status.get("chunk_size", payload.get("chunk_size", 8 * 1024 * 1024)))
-    total_chunks = int(status.get("total_chunks", payload.get("total_chunks", 0)))
+    chunk_size, total_chunks, _size_bytes = _validated_transfer_geometry(
+        status,
+        {**payload, "size_bytes": payload.get("size_bytes", before.st_size)},
+    )
     with _open_shared_file(config, remote_file_key) as source:
         for chunk_no in range(total_chunks):
             if chunk_no in completed:
@@ -1153,14 +1274,17 @@ def _upload_local_path(
 ) -> None:
     """上传 Agent 自己生成的受管 ZIP，并复用主机断点与分块哈希。"""
 
+    transfer_id = _validated_transfer_id(transfer_id)
     status = get_transfer_status(host_url, token, transfer_id)
     completed = {
         int(value)
         for value in status.get("completed_chunks", [])
         if isinstance(value, int) or str(value).isdigit()
     }
-    chunk_size = int(status.get("chunk_size", 8 * 1024 * 1024))
-    total_chunks = int(status.get("total_chunks", 0))
+    chunk_size, total_chunks, _size_bytes = _validated_transfer_geometry(
+        status,
+        {"size_bytes": source_path.stat().st_size},
+    )
     with source_path.open("rb") as source:
         for chunk_no in range(total_chunks):
             if chunk_no in completed:
@@ -1210,10 +1334,10 @@ def upload_bundle_transfer(
     payload: dict[str, object],
     config: dict[str, object],
 ) -> dict[str, object]:
-    transfer_id = str(payload.get("transfer_id", ""))
     raw_items = payload.get("items", [])
-    if not transfer_id or not isinstance(raw_items, list) or not raw_items:
+    if not isinstance(raw_items, list) or not raw_items:
         raise AgentCommandError("BUNDLE_ITEMS_INVALID", "主机未提供有效的压缩项目")
+    transfer_id = _validated_transfer_id(payload.get("transfer_id", ""))
     max_bytes = int(payload.get("max_bytes", 20 * 1024**3) or 20 * 1024**3)
     receive_dir = Path(
         str(config.get("receive_dir", Path.home() / "PartyOps-接收文件"))
@@ -1306,11 +1430,12 @@ def download_transfer(
     payload: dict[str, object],
     config: dict[str, object],
 ) -> dict[str, object]:
-    transfer_id = str(payload.get("transfer_id", ""))
+    transfer_id = _validated_transfer_id(payload.get("transfer_id", ""))
     status = get_transfer_status(host_url, token, transfer_id)
-    chunk_size = int(status.get("chunk_size", payload.get("chunk_size", 8 * 1024 * 1024)))
-    total_chunks = int(status.get("total_chunks", payload.get("total_chunks", 0)))
-    expected_size = int(status.get("size_bytes", payload.get("size_bytes", 0)))
+    chunk_size, total_chunks, expected_size = _validated_transfer_geometry(
+        status,
+        payload,
+    )
     expected_hash = str(status.get("sha256", payload.get("sha256", ""))).lower()
     receive_dir = Path(
         str(config.get("receive_dir", Path.home() / "PartyOps-接收文件"))
@@ -1319,6 +1444,8 @@ def download_transfer(
     staging = receive_dir / ".partyops-transfers"
     staging.mkdir(mode=0o700, parents=True, exist_ok=True)
     part = staging / f"{transfer_id}.part"
+    if part.is_symlink():
+        raise AgentCommandError("SYMLINK_DENIED", "接收暂存文件异常，已拒绝覆盖")
     with part.open("r+b" if part.exists() else "w+b") as target:
         for chunk_no in range(total_chunks):
             expected_offset = chunk_no * chunk_size
@@ -1444,6 +1571,88 @@ def _restart_agent_after_update(config_path: Path) -> None:
     os.execv(sys.executable, arguments)
 
 
+def _run_windows_elevated_update(helper: Path, package: Path, timeout_seconds: int = 900) -> bool:
+    """使用 Windows 原生 UAC 启动固定更新器，避免 PowerShell 参数拼接。"""
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class ShellExecuteInfo(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("fMask", wintypes.ULONG),
+                ("hwnd", wintypes.HWND),
+                ("lpVerb", wintypes.LPCWSTR),
+                ("lpFile", wintypes.LPCWSTR),
+                ("lpParameters", wintypes.LPCWSTR),
+                ("lpDirectory", wintypes.LPCWSTR),
+                ("nShow", ctypes.c_int),
+                ("hInstApp", wintypes.HINSTANCE),
+                ("lpIDList", wintypes.LPVOID),
+                ("lpClass", wintypes.LPCWSTR),
+                ("hkeyClass", wintypes.HKEY),
+                ("dwHotKey", wintypes.DWORD),
+                ("hIconOrMonitor", wintypes.HANDLE),
+                ("hProcess", wintypes.HANDLE),
+            ]
+
+        info = ShellExecuteInfo()
+        info.cbSize = ctypes.sizeof(info)
+        info.fMask = 0x00000040  # SEE_MASK_NOCLOSEPROCESS
+        info.lpVerb = "runas"
+        info.lpFile = str(helper)
+        info.lpParameters = subprocess.list2cmdline(["--install-package", str(package)])
+        info.lpDirectory = str(helper.parent)
+        info.nShow = 0
+        if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)):  # type: ignore[attr-defined]
+            raise ctypes.WinError()
+        if not info.hProcess:
+            return False
+        try:
+            wait_result = ctypes.windll.kernel32.WaitForSingleObject(  # type: ignore[attr-defined]
+                info.hProcess,
+                max(1, timeout_seconds) * 1000,
+            )
+            if wait_result == 0x00000102:  # WAIT_TIMEOUT
+                raise AgentCommandError(
+                    "UPDATE_STATE_UNKNOWN",
+                    "管理员更新器仍在运行，请勿重复点击；PartyOps 会在下一次心跳确认最终版本。",
+                    retryable=False,
+                )
+            if wait_result == 0xFFFFFFFF:  # WAIT_FAILED
+                raise ctypes.WinError(ctypes.get_last_error())
+            if wait_result != 0:  # 非预期等待结果，保持保守失败。
+                raise AgentCommandError(
+                    "UPDATE_WAIT_FAILED",
+                    "无法确认管理员更新器状态，请勿重复点击；请查看本机更新日志。",
+                    retryable=False,
+                )
+            exit_code = wintypes.DWORD()
+            if not ctypes.windll.kernel32.GetExitCodeProcess(  # type: ignore[attr-defined]
+                info.hProcess,
+                ctypes.byref(exit_code),
+            ):
+                return False
+            return exit_code.value == 0
+        finally:
+            ctypes.windll.kernel32.CloseHandle(info.hProcess)  # type: ignore[attr-defined]
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 786 or getattr(exc, "errno", None) == 786:
+            raise AgentCommandError(
+                "ADMIN_POLICY_BLOCKED",
+                (
+                    "Windows 组织策略阻止了 PartyOps 更新器。请让单位电脑管理员允许"
+                    "安装目录中的 PartyOpsUpdater.exe 后重试；系统不会绕过安全策略。"
+                ),
+            ) from exc
+        logger.exception("Windows 更新管理员授权或执行未完成")
+        return False
+    except (AttributeError, ValueError):
+        logger.exception("Windows 更新管理员授权或执行未完成")
+        return False
+
+
 def apply_update_command(
     host_url: str,
     token: str,
@@ -1452,76 +1661,246 @@ def apply_update_command(
 ) -> dict[str, object]:
     """下载更新包后交给固定路径 pkexec helper，不执行包内任意脚本。"""
 
-    filename = Path(str(payload.get("package", ""))).name
-    if not filename.endswith(".partyops-update"):
-        return {
-            "ok": False,
-            "error_code": "UPDATE_PACKAGE_INVALID",
-            "message": "更新包名称无效",
-        }
+    official_online = payload.get("official_online") is True
+    expected_hash = ""
+    expected_size = 0
+    response_factory = None
+    resume_offset_helper = None
+    partial_open_helper = None
+    if official_online:
+        try:
+            # 下载地址不接受主机命令传入。协同机使用自己冻结运行时中的
+            # 公钥重新验签官网目录，并按本机系统/架构独立选包。
+            from .routers.updates import (
+                _open_partial_download,
+                _open_trusted_update_url,
+                _validated_resume_offset,
+                fetch_online_update_catalog,
+            )
+
+            catalog = fetch_online_update_catalog()
+            expected_version = str(payload.get("version") or "")
+            if not bool(catalog["available"]) or str(catalog["version"]) != expected_version:
+                raise ValueError("官方目录目标版本与主机升级命令不一致")
+            expected_hash = str(catalog["package_sha256"])
+            expected_size = int(catalog["package_size"])
+            filename = (
+                f"official-{expected_version}-{expected_hash[:12]}.partyops-update"
+            )
+            package_url = str(catalog["package_url"])
+
+            def response_factory(offset: int = 0):
+                if offset:
+                    return _open_trusted_update_url(
+                        package_url,
+                        extra_headers={"Range": f"bytes={offset}-"},
+                    )
+                return _open_trusted_update_url(package_url)
+
+            resume_offset_helper = _validated_resume_offset
+            partial_open_helper = _open_partial_download
+        except Exception as exc:
+            raise AgentCommandError(
+                "UPDATE_CATALOG_UNAVAILABLE",
+                "官方更新目录暂时不可用或验证未通过，请稍后重试",
+                retryable=True,
+            ) from exc
+    else:
+        filename = Path(str(payload.get("package", ""))).name
+        if not filename.endswith(".partyops-update"):
+            return {
+                "ok": False,
+                "error_code": "UPDATE_PACKAGE_INVALID",
+                "message": "更新包名称无效",
+            }
+        request = urllib.request.Request(
+            (
+                f"{host_url.rstrip('/')}/api/v1/devices/update-package/"
+                f"{urllib.parse.quote(filename)}"
+            ),
+            headers={"X-PartyOps-Device-Token": token},
+        )
+        response_factory = lambda _offset=0: _urlopen(request, 300)
     updates_dir = Path(
         str(config.get("updates_dir", Path.home() / "PartyOps-更新"))
     ).expanduser().resolve()
     updates_dir.mkdir(parents=True, exist_ok=True)
     target = updates_dir / filename
-    temporary = target.with_suffix(target.suffix + ".part")
-    request = urllib.request.Request(
-        (
-            f"{host_url.rstrip('/')}/api/v1/devices/update-package/"
-            f"{urllib.parse.quote(filename)}"
-        ),
-        headers={"X-PartyOps-Device-Token": token},
-    )
+    temporary: Path | None = None
     try:
-        with _urlopen(request, 300) as response, temporary.open(
-            "wb"
-        ) as handle:
-            while chunk := response.read(1024 * 1024):
-                handle.write(chunk)
-        temporary.replace(target)
-    except (urllib.error.URLError, TimeoutError) as exc:
-        temporary.unlink(missing_ok=True)
+        assert response_factory is not None
+        if (
+            official_online
+            and target.is_file()
+            and target.stat().st_size == expected_size
+            and sha256_file(target) == expected_hash
+        ):
+            # 已完整校验的同一官方包可直接交给更新器，避免设备重启或命令
+            # 重试后重复下载数百 MB。
+            pass
+        else:
+            if target.exists():
+                target.unlink()
+            if official_online:
+                assert resume_offset_helper is not None
+                assert partial_open_helper is not None
+                temporary = updates_dir / f".{filename}.part"
+                resume_at = resume_offset_helper(temporary, expected_size)
+                digest = hashlib.sha256()
+                if resume_at:
+                    with temporary.open("rb") as existing:
+                        while chunk := existing.read(1024 * 1024):
+                            digest.update(chunk)
+            else:
+                resume_at = 0
+                digest = hashlib.sha256()
+                temporary = None
+            with response_factory(resume_at) as response:
+                status = int(getattr(response, "status", 200))
+                if official_online and resume_at and status == 206:
+                    expected_range = (
+                        f"bytes {resume_at}-{expected_size - 1}/{expected_size}"
+                    )
+                    if str(response.headers.get("Content-Range", "")).strip() != expected_range:
+                        raise AgentCommandError(
+                            "UPDATE_PACKAGE_RANGE_INVALID",
+                            "官方更新包断点范围与签名目录不一致",
+                        )
+                    write_offset = resume_at
+                elif status == 200:
+                    write_offset = 0
+                    resume_at = 0
+                    digest = hashlib.sha256()
+                else:
+                    raise AgentCommandError(
+                        "UPDATE_PACKAGE_RANGE_INVALID",
+                        "更新服务器未返回可安全使用的完整内容或断点范围",
+                    )
+                if official_online:
+                    handle_context = partial_open_helper(
+                        temporary,
+                        offset=write_offset,
+                    )
+                else:
+                    handle_context = tempfile.NamedTemporaryFile(
+                        mode="wb",
+                        dir=updates_dir,
+                        prefix=f".{filename}.",
+                        suffix=".part",
+                        delete=False,
+                    )
+                with handle_context as handle:
+                    if not official_online:
+                        temporary = Path(handle.name)
+                    headers = getattr(response, "headers", {})
+                    if official_online and str(headers.get("Content-Encoding", "")).strip():
+                        raise AgentCommandError(
+                            "UPDATE_PACKAGE_ENCODING_INVALID",
+                            "官方更新包响应使用了不允许的传输编码",
+                        )
+                    try:
+                        content_length = int(headers.get("Content-Length", "0") or 0)
+                    except (TypeError, ValueError) as exc:
+                        raise AgentCommandError(
+                            "UPDATE_PACKAGE_LENGTH_INVALID",
+                            "更新服务器返回的更新包长度无效",
+                        ) from exc
+                    if content_length < 0:
+                        raise AgentCommandError(
+                            "UPDATE_PACKAGE_LENGTH_INVALID",
+                            "更新服务器返回的更新包长度无效",
+                        )
+                    if content_length > MAX_UPDATE_PACKAGE_BYTES:
+                        raise AgentCommandError(
+                            "UPDATE_PACKAGE_TOO_LARGE",
+                            "更新包超过本机允许的安全上限",
+                        )
+                    if official_online and content_length != expected_size - write_offset:
+                        raise AgentCommandError(
+                            "UPDATE_PACKAGE_LENGTH_MISMATCH",
+                            "官方更新包大小与签名目录不一致",
+                        )
+                    if (
+                        content_length
+                        and shutil.disk_usage(updates_dir).free
+                        < content_length + BACKUP_FREE_SPACE_RESERVE_BYTES
+                    ):
+                        raise AgentCommandError(
+                            "UPDATE_DISK_FULL",
+                            "本机空间不足，暂未下载更新包",
+                        )
+                    received = write_offset
+                    try:
+                        while chunk := response.read(1024 * 1024):
+                            received += len(chunk)
+                            if received > MAX_UPDATE_PACKAGE_BYTES:
+                                raise AgentCommandError(
+                                    "UPDATE_PACKAGE_TOO_LARGE",
+                                    "更新包超过本机允许的安全上限",
+                                )
+                            handle.write(chunk)
+                            digest.update(chunk)
+                    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException):
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                        raise
+                    if content_length and received - write_offset != content_length:
+                        raise AgentCommandError(
+                            "UPDATE_PACKAGE_LENGTH_MISMATCH",
+                            "更新包实际长度与更新服务器声明不一致",
+                        )
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                    if official_online and digest.hexdigest() != expected_hash:
+                        raise AgentCommandError(
+                            "UPDATE_PACKAGE_HASH_MISMATCH",
+                            "官方更新包 SHA-256 与签名目录不一致",
+                        )
+            assert temporary is not None
+            os.replace(temporary, target)
+            temporary = None
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
+        # 官方包使用固定片段名并在重试时重新计算已有内容哈希；网络中断
+        # 保留该片段。手工/主机包无外层固定哈希，仍删除临时文件。
+        if temporary is not None and not official_online:
+            temporary.unlink(missing_ok=True)
         raise AgentCommandError(
             "NETWORK_INTERRUPTED",
-            "更新包下载中断",
+            "更新包下载中断；重新连接后会自动继续",
             retryable=True,
         ) from exc
+    except AgentCommandError:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise
     helper = (
         Path(sys.executable).resolve().with_name("PartyOpsUpdater.exe")
         if os.name == "nt"
         else Path("/opt/partyops/partyops-updater")
     )
     if not helper.exists():
+        target.unlink(missing_ok=True)
         return {
             "ok": False,
             "error_code": "UPDATE_HELPER_MISSING",
             "message": "本机缺少受限更新服务，请先安装 1.1.1 桥接包。",
         }
-    if os.name == "nt":
-        helper_value = str(helper).replace("'", "''")
-        target_value = str(target).replace("'", "''")
-        script = (
-            f"$p=Start-Process -FilePath '{helper_value}' "
-            f"-ArgumentList '--install-package','{target_value}' -Verb RunAs -Wait -PassThru; "
-            "exit $p.ExitCode"
-        )
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=900,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-    else:
-        result = subprocess.run(
-            ["pkexec", str(helper), "--install-package", str(target)],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=900,
-        )
-    if result.returncode != 0:
+    try:
+        if os.name == "nt":
+            installed = _run_windows_elevated_update(helper, target)
+        else:
+            result = subprocess.run(
+                ["pkexec", str(helper), "--install-package", str(target)],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=900,
+            )
+            installed = result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        logger.exception("本机受限更新器未能完成")
+        installed = False
+    if not installed:
         return {
             "ok": False,
             "error_code": "UPDATE_INSTALL_FAILED",
@@ -1562,20 +1941,56 @@ def pull_backup(
             disposition = response.headers.get("Content-Disposition", "")
             filename = _response_filename(disposition)
             target = destination / Path(filename).name
-            temporary = target.with_suffix(target.suffix + ".part")
+            raw_length = response.headers.get("Content-Length", "")
+            available_budget = max(
+                0,
+                shutil.disk_usage(destination).free - BACKUP_FREE_SPACE_RESERVE_BYTES,
+            )
+            if available_budget <= 0:
+                raise ValueError("灾备目录可用空间不足")
+            if raw_length:
+                try:
+                    declared_length = int(raw_length)
+                except ValueError as exc:
+                    raise ValueError("主机返回的灾备长度无效") from exc
+                if declared_length < 0 or declared_length > MAX_BACKUP_DOWNLOAD_BYTES:
+                    raise ValueError("灾备副本超过终端下载上限")
+                if declared_length > available_budget:
+                    raise ValueError("灾备目录可用空间不足")
+            temporary: Path | None = None
             try:
-                with temporary.open("wb") as handle:
+                digest = hashlib.sha256()
+                written = 0
+                with tempfile.NamedTemporaryFile(
+                    mode="wb",
+                    dir=destination,
+                    prefix=f".{target.name}.",
+                    suffix=".part",
+                    delete=False,
+                ) as handle:
+                    temporary = Path(handle.name)
                     while chunk := response.read(1024 * 1024):
+                        written += len(chunk)
+                        if written > MAX_BACKUP_DOWNLOAD_BYTES or written > available_budget:
+                            raise ValueError("灾备副本超过终端下载上限")
                         handle.write(chunk)
+                        digest.update(chunk)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                if raw_length and written != declared_length:
+                    raise ValueError("灾备副本实际长度与主机声明不一致")
                 expected = response.headers.get("X-PartyOps-SHA256", "")
-                actual = sha256_file(temporary)
-                if expected and expected != actual:
+                actual = digest.hexdigest()
+                if expected and expected.lower() != actual:
                     raise ValueError("下载文件与主机校验值不一致")
+                assert temporary is not None
                 verify_local_backup(temporary)
-                temporary.replace(target)
+                os.replace(temporary, target)
+                temporary = None
                 latest_checksum.write_text(actual, encoding="utf-8")
             finally:
-                temporary.unlink(missing_ok=True)
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
             checksum_path = target.with_suffix(target.suffix + ".sha256")
             checksum_path.write_text(
                 f"{sha256_file(target)}  {target.name}\n", encoding="utf-8"
