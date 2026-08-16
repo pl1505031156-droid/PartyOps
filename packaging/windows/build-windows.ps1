@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+. (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
 $releaseVersion = "1.4.3-rc.3"
 $releaseTag = "v1.4.3-rc.3"
 $isLegacy = [bool]$LegacyArchitecture
@@ -231,6 +232,9 @@ if ($runtimeProfile -ne "legacy-core") {
   & (Join-Path $bundleRoot "llama-server.exe") --version | Out-Null
   Assert-NativeSuccess "llama.cpp Windows 运行时验证"
 }
+Expand-VerifiedPartyOpsOcrRuntime `
+  -RepoRoot $repoRoot `
+  -Destination (Join-Path $bundleRoot "ocr")
 $sourceCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
 Assert-NativeSuccess "读取源码提交"
 & $Python (Join-Path $repoRoot "scripts\generate-release-manifest.py") `

@@ -19,6 +19,7 @@ if (-not $DataRoot) {
   $DataRoot = Join-Path $projectRoot (".run-win-smoke-" + [DateTime]::UtcNow.ToString("yyyyMMddHHmmss"))
 }
 New-Item -ItemType Directory -Path $DataRoot -Force | Out-Null
+$DataRoot = (Resolve-Path -LiteralPath $DataRoot).Path
 
 $env:PARTYOPS_MODE = "host"
 $env:PARTYOPS_ENVIRONMENT = "test"

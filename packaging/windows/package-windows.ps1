@@ -5,6 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+. (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
 $releaseVersion = "1.4.3-rc.3"
 $releaseTag = "v1.4.3-rc.3"
 $runtimeRoot = Join-Path $repoRoot "artifacts\windows-runtime"
@@ -97,6 +98,9 @@ foreach ($notice in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
 Copy-Item -Path (Join-Path $localAiRoot "*") -Destination $bundleRoot -Force
 & (Join-Path $bundleRoot "llama-server.exe") --version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "llama.cpp Windows 运行时验证失败，退出码：$LASTEXITCODE" }
+Expand-VerifiedPartyOpsOcrRuntime `
+  -RepoRoot $repoRoot `
+  -Destination (Join-Path $bundleRoot "ocr")
 $sourceCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw "读取源码提交失败" }
 & $Python `

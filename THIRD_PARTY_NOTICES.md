@@ -7,6 +7,12 @@ PartyOps 1.4.3 使用下列直接运行依赖；完整的直接与传递依赖�
 `frontend/pnpm-lock.yaml` 锁定。文档字节不会因 AnyDoc 或 pdf-inspector
 发送到 Firecrawl 或其他外部服务。
 
+## Tesseract OCR 与 tessdata_fast
+
+- Tesseract OCR 5.5.3：Apache-2.0；Windows 运行时来自上游 GitHub Release 固定制品。
+- `chi_sim`、`eng`、`osd` 模型：tessdata_fast 4.1.0，Apache-2.0。
+- Windows 安装包只封入识别引擎、运行依赖和模型，不封入上游安装器、卸载器或训练工具；精确来源与 SHA-256 见安装目录 `ocr/SOURCE.json`。
+
 ## Python 直接运行依赖
 
 | 组件 | 固定版本 | 许可证 |

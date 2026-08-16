@@ -19,6 +19,13 @@ def _runtime_contents(runtime: Path) -> Path:
     return internal if internal.is_dir() else runtime
 
 
+def _native_executable(runtime: Path, relative: str) -> Path:
+    """按当前系统返回冻结原生程序名，避免 Windows 自检误找无后缀文件。"""
+
+    candidate = runtime / relative
+    return candidate.with_suffix(".exe") if os.name == "nt" else candidate
+
+
 def run_selftest(runtime: Path) -> dict[str, object]:
     """验证冻结资源、数据库、OCR 与本地智能运行时，任一失败即抛错。"""
 
@@ -40,7 +47,7 @@ def run_selftest(runtime: Path) -> dict[str, object]:
     if not sqlite.get("safe_version") or not sqlite.get("fts5"):
         raise RuntimeError("SQLite 安全版本或 FTS5 自检失败")
 
-    ocr = runtime / "ocr" / "bin" / "tesseract"
+    ocr = _native_executable(runtime, "ocr/bin/tesseract")
     language = runtime / "ocr" / "tessdata" / "chi_sim.traineddata"
     if not ocr.is_file() or not language.is_file():
         raise RuntimeError("中文 OCR 运行时不完整")
@@ -71,7 +78,7 @@ def run_selftest(runtime: Path) -> dict[str, object]:
     for package in ("numpy", "onnxruntime", "tokenizers"):
         module = importlib.import_module(package)
         smart_versions[package] = str(getattr(module, "__version__", "unknown"))
-    llama = runtime / "llama-server"
+    llama = _native_executable(runtime, "llama-server")
     if not llama.is_file():
         raise RuntimeError("本地 LLM 运行时缺失")
     llama_environment = os.environ.copy()

@@ -23,9 +23,10 @@ def _runtime(tmp_path: Path) -> Path:
     (frontend / "assets" / "app.js").write_text("// ok", encoding="utf-8")
     (runtime / "ocr" / "bin").mkdir(parents=True)
     (runtime / "ocr" / "tessdata").mkdir(parents=True)
-    (runtime / "ocr" / "bin" / "tesseract").write_bytes(b"binary")
+    executable_suffix = ".exe" if os.name == "nt" else ""
+    (runtime / "ocr" / "bin" / f"tesseract{executable_suffix}").write_bytes(b"binary")
     (runtime / "ocr" / "tessdata" / "chi_sim.traineddata").write_bytes(b"data")
-    (runtime / "llama-server").write_bytes(b"binary")
+    (runtime / f"llama-server{executable_suffix}").write_bytes(b"binary")
     return runtime
 
 
@@ -35,6 +36,10 @@ def test_runtime_contents_supports_onefile_and_onedir(tmp_path: Path) -> None:
     assert package_selftest._runtime_contents(runtime) == runtime
     (runtime / "_internal").mkdir()
     assert package_selftest._runtime_contents(runtime) == runtime / "_internal"
+    expected_suffix = ".exe" if os.name == "nt" else ""
+    assert package_selftest._native_executable(runtime, "tool").name == (
+        f"tool{expected_suffix}"
+    )
 
 
 def test_selftest_rejects_missing_frontend_assets_and_sqlite(
@@ -119,7 +124,7 @@ def test_selftest_validates_smart_runtime_and_llama(
     with pytest.raises(RuntimeError, match="本地 LLM 运行时无法启动"):
         package_selftest.run_selftest(runtime)
 
-    (runtime / "llama-server").unlink()
+    package_selftest._native_executable(runtime, "llama-server").unlink()
     monkeypatch.setattr(
         package_selftest.subprocess,
         "run",

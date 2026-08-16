@@ -540,6 +540,27 @@ def test_linux_ocr_uses_locked_glibc217_runtime_not_build_host() -> None:
         assert "tesseract --list-langs" not in script
 
 
+def test_windows_ocr_uses_locked_minimal_runtime_and_runs_during_freeze() -> None:
+    """Windows 制品必须封入固定中英文 OCR，且不能夹带卸载器或训练工具。"""
+
+    helper = (ROOT / "packaging" / "windows" / "prepare-ocr-runtime.ps1").read_text(
+        encoding="utf-8"
+    )
+    builder = (ROOT / "packaging" / "windows" / "build-windows.ps1").read_text(
+        encoding="utf-8"
+    )
+    packager = (ROOT / "packaging" / "windows" / "package-windows.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "57825338CEAA141C617F66D2A2210B6BEF396436FFC83D242595E5F5F33BF462" in helper
+    assert "tesseract v5\\.5\\.3" in helper
+    assert "chi_sim.traineddata" in helper and "eng.traineddata" in helper
+    assert "tesseract-uninstall.exe" in helper and "lstmtraining.exe" in helper
+    assert "Expand-VerifiedPartyOpsOcrRuntime" in builder
+    assert "Expand-VerifiedPartyOpsOcrRuntime" in packager
+
+
 def test_linux_native_packaging_accepts_only_explicit_validated_cross_payload() -> None:
     """ARM 自检载荷可在 x86_64 封装，但必须显式授权并复核 ELF 架构。"""
 
