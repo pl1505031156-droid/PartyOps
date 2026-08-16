@@ -271,6 +271,19 @@ def test_strict_local_ai_dependencies_block_incomplete_linux_build() -> None:
     assert "REQUIRE_LOCAL_AI_RUNTIME=1" in portable
 
 
+def test_onnxruntime_freezing_does_not_import_runtime_during_collection() -> None:
+    """交叉冻结只能静态收集 ONNX 文件，不能在构建机执行 CPU 探测。"""
+
+    spec = (ROOT / "packaging" / "uos" / "partyops.spec").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'for package in ("numpy", "tokenizers")' in spec
+    assert 'collect_data_files("onnxruntime", include_py_files=True)' in spec
+    assert 'collect_dynamic_libs("onnxruntime")' in spec
+    assert 'collect_all("onnxruntime")' not in spec
+
+
 def test_llama_runtime_is_rebuilt_for_glibc_217_without_openssl() -> None:
     """国产 Linux 包不能复用要求新 glibc/OpenSSL 的 Ubuntu 预编译运行时。"""
 

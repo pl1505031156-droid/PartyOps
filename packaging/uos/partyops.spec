@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_dynamic_libs
 
 root = Path(SPECPATH).parents[1]
 backend = root / "backend"
@@ -25,11 +25,19 @@ common_hidden = [
 ai_datas = []
 ai_binaries = []
 ai_hidden = []
-for package in ("numpy", "onnxruntime", "tokenizers"):
+for package in ("numpy", "tokenizers"):
     datas, binaries, hidden = collect_all(package)
     ai_datas += datas
     ai_binaries += binaries
     ai_hidden += hidden
+
+# collect_all() 会为发现子模块而导入目标包。ONNX Runtime 在交叉构建、
+# QEMU 或受限 /sys 环境中导入时会主动探测 CPU，可能在制品尚未生成前
+# 终止 PyInstaller 子进程。这里只按文件系统静态收集包源码、数据与共享
+# 库；运行时仍由应用自检真实导入，避免把构建机 CPU 探测变成发布前提。
+ai_datas += collect_data_files("onnxruntime", include_py_files=True)
+ai_binaries += collect_dynamic_libs("onnxruntime")
+ai_hidden += ["onnxruntime"]
 
 host_analysis = Analysis(
     [str(root / "packaging" / "uos" / "entrypoint.py")],
