@@ -403,6 +403,19 @@ def test_linux_wizard_freeze_includes_tcl_runtime_and_entrypoint_smoke() -> None
     assert "冻结入口自检失败" in script
 
 
+def test_linux_portable_archive_dereferences_runtime_symlinks() -> None:
+    """原生包只接受普通文件，便携归档必须展开 PyInstaller 共享库链接。"""
+
+    script = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'tar --dereference -cf - -C "$BUILD" PartyOps' in script
+    assert "validate-portable-tar.py" in (
+        ROOT / "packaging" / "linux" / "build-native.sh"
+    ).read_text(encoding="utf-8")
+
+
 def test_linux_ocr_uses_locked_glibc217_runtime_not_build_host() -> None:
     """Linux 制品必须封入固定 OCR，不能复用构建机的过时系统版本。"""
 

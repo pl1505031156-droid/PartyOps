@@ -435,7 +435,10 @@ command -v zstd >/dev/null 2>&1 || {
 # CentOS/manylinux2014 自带的 GNU tar 版本较旧，不支持 --zstd。使用
 # POSIX tar 流交给固定的 zstd 程序，输出仍是标准 .tar.zst，且不依赖
 # 构建机 tar 的可选压缩参数。
-tar -cf - -C "$BUILD" PartyOps |
+# 原生包入口拒绝 TAR 内的符号链接和其他特殊文件。PyInstaller 会为
+# 部分共享库创建相对符号链接，因此在受控构建目录内归档时显式展开，
+# 让下游只接收普通目录与文件，并继续由 validate-portable-tar.py 严格校验。
+tar --dereference -cf - -C "$BUILD" PartyOps |
   zstd -T0 -19 -f -o "$ARTIFACTS/PartyOps-linux-$ARCH.tar.zst"
 (cd "$WHEELHOUSE" && find . -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum) \
   > "$ARTIFACTS/dependency-sha256-$ARCH.txt"
