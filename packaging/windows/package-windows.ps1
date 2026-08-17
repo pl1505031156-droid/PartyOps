@@ -51,17 +51,19 @@ foreach ($runtimeFile in @("llama-server.exe", "llama-server-impl.dll", "llama-c
   }
 }
 
-$oneFileEntries = @(
+$onedirEntries = @(
+  "PartyOps",
   "PartyOpsAgent",
   "PartyOpsWizard",
   "PartyOpsUpdater",
   "PartyOpsLauncher",
+  "PartyOpsDataCleanup",
   "PartyOpsFileOpen",
   "PartyOpsService",
   "PartyOpsUpdaterService"
 )
-foreach ($entry in $oneFileEntries) {
-  if (-not (Test-Path -LiteralPath (Join-Path $runtimeRoot "$entry.exe"))) {
+foreach ($entry in $onedirEntries) {
+  if (-not (Test-Path -LiteralPath (Join-Path $runtimeRoot "$entry\$entry.exe"))) {
     throw "缺少已冻结的 Windows 组件：$entry.exe"
   }
 }
@@ -70,9 +72,10 @@ if (Test-Path -LiteralPath $bundleRoot) {
   Remove-Item -LiteralPath $bundleRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Path $bundleRoot -Force | Out-Null
-Copy-Item -Path (Join-Path $runtimeRoot "PartyOps\*") -Destination $bundleRoot -Recurse -Force
-foreach ($entry in $oneFileEntries) {
-  Copy-Item -LiteralPath (Join-Path $runtimeRoot "$entry.exe") -Destination $bundleRoot -Force
+foreach ($entry in $onedirEntries) {
+  # 当前冻结布局为 onedir；按与 build-windows.ps1 相同的顺序合并共享
+  # _internal，避免旧 package 脚本漏掉卸载器或读取已淘汰的根目录 EXE。
+  Copy-Item -Path (Join-Path $runtimeRoot "$entry\*") -Destination $bundleRoot -Recurse -Force
 }
 
 Copy-Item -LiteralPath $sqliteDll -Destination (Join-Path $bundleRoot "sqlite3.dll") -Force

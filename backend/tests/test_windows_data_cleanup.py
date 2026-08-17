@@ -164,3 +164,11 @@ def test_windows_helpers_share_one_verified_runtime_instead_of_embedding_duplica
         assert f'Name = "{name}"' in build
     assert build.count('Mode = "onedir"') == len(entries)
     assert 'Copy-Item -Path (Join-Path $buildRoot "$($entry.Name)\\*")' in build
+
+    package = (ROOT / "packaging" / "windows" / "package-windows.ps1").read_text(
+        encoding="utf-8"
+    )
+    assert '"PartyOpsDataCleanup"' in package
+    assert 'Join-Path $runtimeRoot "$entry\\$entry.exe"' in package
+    assert 'Copy-Item -Path (Join-Path $runtimeRoot "$entry\\*")' in package
+    assert 'Join-Path $runtimeRoot "$entry.exe"' not in package
