@@ -25,7 +25,7 @@
 | 项目 | 当前状态 |
 | --- | --- |
 | 公开版本 | [`v1.4.3-rc.4`](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.4)，GitHub 普通 Release |
-| 发布时间 | 以 GitHub Release 与官网显示的北京时间为准 |
+| 发布时间 | 2026-08-17 18:50:48（北京时间，UTC+8） |
 | 冻结源码 | 不可变标签 [`v1.4.3-rc.4`](https://github.com/pl1505031156-droid/PartyOps/tree/v1.4.3-rc.4) |
 | 官方网站 | [https://www.partyops.cn/](https://www.partyops.cn/) |
 | 制品校验 | 七个主安装包的文件大小与 SHA-256 以同一 Release、官网和机器可读清单为准 |
