@@ -12,7 +12,7 @@ AppId={{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
-VersionInfoVersion=1.4.3.4
+VersionInfoVersion=1.4.3.5
 AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://www.partyops.cn/
 AppSupportURL=https://www.partyops.cn/guide
@@ -97,6 +97,12 @@ Filename: "{app}\PartyOpsService.exe"; Parameters: "remove"; Flags: runhidden wa
 Filename: "{app}\PartyOpsUpdaterService.exe"; Parameters: "--wait=30 stop"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "StopUpdateService"
 Filename: "{app}\PartyOpsUpdaterService.exe"; Parameters: "remove"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "RemoveUpdateService"
 Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""党建智办主机"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveFirewallRule"
+
+[UninstallDelete]
+; 程序目录由安装前安全检查主动创建，Inno 不会把它登记为自己创建的目录。
+; 仅在全部程序文件已经删除且目录确实为空时移除根目录；任何未知文件都会
+; 阻止该动作，绝不递归删除用户内容。
+Type: dirifempty; Name: "{app}"
 
 [Code]
 type

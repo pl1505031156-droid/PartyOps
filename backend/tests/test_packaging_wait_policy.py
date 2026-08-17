@@ -657,6 +657,9 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "INSTALL_DIR_TREE_ACL_VERIFY_FAILED" in installer
     assert "INSTALL_DIR_INTEGRITY_DENIED" in installer
     assert " /setintegritylevel (OI)(CI)H /T /C /Q" in installer
+    assert "VersionInfoVersion=1.4.3.5" in installer
+    assert '[UninstallDelete]' in installer
+    assert 'Type: dirifempty; Name: "{app}"' in installer
     assert "*S-1-5-32-545:(OI)(CI)RX /T /C /Q" not in installer
     assert "*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F /T /C /Q" not in installer
     assert "AddQuotes(AddBackslash(ControlRoot) + '*') + ' /reset /T /C /Q'" in installer
