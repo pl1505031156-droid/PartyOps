@@ -13,7 +13,7 @@ if (-not $Python) {
 if (-not (Test-Path -LiteralPath $Python)) {
   throw "未找到用于读取冒烟数据库的 Python：$Python；可通过 -Python 或 PARTYOPS_PYTHON 指定。"
 }
-if (-not $RuntimeDir) { $RuntimeDir = Join-Path $projectRoot "artifacts\PartyOps-1.4.3-rc.4-windows-amd64" }
+if (-not $RuntimeDir) { $RuntimeDir = Join-Path $projectRoot "artifacts\PartyOps-1.4.3-rc.5-windows-amd64" }
 $RuntimeDir = (Resolve-Path -LiteralPath $RuntimeDir).Path
 if (-not $DataRoot) {
   $DataRoot = Join-Path $projectRoot (".run-win-smoke-" + [DateTime]::UtcNow.ToString("yyyyMMddHHmmss"))

@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
-$releaseVersion = "1.4.3-rc.4"
-$releaseTag = "v1.4.3-rc.4"
+$releaseVersion = "1.4.3-rc.5"
+$releaseTag = "v1.4.3-rc.5"
 $isLegacy = [bool]$LegacyArchitecture
 $targetArchitecture = if ($isLegacy) { $LegacyArchitecture } else { "amd64" }
 $runtimeProfile = if (-not $isLegacy) { "full" } elseif ($targetArchitecture -eq "amd64") { "legacy-full" } else { "legacy-core" }
@@ -333,7 +333,7 @@ try {
 }
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
-$installerBase = if ($isLegacy) { "PartyOps_1.4.3-rc.4_windows7_$targetArchitecture" } else { "PartyOps_1.4.3-rc.4_windows_amd64" }
+$installerBase = if ($isLegacy) { "PartyOps_1.4.3-rc.5_windows7_$targetArchitecture" } else { "PartyOps_1.4.3-rc.5_windows_amd64" }
 $installer = Join-Path $outputRoot "$installerBase.exe"
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"

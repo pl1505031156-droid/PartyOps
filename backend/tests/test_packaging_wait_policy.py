@@ -125,6 +125,82 @@ def test_windows_custom_install_path_final_acl_still_rejects_untrusted_writer(
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows ACL 安装路径回归")
+def test_windows_custom_install_path_can_be_secured_under_writable_parent(
+    tmp_path: Path,
+) -> None:
+    """安装器必须自动保护最终目录，而不是因父目录通用 ACL 拒绝自定义路径。"""
+
+    validator = ROOT / "packaging" / "windows" / "validate-install-path.ps1"
+    parent = tmp_path / f"普通用户可写安装盘 {uuid4().hex}"
+    parent.mkdir()
+    acl_result = subprocess.run(
+        [
+            "icacls.exe",
+            str(parent),
+            "/inheritance:r",
+            "/grant:r",
+            "*S-1-5-18:(OI)(CI)F",
+            "*S-1-5-32-544:(OI)(CI)F",
+            "*S-1-5-11:(OI)(CI)M",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert acl_result.returncode == 0, acl_result.stderr
+    target = parent / "PartyOps 自定义程序目录"
+    diagnostic = tmp_path / "自定义目录完整流程.txt"
+
+    def validate(*extra: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                "powershell.exe",
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(validator),
+                "-Path",
+                str(target),
+                "-DiagnosticFile",
+                str(diagnostic),
+                *extra,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+
+    assert validate().returncode == 0
+    target.mkdir()
+    secure_result = subprocess.run(
+        [
+            "icacls.exe",
+            str(target),
+            "/inheritance:r",
+            "/grant:r",
+            "*S-1-5-18:(OI)(CI)F",
+            "*S-1-5-32-544:(OI)(CI)F",
+            "*S-1-5-32-545:(OI)(CI)RX",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert secure_result.returncode == 0, secure_result.stderr
+    verified = validate("-VerifyTargetAcl")
+    assert verified.returncode == 0, verified.stderr
+    assert diagnostic.read_text(encoding="utf-8").startswith("[INSTALL_DIR_OK]")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows ACL 安装路径回归")
 def test_windows_installer_acl_normalization_keeps_payload_readable(
     tmp_path: Path,
 ) -> None:
@@ -327,7 +403,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     assert "%pre" in build
     assert "%post" in build
     assert "/opt/partyops/post-install-selftest.sh $ARCH" in build
-    assert 'DEB_VERSION="1.4.3~rc.4"' in build
+    assert 'DEB_VERSION="1.4.3~rc.5"' in build
     assert "Version: $DEB_VERSION" in build
     assert "systemd, util-linux, coreutils, iproute2" in build
     assert "systemd, util-linux, coreutils, iproute" in build
@@ -348,8 +424,8 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     one_click = (ROOT / "packaging" / "uos" / "one-click-install.sh").read_text(
         encoding="utf-8"
     )
-    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.4}"' in one_click
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.4}"' in one_click
+    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.5}"' in one_click
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.5}"' in one_click
     assert 'DEB="$ARTIFACTS/PartyOps_${VERSION}_linux_${ARCH}.deb"' in one_click
     assert '[[ "$installed_version" == "$PACKAGE_VERSION" ]]' in one_click
     assert 'chown -R "$CURRENT_USER' not in one_click
@@ -357,7 +433,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     acceptance = (ROOT / "packaging" / "uos" / "target-acceptance.sh").read_text(
         encoding="utf-8"
     )
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.4}"' in acceptance
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.5}"' in acceptance
     assert 'test "$INSTALLED_VERSION" = "$PACKAGE_VERSION"' in acceptance
     assert "LD_LIBRARY_PATH=/opt/partyops/ocr/lib" in acceptance
 
@@ -579,6 +655,8 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "AddQuotes(AddBackslash(AppDir) + '*') + ' /reset /T /C /Q'" in installer
     assert "INSTALL_DIR_TREE_ACL_DENIED" in installer
     assert "INSTALL_DIR_TREE_ACL_VERIFY_FAILED" in installer
+    assert "INSTALL_DIR_INTEGRITY_DENIED" in installer
+    assert " /setintegritylevel (OI)(CI)H /T /C /Q" in installer
     assert "*S-1-5-32-545:(OI)(CI)RX /T /C /Q" not in installer
     assert "*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F /T /C /Q" not in installer
     assert "AddQuotes(AddBackslash(ControlRoot) + '*') + ' /reset /T /C /Q'" in installer

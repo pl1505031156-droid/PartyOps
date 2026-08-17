@@ -31,7 +31,7 @@ from .problems import ProblemException
 
 DEVICE_CONTEXT_COOKIE = "partyops_device_context"
 DEVICE_CONTEXT_SECRET_KEY = "device_context_hmac_secret"
-CURRENT_RELEASE_TITLE = "1.4.3-rc.4 Win7 Legacy 与安装目录修复候选版"
+CURRENT_RELEASE_TITLE = "1.4.3-rc.5 Windows 自定义安装与多系统升级候选版"
 CURRENT_RELEASE_NOTES = [
     "新增严格本机私有备忘录，支持清单、置顶、标签、回收站和 AES-GCM 加密备份",
     "新增依据 2026 年 5 月新版细则的确定性党员发展时间计算、风险提示和 Word 导出",
@@ -46,6 +46,7 @@ CURRENT_RELEASE_NOTES = [
     "中文向量和本地 LLM 使用分能力签名模型包，正文语义索引必须由目录显式授权",
     "统一更新清单按 Windows、Windows 7、DEB Linux、RPM Linux 与架构精确选择七类安装制品",
     "修复 Windows 协议注册拒绝、主机子进程原始堆栈与乱码，并保留自定义数据目录",
+    "彻底移除自定义固定磁盘父目录 ACL 误拦截，安装器自动收敛最终程序目录权限并使用新版本文件名避免旧缓存",
     "数据库升级到 0019，新增真实发行版、包格式、运行档位与能力清单且保留全部业务数据",
 ]
 

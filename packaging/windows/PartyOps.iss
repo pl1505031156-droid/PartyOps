@@ -1,10 +1,10 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.3-rc.4"
+#define MyAppVersion "1.4.3-rc.5"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
 #ifndef PartyOpsOutputBase
-  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.4_windows_amd64"
+  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.5_windows_amd64"
 #endif
 
 [Setup]
@@ -49,7 +49,7 @@ WizardSmallImageFile={#BuildRoot}\partyops-1024.png
 Name: "chinesesimp"; MessagesFile: "{#SourcePath}\languages\ChineseSimplified.isl"
 
 [Messages]
-BeveledLabel=PartyOps 1.4.3-rc.4 · 未签名候选版
+BeveledLabel=PartyOps 1.4.3-rc.5 · 未签名候选版
 WelcomeLabel1=欢迎使用党建智办 PartyOps 安装向导
 WelcomeLabel2=本向导将安装 [name/ver]。%n%n程序安装目录和业务数据目录可以分别选择；升级时会保留原有选择。安装前会自动安全停止旧服务。
 SelectDirDesc=选择 PartyOps 程序安装目录
@@ -557,7 +557,7 @@ begin
   InAppServiceUpdate := CompareText(
     ExpandConstant('{param:INAPPUPDATE|0}'), '1'
   ) = 0;
-  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.4 安装向导';
+  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.5 安装向导';
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     '选择 PartyOps 业务数据目录',
@@ -802,6 +802,19 @@ begin
       Result := '[INSTALL_DIR_TREE_ACL_VERIFY_FAILED] 程序文件权限回读失败，安装已停止。';
       exit;
     end;
+  end;
+  { 自定义磁盘的上级目录可能保留面向日常文件的宽松 DACL。最终程序目录除
+    收敛 DACL 外再设置高完整性标签：普通桌面进程仍可读取/执行，但不能通过
+    父目录的通用写权限替换由管理员和 SYSTEM 使用的程序文件。/T 同时覆盖
+    本次刚释放的全部载荷，避免只保护根目录。 }
+  if (not Exec(
+    ExpandConstant('{sys}\icacls.exe'),
+    AddQuotes(AppDir) + ' /setintegritylevel (OI)(CI)H /T /C /Q',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+  )) or (ResultCode <> 0) then
+  begin
+    Result := '[INSTALL_DIR_INTEGRITY_DENIED] 无法保护自定义程序目录的完整性级别，安装已停止。';
+    exit;
   end;
   { ACL 收敛后最后回查；普通用户仍可读取并执行，但不能替换服务二进制。 }
   if (not Exec(PowerShell, Parameters + ' -VerifyTargetAcl', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or

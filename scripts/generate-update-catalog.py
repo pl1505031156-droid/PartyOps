@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
-VERSION = "1.4.3-rc.4"
+VERSION = "1.4.3-rc.5"
 TARGETS = (
     ("windows", "amd64"),
     ("windows7", "amd64"),
@@ -32,6 +32,7 @@ RELEASE_NOTES = [
     "新增个人模式、自定义数据目录和可选彻底卸载",
     "修复服务启动、首次管理员、注册表权限、空白页及中文诊断问题",
     "新增麒麟、UOS、deepin、openEuler 与 Win7 SP1 x64/x86 安装制品；新增平台均明确标注未真机验证",
+    "修复 Windows 自定义安装目录 ACL 误拦截，最终目录权限由安装器自动收敛",
 ]
 
 
