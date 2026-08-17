@@ -266,7 +266,7 @@ def validate_package(
                     or not filename.endswith(suffix)
                     or set(artifacts) != {filename}
                 ):
-                    errors.append("format v4 轻量更新包目标或制品映射无效")
+                    errors.append("format v4 单平台签名更新包目标或制品映射无效")
                 else:
                     referenced.add(filename)
             elif format_version == 3:

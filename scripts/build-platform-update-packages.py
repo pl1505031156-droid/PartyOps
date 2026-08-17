@@ -228,7 +228,7 @@ def main() -> int:
             platform_name=platform_name,
             architecture=architecture,
         )
-        print(f"已生成轻量更新包：{output.name}")
+        print(f"已生成单平台签名更新包：{output.name}")
     return 0
 
 

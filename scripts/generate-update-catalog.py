@@ -1,4 +1,4 @@
-"""从冻结的轻量更新包生成官网 Ed25519 签名在线更新目录。"""
+"""从冻结的单平台签名更新包生成官网 Ed25519 在线更新目录。"""
 
 from __future__ import annotations
 
@@ -119,7 +119,7 @@ def generate_catalog(
         filename = f"partyops_{VERSION}_{platform_name}_{architecture}.partyops-update"
         package = packages_dir / filename
         if not package.is_file():
-            raise FileNotFoundError(f"缺少轻量更新包：{filename}")
+            raise FileNotFoundError(f"缺少单平台签名更新包：{filename}")
         platform_packages.setdefault(platform_name, {})[architecture] = {
             "package_url": f"{base_url}/{urllib.parse.quote(filename)}",
             "package_size": package.stat().st_size,

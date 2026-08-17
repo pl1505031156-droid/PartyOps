@@ -930,7 +930,7 @@ def _validate_v4_platform_artifacts(manifest: dict, artifacts: dict) -> None:
             422,
             "UPDATE_PLATFORM_TARGET_INVALID",
             "在线更新包与当前平台不匹配",
-            "轻量更新包必须且只能包含清单声明的一个系统与架构安装器。",
+            "单平台签名更新包必须且只能包含清单声明的一个系统与架构安装器。",
         )
 
 
