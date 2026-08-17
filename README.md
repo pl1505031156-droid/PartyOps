@@ -25,7 +25,7 @@
 | 项目 | 当前状态 |
 | --- | --- |
 | 公开版本 | [`v1.4.3-rc.3`](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.3)，GitHub 普通 Release / Latest |
-| 发布时间 | 2026-08-17 08:45（香港时间） |
+| 发布时间 | 2026-08-17 08:45（北京时间，UTC+8） |
 | 冻结源码 | [`6d12d7d26df2f62935f54b207e90a0fd650cdefb`](https://github.com/pl1505031156-droid/PartyOps/commit/6d12d7d26df2f62935f54b207e90a0fd650cdefb) |
 | 官方网站 | [https://www.partyops.cn/](https://www.partyops.cn/) |
 | Windows EXE | 131,106,847 字节；SHA-256 `0ea011db1ef0444bbb3bba62d55fb58ad9a2e27d75939cf87a55c40a258d501c` |
