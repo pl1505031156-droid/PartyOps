@@ -761,6 +761,33 @@ def test_linux_wizard_freeze_includes_tcl_runtime_and_entrypoint_smoke() -> None
     assert "冻结入口自检失败" in script
 
 
+def test_linux_bundle_only_includes_current_user_documents() -> None:
+    """发布后生成的验收/哈希记录不能反向封入制品形成循环或残留旧版本。"""
+
+    script = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'cp -a "$ROOT/docs" "$RUNTIME/"' not in script
+    assert '"release-notes-v1.4.3-rc.5.md"' in script
+    for document in (
+        "user-guide.md",
+        "deployment.md",
+        "upgrade-1.4.3.md",
+        "installation-checklist.md",
+        "backup-restore.md",
+        "operations-runbook.md",
+    ):
+        assert f'"{document}"' in script
+    assert "README.md CHANGELOG.md LICENSE THIRD_PARTY_NOTICES.md" in script
+    for release_evidence in (
+        "artifact-manifest-1.4.3.md",
+        "acceptance-1.4.3.md",
+        "release-readiness-1.4.3.md",
+    ):
+        assert release_evidence not in script
+
+
 def test_linux_portable_archive_dereferences_runtime_symlinks() -> None:
     """原生包只接受普通文件，便携归档必须展开 PyInstaller 共享库链接。"""
 

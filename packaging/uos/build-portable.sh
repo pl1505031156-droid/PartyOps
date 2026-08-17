@@ -283,14 +283,33 @@ elif [[ "${PARTYOPS_REQUIRE_UPDATE_SIGNING:-0}" == "1" ]]; then
 else
   echo "警告：未配置发布公钥，生产更新中心将拒绝更新包。" >&2
 fi
-for notice in README.md LICENSE THIRD_PARTY_NOTICES.md; do
+for notice in README.md CHANGELOG.md LICENSE THIRD_PARTY_NOTICES.md; do
   [[ -f "$ROOT/$notice" ]] || {
     echo "发布包缺少开源声明文件：$notice" >&2
     exit 2
   }
   cp "$ROOT/$notice" "$RUNTIME/"
 done
-cp -a "$ROOT/docs" "$RUNTIME/"
+# 安装载荷只携带当前版本会直接用到的离线用户文档。验收记录、制品哈希
+# 清单和发布就绪报告必须在制品冻结后生成；若把它们反向封入制品，会形成
+# 自身哈希循环，也会让用户在离线包中看到上一候选版的发布状态。
+mkdir -p "$RUNTIME/docs"
+USER_DOCUMENTS=(
+  "user-guide.md"
+  "deployment.md"
+  "upgrade-1.4.3.md"
+  "installation-checklist.md"
+  "backup-restore.md"
+  "operations-runbook.md"
+  "release-notes-v1.4.3-rc.5.md"
+)
+for document in "${USER_DOCUMENTS[@]}"; do
+  [[ -f "$ROOT/docs/$document" ]] || {
+    echo "发布包缺少当前版本用户文档：$document" >&2
+    exit 2
+  }
+  cp "$ROOT/docs/$document" "$RUNTIME/docs/"
+done
 
 mkdir -p "$RUNTIME/licenses"
 # llama.cpp 固定为官方 b10331 标签源码，并由 glibc 2.17 工具链重建 CPU

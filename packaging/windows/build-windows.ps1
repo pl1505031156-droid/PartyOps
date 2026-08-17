@@ -291,7 +291,7 @@ if ($isLegacy) {
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\uos\update-public-key.txt") -Destination $bundleRoot -Force
 Copy-Item -LiteralPath $brandIcon -Destination (Join-Path $bundleRoot "partyops.ico") -Force
 Copy-Item -LiteralPath $brandImage -Destination (Join-Path $bundleRoot "partyops-1024.png") -Force
-foreach ($notice in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
+foreach ($notice in @("README.md", "CHANGELOG.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
   $noticePath = Join-Path $repoRoot $notice
   if (-not (Test-Path -LiteralPath $noticePath)) { throw "发布包缺少开源声明文件：$notice" }
   Copy-Item -LiteralPath $noticePath -Destination $bundleRoot -Force
