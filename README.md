@@ -20,6 +20,19 @@
 > [!IMPORTANT]
 > 当前源码版本为 `1.4.3-rc.3`，数据库模式为 `0019`。rc.3 提供 Windows 10/11 x64、麒麟/UOS/deepin 双架构 DEB 和 openEuler 双架构 RPM，但仍是 **未签名候选版**；国产 Linux 制品尚未真机验证。Windows 7 Legacy 依赖未达到零高危漏洞门禁，本版不发布 Win7 安装包。详见[rc.3 发布说明](docs/release-notes-v1.4.3-rc.3.md)与[1.4.3 发布就绪判定](docs/release-readiness-1.4.3.md)。
 
+## 当前公开发布
+
+| 项目 | 当前状态 |
+| --- | --- |
+| 公开版本 | [`v1.4.3-rc.3`](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.3)，GitHub 普通 Release / Latest |
+| 发布时间 | 2026-08-17 08:45（香港时间） |
+| 冻结源码 | [`6d12d7d26df2f62935f54b207e90a0fd650cdefb`](https://github.com/pl1505031156-droid/PartyOps/commit/6d12d7d26df2f62935f54b207e90a0fd650cdefb) |
+| 官方网站 | [https://www.partyops.cn/](https://www.partyops.cn/) |
+| Windows EXE | 131,106,847 字节；SHA-256 `0ea011db1ef0444bbb3bba62d55fb58ad9a2e27d75939cf87a55c40a258d501c` |
+| 发布边界 | Windows 10/11 x64 与国产 Linux 五个制品已公开；新增平台未完成对应真机运行验收；Win7 未发布 |
+
+Release 同时提供五个主安装包、可选 `.sha256`、五个 Ed25519 签名应用内更新包、format v3 更新目录、发布清单、SBOM、VEX、安全门禁和验收记录。GitHub 仅保留当前 rc.3 公开 Release；历史版本变化仍在 `CHANGELOG.md` 中追溯。
+
 ## 30 秒了解 PartyOps
 
 PartyOps 不是一套把表单搬到浏览器里的系统。它解决的是基层办公最常见的断点：事项散落在聊天记录里，材料留在不同电脑上，档案与办理过程彼此脱节，迎检时再临时拼接。
