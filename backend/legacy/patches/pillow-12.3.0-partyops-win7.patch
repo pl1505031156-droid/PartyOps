@@ -1,0 +1,184 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index a2366e7..eb91997 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,8 +1,8 @@
+ [build-system]
+ build-backend = "backend"
+ requires = [
+-  "pybind11",
+-  "setuptools>=77",
++  "pybind11==3.0.1",
++  "setuptools==75.3.2",
+ ]
+ backend-path = [
+   "_custom_build",
+@@ -15,15 +15,16 @@ readme = "README.md"
+ keywords = [
+   "Imaging",
+ ]
+-license = "MIT-CMU"
+-license-files = [ "LICENSE" ]
++license = { text = "MIT-CMU" }
+ authors = [
+   { name = "Jeffrey 'Alex' Clark", email = "aclark@aclark.net" },
+ ]
+-requires-python = ">=3.10"
++requires-python = ">=3.8"
+ classifiers = [
+   "Development Status :: 6 - Mature",
+   "Programming Language :: Python :: 3 :: Only",
++  "Programming Language :: Python :: 3.8",
++  "Programming Language :: Python :: 3.9",
+   "Programming Language :: Python :: 3.10",
+   "Programming Language :: Python :: 3.11",
+   "Programming Language :: Python :: 3.12",
+diff --git a/src/PIL/GifImagePlugin.py b/src/PIL/GifImagePlugin.py
+index b8db5d8..6509cf4 100644
+--- a/src/PIL/GifImagePlugin.py
++++ b/src/PIL/GifImagePlugin.py
+@@ -31,7 +31,7 @@ import os
+ import subprocess
+ from enum import IntEnum
+ from functools import cached_property
+-from typing import Any, NamedTuple, cast
++from typing import Any, List, NamedTuple, Union, cast
+ 
+ from . import (
+     Image,
+@@ -539,7 +539,7 @@ def _normalize_mode(im: Image.Image) -> Image.Image:
+     return im.convert("L")
+ 
+ 
+-_Palette = bytes | bytearray | list[int] | ImagePalette.ImagePalette
++_Palette = Union[bytes, bytearray, List[int], ImagePalette.ImagePalette]
+ 
+ 
+ def _normalize_palette(
+diff --git a/src/PIL/Image.py b/src/PIL/Image.py
+index ebbd8fd..0d611b2 100644
+--- a/src/PIL/Image.py
++++ b/src/PIL/Image.py
+@@ -40,7 +40,7 @@ import tempfile
+ import warnings
+ from collections.abc import MutableMapping
+ from enum import IntEnum
+-from typing import IO, Protocol, cast
++from typing import IO, Protocol, Union, cast
+ 
+ # VERSION was removed in Pillow 6.0.0.
+ # PILLOW_VERSION was removed in Pillow 9.0.0.
+@@ -3360,7 +3360,7 @@ class SupportsArrayInterface(Protocol):
+         raise NotImplementedError()
+ 
+ 
+-DecoderInput = bytes | bytearray | memoryview | SupportsArrayInterface
++DecoderInput = Union[bytes, bytearray, memoryview, SupportsArrayInterface]
+ 
+ 
+ class SupportsArrowArrayInterface(Protocol):
+diff --git a/src/PIL/_typing.py b/src/PIL/_typing.py
+index a941f89..21689d5 100644
+--- a/src/PIL/_typing.py
++++ b/src/PIL/_typing.py
+@@ -2,8 +2,7 @@ from __future__ import annotations
+ 
+ import os
+ import sys
+-from collections.abc import Sequence
+-from typing import Any, Protocol, TypeVar
++from typing import Any, Protocol, Sequence, Tuple, TypeVar, Union
+ 
+ TYPE_CHECKING = False
+ if TYPE_CHECKING:
+@@ -27,9 +26,9 @@ else:
+     Buffer = Any
+ 
+ 
+-_Ink = float | tuple[int, ...] | str
++_Ink = Union[float, Tuple[int, ...], str]
+ 
+-Coords = Sequence[float] | Sequence[Sequence[float]]
++Coords = Union[Sequence[float], Sequence[Sequence[float]]]
+ 
+ 
+ _T_co = TypeVar("_T_co", covariant=True)
+@@ -39,7 +38,7 @@ class SupportsRead(Protocol[_T_co]):
+     def read(self, length: int = ..., /) -> _T_co: ...
+ 
+ 
+-StrOrBytesPath = str | bytes | os.PathLike[str] | os.PathLike[bytes]
++StrOrBytesPath = Union[str, bytes, os.PathLike]
+ 
+ 
+ __all__ = ["Buffer", "IntegralLike", "StrOrBytesPath", "SupportsRead"]
+diff --git a/src/PIL/_version.py b/src/PIL/_version.py
+index 6a8a6f6..503e600 100644
+--- a/src/PIL/_version.py
++++ b/src/PIL/_version.py
+@@ -1,4 +1,4 @@
+ # Master version for Pillow
+ from __future__ import annotations
+ 
+-__version__ = "12.3.0"
++__version__ = "12.3.0+partyops.1"
+diff --git a/src/_imaging.c b/src/_imaging.c
+index 3cd762f..16caf6f 100644
+--- a/src/_imaging.c
++++ b/src/_imaging.c
+@@ -73,6 +73,7 @@
+ 
+ #define PY_SSIZE_T_CLEAN
+ #include "Python.h"
++#include "thirdparty/pythoncapi_compat.h"
+ 
+ #ifdef HAVE_LIBJPEG
+ #include "jconfig.h"
+diff --git a/src/_imagingcms.c b/src/_imagingcms.c
+index 6731330..1985a77 100644
+--- a/src/_imagingcms.c
++++ b/src/_imagingcms.c
+@@ -28,6 +28,7 @@ https://www.cazabon.com\n\
+ 
+ #define PY_SSIZE_T_CLEAN
+ #include "Python.h"  // Include before wchar.h so _GNU_SOURCE is set
++#include "thirdparty/pythoncapi_compat.h"
+ #include "wchar.h"
+ #include "datetime.h"
+ 
+diff --git a/winbuild/build_prepare.py b/winbuild/build_prepare.py
+index b69d148..3f388cb 100644
+--- a/winbuild/build_prepare.py
++++ b/winbuild/build_prepare.py
+@@ -76,8 +76,8 @@ def cmds_cmake(
+                 "-DCMAKE_RULE_MESSAGES:BOOL=OFF",  # for NMake
+                 "-DCMAKE_C_COMPILER=cl.exe",  # for Ninja
+                 "-DCMAKE_CXX_COMPILER=cl.exe",  # for Ninja
+-                "-DCMAKE_C_FLAGS=-nologo",
+-                "-DCMAKE_CXX_FLAGS=-nologo",
++                '"-DCMAKE_C_FLAGS=-nologo -D_WIN32_WINNT=0x0601 -DWINVER=0x0601"',
++                '"-DCMAKE_CXX_FLAGS=-nologo -D_WIN32_WINNT=0x0601 -DWINVER=0x0601"',
+                 *params,
+                 '-G "{cmake_generator}"',
+                 f'-B "{build_dir}"',
+@@ -698,6 +698,11 @@ def main() -> None:
+         action="store_true",
+         help="skip optional dependency libavif",
+     )
++    parser.add_argument(
++        "--partyops-win7-minimal",
++        action="store_true",
++        help="只构建 Win7 OCR 所需的 libjpeg-turbo 与 zlib-ng",
++    )
+     args = parser.parse_args()
+ 
+     arch_prefs = ARCHITECTURES[args.architecture]
+@@ -740,6 +745,8 @@ def main() -> None:
+         disabled += ["fribidi"]
+     if args.no_avif or args.architecture == "ARM64":
+         disabled += ["libavif"]
++    if args.partyops_win7_minimal:
++        disabled += [name for name in DEPS if name not in {"libjpeg", "zlib"}]
+ 
+     prefs = {
+         "architecture": args.architecture,

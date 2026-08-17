@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$releaseVersion = "1.4.3-rc.3"
+$releaseVersion = "1.4.3-rc.4"
 $wheelhousePath = (Resolve-Path -LiteralPath $Wheelhouse).Path
 $evidencePath = (Resolve-Path -LiteralPath $EvidenceRoot).Path
 $pythonPath = (Resolve-Path -LiteralPath $Python).Path
@@ -21,10 +21,10 @@ $expectedBits = if ($Architecture -eq "amd64") { 64 } else { 32 }
 if ($runtime.impl -ne "CPython" -or $runtime.version[0] -ne 3 -or $runtime.version[1] -ne 8 -or $runtime.bits -ne $expectedBits) {
   throw "Win7 $Architecture 必须使用 $expectedBits 位 CPython 3.8，实际：$pythonInfo"
 }
-if ($Architecture -eq "x86" -and (-not $SqliteDll -or -not $SqliteSha256)) {
-  throw "Win7 x86 必须显式提供经固定来源验证的 32 位 SQLite DLL 与 SHA-256。"
+$tkInfo = & $pythonPath -c "import json,tkinter; print(json.dumps({'tcl':tkinter.Tcl().eval('info patchlevel')}))"
+if ($LASTEXITCODE -ne 0 -or -not $tkInfo) {
+  throw "Win7 $Architecture 必须使用包含 Tcl/Tk 的官方完整 CPython 3.8；缺少图形运行时会导致配置向导无法打开。"
 }
-
 & $pythonPath (Join-Path $repoRoot "scripts\validate-win7-wheelhouse.py") `
   --wheelhouse $wheelhousePath `
   --architecture $Architecture `

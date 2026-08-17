@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from app import __version__ as APP_VERSION
 from app import setup_wizard
 from app import windows_host_status
 from app.windows_host_status import CHILD_EXITED, write_service_status
@@ -24,9 +25,9 @@ class _HealthResponse:
 
     def read(self) -> bytes:
         return (
-            b'{"status":"ok","mode":"host","app_version":"1.4.3-rc.3",'
-            b'"sqlite":{"safe_version":true,"fts5":true}}'
-        )
+            f'{{"status":"ok","mode":"host","app_version":"{APP_VERSION}",'
+            '"sqlite":{"safe_version":true,"fts5":true}}'
+        ).encode("utf-8")
 
 
 def test_windows_service_shared_probe_marks_loopback_health(monkeypatch, tmp_path: Path) -> None:

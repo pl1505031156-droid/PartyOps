@@ -1,0 +1,41 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 368188a..a281b93 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
+ 
+ [project]
+ name = "python-multipart"
+-dynamic = ["version"]
++version = "0.0.31+partyops.1"
+ description = "A streaming multipart parser for Python"
+ readme = "README.md"
+ license = "Apache-2.0"
+-requires-python = ">=3.10"
++requires-python = ">=3.8"
+ authors = [
+     { name = "Andrew Dunham", email = "andrew@du.nham.ca" },
+ ]
+@@ -71,9 +71,6 @@ Documentation = "https://kludex.github.io/python-multipart/"
+ Changelog = "https://github.com/Kludex/python-multipart/blob/master/CHANGELOG.md"
+ Source = "https://github.com/Kludex/python-multipart"
+ 
+-[tool.hatch.version]
+-path = "python_multipart/__init__.py"
+-
+ [tool.hatch.build.targets.sdist]
+ include = [
+     "/python_multipart",
+diff --git a/python_multipart/__init__.py b/python_multipart/__init__.py
+index 931c87d..9aa649e 100644
+--- a/python_multipart/__init__.py
++++ b/python_multipart/__init__.py
+@@ -12,7 +12,7 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
+-__version__ = "0.0.31"
++__version__ = "0.0.31+partyops.1"
+ 
+ from .multipart import (
+     BaseParser,

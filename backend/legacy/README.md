@@ -11,8 +11,10 @@ x64 运行档位为 `legacy-full`，包含语义重排和本地 LLM；x86 为
 `legacy-core`，保留主机、协同、数据库、文件、档案、备份和 OCR，明确不含
 语义重排与本地 LLM。
 
-构建入口为 `packaging/windows/build-windows7.ps1`。它要求目标位数的
-CPython 3.8、一次性全新 wheelhouse、安全回移证据目录，以及 x86 架构专用
-SQLite DLL 和 SHA-256。安装包生成前会扫描冻结目录内全部 EXE/DLL/PYD，
-只接受 PE 子系统 6.1 及以下，并拒绝已知仅 Windows 8/10 提供的导入 API。
-门禁失败不会留下可发布安装包。
+构建入口为 `packaging/windows/build-windows7.ps1`。它要求 Python Software
+Foundation 官方完整 CPython 3.8.10（必须包含 Tcl/Tk 图形运行时）、一次性
+全新 wheelhouse 和安全回移证据目录。x86 会自动选用仓库内固定哈希的 SQLite
+3.53.4 x86 DLL 与 Win7 x86 静态 Tesseract；x64 使用各自的 amd64 运行时。
+安装包生成前会扫描冻结目录内全部 EXE/DLL/PYD，只接受 PE 子系统 6.1 及以下，
+并拒绝已知仅 Windows 8/10 提供的导入 API。缺少 `_tkinter`、Tcl/Tk 资源、
+中文 OCR、SQLite 或任一架构闭包时均不得生成可发布安装包。

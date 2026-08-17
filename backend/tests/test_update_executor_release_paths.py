@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.exc import OperationalError
 
+from app import __version__ as APP_VERSION
 from app import update_executor
 from app.enums import UpdateStatus
 from app.models import UpdatePackage, UpdateRun
@@ -112,9 +113,9 @@ def test_process_lock_environment_and_health_helpers(monkeypatch, tmp_path: Path
 
         def read(self, _size=-1):
             return (
-                b'{"status":"ok","mode":"host","app_version":"1.4.3-rc.3",'
-                b'"sqlite":{"safe_version":true,"fts5":true}}'
-            )
+                f'{{"status":"ok","mode":"host","app_version":"{APP_VERSION}",'
+                '"sqlite":{"safe_version":true,"fts5":true}}'
+            ).encode("utf-8")
 
         def __enter__(self):
             return self
@@ -317,7 +318,7 @@ def test_artifact_manifest_version_snapshot_and_queue_guards(monkeypatch, tmp_pa
         archive.writestr(name, payload)
 
     base = {
-        "version": "1.4.3-rc.3",
+        "version": "1.4.3-rc.5",
         "architecture_artifacts": {"amd64": name},
         "artifacts": {
             name: {

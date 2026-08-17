@@ -1,0 +1,23 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:6111d601-8dc9-47e1-ae60-501400000001",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-08-17T11:45:30+08:00",
+    "component": {
+      "type": "library",
+      "name": "cryptography",
+      "version": "50.0.0+partyops.1",
+      "purl": "pkg:pypi/cryptography@50.0.0%2Bpartyops.1"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "OpenSSL",
+      "version": "3.0.21",
+      "hashes": [{"alg": "SHA-256", "content": "617e29af8e421f46649484a4937e48c685e47f46488167c982f88bc4ec1d522f"}]
+    }
+  ]
+}

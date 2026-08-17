@@ -1,0 +1,151 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index f084e9c..263c777 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -37,8 +37,8 @@ classifiers = [
+   "Topic :: Internet :: WWW/HTTP",
+   "Topic :: Software Development :: Libraries",
+ ]
+-requires-python = ">=3.10"
+-dynamic = ["version"]
++requires-python = ">=3.8"
++version = "2.7.0+partyops.1"
+ 
+ [project.optional-dependencies]
+ brotli = [
+@@ -128,13 +128,6 @@ docs = [
+ "Code" = "https://github.com/urllib3/urllib3"
+ "Issue tracker" = "https://github.com/urllib3/urllib3/issues"
+ 
+-[tool.hatch.version]
+-source = "vcs"
+-[tool.hatch.version.raw-options]
+-local_scheme = "no-local-version"
+-[tool.hatch.build.hooks.vcs]
+-version-file = "src/urllib3/_version.py"
+-
+ [tool.hatch.build.targets.sdist]
+ include = [
+   "/docs",
+diff --git a/src/urllib3/_base_connection.py b/src/urllib3/_base_connection.py
+index 992ec16..a55613a 100644
+--- a/src/urllib3/_base_connection.py
++++ b/src/urllib3/_base_connection.py
+@@ -7,7 +7,10 @@ from .util.timeout import _DEFAULT_TIMEOUT, _TYPE_TIMEOUT
+ from .util.url import Url
+ 
+ _TYPE_BODY = typing.Union[
+-    bytes, typing.IO[typing.Any], typing.Iterable[bytes | str], str
++    bytes,
++    typing.IO[typing.Any],
++    typing.Iterable[typing.Union[bytes, str]],
++    str,
+ ]
+ 
+ 
+diff --git a/src/urllib3/_collections.py b/src/urllib3/_collections.py
+index ee9ca66..e80a425 100644
+--- a/src/urllib3/_collections.py
++++ b/src/urllib3/_collections.py
+@@ -31,7 +31,7 @@ _DT = typing.TypeVar("_DT")
+ ValidHTTPHeaderSource = typing.Union[
+     "HTTPHeaderDict",
+     typing.Mapping[str, str],
+-    typing.Iterable[tuple[str, str]],
++    typing.Iterable[typing.Tuple[str, str]],
+     "HasGettableStringKeys",
+ ]
+ 
+@@ -153,7 +153,7 @@ class RecentlyUsedContainer(typing.Generic[_KT, _VT], typing.MutableMapping[_KT,
+             return set(self._container.keys())
+ 
+ 
+-class HTTPHeaderDictItemView(set[tuple[str, str]]):
++class HTTPHeaderDictItemView(set):
+     """
+     HTTPHeaderDict is unusual for a Mapping[str, str] in that it has two modes of
+     address.
+diff --git a/src/urllib3/_request_methods.py b/src/urllib3/_request_methods.py
+index 297c271..03186e5 100644
+--- a/src/urllib3/_request_methods.py
++++ b/src/urllib3/_request_methods.py
+@@ -12,7 +12,7 @@ from .response import BaseHTTPResponse
+ __all__ = ["RequestMethods"]
+ 
+ _TYPE_ENCODE_URL_FIELDS = typing.Union[
+-    typing.Sequence[tuple[str, typing.Union[str, bytes]]],
++    typing.Sequence[typing.Tuple[str, typing.Union[str, bytes]]],
+     typing.Mapping[str, typing.Union[str, bytes]],
+ ]
+ 
+diff --git a/src/urllib3/exceptions.py b/src/urllib3/exceptions.py
+index 3d7e9b9..cdc279e 100644
+--- a/src/urllib3/exceptions.py
++++ b/src/urllib3/exceptions.py
+@@ -23,7 +23,9 @@ class HTTPWarning(Warning):
+     """Base warning used by this module."""
+ 
+ 
+-_TYPE_REDUCE_RESULT = tuple[typing.Callable[..., object], tuple[object, ...]]
++_TYPE_REDUCE_RESULT = typing.Tuple[
++    typing.Callable[..., object], typing.Tuple[object, ...]
++]
+ 
+ 
+ class PoolError(HTTPError):
+diff --git a/src/urllib3/fields.py b/src/urllib3/fields.py
+index fe68e17..06e5031 100644
+--- a/src/urllib3/fields.py
++++ b/src/urllib3/fields.py
+@@ -7,8 +7,8 @@ import typing
+ _TYPE_FIELD_VALUE = typing.Union[str, bytes]
+ _TYPE_FIELD_VALUE_TUPLE = typing.Union[
+     _TYPE_FIELD_VALUE,
+-    tuple[str, _TYPE_FIELD_VALUE],
+-    tuple[str, _TYPE_FIELD_VALUE, str],
++    typing.Tuple[str, _TYPE_FIELD_VALUE],
++    typing.Tuple[str, _TYPE_FIELD_VALUE, str],
+ ]
+ 
+ 
+diff --git a/src/urllib3/filepost.py b/src/urllib3/filepost.py
+index 14f70b0..1c90a21 100644
+--- a/src/urllib3/filepost.py
++++ b/src/urllib3/filepost.py
+@@ -11,7 +11,7 @@ from .fields import _TYPE_FIELD_VALUE_TUPLE, RequestField
+ writer = codecs.lookup("utf-8")[3]
+ 
+ _TYPE_FIELDS_SEQUENCE = typing.Sequence[
+-    typing.Union[tuple[str, _TYPE_FIELD_VALUE_TUPLE], RequestField]
++    typing.Union[typing.Tuple[str, _TYPE_FIELD_VALUE_TUPLE], RequestField]
+ ]
+ _TYPE_FIELDS = typing.Union[
+     _TYPE_FIELDS_SEQUENCE,
+diff --git a/src/urllib3/util/connection.py b/src/urllib3/util/connection.py
+index f92519e..44b13dc 100644
+--- a/src/urllib3/util/connection.py
++++ b/src/urllib3/util/connection.py
+@@ -6,7 +6,9 @@ import typing
+ from ..exceptions import LocationParseError
+ from .timeout import _DEFAULT_TIMEOUT, _TYPE_TIMEOUT
+ 
+-_TYPE_SOCKET_OPTIONS = list[tuple[int, int, typing.Union[int, bytes]]]
++_TYPE_SOCKET_OPTIONS = typing.List[
++    typing.Tuple[int, int, typing.Union[int, bytes]]
++]
+ 
+ if typing.TYPE_CHECKING:
+     from .._base_connection import BaseHTTPConnection
+diff --git a/src/urllib3/util/ssl_.py b/src/urllib3/util/ssl_.py
+index e66549a..73d76f6 100644
+--- a/src/urllib3/util/ssl_.py
++++ b/src/urllib3/util/ssl_.py
+@@ -18,7 +18,7 @@ HAS_NEVER_CHECK_COMMON_NAME = False
+ IS_PYOPENSSL = False
+ ALPN_PROTOCOLS = ["http/1.1"]
+ 
+-_TYPE_VERSION_INFO = tuple[int, int, int, str, int]
++_TYPE_VERSION_INFO = typing.Tuple[int, int, int, str, int]
+ 
+ # Maps the length of a digest to a possible hash function producing this digest
+ HASHFUNC_MAP = {

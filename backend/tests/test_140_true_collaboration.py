@@ -9,6 +9,7 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect
 
+from app import __version__ as APP_VERSION
 from app.database import Base
 from .conftest import create_task
 
@@ -127,8 +128,8 @@ def test_windows_device_root_lifecycle_and_device_archive_grant(
                 "architecture": "amd64",
                 "platform": "win32",
                 "kernel": "Windows 11 10.0.26100",
-                    "app_version": "1.4.3-rc.3",
-                    "agent_version": "1.4.3-rc.3",
+                    "app_version": APP_VERSION,
+                    "agent_version": APP_VERSION,
                 "local_username": "tester",
             },
         )

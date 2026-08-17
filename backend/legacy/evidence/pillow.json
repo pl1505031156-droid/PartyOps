@@ -1,0 +1,27 @@
+{
+  "component": "Pillow",
+  "version": "12.3.0+partyops.1",
+  "source_commit": "bb1d8e8ab8d29048624d96e3ee53cecf7c13d13d",
+  "source_archive_sha256": "3b8182a766685eaa002637e28b4ec8d6b18819a0c71f579bf0dbaa5830297cce",
+  "upstream_security_commits": [
+    "Pillow 官方 12.3.0 标签 bb1d8e8ab8d29048624d96e3ee53cecf7c13d13d",
+    "Legacy OCR 最小运行档位只启用 JPEG 与 zlib，WebP 明确关闭"
+  ],
+  "build_parameters": {
+    "python": "CPython 3.8.10",
+    "architectures": ["win_amd64", "win32"],
+    "windows_api_floor": "_WIN32_WINNT=0x0601",
+    "libjpeg_turbo": "3.1.4.1",
+    "zlib_ng": "2.3.3",
+    "patch": "../patches/pillow-12.3.0-partyops-win7.patch",
+    "patch_sha256": "90f3b31536dbdb96e4731ae231746f1e1cc0090be7a2e81de512b7763d6039de"
+  },
+  "wheel_sha256": {
+    "win_amd64": "6d16c56281f6a81415ca9243e35f3fa3aea45c2f3c3f75b0c205c3ee569b4372",
+    "win32": "7530f5ed2d4c48b1c68e006d4082a4edc154f8300956392e9d04c06b29fd2044"
+  },
+  "sbom": "pillow.sbom.cdx.json",
+  "vex": "pillow.vex.cdx.json",
+  "vulnerability_reproduction": "pillow.reproduction.json",
+  "post_fix_test": "pillow.post-fix.json"
+}

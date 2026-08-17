@@ -1,12 +1,12 @@
 {
   "format_version": 1,
   "python": "3.8",
-  "release": "1.4.3-rc.3",
+  "release": "1.4.3-rc.4",
   "policy": "没有上游补丁证据、漏洞复现用例、修复后通过记录和双架构轮子时阻断 Win7 制品",
   "components": {
     "cryptography": {
-      "upstream_base": "47.0.0",
-      "required_build_version": "47.0.0+partyops.1",
+      "upstream_base": "50.0.0",
+      "required_build_version": "50.0.0+partyops.1",
       "wheel_project": "cryptography",
       "required_evidence": [
         "source_commit",
@@ -19,8 +19,8 @@
       ]
     },
     "Pillow": {
-      "upstream_base": "10.4.0",
-      "required_build_version": "10.4.0+partyops.1",
+      "upstream_base": "12.3.0",
+      "required_build_version": "12.3.0+partyops.1",
       "wheel_project": "Pillow",
       "required_evidence": [
         "source_commit",

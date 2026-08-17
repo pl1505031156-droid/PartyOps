@@ -2,6 +2,26 @@
 
 本项目按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的结构记录用户可感知变更。PartyOps 当前使用三段式版本号；正式 Git 标签和安装制品只有在发布门禁通过后创建。
 
+## [1.4.3-rc.4] - 2026-08-17
+
+### 修复
+
+- 修复 Windows 10/11 自定义程序目录的误报：管理员自己在 D/E 盘创建的中文、空格目录不再触发 `INSTALL_DIR_PARENT_UNSAFE` 或笼统的 `INSTALL_DIR_CHECK_FAILED`；真实允许普通用户替换 LocalSystem 服务文件的父目录仍以 `INSTALL_DIR_PARENT_ACL_UNSAFE` 拒绝。
+- 安装目录检查把 PowerShell 的精确中文诊断写入独立文件并由安装器回读，创建前、创建后和 ACL 收敛后连续复核，避免路径解析或错误流造成错误提示丢失。
+- Windows 冻结向导加入真实 Tcl/Tk 自检，构建阶段必须成功创建并销毁隐藏窗口；缺少 `_tkinter.pyd`、Tcl/Tk DLL 或脚本资源时拒绝生成安装器。
+
+### Windows 7 Legacy
+
+- 发布独立 Windows 7 SP1 x64/x86 安装器：x64 提供完整主机、协同、OCR、语义重排和本地 LLM；x86 提供核心主机、协同、数据库、文件、档案、备份和中文 OCR，不启用语义重排与本地 LLM。
+- 使用独立 CPython 3.8 锁和可审计安全回移组件；`cryptography`、Pillow、FastAPI/Starlette 等回移保留源码补丁、证据、哈希与离线 wheelhouse 闭包，不污染 Python 3.11 主线。
+- x86 固定 SQLite 3.53.4 与 Tesseract 5.5.2 静态运行时；两套架构均使用 Microsoft Windows SDK 10.0.19041 官方 app-local UCRT 完整集合，并逐文件校验 SHA-256、PE 架构、导入 API 和子系统基线。
+- 安装前检查 Windows 7 SP1、KB2533623、Universal CRT、系统位数和目录权限；由于 Windows 7 已停止系统级安全维护且本轮无真机，必须仅在受控局域网使用并明确标注“未真机验证”。
+
+### 发布
+
+- 版本号提升为 `1.4.3-rc.4`，七个系统安装包使用不可变版本化文件名；Windows 普通用户仍只需下载一个 EXE，Linux 每台电脑只需下载一个与包格式和架构匹配的 DEB/RPM。
+- 应用内更新继续使用 format v3、Ed25519、大小和 SHA-256 校验，并按 `windows`、`windows7`、`linux-deb`、`linux-rpm` 及架构精确选包。
+
 ## [1.4.3-rc.3] - 2026-08-15
 
 ### 新增

@@ -1,0 +1,72 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index dcde263..e6fa786 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -14,7 +14,7 @@ maintainers = [
+     {name = "Ian Stapleton Cordasco", email="graffatcolmingov@gmail.com"},
+     {name = "Nate Prewitt", email="nate.prewitt@gmail.com"}
+ ]
+-requires-python = ">=3.10"
++requires-python = ">=3.8"
+ dependencies = [
+     "charset_normalizer>=2,<4",
+     "idna>=2.5,<4",
+diff --git a/src/requests.egg-info/PKG-INFO b/src/requests.egg-info/PKG-INFO
+index 79db3a0..e72e470 100644
+--- a/src/requests.egg-info/PKG-INFO
++++ b/src/requests.egg-info/PKG-INFO
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: requests
+-Version: 2.33.0
++Version: 2.33.0+partyops.1
+ Summary: Python HTTP for Humans.
+ Author-email: Kenneth Reitz <me@kennethreitz.org>
+ Maintainer-email: Ian Stapleton Cordasco <graffatcolmingov@gmail.com>, Nate Prewitt <nate.prewitt@gmail.com>
+@@ -25,7 +25,7 @@ Classifier: Programming Language :: Python :: Implementation :: CPython
+ Classifier: Programming Language :: Python :: Implementation :: PyPy
+ Classifier: Topic :: Internet :: WWW/HTTP
+ Classifier: Topic :: Software Development :: Libraries
+-Requires-Python: >=3.10
++Requires-Python: >=3.8
+ Description-Content-Type: text/markdown
+ License-File: LICENSE
+ License-File: NOTICE
+diff --git a/src/requests.egg-info/SOURCES.txt b/src/requests.egg-info/SOURCES.txt
+index 18ba5d0..3719d77 100644
+--- a/src/requests.egg-info/SOURCES.txt
++++ b/src/requests.egg-info/SOURCES.txt
+@@ -5,6 +5,7 @@ NOTICE
+ README.md
+ pyproject.toml
+ requirements-dev.txt
++setup.cfg
+ setup.py
+ src/requests/__init__.py
+ src/requests/__version__.py
+diff --git a/src/requests/__init__.py b/src/requests/__init__.py
+index 8ecd8b8..969623b 100644
+--- a/src/requests/__init__.py
++++ b/src/requests/__init__.py
+@@ -56,7 +56,7 @@ except ImportError:
+ 
+ 
+ def check_compatibility(urllib3_version, chardet_version, charset_normalizer_version):
+-    urllib3_version = urllib3_version.split(".")
++    urllib3_version = urllib3_version.split("+", 1)[0].split(".")
+     assert urllib3_version != ["dev"]  # Verify urllib3 isn't installed from git.
+ 
+     # Sometimes, urllib3 only reports its version as 16.1.
+diff --git a/src/requests/__version__.py b/src/requests/__version__.py
+index 567b49f..f880973 100644
+--- a/src/requests/__version__.py
++++ b/src/requests/__version__.py
+@@ -5,7 +5,7 @@
+ __title__ = "requests"
+ __description__ = "Python HTTP for Humans."
+ __url__ = "https://requests.readthedocs.io"
+-__version__ = "2.33.0"
++__version__ = "2.33.0+partyops.1"
+ __build__ = 0x023300
+ __author__ = "Kenneth Reitz"
+ __author_email__ = "me@kennethreitz.org"

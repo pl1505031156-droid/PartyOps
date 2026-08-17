@@ -1,9 +1,55 @@
 """UOS 安装器慢启动等待策略的回归测试。"""
 
+import hashlib
+import os
 from pathlib import Path
+import struct
+import subprocess
+from uuid import uuid4
+import zipfile
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows ACL 安装路径回归")
+def test_windows_custom_install_path_preflight_accepts_user_parent(
+    tmp_path: Path,
+) -> None:
+    """普通用户创建的中文/空格父目录不能再触发 PARENT_UNSAFE 误判。"""
+
+    validator = ROOT / "packaging" / "windows" / "validate-install-path.ps1"
+    # 临时目录本身常向 Authenticated Users 开放，不能作为 LocalSystem 服务目录。
+    # 使用本机工作区所在固定盘根目录下尚不存在的自定义路径模拟安装器选择。
+    target = Path(ROOT.anchor) / f"PartyOps-安装测试-{uuid4().hex}" / "党建智办 PartyOps"
+    diagnostic = tmp_path / "安装目录诊断.txt"
+    result = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(validator),
+            "-Path",
+            str(target),
+            "-DiagnosticFile",
+            str(diagnostic),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert diagnostic.read_text(encoding="utf-8").startswith("[INSTALL_DIR_OK]")
 
 
 def test_windows_build_tool_versions_are_resolver_compatible() -> None:
@@ -151,7 +197,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     assert "%pre" in build
     assert "%post" in build
     assert "/opt/partyops/post-install-selftest.sh $ARCH" in build
-    assert 'DEB_VERSION="1.4.3~rc.3"' in build
+    assert 'DEB_VERSION="1.4.3~rc.4"' in build
     assert "Version: $DEB_VERSION" in build
     assert "systemd, util-linux, coreutils, iproute2" in build
     assert "systemd, util-linux, coreutils, iproute" in build
@@ -172,8 +218,8 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     one_click = (ROOT / "packaging" / "uos" / "one-click-install.sh").read_text(
         encoding="utf-8"
     )
-    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.3}"' in one_click
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.3}"' in one_click
+    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.4}"' in one_click
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.4}"' in one_click
     assert 'DEB="$ARTIFACTS/PartyOps_${VERSION}_linux_${ARCH}.deb"' in one_click
     assert '[[ "$installed_version" == "$PACKAGE_VERSION" ]]' in one_click
     assert 'chown -R "$CURRENT_USER' not in one_click
@@ -181,7 +227,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     acceptance = (ROOT / "packaging" / "uos" / "target-acceptance.sh").read_text(
         encoding="utf-8"
     )
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.3}"' in acceptance
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.4}"' in acceptance
     assert 'test "$INSTALLED_VERSION" = "$PACKAGE_VERSION"' in acceptance
     assert "LD_LIBRARY_PATH=/opt/partyops/ocr/lib" in acceptance
 
@@ -390,7 +436,9 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "INSTALL_DIR_REPARSE_POINT" in installer
     assert "INSTALL_DIR_NOT_PARTYOPS" in installer
     assert "INSTALL_DIR_ACL_DENIED" in installer
-    assert "INSTALL_DIR_PARENT_UNSAFE" in installer
+    assert "INSTALL_DIR_ACL_UNSAFE" in installer
+    assert "ReadInstallPathDiagnostic" in installer
+    assert "partyops-install-path-diagnostic.txt" in installer
     assert "*S-1-5-18:(OI)(CI)F" in installer
     assert "*S-1-5-32-544:(OI)(CI)F" in installer
     assert "*S-1-5-32-545:(OI)(CI)RX" in installer
@@ -413,6 +461,48 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "Assert-SecureDirectoryAcl $fullPath -ForProgramDirectory" in validator
     assert "Assert-SecureDirectoryAcl" in validator
     assert "S-1-5-32-544" in validator
+    assert "INSTALL_DIR_PARENT_UNSAFE" not in validator
+    assert "INSTALL_DIR_PARENT_ACL_UNSAFE" in validator
+    assert "WindowsIdentity]::GetCurrent" in validator
+    assert 'DiagnosticFile = ""' in validator
+    assert "当前管理员 SID 属于受信主体" in validator
+    assert "while (-not [string]::IsNullOrEmpty($aclCursor))" in validator
+    assert installer.count("ErrorMessage := ValidateAndSecureInstallDirectory") == 1
+
+
+def test_frozen_windows_wizard_has_real_gui_self_test_gate() -> None:
+    entrypoint = (ROOT / "packaging" / "uos" / "wizard_entrypoint.py").read_text(
+        encoding="utf-8"
+    )
+    build = (ROOT / "packaging" / "windows" / "build-windows.ps1").read_text(
+        encoding="utf-8"
+    )
+    assert 'sys.argv[1:] == ["--self-test"]' in entrypoint
+    assert "root = tkinter.Tk()" in entrypoint
+    assert 'PartyOpsWizard.exe\") --self-test' in build
+    for required in (
+        "_tkinter.pyd",
+        "tcl86t.dll",
+        "tk86t.dll",
+        "_tcl_data\\init.tcl",
+        "_tk_data\\tk.tcl",
+    ):
+        assert required in build
+
+
+def test_win7_uses_verified_sdk_ucrt_instead_of_build_host_system_dlls() -> None:
+    build = (ROOT / "packaging" / "windows" / "build-windows.ps1").read_text(
+        encoding="utf-8"
+    )
+    validator = (ROOT / "scripts" / "validate-win7-pe.py").read_text(
+        encoding="utf-8"
+    )
+    assert "ucrt-10.0.19041.0-$ucrtArchitecture" in build
+    assert 'Where-Object { $_.Name -like "api-ms-win-*.dll"' in build
+    assert "ucrt-source.json" in build
+    assert 'for directory in (root, root / "_internal")' in validator
+    assert "is_verified_ucrt_forwarder" in validator
+    assert "10.0.19041.0" in validator
 
 
 def test_linux_wizard_freeze_includes_tcl_runtime_and_entrypoint_smoke() -> None:
@@ -554,11 +644,42 @@ def test_windows_ocr_uses_locked_minimal_runtime_and_runs_during_freeze() -> Non
     )
 
     assert "57825338CEAA141C617F66D2A2210B6BEF396436FFC83D242595E5F5F33BF462" in helper
+    assert "8174F4646283567AEF49490393D95F3D89265E7B584FA3D95CF64F7795B90CC5" in helper
     assert "tesseract v5\\.5\\.3" in helper
+    assert "tesseract 5\\.5\\.2" in helper
+    assert '$env:PARTYOPS_LEGACY_ARCH -eq "x86"' in helper
     assert "chi_sim.traineddata" in helper and "eng.traineddata" in helper
     assert "tesseract-uninstall.exe" in helper and "lstmtraining.exe" in helper
     assert "Expand-VerifiedPartyOpsOcrRuntime" in builder
     assert "Expand-VerifiedPartyOpsOcrRuntime" in packager
+
+
+def test_windows7_x86_ocr_archive_is_locked_native_and_minimal() -> None:
+    """Win7 x86 只能封入静态 x86 引擎，不能复用 amd64 OCR DLL。"""
+
+    archive_path = (
+        ROOT
+        / "vendor"
+        / "windows"
+        / "ocr"
+        / "tesseract-5.5.2-windows7-x86.zip"
+    )
+    assert hashlib.sha256(archive_path.read_bytes()).hexdigest() == (
+        "8174f4646283567aef49490393d95f3d89265e7b584fa3d95cf64f7795b90cc5"
+    )
+    with zipfile.ZipFile(archive_path) as archive:
+        names = set(archive.namelist())
+        executable = archive.read("bin/tesseract.exe")
+    pe_offset = struct.unpack_from("<I", executable, 0x3C)[0]
+    machine = struct.unpack_from("<H", executable, pe_offset + 4)[0]
+    assert executable[:2] == b"MZ" and machine == 0x014C
+    assert not any(name.lower().endswith(".dll") for name in names)
+    assert {
+        "tessdata/chi_sim.traineddata",
+        "tessdata/eng.traineddata",
+        "tessdata/osd.traineddata",
+        "SOURCE.json",
+    } <= names
 
 
 def test_linux_native_packaging_accepts_only_explicit_validated_cross_payload() -> None:

@@ -1,0 +1,38 @@
+{
+  "format_version": 1,
+  "release": "1.4.3-rc.4",
+  "platform": "windows7-amd64",
+  "recorded_at_beijing": "2026-08-17T12:49:30+08:00",
+  "decision": "使用仍支持 Python 3.8 且不导入 Win8/10 专属 API 的最后兼容组件线；模型包必须通过 PartyOps Ed25519 签名及逐文件 SHA-256 校验。",
+  "components": [
+    {
+      "name": "onnxruntime",
+      "version": "1.14.1",
+      "wheel": "onnxruntime-1.14.1-cp38-cp38-win_amd64.whl",
+      "sha256": "de40a558e00fc00f92e298d5be99eb8075dba51368dabcb259670a00f4670e56",
+      "compatibility_reason": "1.15 及更高版本的官方 Windows 轮子导入 Win7 不存在的 api-ms-win-core-path-l1-1-0.dll 与 GetSystemTimePreciseAsFileTime；1.14.1 通过 PartyOps PE 导入表门禁。"
+    },
+    {
+      "name": "tokenizers",
+      "version": "0.19.1",
+      "wheel": "tokenizers-0.19.1-cp38-none-win_amd64.whl",
+      "sha256": "0bcce02bf1ad9882345b34d5bd25ed4949a480cf0e656bbd468f4d8986f7a3f1",
+      "compatibility_reason": "0.20.x 官方 Windows 轮子导入 Win7 不存在的 GetSystemTimePreciseAsFileTime；0.19.1 保留 PartyOps 使用的 tokenizer.json 接口并通过 PE 门禁。"
+    }
+  ],
+  "verification": {
+    "pip_audit": "2026-08-17：No known vulnerabilities found（本地安全回移包另由 security-backports.json 门禁）",
+    "runtime_smoke": "ONNX Runtime CPUExecutionProvider 执行官方 mul_1.onnx 成功；tokenizers BPE 编码成功。",
+    "pe_gate": "禁止 Win8/10 专属 DLL/API；最终冻结目录必须全量复检。",
+    "runtime_boundary": "仅接受由配置的 Ed25519 公钥验证、且清单覆盖全部文件 SHA-256 的 PartyOps 模型包；不接受任意未签名 ONNX 文件。"
+  },
+  "limitations": [
+    "没有 Windows 7 真机，运行结论保持未真机验证。",
+    "Windows 7 已停止系统安全维护，仅建议在受控局域网中使用。"
+  ],
+  "references": [
+    "https://onnxruntime.ai/docs/reference/compatibility.html",
+    "https://github.com/microsoft/onnxruntime/security",
+    "https://github.com/huggingface/tokenizers/releases"
+  ]
+}

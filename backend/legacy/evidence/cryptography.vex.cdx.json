@@ -1,0 +1,16 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:6111d601-8dc9-47e1-ae60-501400000002",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-08-17T11:45:30+08:00",
+    "component": {
+      "type": "library",
+      "name": "cryptography",
+      "version": "50.0.0+partyops.1",
+      "purl": "pkg:pypi/cryptography@50.0.0%2Bpartyops.1"
+    }
+  },
+  "vulnerabilities": []
+}

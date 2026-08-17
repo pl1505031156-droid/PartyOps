@@ -1,0 +1,47 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 5a0e37d..76caf3c 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,6 +1,6 @@
+ [project]
+ name = "click"
+-version = "8.3.3"
++version = "8.3.3+partyops.1"
+ description = "Composable command line interface toolkit"
+ readme = "README.md"
+ license = "BSD-3-Clause"
+@@ -13,7 +13,7 @@ classifiers = [
+     "Programming Language :: Python",
+     "Typing :: Typed",
+ ]
+-requires-python = ">=3.10"
++requires-python = ">=3.8"
+ dependencies = [
+     "colorama; platform_system == 'Windows'",
+ ]
+diff --git a/src/click/core.py b/src/click/core.py
+index d940dd8..2cdaff6 100644
+--- a/src/click/core.py
++++ b/src/click/core.py
+@@ -91,7 +91,7 @@ def _check_nested_chain(
+ 
+ 
+ def batch(iterable: cabc.Iterable[V], batch_size: int) -> list[tuple[V, ...]]:
+-    return list(zip(*repeat(iter(iterable), batch_size), strict=False))
++    return list(zip(*repeat(iter(iterable), batch_size)))
+ 
+ 
+ @contextmanager
+diff --git a/src/click/types.py b/src/click/types.py
+index e71c1c2..110ab85 100644
+--- a/src/click/types.py
++++ b/src/click/types.py
+@@ -1105,7 +1105,7 @@ class Tuple(CompositeParamType):
+             )
+ 
+         return tuple(
+-            ty(x, param, ctx) for ty, x in zip(self.types, value, strict=False)
++            ty(x, param, ctx) for ty, x in zip(self.types, value)
+         )
+ 
+ 

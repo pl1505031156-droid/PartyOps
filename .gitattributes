@@ -1,1 +1,5 @@
 *.sh text eol=lf
+# 安全回移补丁是可复现构建输入；其中的空白属于被补丁源码内容，必须原样保留。
+backend/legacy/patches/*.patch -whitespace
+# 第三方 Windows 运行时、许可证与导出表按上游字节固化，空白也属于哈希证据。
+vendor/windows/** -whitespace

@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "high_severity_open": 0,
+  "tested_at": "2026-08-17T11:45:30+08:00",
+  "results": {
+    "win_amd64_python_3_8": "passed",
+    "win32_python_3_8": "passed",
+    "jpeg_roundtrip": true,
+    "malformed_jpeg_rejected": true,
+    "decompression_bomb_rejected": true,
+    "jpeg": true,
+    "zlib": true,
+    "webp": false,
+    "pip_check": "passed"
+  }
+}

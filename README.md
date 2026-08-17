@@ -6,8 +6,8 @@
 
 把事项办理、跨机文件、重要档案、迎检材料、通知评论和工作留痕，收进一套真正能落地的局域网协同闭环。
 
-[![Release](https://img.shields.io/badge/release-v1.4.3--rc.3-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.3)
-[![Source](https://img.shields.io/badge/source-v1.4.3--rc.3-c58b3d?style=for-the-badge)](docs/release-readiness-1.4.3.md)
+[![Release](https://img.shields.io/badge/release-v1.4.3--rc.4-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.4)
+[![Source](https://img.shields.io/badge/source-v1.4.3--rc.4-c58b3d?style=for-the-badge)](docs/release-readiness-1.4.3.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-292520?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-c17b17?style=for-the-badge)](#安装教程)
 [![Local first](https://img.shields.io/badge/data-local--first-2f7d57?style=for-the-badge)](#安全与隐私)
@@ -18,20 +18,20 @@
 </div>
 
 > [!IMPORTANT]
-> 当前源码版本为 `1.4.3-rc.3`，数据库模式为 `0019`。rc.3 提供 Windows 10/11 x64、麒麟/UOS/deepin 双架构 DEB 和 openEuler 双架构 RPM，但仍是 **未签名候选版**；国产 Linux 制品尚未真机验证。Windows 7 Legacy 依赖未达到零高危漏洞门禁，本版不发布 Win7 安装包。详见[rc.3 发布说明](docs/release-notes-v1.4.3-rc.3.md)与[1.4.3 发布就绪判定](docs/release-readiness-1.4.3.md)。
+> 当前源码版本为 `1.4.3-rc.4`，数据库模式为 `0019`。rc.4 提供 Windows 10/11 x64、Windows 7 SP1 x64/x86、麒麟/UOS/deepin 双架构 DEB 和 openEuler 双架构 RPM，仍是 **未签名候选版**。Windows 7 与国产 Linux 制品尚未在对应真机完成运行验收；Win7 仅建议在受控局域网使用。详见[rc.4 发布说明](docs/release-notes-v1.4.3-rc.4.md)与[1.4.3 发布就绪判定](docs/release-readiness-1.4.3.md)。
 
 ## 当前公开发布
 
 | 项目 | 当前状态 |
 | --- | --- |
-| 公开版本 | [`v1.4.3-rc.3`](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.3)，GitHub 普通 Release / Latest |
-| 发布时间 | 2026-08-17 08:45（北京时间，UTC+8） |
-| 冻结源码 | [`6d12d7d26df2f62935f54b207e90a0fd650cdefb`](https://github.com/pl1505031156-droid/PartyOps/commit/6d12d7d26df2f62935f54b207e90a0fd650cdefb) |
+| 公开版本 | [`v1.4.3-rc.4`](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.4)，GitHub 普通 Release |
+| 发布时间 | 以 GitHub Release 与官网显示的北京时间为准 |
+| 冻结源码 | 不可变标签 [`v1.4.3-rc.4`](https://github.com/pl1505031156-droid/PartyOps/tree/v1.4.3-rc.4) |
 | 官方网站 | [https://www.partyops.cn/](https://www.partyops.cn/) |
-| Windows EXE | 131,106,847 字节；SHA-256 `0ea011db1ef0444bbb3bba62d55fb58ad9a2e27d75939cf87a55c40a258d501c` |
-| 发布边界 | Windows 10/11 x64 与国产 Linux 五个制品已公开；新增平台未完成对应真机运行验收；Win7 未发布 |
+| 制品校验 | 七个主安装包的文件大小与 SHA-256 以同一 Release、官网和机器可读清单为准 |
+| 发布边界 | Windows 10/11 已在当前 Win11 构建机执行冻结运行验收；Win7 与国产 Linux 明确标注未真机验证 |
 
-Release 同时提供五个主安装包、可选 `.sha256`、五个 Ed25519 签名应用内更新包、format v3 更新目录、发布清单、SBOM、VEX、安全门禁和验收记录。GitHub 仅保留当前 rc.3 公开 Release；历史版本变化仍在 `CHANGELOG.md` 中追溯。
+Release 同时提供七个主安装包、可选 `.sha256`、Ed25519 签名应用内更新包、format v3 更新目录、发布清单、SBOM、VEX、安全门禁和验收记录。历史版本变化仍在 `CHANGELOG.md` 中追溯。
 
 ## 30 秒了解 PartyOps
 
@@ -136,7 +136,8 @@ PartyOps 不是一套把表单搬到浏览器里的系统。它解决的是基�
 | `1.4.2-rc.1` | AnyDoc / pdf-inspector 离线文档阅读、跨机文件直接阅读、权限撤销复核和发布链路收口 | 历史 Pre-release |
 | `1.4.3-rc.1` | 本机私有备忘、2026 新版细则党员发展计算、专业中文 Word 导出与单位补充材料分层 | 历史 Pre-release，已被 rc.2 取代 |
 | `1.4.3-rc.2` | 自定义数据盘、主机服务可诊断启动、单 EXE 下载、前端资源闭包及 UOS 双架构严格离线校验 | 历史候选，已被 rc.3 取代 |
-| `1.4.3-rc.3` | 个人模式、安全卸载、中文策略诊断、系统内升级与国产 Linux 原生 DEB/RPM | 当前普通 Release；未签名、部分平台未真机验证 |
+| `1.4.3-rc.3` | 个人模式、安全卸载、中文策略诊断、系统内升级与国产 Linux 原生 DEB/RPM | 历史普通 Release；已被 rc.4 取代 |
+| `1.4.3-rc.4` | 修复自定义程序目录误报，加入 Win7 x64/x86 完整主机、官方 UCRT 与冻结 GUI 实测门禁 | 当前候选；未签名、Win7/国产 Linux 未真机验证 |
 
 完整变更、修复与安全说明见 [CHANGELOG.md](CHANGELOG.md)。PartyOps 不会为了看起来“已发布”而隐藏未完成门禁，版本证据、制品哈希和已知限制都会随 Release 一起公开。
 
@@ -157,19 +158,21 @@ flowchart LR
 
 ## 下载
 
-当前可下载版本为 [v1.4.3-rc.3 候选版](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.3)：
+当前可下载版本为 [v1.4.3-rc.4 候选版](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.4)：
 
-- [Windows 10/11 x64 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.3/PartyOps_1.4.3-rc.3_windows_amd64.exe)
-- [麒麟/UOS/deepin AMD64 DEB](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.3/PartyOps_1.4.3-rc.3_linux_amd64.deb)
-- [麒麟/UOS/deepin ARM64 DEB](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.3/PartyOps_1.4.3-rc.3_linux_arm64.deb)
-- [openEuler x86_64 RPM](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.3/PartyOps-1.4.3-0.rc.3.1.x86_64.rpm)
-- [openEuler ARM64 RPM](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.3/PartyOps-1.4.3-0.rc.3.1.aarch64.rpm)
+- [Windows 10/11 x64 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.4/PartyOps_1.4.3-rc.4_windows_amd64.exe)
+- [Windows 7 SP1 x64 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.4/PartyOps_1.4.3-rc.4_windows7_amd64.exe)
+- [Windows 7 SP1 x86 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.4/PartyOps_1.4.3-rc.4_windows7_x86.exe)
+- [麒麟/UOS/deepin AMD64 DEB](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.4/PartyOps_1.4.3-rc.4_linux_amd64.deb)
+- [麒麟/UOS/deepin ARM64 DEB](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.4/PartyOps_1.4.3-rc.4_linux_arm64.deb)
+- [openEuler x86_64 RPM](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.4/PartyOps-1.4.3-0.rc.4.1.x86_64.rpm)
+- [openEuler ARM64 RPM](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.4/PartyOps-1.4.3-0.rc.4.1.aarch64.rpm)
 
 普通 Windows 用户只需下载一个 EXE。安装器会校验其内部载荷；最终文件大小与 SHA-256 直接显示在 Release 和官网，无需再下载第二个“校验包”。同名 `.sha256` 仅为自动化工具提供，不是安装必需步骤。
 
 国产 Linux 用户不再需要下载“构建套件 + 校验包”。每台电脑只下载一个与 CPU 架构匹配的 DEB 或 RPM，包管理器安装后会自动核对文件清单、前端资源、SQLite/FTS5、中文 OCR、本地语义、LLM、更新服务和回环健康端点。
 
-Windows 7 x64/x86 当前没有达到本项目的发布安全门禁，因此不提供下载。不会用“未真机验证”或漏洞忽略规则代替安全修复。
+Windows 7 x64 提供完整主机、协同、OCR、语义重排和本地 LLM；x86 提供核心主机、协同、数据库、文件、档案、备份和 OCR，受 32 位地址空间限制不启用语义重排与本地 LLM。两者均使用独立 Python 3.8 Legacy 锁、经证据校验的安全回移组件和 Microsoft 官方 app-local UCRT；由于没有 Win7 真机，仍不能把静态/冻结验证表述为真机通过。
 
 ## 安装教程
 
@@ -183,20 +186,20 @@ Windows 7 x64/x86 当前没有达到本项目的发布安全门禁，因此不�
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\PartyOps_1.4.3-rc.3_windows_amd64.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\PartyOps_1.4.3-rc.3_windows_amd64.exe
+Get-FileHash .\PartyOps_1.4.3-rc.4_windows_amd64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\PartyOps_1.4.3-rc.4_windows_amd64.exe
 ```
 
 Linux：
 
 ```bash
 dpkg --print-architecture
-sha256sum PartyOps_1.4.3-rc.3_linux_amd64.deb
+sha256sum PartyOps_1.4.3-rc.4_linux_amd64.deb
 ```
 
 ### Windows 10/11 x64
 
-1. 双击 `PartyOps_1.4.3-rc.3_windows_amd64.exe`。未签名候选出现 SmartScreen 时，先核对 SHA-256，再选择“更多信息 → 仍要运行”。
+1. 双击 `PartyOps_1.4.3-rc.4_windows_amd64.exe`。未签名候选出现 SmartScreen 时，先核对 SHA-256，再选择“更多信息 → 仍要运行”。
 2. PartyOps 中文安装向导会分别询问程序安装目录和业务数据目录；两者都可自定义，升级时会保留原选择。数据目录建议使用 `D:\PartyOps-数据` 等本机固定磁盘目录，支持中文和空格，不支持磁盘根目录、系统目录、网络盘或移动盘。
 3. 首次打开“党建智办”，明确选择角色：
    - **个人使用（新手推荐）**：无需管理员授权，只在本机使用，不安装服务、不开放局域网。
@@ -207,6 +210,13 @@ sha256sum PartyOps_1.4.3-rc.3_linux_amd64.deb
 6. 从另一台电脑登录，确认可以浏览、打开阅读、浏览器另存为或下载到本机接收目录。
 
 向导会依次显示“服务注册、SCM 启动、子进程启动、端口监听、健康检查、局域网地址就绪”。遇到失败先点击“复制诊断”或“打开日志”，不要先手动修改 `services.msc`。未就绪时 PartyOps 不会打开空白地址，也不会降级为普通用户进程。
+
+### Windows 7 SP1 x64/x86
+
+1. 仅在已停止系统级安全维护风险可控的局域网电脑使用，并先完成 SP1、KB2533623 和 Universal CRT 更新；安装器会在释放文件前逐项检查。
+2. 64 位系统下载 `PartyOps_1.4.3-rc.4_windows7_amd64.exe`；32 位系统下载 `PartyOps_1.4.3-rc.4_windows7_x86.exe`。不要按 CPU 品牌猜测，先打开“控制面板 → 系统”查看系统类型。
+3. 安装与首次配置同样支持受管理员保护的本机 D/E 盘、中文和空格目录。不要选择磁盘根目录、网络盘、移动盘、目录联接或允许普通用户替换文件的公共目录。
+4. Win7 x86 不提供语义重排与本地 LLM；这不会影响核心主机、文件协同、档案、备份和中文 OCR。Win7 不捆绑第三方浏览器，请使用单位安全策略允许的浏览器访问。
 
 ### 麒麟 / UOS / deepin / openEuler
 
@@ -219,13 +229,13 @@ dpkg --print-architecture
 海光、兆芯、Intel、AMD 通常使用 `amd64/x86_64`；飞腾、鲲鹏等使用 `arm64/aarch64`。麒麟、UOS、deepin 下载 DEB，openEuler 下载 RPM：
 
 ```bash
-sudo apt install ./PartyOps_1.4.3-rc.3_linux_amd64.deb
-# ARM64 改用 PartyOps_1.4.3-rc.3_linux_arm64.deb
+sudo apt install ./PartyOps_1.4.3-rc.4_linux_amd64.deb
+# ARM64 改用 PartyOps_1.4.3-rc.4_linux_arm64.deb
 ```
 
 ```bash
-sudo dnf install ./PartyOps-1.4.3-0.rc.3.1.x86_64.rpm
-# ARM64 改用 PartyOps-1.4.3-0.rc.3.1.aarch64.rpm
+sudo dnf install ./PartyOps-1.4.3-0.rc.4.1.x86_64.rpm
+# ARM64 改用 PartyOps-1.4.3-0.rc.4.1.aarch64.rpm
 ```
 
 安装后从应用菜单打开“党建智办”，按与 Windows 相同的向导选择主机或协同机。主机服务数据默认位于 `/var/lib/partyops`；日常用户的协同配置位于 `~/.config/partyops`，接收目录位于用户数据目录。无 sudo 的日常账号应由管理员安装，不要在 root 桌面完成普通用户的协同配置。
@@ -242,7 +252,7 @@ sudo dnf install ./PartyOps-1.4.3-0.rc.3.1.x86_64.rpm
 
 ### 升级、备份与回滚
 
-- 一次性桥接：由于 rc.2 的发布签名私钥已经不可恢复，rc.2 → rc.3 需最后一次从官网运行与本机系统、CPU 架构匹配的 rc.3 安装器并选择原位升级；无需卸载且默认保留数据。rc.3 起后续版本全部走系统内快速升级。
+- 一次性桥接：由于 rc.2 的发布签名私钥已经不可恢复，rc.2 → rc.4 需最后一次从官网运行与本机系统、CPU 架构匹配的 rc.4 安装器并选择原位升级；无需卸载且默认保留数据。rc.3/rc.4 及后续版本走系统内快速升级。
 - 日常升级：管理员在“管理 → 系统更新”查看官方签名目录。系统每天至多自动检查一次，只在后台下载本机对应的 Windows、DEB 或 RPM 轻量更新包；弱网和关机中断后从已校验位置续传，已完整校验的包不会重复下载。
 - 专业门禁：安装前再次确认版本、上传时间和中文更新内容，并逐层验证 Ed25519 目录签名、更新包签名、文件大小、SHA-256、平台和架构。主机升级成功并通过版本/数据库/健康检查后，协同电脑才分别读取官方目录并获取自己的平台制品。
 - 升级前：系统自动创建一致性数据库、附件和档案快照；重要升级仍建议手工导出一份完整备份到独立介质。
@@ -313,7 +323,7 @@ corepack pnpm --dir frontend install --frozen-lockfile
 
 PartyOps 希望把“基层真正怎么办公”变成可以持续改进的开源产品。如果它对你有启发，欢迎点击右上角 **Star**，让更多需要本地协同、国产系统适配和党建业务闭环的团队看到它。
 
-- **想直接体验**：从 [v1.4.3-rc.3 Release](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.3) 下载与本机系统和 CPU 架构匹配的单文件安装包，先阅读已知限制并核对页面显示的 SHA-256。
+- **想直接体验**：从 [v1.4.3-rc.4 Release](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.4) 下载与本机系统和 CPU 架构匹配的单文件安装包，先阅读已知限制并核对页面显示的 SHA-256。
 - **发现问题**：在 [Issues](https://github.com/pl1505031156-droid/PartyOps/issues) 提交版本、系统、主机/协同机角色、复现步骤、期望/实际结果和已脱敏日志。
 - **有产品建议**：在 [Discussions](https://github.com/pl1505031156-droid/PartyOps/discussions) 讲清真实工作场景、现在怎么做、卡在哪里、哪些角色会受益。
 - **愿意贡献代码**：先阅读[贡献指南](CONTRIBUTING.md)，从 `main` 创建短分支，为修复补充回归测试，并运行 `scripts/test.ps1`。

@@ -17,6 +17,7 @@ from starlette.requests import Request
 from sqlalchemy.dialects import sqlite
 from sqlalchemy.schema import CreateIndex
 
+from app import __version__ as APP_VERSION
 from app import client_agent, main as app_main, setup_wizard, update_executor, windows_host_status
 from app.models import UpdateRun
 from app.routers import updates as updates_router
@@ -324,8 +325,10 @@ def test_windows_supervisor_health_uses_partyops_ca(monkeypatch, tmp_path: Path)
         captured["url"] = request.full_url
         captured["context"] = kwargs.get("context")
         return _Response(
-            b'{"status":"ok","mode":"host","app_version":"1.4.3-rc.3",'
-            b'"sqlite":{"safe_version":true,"fts5":true}}'
+            (
+                f'{{"status":"ok","mode":"host","app_version":"{APP_VERSION}",'
+                '"sqlite":{"safe_version":true,"fts5":true}}'
+            ).encode("utf-8")
         )
 
     monkeypatch.setattr(windows_host_status.urllib.request, "urlopen", open_health)
@@ -359,12 +362,12 @@ def test_windows_supervisor_health_uses_partyops_ca(monkeypatch, tmp_path: Path)
     personal_payload = {
         "status": "ok",
         "mode": "personal",
-        "app_version": "1.4.3-rc.3",
+        "app_version": APP_VERSION,
         "sqlite": {"safe_version": True, "fts5": True},
     }
     assert windows_host_status.health_payload_ready(
         personal_payload,
-        expected_version="1.4.3-rc.3",
+        expected_version=APP_VERSION,
         expected_mode="personal",
     )
     assert not windows_host_status.health_payload_ready(personal_payload)
@@ -383,8 +386,10 @@ def test_personal_health_wait_accepts_real_personal_payload(
         setup_wizard.urllib.request,
         "urlopen",
         lambda *_args, **_kwargs: _Response(
-            b'{"status":"ok","mode":"personal","app_version":"1.4.3-rc.3",'
-            b'"sqlite":{"safe_version":true,"fts5":true}}'
+            (
+                f'{{"status":"ok","mode":"personal","app_version":"{APP_VERSION}",'
+                '"sqlite":{"safe_version":true,"fts5":true}}'
+            ).encode("utf-8")
         ),
     )
 
@@ -445,8 +450,10 @@ def test_update_health_uses_loopback_and_partyops_ca(monkeypatch, tmp_path: Path
         captured["url"] = request.full_url
         captured["context"] = kwargs.get("context")
         return _Response(
-            b'{"status":"ok","mode":"host","app_version":"1.4.3-rc.3",'
-            b'"sqlite":{"safe_version":true,"fts5":true}}'
+            (
+                f'{{"status":"ok","mode":"host","app_version":"{APP_VERSION}",'
+                '"sqlite":{"safe_version":true,"fts5":true}}'
+            ).encode("utf-8")
         )
 
     monkeypatch.setattr(update_executor.urllib.request, "urlopen", open_health)
@@ -552,13 +559,13 @@ def test_privileged_update_lock_is_outside_custom_data_dir(
 def test_update_artifact_hash_failure_preserves_previous_cache(
     monkeypatch, tmp_path: Path
 ) -> None:
-    artifact_name = "PartyOps_1.4.3-rc.3_windows_amd64.exe"
+    artifact_name = "PartyOps_1.4.3-rc.5_windows_amd64.exe"
     package = tmp_path / "release.partyops-update"
     payload = b"new-installer"
     with zipfile.ZipFile(package, "w") as archive:
         archive.writestr(artifact_name, payload)
     manifest = {
-        "version": "1.4.3-rc.3",
+        "version": "1.4.3-rc.5",
         "artifacts": {
             artifact_name: {
                 "size": len(payload),

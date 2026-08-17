@@ -1,0 +1,53 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 1753fd8..b989027 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -36,7 +36,7 @@ classifiers = [
+     "Environment :: Web Environment",
+ ]
+ 
+-requires-python = ">=3.10"
++requires-python = ">=3.8"
+ 
+ dynamic = ["version", "readme"]
+ 
+diff --git a/src/dotenv/version.py b/src/dotenv/version.py
+index bc86c94..41d9fc9 100644
+--- a/src/dotenv/version.py
++++ b/src/dotenv/version.py
+@@ -1 +1 @@
+-__version__ = "1.2.2"
++__version__ = "1.2.2+partyops.1"
+diff --git a/src/python_dotenv.egg-info/PKG-INFO b/src/python_dotenv.egg-info/PKG-INFO
+index 1af0ca5..4c9eb0b 100644
+--- a/src/python_dotenv.egg-info/PKG-INFO
++++ b/src/python_dotenv.egg-info/PKG-INFO
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: python-dotenv
+-Version: 1.2.2
++Version: 1.2.2+partyops.1
+ Summary: Read key-value pairs from a .env file and set them as environment variables
+ Author-email: Saurabh Kumar <me+github@saurabh-kumar.com>
+ License: BSD-3-Clause
+@@ -21,7 +21,7 @@ Classifier: Operating System :: OS Independent
+ Classifier: Topic :: System :: Systems Administration
+ Classifier: Topic :: Utilities
+ Classifier: Environment :: Web Environment
+-Requires-Python: >=3.10
++Requires-Python: >=3.8
+ Description-Content-Type: text/markdown
+ License-File: LICENSE
+ Provides-Extra: cli
+diff --git a/src/python_dotenv.egg-info/SOURCES.txt b/src/python_dotenv.egg-info/SOURCES.txt
+index ee020e7..347aaef 100644
+--- a/src/python_dotenv.egg-info/SOURCES.txt
++++ b/src/python_dotenv.egg-info/SOURCES.txt
+@@ -12,6 +12,7 @@ pyproject.toml
+ requirements-docs.txt
+ requirements.txt
+ ruff.toml
++setup.cfg
+ tox.ini
+ docs/changelog.md
+ docs/contributing.md

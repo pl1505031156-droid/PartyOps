@@ -17,6 +17,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from app import __version__ as APP_VERSION
 from app import update_executor
 from app.enums import UpdateStatus
 
@@ -46,7 +47,7 @@ def _health_payload(**changes: object) -> bytes:
     payload: dict[str, object] = {
         "status": "ok",
         "mode": "host",
-        "app_version": "1.4.3-rc.3",
+        "app_version": APP_VERSION,
         "sqlite": {"safe_version": True, "fts5": True},
     }
     payload.update(changes)
@@ -349,14 +350,14 @@ def test_artifact_selection_rejects_manifest_zip_mismatches(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     package = tmp_path / "release.partyops-update"
-    artifact_name = "PartyOps_1.4.3-rc.3_linux_amd64.deb"
+    artifact_name = "PartyOps_1.4.3-rc.5_linux_amd64.deb"
     payload = b"deb-payload"
     monkeypatch.setattr(update_executor, "_verify_manifest_signature", lambda _manifest: True)
 
     with zipfile.ZipFile(package, "w") as archive:
         archive.writestr(artifact_name, payload)
     base_manifest = {
-        "version": "1.4.3-rc.3",
+        "version": "1.4.3-rc.5",
         "platform_artifacts": {"linux-deb": {"amd64": artifact_name}},
         "artifacts": {
             artifact_name: {
@@ -374,14 +375,14 @@ def test_artifact_selection_rejects_manifest_zip_mismatches(
 
     for manifest, architecture, platform_name, message in (
         (
-            {"version": "1.4.3-rc.3", "platform_artifacts": []},
+            {"version": "1.4.3-rc.5", "platform_artifacts": []},
             "amd64",
             "linux-deb",
             "不包含",
         ),
         (
             {
-                "version": "1.4.3-rc.3",
+                "version": "1.4.3-rc.5",
                 "platform_artifacts": {"linux-deb": {"x86": "partyops-x86.deb"}},
                 "artifacts": {"partyops-x86.deb": {}},
             },
@@ -458,14 +459,14 @@ def test_artifact_selection_rejects_manifest_zip_mismatches(
         )
 
     bridge = json.loads(json.dumps(base_manifest))
-    bridge["version"] = "1.4.3-rc.4"
-    bridge["min_version"] = "1.4.3-rc.4"
+    bridge["version"] = "1.4.3-rc.5"
+    bridge["min_version"] = "1.4.3-rc.5"
     with pytest.raises(RuntimeError, match="UPDATE_BRIDGE_REQUIRED"):
         update_executor._select_artifact(
             package, bridge, "amd64", tmp_path / "bridge.deb", "linux-deb"
         )
     invalid_minimum = json.loads(json.dumps(base_manifest))
-    invalid_minimum["min_version"] = "1.4.3-rc.4"
+    invalid_minimum["min_version"] = "1.4.3-rc.6"
     with pytest.raises(RuntimeError, match="高于目标版本"):
         update_executor._select_artifact(
             package,
@@ -499,7 +500,7 @@ def test_health_schema_wait_and_windows_artifact_detection(
         "urlopen",
         lambda *_args, **_kwargs: _Response(_health_payload()),
     )
-    assert update_executor._health_check("1.4.3rc3")
+    assert update_executor._health_check("1.4.3rc4")
 
     monkeypatch.setattr(update_executor, "_health_check", lambda _version: False)
     clock = iter([0.0, 0.2, 1.1])

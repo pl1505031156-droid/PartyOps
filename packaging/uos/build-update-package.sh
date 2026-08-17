@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS="$ROOT/artifacts"
-VERSION="1.4.3-rc.3"
+VERSION="1.4.3-rc.4"
 OUT="$ARTIFACTS/partyops_${VERSION}.partyops-update"
 WORK="$(mktemp -d "$ROOT/.build-uos/update.XXXXXX")"
 cleanup() {
@@ -20,13 +20,13 @@ trap cleanup EXIT
 }
 
 FILES=(
-  "PartyOps_1.4.3-rc.3_windows_amd64.exe"
-  "PartyOps_1.4.3-rc.3_windows7_amd64.exe"
-  "PartyOps_1.4.3-rc.3_windows7_x86.exe"
-  "PartyOps_1.4.3-rc.3_linux_amd64.deb"
-  "PartyOps_1.4.3-rc.3_linux_arm64.deb"
-  "PartyOps-1.4.3-0.rc.3.1.x86_64.rpm"
-  "PartyOps-1.4.3-0.rc.3.1.aarch64.rpm"
+  "PartyOps_1.4.3-rc.4_windows_amd64.exe"
+  "PartyOps_1.4.3-rc.4_windows7_amd64.exe"
+  "PartyOps_1.4.3-rc.4_windows7_x86.exe"
+  "PartyOps_1.4.3-rc.4_linux_amd64.deb"
+  "PartyOps_1.4.3-rc.4_linux_arm64.deb"
+  "PartyOps-1.4.3-0.rc.4.1.x86_64.rpm"
+  "PartyOps-1.4.3-0.rc.4.1.aarch64.rpm"
 )
 for filename in "${FILES[@]}"; do
   [[ -f "$ARTIFACTS/$filename" ]] || {
@@ -58,18 +58,18 @@ manifest = {
     "schema_revision": "0019",
     "release_title": "多系统适配与专业级应用内升级",
     "platform_artifacts": {
-        "windows": {"amd64": "PartyOps_1.4.3-rc.3_windows_amd64.exe"},
+        "windows": {"amd64": "PartyOps_1.4.3-rc.4_windows_amd64.exe"},
         "windows7": {
-            "amd64": "PartyOps_1.4.3-rc.3_windows7_amd64.exe",
-            "x86": "PartyOps_1.4.3-rc.3_windows7_x86.exe",
+            "amd64": "PartyOps_1.4.3-rc.4_windows7_amd64.exe",
+            "x86": "PartyOps_1.4.3-rc.4_windows7_x86.exe",
         },
         "linux-deb": {
-            "amd64": "PartyOps_1.4.3-rc.3_linux_amd64.deb",
-            "arm64": "PartyOps_1.4.3-rc.3_linux_arm64.deb",
+            "amd64": "PartyOps_1.4.3-rc.4_linux_amd64.deb",
+            "arm64": "PartyOps_1.4.3-rc.4_linux_arm64.deb",
         },
         "linux-rpm": {
-            "amd64": "PartyOps-1.4.3-0.rc.3.1.x86_64.rpm",
-            "arm64": "PartyOps-1.4.3-0.rc.3.1.aarch64.rpm",
+            "amd64": "PartyOps-1.4.3-0.rc.4.1.x86_64.rpm",
+            "arm64": "PartyOps-1.4.3-0.rc.4.1.aarch64.rpm",
         },
     },
     "artifacts": artifacts,
@@ -89,7 +89,7 @@ manifest = {
     encoding="utf-8",
 )
 (root / "RELEASE-NOTES.txt").write_text(
-    "党建智办 PartyOps 1.4.3-rc.3 原位更新包\n"
+    "党建智办 PartyOps 1.4.3-rc.4 原位更新包\n"
     "由签名清单按系统、包格式和架构精确选包；更新失败自动保留数据并回滚程序。\n",
     encoding="utf-8",
 )

@@ -1,0 +1,11 @@
+{
+  "component": "Pillow",
+  "tested_at": "2026-08-17T11:45:30+08:00",
+  "architectures": [32, 64],
+  "tests": [
+    "JPEG 写入、读取与像素尺寸核对",
+    "截断 JPEG 必须拒绝",
+    "超过 MAX_IMAGE_PIXELS 的图像必须触发 DecompressionBombError",
+    "JPEG 与 zlib 启用，Legacy 未审计 WebP 编解码器关闭"
+  ]
+}

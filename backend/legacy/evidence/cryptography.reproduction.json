@@ -1,0 +1,11 @@
+{
+  "component": "cryptography",
+  "tested_at": "2026-08-17T11:45:30+08:00",
+  "architectures": [32, 64],
+  "tests": [
+    "RSA-2048 PSS SHA-256 签名与验签",
+    "AES-GCM 256 位加密与解密",
+    "ASN.1 SetOf 构造",
+    "损坏 DER X.509 证书必须拒绝"
+  ]
+}

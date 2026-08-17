@@ -2607,10 +2607,9 @@ def install_device_package(
         architecture = _architecture()
         transaction = _secure_update_backup_root(f"device-{secrets.token_hex(12)}")
         staged_package = transaction / "verified.partyops-update"
-        with (
-            package_path.open("rb") as source,
-            staged_package.open("xb") as destination,
-        ):
+        with package_path.open("rb") as source, staged_package.open(
+            "xb"
+        ) as destination:
             while chunk := source.read(1024 * 1024):
                 destination.write(chunk)
             destination.flush()

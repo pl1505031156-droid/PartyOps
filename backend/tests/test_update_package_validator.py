@@ -14,6 +14,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from app import __version__ as APP_VERSION
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "validate-partyops-update.py"
 SPEC = importlib.util.spec_from_file_location("partyops_update_validator", SCRIPT)
@@ -316,9 +317,9 @@ def test_format_v4_contains_only_target_platform_artifact(tmp_path: Path) -> Non
         ).decode("ascii"),
         encoding="ascii",
     )
-    artifact = tmp_path / "PartyOps_1.4.3-rc.3_linux_arm64.deb"
+    artifact = tmp_path / f"PartyOps_{APP_VERSION}_linux_arm64.deb"
     artifact.write_bytes(b"arm64-deb")
-    package = tmp_path / "partyops_1.4.3-rc.3_linux-deb_arm64.partyops-update"
+    package = tmp_path / f"partyops_{APP_VERSION}_linux-deb_arm64.partyops-update"
     builder.build_package(
         key=private_key,
         public_key_path=public_path,
@@ -327,7 +328,7 @@ def test_format_v4_contains_only_target_platform_artifact(tmp_path: Path) -> Non
         platform_name="linux-deb",
         architecture="arm64",
     )
-    assert validator.validate_package(package, public_path, "1.4.3-rc.3") == []
+    assert validator.validate_package(package, public_path, APP_VERSION) == []
     with zipfile.ZipFile(package) as archive:
         assert set(archive.namelist()) == {
             "manifest.json",

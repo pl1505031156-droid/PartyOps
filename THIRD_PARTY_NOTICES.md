@@ -9,7 +9,7 @@ PartyOps 1.4.3 使用下列直接运行依赖；完整的直接与传递依赖�
 
 ## Tesseract OCR 与 tessdata_fast
 
-- Tesseract OCR 5.5.3：Apache-2.0；Windows 运行时来自上游 GitHub Release 固定制品。
+- Tesseract OCR 5.5.3（Windows x64）/ 5.5.2（Win7 x86 静态构建）：Apache-2.0；x64 运行时来自上游固定制品，x86 运行时来自固定源码提交与 vcpkg 锁定依赖。
 - `chi_sim`、`eng`、`osd` 模型：tessdata_fast 4.1.0，Apache-2.0。
 - Windows 安装包只封入识别引擎、运行依赖和模型，不封入上游安装器、卸载器或训练工具；精确来源与 SHA-256 见安装目录 `ocr/SOURCE.json`。
 
@@ -59,6 +59,7 @@ GPLv3 第 13 节，GPLv3 与 AGPLv3 可以组合，但组合的软件需要遵�
 | --- | --- | --- | --- |
 | Inno Setup | 6.7.3 | 生成 Windows 单文件安装器 | <https://github.com/jrsoftware/issrc/tree/is-6_7_3>，Inno Setup License |
 | Simplified Chinese messages | `is-6_7_3` | PartyOps 安装器简体中文界面 | `Files/Languages/Unofficial/ChineseSimplified.isl`，维护者 Zhenghan Yang，随 Inno Setup 源码按 Inno Setup License 分发 |
+| Microsoft Universal C Runtime | Windows SDK `10.0.19041.0` | Win7 x64/x86 app-local UCRT 与 APISet 转发器 | Microsoft Windows SDK 可再发行文件；精确 DLL 哈希、SDK 许可和第三方声明随安装目录 `ucrt-source.json`、`ucrt-sdk-license.rtf`、`ucrt-sdk-third-party-notices.rtf` 提供 |
 
 仓库内的中文消息文件仅规范化了行尾空白；PartyOps 专属标题、路径说明和诊断文案仅在 `PartyOps.iss` 的 `[Messages]` 与 `[Code]` 中覆盖。
 

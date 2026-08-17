@@ -14,6 +14,7 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect
 
+from app import __version__ as APP_VERSION
 from app import client_agent, local_ai
 from app.config import get_settings
 from app.database import Base, db_runtime
@@ -40,8 +41,8 @@ def _enroll_windows_device(client: TestClient, name: str) -> dict:
             "architecture": "amd64",
             "platform": "windows",
             "kernel": "Windows 11",
-            "app_version": "1.4.3-rc.3",
-            "agent_version": "1.4.3-rc.3",
+            "app_version": APP_VERSION,
+            "agent_version": APP_VERSION,
         },
     )
     assert response.status_code == 201, response.text

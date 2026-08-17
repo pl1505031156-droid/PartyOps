@@ -9,16 +9,27 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
-$releaseVersion = "1.4.3-rc.3"
-$releaseTag = "v1.4.3-rc.3"
+$releaseVersion = "1.4.3-rc.4"
+$releaseTag = "v1.4.3-rc.4"
 $isLegacy = [bool]$LegacyArchitecture
 $targetArchitecture = if ($isLegacy) { $LegacyArchitecture } else { "amd64" }
 $runtimeProfile = if (-not $isLegacy) { "full" } elseif ($targetArchitecture -eq "amd64") { "legacy-full" } else { "legacy-core" }
 $platformFamily = if ($isLegacy) { "windows7" } else { "windows" }
 $artifactSuffix = if ($isLegacy) { "windows7-$targetArchitecture" } else { "windows-amd64" }
-$officialSqliteDll = Join-Path $repoRoot "vendor\windows\sqlite-3.53.4\runtime\sqlite3.dll"
+$ucrtArchitecture = if ($targetArchitecture -eq "amd64") { "x64" } else { "x86" }
+$ucrtRoot = Join-Path $repoRoot "vendor\windows\ucrt-10.0.19041.0-$ucrtArchitecture"
+$ucrtSource = Join-Path $ucrtRoot "SOURCE.json"
+$officialSqliteDll = if ($isLegacy -and $targetArchitecture -eq "x86") {
+  Join-Path $repoRoot "vendor\windows\sqlite-3.53.4-x86\runtime\sqlite3.dll"
+} else {
+  Join-Path $repoRoot "vendor\windows\sqlite-3.53.4\runtime\sqlite3.dll"
+}
 $officialSqliteVersion = "3.53.4"
-$officialSqliteSha256 = "AB57D0437795ECC757CB693F32EA224173FA9856594D95CFA6B5033E645CD1EC"
+$officialSqliteSha256 = if ($isLegacy -and $targetArchitecture -eq "x86") {
+  "1C2FCFA7632B6025829E3539142F1B7EBDBC5BB44D4FD6CC0F42F83715D2EB9F"
+} else {
+  "AB57D0437795ECC757CB693F32EA224173FA9856594D95CFA6B5033E645CD1EC"
+}
 if (-not $SqliteDll) { $SqliteDll = $officialSqliteDll }
 if (-not $SqliteSha256) { $SqliteSha256 = $officialSqliteSha256 }
 $SqliteSha256 = $SqliteSha256.ToUpperInvariant()
@@ -45,6 +56,25 @@ $localAiRoot = Join-Path $repoRoot "vendor\windows\local-ai\llama-b10331"
 $siteCustomizeRoot = Join-Path $repoRoot ".build-windows\sitecustomize"
 function Assert-NativeSuccess([string]$Stage) {
   if ($LASTEXITCODE -ne 0) { throw "$Stage 失败，退出码：$LASTEXITCODE" }
+}
+if ($isLegacy) {
+  if (-not (Test-Path -LiteralPath $ucrtSource)) {
+    throw "缺少 Win7 $targetArchitecture 的 Microsoft UCRT 本地可再发行运行时来源清单：$ucrtSource"
+  }
+  $ucrtEvidence = Get-Content -Raw -LiteralPath $ucrtSource | ConvertFrom-Json
+  if ($ucrtEvidence.version -ne "10.0.19041.0" -or $ucrtEvidence.architecture -ne $ucrtArchitecture) {
+    throw "Win7 UCRT 来源清单版本或架构不匹配。"
+  }
+  foreach ($property in $ucrtEvidence.files.PSObject.Properties) {
+    $runtimePath = Join-Path $ucrtRoot $property.Name
+    if (-not (Test-Path -LiteralPath $runtimePath)) {
+      throw "Win7 UCRT 来源清单中的文件不存在：$($property.Name)"
+    }
+    $runtimeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimePath).Hash.ToLowerInvariant()
+    if ($runtimeHash -ne [string]$property.Value) {
+      throw "Win7 UCRT 文件 SHA-256 与来源清单不一致：$($property.Name)"
+    }
+  }
 }
 # PyInstaller 6.16 会无条件读取 site.getusersitepackages()，即使 Python 已
 # 禁用用户目录。发布构建必须只扫描虚拟环境；这里用构建期 sitecustomize
@@ -176,7 +206,9 @@ foreach ($entry in $entries) {
     )
   }
   $hiddenModules = @(
-    "pysqlite3", "pysqlite3.dbapi2", "sqlalchemy.dialects.sqlite.pysqlite",
+    # Windows 使用 CPython 自带 sqlite3 绑定并在冻结目录替换为经验证的
+    # SQLite DLL；pysqlite3 仅用于 Linux 静态运行时，不能作为缺失隐藏模块。
+    "sqlalchemy.dialects.sqlite.pysqlite",
     "uvicorn.logging", "uvicorn.loops.asyncio", "uvicorn.protocols.http.h11_impl",
     "cryptography", "cryptography.fernet", "httpx", "win32timezone"
   )
@@ -202,6 +234,24 @@ foreach ($entry in $entries) {
   Assert-NativeSuccess "$($entry.Name) 冻结构建"
 }
 
+$wizardInternal = Join-Path $buildRoot "PartyOpsWizard\_internal"
+foreach ($requiredGuiRuntime in @(
+  (Join-Path $wizardInternal "_tkinter.pyd"),
+  (Join-Path $wizardInternal "tcl86t.dll"),
+  (Join-Path $wizardInternal "tk86t.dll"),
+  (Join-Path $wizardInternal "_tcl_data\init.tcl"),
+  (Join-Path $wizardInternal "_tk_data\tk.tcl")
+)) {
+  if (-not (Test-Path -LiteralPath $requiredGuiRuntime)) {
+    throw "配置向导冻结运行时不完整，缺少 Tcl/Tk 文件：$requiredGuiRuntime"
+  }
+}
+
+# 直接运行冻结后的向导自检：只有真正加载 _tkinter、Tcl/Tk 脚本并成功创建
+# 隐藏窗口后才会返回 0。该过程不写配置、不申请提权，也不启动服务。
+& (Join-Path $buildRoot "PartyOpsWizard\PartyOpsWizard.exe") --self-test
+Assert-NativeSuccess "配置向导冻结图形运行时自检"
+
 $bundleRoot = Join-Path $outputRoot "PartyOps-$releaseVersion-$artifactSuffix"
 if (Test-Path -LiteralPath $bundleRoot) { Remove-Item -LiteralPath $bundleRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $bundleRoot | Out-Null
@@ -218,6 +268,25 @@ New-Item -ItemType Directory -Path $internalRoot -Force | Out-Null
 Copy-Item -LiteralPath $SqliteDll -Destination (Join-Path $internalRoot "sqlite3.dll") -Force
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $internalRoot "sqlite3.dll")).Hash -ne $SqliteSha256) {
   throw "冻结运行时中的 SQLite DLL 与经校验输入不一致。"
+}
+if ($isLegacy) {
+  # 在 Win10/11 上冻结时，PyInstaller 会从当前系统目录收集 API-set DLL。
+  # 这些文件不能作为 Win7 制品输入。统一替换为 Windows SDK 10.0.19041
+  # 官方 app-local UCRT 完整集合，并同时放在主程序与共享运行时目录。
+  foreach ($destination in @($bundleRoot, $internalRoot)) {
+    Get-ChildItem -LiteralPath $destination -File -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -like "api-ms-win-*.dll" -or $_.Name -ieq "ucrtbase.dll" } |
+      Remove-Item -Force
+    foreach ($property in $ucrtEvidence.files.PSObject.Properties) {
+      Copy-Item -LiteralPath (Join-Path $ucrtRoot $property.Name) `
+        -Destination (Join-Path $destination $property.Name) -Force
+    }
+  }
+  Copy-Item -LiteralPath $ucrtSource -Destination (Join-Path $bundleRoot "ucrt-source.json") -Force
+  Copy-Item -LiteralPath (Join-Path $ucrtRoot "sdk_license.rtf") `
+    -Destination (Join-Path $bundleRoot "ucrt-sdk-license.rtf") -Force
+  Copy-Item -LiteralPath (Join-Path $ucrtRoot "sdk_third_party_notices.rtf") `
+    -Destination (Join-Path $bundleRoot "ucrt-sdk-third-party-notices.rtf") -Force
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\uos\update-public-key.txt") -Destination $bundleRoot -Force
 Copy-Item -LiteralPath $brandIcon -Destination (Join-Path $bundleRoot "partyops.ico") -Force
@@ -264,7 +333,7 @@ try {
 }
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
-$installerBase = if ($isLegacy) { "PartyOps_1.4.3-rc.3_windows7_$targetArchitecture" } else { "PartyOps_1.4.3-rc.3_windows_amd64" }
+$installerBase = if ($isLegacy) { "PartyOps_1.4.3-rc.4_windows7_$targetArchitecture" } else { "PartyOps_1.4.3-rc.4_windows_amd64" }
 $installer = Join-Path $outputRoot "$installerBase.exe"
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"

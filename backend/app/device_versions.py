@@ -31,7 +31,7 @@ from .problems import ProblemException
 
 DEVICE_CONTEXT_COOKIE = "partyops_device_context"
 DEVICE_CONTEXT_SECRET_KEY = "device_context_hmac_secret"
-CURRENT_RELEASE_TITLE = "1.4.3-rc.3 多系统适配与安装诊断候选版"
+CURRENT_RELEASE_TITLE = "1.4.3-rc.4 Win7 Legacy 与安装目录修复候选版"
 CURRENT_RELEASE_NOTES = [
     "新增严格本机私有备忘录，支持清单、置顶、标签、回收站和 AES-GCM 加密备份",
     "新增依据 2026 年 5 月新版细则的确定性党员发展时间计算、风险提示和 Word 导出",

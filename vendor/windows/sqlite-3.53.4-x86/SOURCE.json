@@ -1,0 +1,11 @@
+{
+  "component": "SQLite Windows x86 runtime",
+  "version": "3.53.4",
+  "architecture": "windows-x86",
+  "source": "https://www.sqlite.org/2026/sqlite-dll-win-x86-3530400.zip",
+  "official_sha3_256": "64bf53d675ae2fcee57e180e8f59035e1b2b11ed5a2915450e26d0930a3cb9c8",
+  "archive_sha256": "607673153c6d15f0465761a1a86413049d6ba5c897857da2dab24282faad0224",
+  "sqlite3_dll_sha256": "1c2fcfa7632b6025829e3539142f1b7ebdbc5bb44d4fd6cc0f42f83715d2eb9f",
+  "retrieved_at": "2026-08-17T10:52:00+08:00",
+  "license": "Public domain"
+}

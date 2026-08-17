@@ -42,7 +42,7 @@ from .platform_info import detect_platform_info
 from .schemas import serialize_api_datetime
 
 
-AGENT_VERSION = "1.4.3-rc.3"
+AGENT_VERSION = "1.4.3-rc.4"
 _ACTIVE_SSL_CONTEXT = None
 HEARTBEAT_INTERVAL_SECONDS = 15
 MAX_UPDATE_PACKAGE_BYTES = 4 * 1024**3

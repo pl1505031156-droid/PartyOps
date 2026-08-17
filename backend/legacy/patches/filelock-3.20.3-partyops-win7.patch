@@ -1,0 +1,55 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 7b09dd5..8cf7aab 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -20,7 +20,7 @@ license = "Unlicense"
+ maintainers = [
+   { name = "Bernát Gábor", email = "gaborjbernat@gmail.com" },
+ ]
+-requires-python = ">=3.10"
++requires-python = ">=3.8"
+ classifiers = [
+   "Development Status :: 5 - Production/Stable",
+   "Intended Audience :: Developers",
+@@ -37,9 +37,7 @@ classifiers = [
+   "Topic :: Software Development :: Libraries",
+   "Topic :: System",
+ ]
+-dynamic = [
+-  "version",
+-]
++version = "3.20.3+partyops.1"
+ urls.Documentation = "https://py-filelock.readthedocs.io"
+ urls.Homepage = "https://github.com/tox-dev/py-filelock"
+ urls.Source = "https://github.com/tox-dev/py-filelock"
+@@ -90,13 +88,11 @@ coverage = [
+ ]
+ 
+ [tool.hatch]
+-build.hooks.vcs.version-file = "src/filelock/version.py"
+ build.targets.sdist.include = [
+   "/src",
+   "/tests",
+   "/tox.toml",
+ ]
+-version.source = "vcs"
+ 
+ [tool.ruff]
+ line-length = 120
+diff --git a/src/filelock/__init__.py b/src/filelock/__init__.py
+index c9d8c5b..27a835f 100644
+--- a/src/filelock/__init__.py
++++ b/src/filelock/__init__.py
+@@ -24,10 +24,8 @@ from .asyncio import (
+     AsyncWindowsFileLock,
+     BaseAsyncFileLock,
+ )
+-from .version import version
+-
+-#: version of the project as a string
+-__version__: str = version
++#: PartyOps Win7 回移轮子的固定版本；不依赖构建时 VCS 生成文件。
++version = __version__ = "3.20.3+partyops.1"
+ 
+ 
+ if sys.platform == "win32":  # pragma: win32 cover

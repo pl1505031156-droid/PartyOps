@@ -1,14 +1,27 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$Path,
-  [switch]$VerifyTargetAcl
+  [switch]$VerifyTargetAcl,
+  [string]$DiagnosticFile = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 function Stop-InstallPathValidation {
   param([string]$Code, [string]$Message, [int]$ExitCode)
-  [Console]::Error.WriteLine("[$Code] $Message")
+  $diagnostic = "[$Code] $Message"
+  if (-not [string]::IsNullOrWhiteSpace($DiagnosticFile)) {
+    try {
+      [IO.File]::WriteAllText(
+        $DiagnosticFile,
+        $diagnostic,
+        (New-Object Text.UTF8Encoding($false))
+      )
+    } catch {
+      # 诊断文件只是给 Inno 展示详情；写入失败不能覆盖真正的退出码。
+    }
+  }
+  [Console]::Error.WriteLine($diagnostic)
   exit $ExitCode
 }
 
@@ -26,11 +39,20 @@ function Assert-SecureDirectoryAcl {
   $trustedSids = @(
     'S-1-5-18',       # LocalSystem
     'S-1-5-32-544',   # BUILTIN\Administrators
+    'S-1-3-4',        # OWNER RIGHTS；目录所有者已在下方单独校验
     'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464' # TrustedInstaller
   )
+  # 安装器已经由 UAC 提升。当前管理员的显式 SID 与 BUILTIN\Administrators
+  # 具有相同信任级别；旧实现把该 SID 当作“普通用户”，导致管理员自己创建的
+  # D/E 盘目录被稳定误判为 PARENT_UNSAFE。
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+  if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    $trustedSids += $identity.User.Value
+  }
   $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
   if ($trustedSids -notcontains $owner) {
-    Stop-InstallPathValidation "INSTALL_DIR_PARENT_UNSAFE" "目录所有者不是 SYSTEM、管理员或 TrustedInstaller：$DirectoryPath" 6
+    Stop-InstallPathValidation "INSTALL_DIR_EXISTING_ACL_UNSAFE" "PartyOps 程序目录所有者不是当前管理员、SYSTEM、管理员组或 TrustedInstaller：$DirectoryPath" 6
   }
   $deleteChild = [Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles
   $deleteObject = [Security.AccessControl.FileSystemRights]::Delete
@@ -41,8 +63,6 @@ function Assert-SecureDirectoryAcl {
     [Security.AccessControl.FileSystemRights]::WriteAttributes -bor
     [Security.AccessControl.FileSystemRights]::ChangePermissions -bor
     [Security.AccessControl.FileSystemRights]::TakeOwnership
-  $isVolumeRoot = $DirectoryPath.TrimEnd('\') -eq
-    [IO.Path]::GetPathRoot($DirectoryPath).TrimEnd('\')
   $rules = $acl.GetAccessRules(
     $true,
     $true,
@@ -59,13 +79,15 @@ function Assert-SecureDirectoryAcl {
     $canChangeProgramContent =
       $ForProgramDirectory -and
       (($rule.FileSystemRights -band $writeContent) -ne 0)
+    $isVolumeRoot = $DirectoryPath.TrimEnd('\') -eq
+      [IO.Path]::GetPathRoot($DirectoryPath).TrimEnd('\')
     if ($canDeleteChild -or
         (-not $isVolumeRoot -and $canDeleteObject) -or
         $canChangeProgramContent) {
       if ($ForProgramDirectory) {
-        Stop-InstallPathValidation "INSTALL_DIR_EXISTING_ACL_UNSAFE" "现有 PartyOps 程序目录允许普通用户或非受信主体修改内容：$DirectoryPath（$sid）" 6
+        Stop-InstallPathValidation "INSTALL_DIR_EXISTING_ACL_UNSAFE" "现有 PartyOps 程序目录允许其他普通用户修改内容：$DirectoryPath（主体 $sid）。请选择空目录，或先恢复该目录的管理员权限。" 6
       }
-      Stop-InstallPathValidation "INSTALL_DIR_PARENT_UNSAFE" "普通用户或非受信主体可以删除该目录或其子项：$DirectoryPath（$sid）" 6
+      Stop-InstallPathValidation "INSTALL_DIR_PARENT_ACL_UNSAFE" "父目录允许其他普通用户替换服务目录：$DirectoryPath（主体 $sid）。当前管理员自己的自定义目录不会被此规则拦截；请改选由您本人或管理员控制的目录。" 6
     }
   }
 }
@@ -98,9 +120,9 @@ try {
     $cursor = $parent.FullName
   }
 
-  # 服务以 LocalSystem 启动，攻击者若能删除任一祖先目录的直接子项，就能
-  # 在服务下次启动前换入同路径恶意程序。必须逐级验证所有现有祖先；最终
-  # ACL 收敛后再把 PartyOps 目录本身纳入同一检查。
+  # 当前管理员 SID 属于受信主体，因此管理员自己在 D/E 盘创建的中文、空格目录
+  # 可以正常通过。仍须逐级阻断真正向 Everyone/Users 开放“删除子项”的父目录：
+  # LocalSystem 服务若从此路径启动，攻击者可在重启前把整个目录替换为恶意程序。
   $aclCursor = if ($VerifyTargetAcl -and [IO.Directory]::Exists($fullPath)) {
     $fullPath
   } else {
@@ -153,4 +175,15 @@ catch {
   Stop-InstallPathValidation "INSTALL_DIR_CHECK_FAILED" "程序目录安全检查失败：$($_.Exception.Message)" 5
 }
 
+if (-not [string]::IsNullOrWhiteSpace($DiagnosticFile)) {
+  try {
+    [IO.File]::WriteAllText(
+      $DiagnosticFile,
+      "[INSTALL_DIR_OK] 程序目录检查通过。",
+      (New-Object Text.UTF8Encoding($false))
+    )
+  } catch {
+    # 成功状态已经由退出码 0 表达，诊断文件失败不能把安装误报为失败。
+  }
+}
 exit 0

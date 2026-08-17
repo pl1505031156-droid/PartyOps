@@ -2,5 +2,10 @@
 
 # Win7 x64 完整主机保留语义重排与本地 LLM。
 numpy==1.24.4
-onnxruntime<1.20
-tokenizers<0.21
+# 1.15+ 的官方 Windows 轮子开始导入 Win7 不存在的 Path API 与
+# GetSystemTimePreciseAsFileTime；1.14.1 是经 PE 导入表门禁验证的最后兼容线。
+onnxruntime==1.14.1
+# 0.20.x 使用的新 Rust Windows 运行时同样直接导入 Win8+ API；0.19.1
+# 保留相同 tokenizer.json 接口并通过 Win7 PE 门禁。
+tokenizers==0.19.1
+filelock==3.20.3+partyops.1
