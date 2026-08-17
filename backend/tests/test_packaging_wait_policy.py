@@ -511,10 +511,12 @@ def test_windows_installer_defers_host_privileges_until_role_selection() -> None
         "UpdateServiceStartup + ServiceInstallAction('PartyOpsUpdateService')"
         in installer
     )
+    assert "ConfiguredHostModeBeforeInstall" in installer
     assert (
-        "if UpdateServiceRunningBeforeInstall and not InAppServiceUpdate then"
+        "(ConfiguredHostModeBeforeInstall and not UpdateServiceExistedBeforeInstall)"
         in installer
     )
+    assert "not InAppServiceUpdate then" in installer
     assert "if UpdateServiceRunningBeforeInstall then" in installer
     assert "runasoriginaluser" in installer
     assert 'ValueName: "PartyOpsAgent"' not in installer
@@ -586,6 +588,21 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "if DataAction = 'delete' then" in installer
     assert "Choice := IDNO" in installer
     assert "UNINSTALL_DATAACTION_INVALID" in installer
+    assert "function IsConfiguredHostMode" in installer
+    assert "ConfiguredHostModeBeforeInstall := IsConfiguredHostMode" in installer
+    assert "Existed, ConfiguredHostMode: Boolean" in installer
+    assert "else if ConfiguredHostMode then" in installer
+    assert (
+        "ConfiguredHostModeBeforeInstall and not HostServiceExistedBeforeInstall"
+        in installer
+    )
+    assert (
+        "ConfiguredHostModeBeforeInstall and not UpdateServiceExistedBeforeInstall"
+        in installer
+    )
+    disabled_branch = installer.index("else if StartType = 4 then")
+    legacy_manual_repair = installer.index("else if ConfiguredHostMode then")
+    assert disabled_branch < legacy_manual_repair
     assert installer.index(
         "Result := ValidateAndSecureInstallDirectory"
     ) < installer.index("Result := StopServiceBeforeUpgrade(")

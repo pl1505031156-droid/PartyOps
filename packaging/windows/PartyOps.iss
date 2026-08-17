@@ -131,6 +131,7 @@ var
   UpdateServiceStartTypeBeforeInstall: Cardinal;
   HostServiceDelayedBeforeInstall: Cardinal;
   UpdateServiceDelayedBeforeInstall: Cardinal;
+  ConfiguredHostModeBeforeInstall: Boolean;
   RestartPreviousServicesOnExit: Boolean;
   InstallCompletedSuccessfully: Boolean;
   InstallerCachePath: String;
@@ -521,6 +522,33 @@ begin
   end;
 end;
 
+function IsConfiguredHostMode: Boolean;
+var
+  EnvironmentLines: TArrayOfString;
+  I: Integer;
+  Line, Prefix, ModeValue: String;
+begin
+  Result := False;
+  Prefix := 'PARTYOPS_MODE=';
+  if not LoadStringsFromFile(
+    ExpandConstant('{commonappdata}\PartyOps\partyops.env'),
+    EnvironmentLines
+  ) then
+    exit;
+  for I := 0 to GetArrayLength(EnvironmentLines) - 1 do
+  begin
+    Line := Trim(EnvironmentLines[I]);
+    if CompareText(Copy(Line, 1, Length(Prefix)), Prefix) = 0 then
+    begin
+      ModeValue := UnquoteEnvironmentValue(
+        Copy(Line, Length(Prefix) + 1, Length(Line))
+      );
+      Result := CompareText(ModeValue, 'host') = 0;
+      exit;
+    end;
+  end;
+end;
+
 procedure InitializeWizard;
 var
   PreviousDataDir: String;
@@ -594,16 +622,25 @@ begin
 end;
 
 function ServiceStartupArgument(
-  Existed: Boolean; StartType, DelayedAutoStart: Cardinal
+  Existed, ConfiguredHostMode: Boolean; StartType, DelayedAutoStart: Cardinal
 ): String;
 begin
   if not Existed then
-    Result := '--startup manual '
+  begin
+    if ConfiguredHostMode then
+      Result := '--startup auto '
+    else
+      Result := '--startup manual ';
+  end
   else if StartType = 4 then
     Result := '--startup disabled '
   else if (StartType = 2) and (DelayedAutoStart <> 0) then
     Result := '--startup delayed '
   else if StartType = 2 then
+    Result := '--startup auto '
+  else if ConfiguredHostMode then
+    { rc.2 等旧安装器曾错误地把已配置主机的两项服务保留为手动。
+      只修复历史手动状态；管理员明确禁用的状态仍由上方分支保留。 }
     Result := '--startup auto '
   else
     Result := '--startup manual ';
@@ -789,6 +826,7 @@ begin
     exit;
   HostServiceExistedBeforeInstall := ServiceExists('PartyOpsHost');
   UpdateServiceExistedBeforeInstall := ServiceExists('PartyOpsUpdateService');
+  ConfiguredHostModeBeforeInstall := IsConfiguredHostMode;
   HostServiceRunningBeforeInstall :=
     HostServiceExistedBeforeInstall and ServiceIsRunning('PartyOpsHost');
   UpdateServiceRunningBeforeInstall :=
@@ -1242,11 +1280,13 @@ begin
     RegisterPartyOpsProtocols;
     HostServiceStartup := ServiceStartupArgument(
       HostServiceExistedBeforeInstall,
+      ConfiguredHostModeBeforeInstall,
       HostServiceStartTypeBeforeInstall,
       HostServiceDelayedBeforeInstall
     );
     UpdateServiceStartup := ServiceStartupArgument(
       UpdateServiceExistedBeforeInstall,
+      ConfiguredHostModeBeforeInstall,
       UpdateServiceStartTypeBeforeInstall,
       UpdateServiceDelayedBeforeInstall
     );
@@ -1284,12 +1324,15 @@ begin
       'advfirewall firewall delete rule name="党建智办主机"',
       '', SW_HIDE, ewWaitUntilTerminated, ResultCode
     );
-    if HostServiceRunningBeforeInstall then
+    if HostServiceRunningBeforeInstall or
+       (ConfiguredHostModeBeforeInstall and not HostServiceExistedBeforeInstall) then
       RunChecked(
         ExpandConstant('{sys}\sc.exe'), 'start PartyOpsHost',
         '恢复升级前运行的 PartyOps 主机服务'
       );
-    if UpdateServiceRunningBeforeInstall and not InAppServiceUpdate then
+    if (UpdateServiceRunningBeforeInstall or
+        (ConfiguredHostModeBeforeInstall and not UpdateServiceExistedBeforeInstall)) and
+       not InAppServiceUpdate then
       RunChecked(
         ExpandConstant('{sys}\sc.exe'), 'start PartyOpsUpdateService',
         '恢复升级前运行的 PartyOps 更新服务'
