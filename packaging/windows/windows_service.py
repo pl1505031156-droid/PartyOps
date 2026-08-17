@@ -14,7 +14,11 @@ import win32event
 import win32service
 import win32serviceutil
 
-from app.setup_wizard import assert_windows_service_data_path_security, load_host_environment
+from app.setup_wizard import (
+    assert_windows_service_data_path_security,
+    load_host_environment,
+    normalize_windows_service_data_path_security,
+)
 from app import __version__
 from app.windows_host_status import (
     CHILD_EXITED,
@@ -289,10 +293,22 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
             data_dir = Path(environment["PARTYOPS_DATA_DIR"])
             try:
                 data_dir.mkdir(parents=True, exist_ok=True)
-                assert_windows_service_data_path_security(
-                    data_dir,
-                    verify_target=True,
-                )
+                try:
+                    assert_windows_service_data_path_security(
+                        data_dir,
+                        verify_target=True,
+                    )
+                except PermissionError as legacy_acl_error:
+                    try:
+                        normalize_windows_service_data_path_security(data_dir)
+                        _safe_append_service_log(
+                            data_dir,
+                            "已安全升级旧版自定义数据目录权限",
+                        )
+                    except (OSError, PermissionError, ValueError) as repair_error:
+                        raise PermissionError(
+                            f"{legacy_acl_error}；自动修复失败：{repair_error}"
+                        ) from repair_error
                 _safe_write_service_status(data_dir, stage="preparing")
                 config_mtime = config_path.stat().st_mtime_ns
                 if prepared_config_mtime != config_mtime:

@@ -263,11 +263,11 @@ def assert_windows_service_data_path_security(
     *,
     verify_target: bool,
 ) -> None:
-    """核验 SYSTEM 服务数据路径的所有者和替换权限。
+    """核验 SYSTEM 服务最终数据目录的所有者和写入权限。
 
-    目标目录可位于任意固定磁盘，但其祖先不能允许普通用户删除路径组件；
-    已有目标还必须禁止普通用户写入。这样既保留自定义盘符，也避免目录联接、
-    父目录替换或预置模型/证书造成 SYSTEM 权限下的数据与代码劫持。
+    用户可以把 PartyOps 放在任意本地固定磁盘的自建父目录中；这些父目录常会
+    继承 ``Authenticated Users: Modify``，不能因此误判为数据目录本身不可用。
+    真正由服务使用的最终目录必须关闭这类写权限，并持续拒绝重解析点。
     """
 
     if os.name != "nt" or os.getenv("PARTYOPS_ENVIRONMENT") == "test":
@@ -279,7 +279,6 @@ def assert_windows_service_data_path_security(
         "S-1-5-32-544",  # BUILTIN\Administrators
         "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",  # TrustedInstaller
     }
-    delete = 0x00010000
     write_dac = 0x00040000
     write_owner = 0x00080000
     generic_all = 0x10000000
@@ -290,8 +289,7 @@ def assert_windows_service_data_path_security(
     file_delete_child = 0x00000040
     file_write_attributes = 0x00000100
     target_write_mask = (
-        delete
-        | write_dac
+        write_dac
         | write_owner
         | generic_all
         | generic_write
@@ -303,50 +301,75 @@ def assert_windows_service_data_path_security(
     )
     resolved = data_dir.resolve(strict=True)
     _assert_path_components_have_no_reparse_points(resolved)
-    cursor = resolved if verify_target else resolved.parent
-    while True:
-        descriptor = win32security.GetFileSecurity(
-            str(cursor),
-            win32security.OWNER_SECURITY_INFORMATION
-            | win32security.DACL_SECURITY_INFORMATION,
+    if not verify_target:
+        return
+    descriptor = win32security.GetFileSecurity(
+        str(resolved),
+        win32security.OWNER_SECURITY_INFORMATION
+        | win32security.DACL_SECURITY_INFORMATION,
+    )
+    owner = win32security.ConvertSidToStringSid(
+        descriptor.GetSecurityDescriptorOwner()
+    )
+    if owner not in trusted_sids:
+        raise PermissionError(f"数据目录所有者不受信任：{resolved}")
+    dacl = descriptor.GetSecurityDescriptorDacl()
+    if dacl is None:
+        raise PermissionError(f"数据目录存在允许所有人访问的空 ACL：{resolved}")
+    for index in range(dacl.GetAceCount()):
+        ace = dacl.GetAce(index)
+        ace_type, ace_flags = ace[0]
+        if ace_flags & 0x08:  # INHERIT_ONLY_ACE 不作用于当前目录。
+            continue
+        if ace_type not in {
+            win32security.ACCESS_ALLOWED_ACE_TYPE,
+            getattr(win32security, "ACCESS_ALLOWED_OBJECT_ACE_TYPE", 5),
+        }:
+            continue
+        sid = win32security.ConvertSidToStringSid(ace[-1])
+        if sid in trusted_sids:
+            continue
+        if int(ace[1]) & target_write_mask:
+            raise PermissionError(
+                f"现有数据目录允许非受信主体修改或替换：{resolved}（{sid}）"
+            )
+
+
+def _assert_windows_service_data_root_adoptable(data_dir: Path) -> None:
+    """只允许接管受信任管理员创建的目录，随后再收敛其 ACL。"""
+
+    if os.name != "nt" or os.getenv("PARTYOPS_ENVIRONMENT") == "test":
+        return
+    import win32security  # type: ignore[import-untyped]
+
+    resolved = data_dir.resolve(strict=True)
+    _assert_managed_data_tree_has_no_reparse_points(resolved)
+    descriptor = win32security.GetFileSecurity(
+        str(resolved),
+        win32security.OWNER_SECURITY_INFORMATION
+        | win32security.DACL_SECURITY_INFORMATION,
+    )
+    owner = win32security.ConvertSidToStringSid(
+        descriptor.GetSecurityDescriptorOwner()
+    )
+    trusted_sids = {
+        "S-1-5-18",
+        "S-1-5-32-544",
+        "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+    }
+    try:
+        current_sid, _domain, _kind = win32security.LookupAccountName(
+            None, getpass.getuser()
         )
-        owner = win32security.ConvertSidToStringSid(
-            descriptor.GetSecurityDescriptorOwner()
+        trusted_sids.add(win32security.ConvertSidToStringSid(current_sid))
+    except Exception:  # noqa: BLE001 - 服务账号查名失败时仍保留系统 SID 白名单。
+        pass
+    if owner not in trusted_sids:
+        raise PermissionError(
+            f"数据目录不是由当前管理员、SYSTEM 或管理员组创建：{resolved}"
         )
-        if owner not in trusted_sids:
-            raise PermissionError(f"数据目录祖先所有者不受信任：{cursor}")
-        dacl = descriptor.GetSecurityDescriptorDacl()
-        if dacl is None:
-            raise PermissionError(f"数据目录存在允许所有人访问的空 ACL：{cursor}")
-        is_target = verify_target and cursor == resolved
-        volume_root = cursor.parent == cursor
-        for index in range(dacl.GetAceCount()):
-            ace = dacl.GetAce(index)
-            ace_type, ace_flags = ace[0]
-            if ace_flags & 0x08:  # INHERIT_ONLY_ACE 不作用于当前目录。
-                continue
-            if ace_type not in {
-                win32security.ACCESS_ALLOWED_ACE_TYPE,
-                getattr(win32security, "ACCESS_ALLOWED_OBJECT_ACE_TYPE", 5),
-            }:
-                continue
-            sid = win32security.ConvertSidToStringSid(ace[-1])
-            if sid in trusted_sids:
-                continue
-            mask = int(ace[1])
-            unsafe = bool(mask & file_delete_child)
-            if not volume_root:
-                unsafe = unsafe or bool(mask & delete)
-            if is_target:
-                unsafe = unsafe or bool(mask & target_write_mask)
-            if unsafe:
-                subject = "现有数据目录" if is_target else "数据目录祖先"
-                raise PermissionError(
-                    f"{subject}允许非受信主体修改或替换：{cursor}（{sid}）"
-                )
-        if cursor.parent == cursor:
-            break
-        cursor = cursor.parent
+    if descriptor.GetSecurityDescriptorDacl() is None:
+        raise PermissionError(f"数据目录存在允许所有人访问的空 ACL：{resolved}")
 
 
 def _validate_windows_data_dir(data_dir: Path) -> Path:
@@ -411,7 +434,6 @@ def _validate_windows_data_dir(data_dir: Path) -> Path:
             raise ValueError(
                 "主机数据目录不能放在用户主目录下，请选择独立数据盘目录或系统默认目录"
             )
-    existed_with_content = resolved.is_dir() and any(resolved.iterdir())
     try:
         resolved.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -419,10 +441,7 @@ def _validate_windows_data_dir(data_dir: Path) -> Path:
             f"无法创建数据目录 {resolved}，请检查权限或换一个位置。"
         ) from exc
     _assert_path_components_have_no_reparse_points(resolved)
-    assert_windows_service_data_path_security(
-        resolved,
-        verify_target=existed_with_content,
-    )
+    _assert_windows_service_data_root_adoptable(resolved)
     try:
         import ctypes
 
@@ -492,18 +511,14 @@ def _grant_windows_service_access(data_dir: Path) -> None:
     if os.name != "nt" or os.getenv("PARTYOPS_ENVIRONMENT") == "test":
         return
     _assert_managed_data_tree_has_no_reparse_points(data_dir)
-    if any(data_dir.iterdir()):
-        # 非空旧目录必须在安装器改写所有者/ACL 之前已经可信；否则递归
-        # icacls 会触碰攻击者预置的联接或原生载荷并掩盖其来源。
-        assert_windows_service_data_path_security(data_dir, verify_target=True)
-    commands = (
+    _assert_windows_service_data_root_adoptable(data_dir)
+    has_children = any(data_dir.iterdir())
+    commands = [
         [
             "icacls.exe",
             str(data_dir),
             "/setowner",
             "*S-1-5-32-544",
-            "/T",
-            "/C",
             "/Q",
         ],
         [
@@ -513,11 +528,33 @@ def _grant_windows_service_access(data_dir: Path) -> None:
             "/grant:r",
             "*S-1-5-18:(OI)(CI)F",
             "*S-1-5-32-544:(OI)(CI)F",
-            "/T",
-            "/C",
             "/Q",
         ],
-    )
+    ]
+    if has_children:
+        # 根目录先锁定后再处理子项，避免把 (OI)(CI) 继承标记递归写到普通
+        # 文件并产生无有效 ACE 的载荷；/L 确保即使发生竞态也只处理链接本身。
+        commands.extend(
+            [
+                [
+                    "icacls.exe",
+                    str(data_dir / "*"),
+                    "/setowner",
+                    "*S-1-5-32-544",
+                    "/T",
+                    "/L",
+                    "/Q",
+                ],
+                [
+                    "icacls.exe",
+                    str(data_dir / "*"),
+                    "/reset",
+                    "/T",
+                    "/L",
+                    "/Q",
+                ],
+            ]
+        )
     for command in commands:
         result = subprocess.run(
             command,
@@ -529,7 +566,14 @@ def _grant_windows_service_access(data_dir: Path) -> None:
         )
         if result.returncode != 0:
             raise ValueError("无法保护所选主机数据目录权限，请更换目录后重试")
+    _assert_managed_data_tree_has_no_reparse_points(data_dir)
     assert_windows_service_data_path_security(data_dir, verify_target=True)
+
+
+def normalize_windows_service_data_path_security(data_dir: Path) -> None:
+    """升级旧版自定义数据目录权限，供向导与监督服务共用。"""
+
+    _grant_windows_service_access(data_dir)
 
 
 def _protect_windows_control_config(config_path: Path) -> None:

@@ -1148,11 +1148,16 @@ def test_windows_data_and_control_acls_are_separated(
     )
     data_dir = tmp_path / "业务 数据"
     data_dir.mkdir()
+    (data_dir / "partyops.db").write_bytes(b"sqlite-payload")
     setup_wizard._grant_windows_service_access(data_dir)
     assert any("/setowner" in command for command in commands)
     data_acl = next(command for command in commands if "/inheritance:r" in command)
     assert "*S-1-5-18:(OI)(CI)F" in data_acl
     assert "*S-1-5-32-544:(OI)(CI)F" in data_acl
+    assert "/T" not in data_acl
+    reset_acl = next(command for command in commands if "/reset" in command)
+    assert str(data_dir / "*") in reset_acl
+    assert "/T" in reset_acl and "/L" in reset_acl
     assert all("*S-1-5-32-545" not in command for command in commands)
     assert security_checks[-1] == (data_dir, True)
 
@@ -1165,6 +1170,55 @@ def test_windows_data_and_control_acls_are_separated(
     setup_wizard._protect_windows_control_config(config)
     assert any("*S-1-5-32-545:(RX)" in command for command in commands)
     assert sum("*S-1-5-32-545:R" in command for command in commands) == 2
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows 数据目录 ACL 回归")
+def test_windows_data_acl_upgrade_accepts_writable_parent_and_keeps_files_readable(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """旧版目录可继承宽松父 ACL，但收敛后文件必须可读且目标不可被普通用户写。"""
+
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    parent = tmp_path / "用户可写 父目录"
+    data_dir = parent / "党建智办 数据"
+    nested = data_dir / "attachments"
+    nested.mkdir(parents=True)
+    database = data_dir / "partyops.db"
+    attachment = nested / "中文 文件.txt"
+    database.write_bytes(b"sqlite-regression")
+    attachment.write_text("PartyOps", encoding="utf-8")
+    parent_acl = subprocess.run(
+        [
+            "icacls.exe",
+            str(parent),
+            "/inheritance:r",
+            "/grant:r",
+            "*S-1-5-18:(OI)(CI)F",
+            "*S-1-5-32-544:(OI)(CI)F",
+            "*S-1-5-11:(OI)(CI)M",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert parent_acl.returncode == 0, parent_acl.stderr
+    inherited = subprocess.run(
+        ["icacls.exe", str(data_dir / "*"), "/reset", "/T", "/L", "/Q"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert inherited.returncode == 0, inherited.stderr
+
+    setup_wizard.normalize_windows_service_data_path_security(data_dir)
+    setup_wizard.assert_windows_service_data_path_security(
+        data_dir,
+        verify_target=True,
+    )
+    assert database.read_bytes() == b"sqlite-regression"
+    assert attachment.read_text(encoding="utf-8") == "PartyOps"
 
 
 def test_windows_service_data_acl_rejects_untrusted_writer(

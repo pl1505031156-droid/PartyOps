@@ -526,6 +526,8 @@ def test_windows_installer_defers_host_privileges_until_role_selection() -> None
     assert "PartyOps 更新服务未能启动" in host_service
     assert "prepare_host_runtime(environment, executable)" in host_service
     assert "assert_windows_service_data_path_security" in host_service
+    assert "normalize_windows_service_data_path_security(data_dir)" in host_service
+    assert "已安全升级旧版自定义数据目录权限" in host_service
     assert "verify_target=True" in host_service
     assert "InAppServiceUpdate" in installer
     assert "{param:INAPPUPDATE|0}" in installer
