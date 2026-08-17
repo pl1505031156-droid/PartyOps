@@ -738,12 +738,33 @@ begin
     ExpandConstant('{sys}\icacls.exe'),
     AddQuotes(AppDir) + ' /inheritance:r /grant:r ' +
       '*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F ' +
-      '*S-1-5-32-545:(OI)(CI)RX /T /C /Q',
+      '*S-1-5-32-545:(OI)(CI)RX',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode
   )) or (ResultCode <> 0) then
   begin
     Result := '[INSTALL_DIR_ACL_DENIED] 无法保护程序目录写权限，安装已停止。';
     exit;
+  end;
+  { (OI)(CI) 是目录继承标记，不能用 /T 直接递归写到普通文件；否则文件会
+    变成受保护但没有有效访问 ACE，连管理员也无法读取或执行。根目录先固定
+    ACL，再把已存在的载荷重置为继承根目录权限。空的新目录无需执行此步骤。 }
+  if FileExists(AddBackslash(AppDir) + 'PartyOps.exe') then
+  begin
+    if (not Exec(
+      ExpandConstant('{sys}\icacls.exe'),
+      AddQuotes(AddBackslash(AppDir) + '*') + ' /reset /T /C /Q',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+    )) or (ResultCode <> 0) then
+    begin
+      Result := '[INSTALL_DIR_TREE_ACL_DENIED] 无法让程序文件安全继承目录权限，安装已停止。';
+      exit;
+    end;
+    if FileExists(AddBackslash(AppDir) + 'PartyOpsService.exe') and
+       (GetSHA256OfFile(AddBackslash(AppDir) + 'PartyOpsService.exe') = '') then
+    begin
+      Result := '[INSTALL_DIR_TREE_ACL_VERIFY_FAILED] 程序文件权限回读失败，安装已停止。';
+      exit;
+    end;
   end;
   { ACL 收敛后最后回查；普通用户仍可读取并执行，但不能替换服务二进制。 }
   if (not Exec(PowerShell, Parameters + ' -VerifyTargetAcl', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or
@@ -833,18 +854,58 @@ begin
   Result := Result and (ResultCode = 0);
 end;
 
+function UninstallDataActionParameter: String;
+var
+  I: Integer;
+  Argument, Prefix: String;
+begin
+  Result := '';
+  Prefix := '/DATAACTION=';
+  for I := 1 to ParamCount do
+  begin
+    Argument := ParamStr(I);
+    if CompareText(Copy(Argument, 1, Length(Prefix)), Prefix) = 0 then
+    begin
+      Result := Lowercase(Trim(Copy(Argument, Length(Prefix) + 1, Length(Argument))));
+      exit;
+    end;
+  end;
+end;
+
 function InitializeUninstall(): Boolean;
 var
   Choice: Integer;
+  DataAction: String;
 begin
   DeleteAllDataOnUninstall := False;
-  Choice := MsgBox(
-    '请选择卸载方式：' + #13#10 + #13#10 +
-    '“是”＝彻底卸载：删除程序、服务、当前账号配置以及经 PartyOps 标记的数据库、附件、备份、证书、模型、缓存和日志。此操作不可恢复，请先确认备份可用。' + #13#10 + #13#10 +
-    '“否”＝仅删除程序：保留全部业务数据，方便以后重装继续使用。' + #13#10 + #13#10 +
-    '“取消”＝暂不卸载。',
-    mbConfirmation, MB_YESNOCANCEL
-  );
+  DataAction := UninstallDataActionParameter;
+  if (DataAction <> '') and (DataAction <> 'preserve') and
+     (DataAction <> 'delete') then
+  begin
+    MsgBox(
+      '[UNINSTALL_DATAACTION_INVALID] /DATAACTION 只能使用 preserve 或 delete。',
+      mbError, MB_OK
+    );
+    Result := False;
+    exit;
+  end;
+  { 静默卸载不能让被抑制的 Yes/No 对话框默认选择不可恢复的数据删除。
+    默认只删除程序；自动化只有显式 DATAACTION=delete 才能请求彻底清理。 }
+  if UninstallSilent or (DataAction <> '') then
+  begin
+    if DataAction = 'delete' then
+      Choice := IDYES
+    else
+      Choice := IDNO;
+  end
+  else
+    Choice := MsgBox(
+      '请选择卸载方式：' + #13#10 + #13#10 +
+      '“是”＝彻底卸载：删除程序、服务、当前账号配置以及经 PartyOps 标记的数据库、附件、备份、证书、模型、缓存和日志。此操作不可恢复，请先确认备份可用。' + #13#10 + #13#10 +
+      '“否”＝仅删除程序：保留全部业务数据，方便以后重装继续使用。' + #13#10 + #13#10 +
+      '“取消”＝暂不卸载。',
+      mbConfirmation, MB_YESNOCANCEL
+    );
   if Choice = IDCANCEL then
   begin
     Result := False;
@@ -1131,8 +1192,13 @@ begin
     ExpandConstant('{sys}\icacls.exe'),
     '"' + ControlRoot + '" /inheritance:r /grant:r ' +
       '*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F ' +
-      '*S-1-5-32-545:(OI)(CI)RX /T /C /Q',
+      '*S-1-5-32-545:(OI)(CI)RX',
     '保护 PartyOps 系统控制目录写权限'
+  );
+  RunChecked(
+    ExpandConstant('{sys}\icacls.exe'),
+    AddQuotes(AddBackslash(ControlRoot) + '*') + ' /reset /T /C /Q',
+    '规范 PartyOps 系统控制目录子项权限'
   );
   RunChecked(
     ExpandConstant('{sys}\icacls.exe'),
@@ -1142,8 +1208,13 @@ begin
   RunChecked(
     ExpandConstant('{sys}\icacls.exe'),
     '"' + TransactionRoot + '" /inheritance:r /grant:r ' +
-      '*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F /T /C /Q',
+      '*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F',
     '保护 PartyOps 系统事务目录写权限'
+  );
+  RunChecked(
+    ExpandConstant('{sys}\icacls.exe'),
+    AddQuotes(AddBackslash(TransactionRoot) + '*') + ' /reset /T /C /Q',
+    '规范 PartyOps 系统事务目录子项权限'
   );
 end;
 

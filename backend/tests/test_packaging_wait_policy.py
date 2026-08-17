@@ -124,6 +124,64 @@ def test_windows_custom_install_path_final_acl_still_rejects_untrusted_writer(
     )
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows ACL 安装路径回归")
+def test_windows_installer_acl_normalization_keeps_payload_readable(
+    tmp_path: Path,
+) -> None:
+    """目录继承标记不能递归写成令载荷不可读的空文件 ACL。"""
+
+    target = tmp_path / f"自定义 程序目录 {uuid4().hex}"
+    nested = target / "_internal" / "frontend"
+    nested.mkdir(parents=True)
+    payload = target / "PartyOpsService.exe"
+    nested_payload = nested / "index.html"
+    payload.write_bytes(b"MZ-partyops-acl-regression")
+    nested_payload.write_text("PartyOps", encoding="utf-8")
+
+    root_acl = subprocess.run(
+        [
+            "icacls.exe",
+            str(target),
+            "/inheritance:r",
+            "/grant:r",
+            "*S-1-5-18:(OI)(CI)F",
+            "*S-1-5-32-544:(OI)(CI)F",
+            "*S-1-5-32-545:(OI)(CI)RX",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert root_acl.returncode == 0, root_acl.stderr
+    tree_acl = subprocess.run(
+        [
+            "icacls.exe",
+            str(target / "*"),
+            "/reset",
+            "/T",
+            "/C",
+            "/Q",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert tree_acl.returncode == 0, tree_acl.stderr
+
+    assert payload.read_bytes() == b"MZ-partyops-acl-regression"
+    assert nested_payload.read_text(encoding="utf-8") == "PartyOps"
+    payload_acl = subprocess.run(
+        ["icacls.exe", str(payload)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout
+    assert "(I)(RX)" in payload_acl
+
+
 def test_windows_build_tool_versions_are_resolver_compatible() -> None:
     """发布构建依赖不能固定到 PyInstaller 明确排除的 pefile 版本。"""
 
@@ -514,6 +572,18 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "*S-1-5-18:(OI)(CI)F" in installer
     assert "*S-1-5-32-544:(OI)(CI)F" in installer
     assert "*S-1-5-32-545:(OI)(CI)RX" in installer
+    assert "AddQuotes(AddBackslash(AppDir) + '*') + ' /reset /T /C /Q'" in installer
+    assert "INSTALL_DIR_TREE_ACL_DENIED" in installer
+    assert "INSTALL_DIR_TREE_ACL_VERIFY_FAILED" in installer
+    assert "*S-1-5-32-545:(OI)(CI)RX /T /C /Q" not in installer
+    assert "*S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F /T /C /Q" not in installer
+    assert "AddQuotes(AddBackslash(ControlRoot) + '*') + ' /reset /T /C /Q'" in installer
+    assert "AddQuotes(AddBackslash(TransactionRoot) + '*') + ' /reset /T /C /Q'" in installer
+    assert "function UninstallDataActionParameter" in installer
+    assert "if UninstallSilent or (DataAction <> '') then" in installer
+    assert "if DataAction = 'delete' then" in installer
+    assert "Choice := IDNO" in installer
+    assert "UNINSTALL_DATAACTION_INVALID" in installer
     assert installer.index(
         "Result := ValidateAndSecureInstallDirectory"
     ) < installer.index("Result := StopServiceBeforeUpgrade(")
