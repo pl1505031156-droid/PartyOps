@@ -384,6 +384,11 @@ def execute(scope: str, *, check_only: bool) -> None:
         if not check_only:
             _stop_owned_user_processes()
             _remove_owned_autostarts()
+            # “仅删除程序”仍应移除由安装器/更新服务生成的系统缓存与日志，
+            # 否则每次卸载会遗留一份完整安装器。业务配置与用户选定数据根
+            # 位于 ProgramData/PartyOps 或自定义目录，不在此固定运行时根中。
+            _stop_system_services()
+            _remove_fixed_tree(_program_data() / "PartyOps-System")
         return
     roots = managed_roots(scope)
     if check_only:

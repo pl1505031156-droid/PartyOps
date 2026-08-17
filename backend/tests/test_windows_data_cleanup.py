@@ -115,6 +115,36 @@ def test_installer_exposes_preserve_or_full_delete_choice() -> None:
     assert "UNINSTALL_DATA_PREFLIGHT_FAILED" in installer
 
 
+def test_runtime_cleanup_removes_only_system_cache_and_preserves_business_data(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _local, program_data = _environment(monkeypatch, tmp_path)
+    system_cache = program_data / "PartyOps-System"
+    (system_cache / "installer-cache").mkdir(parents=True)
+    (system_cache / "installer-cache" / "current.exe").write_bytes(b"installer")
+    business_control = program_data / "PartyOps"
+    business_control.mkdir(parents=True)
+    (business_control / "partyops.env").write_text(
+        "PARTYOPS_MODE=host\n", encoding="utf-8"
+    )
+    events: list[str] = []
+    monkeypatch.setattr(
+        cleanup, "_stop_owned_user_processes", lambda: events.append("user")
+    )
+    monkeypatch.setattr(
+        cleanup, "_remove_owned_autostarts", lambda: events.append("autostart")
+    )
+    monkeypatch.setattr(
+        cleanup, "_stop_system_services", lambda: events.append("services")
+    )
+
+    cleanup.execute("runtime", check_only=False)
+
+    assert events == ["user", "autostart", "services"]
+    assert not system_cache.exists()
+    assert business_control.exists()
+
+
 def test_windows_helpers_share_one_verified_runtime_instead_of_embedding_duplicates() -> None:
     build = (ROOT / "packaging" / "windows" / "build-windows.ps1").read_text(
         encoding="utf-8"
