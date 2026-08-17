@@ -349,6 +349,13 @@ def test_manifest_signature_architecture_and_platform_matrix(
 def test_artifact_selection_rejects_manifest_zip_mismatches(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # 将已安装版本固定为上一候选版，避免测试结果随当前构建版本漂移，
+    # 并真实覆盖“必须先桥接到最低兼容版本”的拒绝分支。
+    monkeypatch.setattr(
+        update_executor,
+        "get_settings",
+        lambda: SimpleNamespace(app_version="1.4.3-rc.4"),
+    )
     package = tmp_path / "release.partyops-update"
     artifact_name = "PartyOps_1.4.3-rc.5_linux_amd64.deb"
     payload = b"deb-payload"
@@ -500,7 +507,8 @@ def test_health_schema_wait_and_windows_artifact_detection(
         "urlopen",
         lambda *_args, **_kwargs: _Response(_health_payload()),
     )
-    assert update_executor._health_check("1.4.3rc4")
+    # PEP 440 的 rc 两种写法应等价；期望值必须跟随当前候选版。
+    assert update_executor._health_check(APP_VERSION.replace("-rc.", "rc"))
 
     monkeypatch.setattr(update_executor, "_health_check", lambda _version: False)
     clock = iter([0.0, 0.2, 1.1])
