@@ -18,12 +18,28 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_windows_custom_install_path_preflight_accepts_user_parent(
     tmp_path: Path,
 ) -> None:
-    """普通用户创建的中文/空格父目录不能再触发 PARENT_UNSAFE 误判。"""
+    """可写的中文/空格父目录不能在目标 ACL 收敛前阻断自定义安装。"""
 
     validator = ROOT / "packaging" / "windows" / "validate-install-path.ps1"
-    # 临时目录本身常向 Authenticated Users 开放，不能作为 LocalSystem 服务目录。
-    # 使用本机工作区所在固定盘根目录下尚不存在的自定义路径模拟安装器选择。
-    target = Path(ROOT.anchor) / f"PartyOps-安装测试-{uuid4().hex}" / "党建智办 PartyOps"
+    parent = tmp_path / f"用户可写 父目录 {uuid4().hex}"
+    parent.mkdir()
+    acl_result = subprocess.run(
+        [
+            "icacls.exe",
+            str(parent),
+            "/inheritance:r",
+            "/grant:r",
+            "*S-1-5-18:(OI)(CI)F",
+            "*S-1-5-32-544:(OI)(CI)F",
+            "*S-1-5-11:(OI)(CI)M",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert acl_result.returncode == 0, acl_result.stderr
+    target = parent / "党建智办 PartyOps"
     diagnostic = tmp_path / "安装目录诊断.txt"
     result = subprocess.run(
         [
@@ -50,6 +66,62 @@ def test_windows_custom_install_path_preflight_accepts_user_parent(
 
     assert result.returncode == 0, result.stderr
     assert diagnostic.read_text(encoding="utf-8").startswith("[INSTALL_DIR_OK]")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows ACL 安装路径回归")
+def test_windows_custom_install_path_final_acl_still_rejects_untrusted_writer(
+    tmp_path: Path,
+) -> None:
+    """自由选择父目录不能取消最终服务目录的写权限门禁。"""
+
+    validator = ROOT / "packaging" / "windows" / "validate-install-path.ps1"
+    target = tmp_path / "自定义 PartyOps"
+    target.mkdir()
+    acl_result = subprocess.run(
+        [
+            "icacls.exe",
+            str(target),
+            "/inheritance:r",
+            "/grant:r",
+            "*S-1-5-18:(OI)(CI)F",
+            "*S-1-5-32-544:(OI)(CI)F",
+            "*S-1-5-11:(OI)(CI)M",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert acl_result.returncode == 0, acl_result.stderr
+    diagnostic = tmp_path / "最终目录诊断.txt"
+    result = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(validator),
+            "-Path",
+            str(target),
+            "-VerifyTargetAcl",
+            "-DiagnosticFile",
+            str(diagnostic),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+
+    assert result.returncode == 6
+    assert diagnostic.read_text(encoding="utf-8").startswith(
+        "[INSTALL_DIR_EXISTING_ACL_UNSAFE]"
+    )
 
 
 def test_windows_build_tool_versions_are_resolver_compatible() -> None:
@@ -462,11 +534,11 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "Assert-SecureDirectoryAcl" in validator
     assert "S-1-5-32-544" in validator
     assert "INSTALL_DIR_PARENT_UNSAFE" not in validator
-    assert "INSTALL_DIR_PARENT_ACL_UNSAFE" in validator
+    assert "INSTALL_DIR_PARENT_ACL_UNSAFE" not in validator
     assert "WindowsIdentity]::GetCurrent" in validator
     assert 'DiagnosticFile = ""' in validator
-    assert "当前管理员 SID 属于受信主体" in validator
-    assert "while (-not [string]::IsNullOrEmpty($aclCursor))" in validator
+    assert "安装位置由用户自由选择" in validator
+    assert "祖先目录的通用 ACL" in validator
     assert installer.count("ErrorMessage := ValidateAndSecureInstallDirectory") == 1
 
 

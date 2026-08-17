@@ -84,10 +84,7 @@ function Assert-SecureDirectoryAcl {
     if ($canDeleteChild -or
         (-not $isVolumeRoot -and $canDeleteObject) -or
         $canChangeProgramContent) {
-      if ($ForProgramDirectory) {
-        Stop-InstallPathValidation "INSTALL_DIR_EXISTING_ACL_UNSAFE" "现有 PartyOps 程序目录允许其他普通用户修改内容：$DirectoryPath（主体 $sid）。请选择空目录，或先恢复该目录的管理员权限。" 6
-      }
-      Stop-InstallPathValidation "INSTALL_DIR_PARENT_ACL_UNSAFE" "父目录允许其他普通用户替换服务目录：$DirectoryPath（主体 $sid）。当前管理员自己的自定义目录不会被此规则拦截；请改选由您本人或管理员控制的目录。" 6
+      Stop-InstallPathValidation "INSTALL_DIR_EXISTING_ACL_UNSAFE" "现有 PartyOps 程序目录允许其他普通用户修改内容：$DirectoryPath（主体 $sid）。安装器无法确认其中旧文件可信；请先卸载旧版本或选择空目录。" 6
     }
   }
 }
@@ -120,27 +117,12 @@ try {
     $cursor = $parent.FullName
   }
 
-  # 当前管理员 SID 属于受信主体，因此管理员自己在 D/E 盘创建的中文、空格目录
-  # 可以正常通过。仍须逐级阻断真正向 Everyone/Users 开放“删除子项”的父目录：
-  # LocalSystem 服务若从此路径启动，攻击者可在重启前把整个目录替换为恶意程序。
-  $aclCursor = if ($VerifyTargetAcl -and [IO.Directory]::Exists($fullPath)) {
-    $fullPath
-  } else {
-    $parent = [IO.Directory]::GetParent($fullPath)
-    if ($null -eq $parent) { $root } else { $parent.FullName }
-  }
-  while (-not [string]::IsNullOrEmpty($aclCursor)) {
-    if ([IO.Directory]::Exists($aclCursor)) {
-      if ($VerifyTargetAcl -and
-          $aclCursor.TrimEnd('\') -eq $fullPath.TrimEnd('\')) {
-        Assert-SecureDirectoryAcl $aclCursor -ForProgramDirectory
-      } else {
-        Assert-SecureDirectoryAcl $aclCursor
-      }
-    }
-    $aclParent = [IO.Directory]::GetParent($aclCursor)
-    if ($null -eq $aclParent -or $aclParent.FullName -eq $aclCursor) { break }
-    $aclCursor = $aclParent.FullName
+  # 安装位置由用户自由选择。数据盘和用户自建的父目录常向 Authenticated Users
+  # 开放 Modify；把祖先目录的通用 ACL 当成最终程序目录 ACL，会在安装器创建并
+  # 收敛目标目录权限之前稳定误报。这里只在 icacls 完成后核对真正承载服务文件
+  # 的最终目录。固定磁盘、重解析点和现有目录内容仍由上下文中的独立门禁处理。
+  if ($VerifyTargetAcl -and [IO.Directory]::Exists($fullPath)) {
+    Assert-SecureDirectoryAcl $fullPath -ForProgramDirectory
   }
 
   if ([IO.Directory]::Exists($fullPath)) {
