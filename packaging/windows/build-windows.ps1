@@ -240,13 +240,19 @@ foreach ($entry in $entries) {
     # SQLite DLL；pysqlite3 仅用于 Linux 静态运行时，不能作为缺失隐藏模块。
     "sqlalchemy.dialects.sqlite.pysqlite",
     "uvicorn.logging", "uvicorn.loops.asyncio", "uvicorn.protocols.http.h11_impl",
-    "cryptography", "cryptography.fernet", "httpx", "win32timezone",
-    # setuptools 的 pkg_resources 运行钩子会经 jaraco.context 在 Python
-    # 3.11 及以下导入 vendored backports.tarfile。部分入口的静态图较小，
-    # PyInstaller 不会自动发现该分支，导致安装成功后向导/启动器立即退出。
-    # 显式触发官方 hook-backports 别名收集，并由下方最终 EXE 自检把关。
-    "backports", "backports.tarfile"
+    "cryptography", "cryptography.fernet", "httpx", "win32timezone"
   )
+  # 新版 setuptools 的 pkg_resources 运行钩子会经 jaraco.context 导入
+  # vendored backports.tarfile。部分入口的静态图较小，PyInstaller 不会
+  # 自动发现该分支，最终会出现安装成功后向导/启动器立即退出；但 Win7
+  # 锁定的旧版 setuptools 根本没有此模块，
+  # 无条件添加又会产生可被忽略的 ERROR。先真实导入 vendored 模块，
+  # 只有运行时确实需要时才触发官方 hook-backports 别名收集。
+  & $Python -c "import importlib; importlib.import_module('setuptools._vendor.backports.tarfile')" 2>$null
+  $requiresBackportsTarfile = $LASTEXITCODE -eq 0
+  if ($requiresBackportsTarfile) {
+    $hiddenModules += @("backports", "backports.tarfile")
+  }
   if ($runtimeProfile -ne "legacy-core") {
     $hiddenModules += @("numpy", "onnxruntime", "tokenizers")
   } else {

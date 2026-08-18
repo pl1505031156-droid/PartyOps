@@ -745,7 +745,9 @@ def test_frozen_windows_wizard_has_real_gui_self_test_gate() -> None:
     assert 'sys.argv[1:] == ["--self-test"]' in entrypoint
     assert "root = tkinter.Tk()" in entrypoint
     assert 'PartyOpsWizard.exe\") --self-test' in build
-    assert '"backports", "backports.tarfile"' in build
+    assert "setuptools._vendor.backports.tarfile" in build
+    assert '$hiddenModules += @("backports", "backports.tarfile")' in build
+    assert "if ($requiresBackportsTarfile)" in build
     assert "安装成功后向导/启动器立即退出" in build
     for required in (
         "_tkinter.pyd",
