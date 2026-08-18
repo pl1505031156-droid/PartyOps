@@ -162,7 +162,7 @@ flowchart LR
 
 当前可下载版本为 [v1.4.3-rc.6 候选版](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.3-rc.6)：
 
-rc.6 使用全新的版本化文件名和不可变标签，不覆盖 rc.5。Windows 安装器支持本机固定 D/E 盘、中文与空格目录，并修复 PowerShell 5.1 中文脚本解析；Win7 使用独立 Legacy 包；国产 Linux 共享库和静态资源不再带错误执行位。请以 Release/官网显示的最新上传时间、大小与 SHA-256 为准。
+rc.6 使用全新的版本化文件名和不可变标签，不覆盖 rc.5。Windows 安装器支持本机固定 D/E 盘、中文与空格目录，并修复 PowerShell 5.1 中文脚本解析；Win7 使用独立 Legacy 包；国产 Linux 共享库和静态资源不再带错误执行位，个人模式也不会被旧主机迁移逻辑误改为 HTTPS。请以 Release/官网显示的最新上传时间、大小与 SHA-256 为准。
 
 - [Windows 10/11 x64 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.6/PartyOps_1.4.3-rc.6_windows_amd64.exe)
 - [Windows 7 SP1 x64 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.3-rc.6/PartyOps_1.4.3-rc.6_windows7_amd64.exe)
