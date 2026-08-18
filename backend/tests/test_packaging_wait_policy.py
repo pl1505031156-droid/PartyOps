@@ -406,7 +406,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     assert "%pre" in build
     assert "%post" in build
     assert "/opt/partyops/post-install-selftest.sh $ARCH" in build
-    assert 'DEB_VERSION="1.4.3~rc.5"' in build
+    assert 'DEB_VERSION="1.4.3~rc.6"' in build
     assert "Version: $DEB_VERSION" in build
     assert "systemd, util-linux, coreutils, iproute2" in build
     assert "systemd, util-linux, coreutils, iproute" in build
@@ -427,8 +427,8 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     one_click = (ROOT / "packaging" / "uos" / "one-click-install.sh").read_text(
         encoding="utf-8"
     )
-    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.5}"' in one_click
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.5}"' in one_click
+    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.6}"' in one_click
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.6}"' in one_click
     assert 'DEB="$ARTIFACTS/PartyOps_${VERSION}_linux_${ARCH}.deb"' in one_click
     assert '[[ "$installed_version" == "$PACKAGE_VERSION" ]]' in one_click
     assert 'chown -R "$CURRENT_USER' not in one_click
@@ -436,7 +436,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     acceptance = (ROOT / "packaging" / "uos" / "target-acceptance.sh").read_text(
         encoding="utf-8"
     )
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.5}"' in acceptance
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.6}"' in acceptance
     assert 'test "$INSTALLED_VERSION" = "$PACKAGE_VERSION"' in acceptance
     assert "LD_LIBRARY_PATH=/opt/partyops/ocr/lib" in acceptance
 
@@ -651,6 +651,13 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "INSTALL_DIR_ACL_DENIED" in installer
     assert "INSTALL_DIR_ACL_UNSAFE" in installer
     assert "ReadInstallPathDiagnostic" in installer
+    assert "function RunInstallPathValidator" in installer
+    assert "ExecAndLogOutput(" in installer
+    install_path_flow = installer.split(
+        "function ValidateAndSecureInstallDirectory", maxsplit=1
+    )[1].split("function PrepareToInstall", maxsplit=1)[0]
+    assert "Exec(PowerShell" not in install_path_flow
+    assert install_path_flow.count("RunInstallPathValidator(") == 3
     assert "partyops-install-path-diagnostic.txt" in installer
     assert "*S-1-5-18:(OI)(CI)F" in installer
     assert "*S-1-5-32-544:(OI)(CI)F" in installer
@@ -660,7 +667,12 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "INSTALL_DIR_TREE_ACL_VERIFY_FAILED" in installer
     assert "INSTALL_DIR_INTEGRITY_DENIED" in installer
     assert " /setintegritylevel (OI)(CI)H /T /C /Q" in installer
-    assert "VersionInfoVersion=1.4.3.5" in installer
+    assert "VersionInfoVersion=1.4.3.6" in installer
+    assert "MinVersion=10.0" in installer
+    assert "MinVersion=6.1sp1" in installer
+    assert "此安装包仅支持 Windows 10/11" in installer
+    assert "windows7_amd64" in installer
+    assert "windows7_x86" in installer
     assert '[UninstallDelete]' in installer
     assert 'Type: dirifempty; Name: "{app}"' in installer
     assert "*S-1-5-32-545:(OI)(CI)RX /T /C /Q" not in installer
@@ -691,12 +703,20 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
         "Result := ValidateAndSecureInstallDirectory"
     ) < installer.index("Result := StopServiceBeforeUpgrade(")
 
-    validator = (
-        ROOT / "packaging" / "windows" / "validate-install-path.ps1"
-    ).read_text(encoding="utf-8")
+    validator_path = ROOT / "packaging" / "windows" / "validate-install-path.ps1"
+    validator_bytes = validator_path.read_bytes()
+    assert validator_bytes.startswith(b"\xef\xbb\xbf")
+    validator = validator_path.read_text(encoding="utf-8-sig")
     assert "[IO.DriveType]::Fixed" in validator
     assert "[IO.FileAttributes]::ReparsePoint" in validator
     assert 'Join-Path $fullPath "PartyOps.exe"' in validator
+    for build_script in ("build-windows.ps1", "package-windows.ps1"):
+        build_text = (ROOT / "packaging" / "windows" / build_script).read_text(
+            encoding="utf-8"
+        )
+        assert "WindowsPowerShell\\v1.0\\powershell.exe" in build_text
+        assert "-File $installPathValidator" in build_text
+        assert "安装路径-$validatorProbeId\\中文 空格" in build_text
     assert "DeleteSubdirectoriesAndFiles" in validator
     assert "FileSystemRights]::Delete" in validator
     assert "FileSystemRights]::WriteData" in validator
@@ -748,6 +768,13 @@ def test_win7_uses_verified_sdk_ucrt_instead_of_build_host_system_dlls() -> None
     assert 'for directory in (root, root / "_internal")' in validator
     assert "is_verified_ucrt_forwarder" in validator
     assert "10.0.19041.0" in validator
+    assert '"api-ms-win-core-path-"' in validator
+    assert '#define PartyOpsLegacy' in (
+        ROOT / "packaging" / "windows" / "PartyOps-Win7-x64.iss"
+    ).read_text(encoding="utf-8")
+    assert '#define PartyOpsLegacy' in (
+        ROOT / "packaging" / "windows" / "PartyOps-Win7-x86.iss"
+    ).read_text(encoding="utf-8")
 
 
 def test_linux_wizard_freeze_includes_tcl_runtime_and_entrypoint_smoke() -> None:
@@ -772,7 +799,7 @@ def test_linux_bundle_only_includes_current_user_documents() -> None:
     )
 
     assert 'cp -a "$ROOT/docs" "$RUNTIME/"' not in script
-    assert '"release-notes-v1.4.3-rc.5.md"' in script
+    assert '"release-notes-v1.4.3-rc.6.md"' in script
     for document in (
         "user-guide.md",
         "deployment.md",

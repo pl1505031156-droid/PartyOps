@@ -1,6 +1,6 @@
 # PartyOps 1.4.3 安装与上线检查清单
 
-适用于 Windows 10/11 x64、Windows 7 SP1 x64/x86、麒麟/UOS/deepin amd64/arm64 和 openEuler x86_64/aarch64 的主机与协同机。当前 `v1.4.3-rc.5` 为未签名候选版；Windows 7 与国产 Linux 制品未真机验证，未关闭项不得勾选为通过。Win7 还必须确认 SP1、KB2533623、Universal CRT，并仅在受控局域网使用。
+适用于 Windows 10/11 x64、Windows 7 SP1 x64/x86、麒麟/UOS/deepin amd64/arm64 和 openEuler x86_64/aarch64 的主机与协同机。当前 `v1.4.3-rc.6` 为未签名候选版；Windows 7 与国产 Linux 制品未真机验证，未关闭项不得勾选为通过。Win7 还必须确认 SP1、KB2533623、Universal CRT，并仅在受控局域网使用。Win7 不得使用文件名只有 `windows_amd64` 的 Windows 10/11 通用包。
 
 ## 制品
 

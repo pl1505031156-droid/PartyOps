@@ -2,6 +2,24 @@
 
 本项目按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的结构记录用户可感知变更。PartyOps 当前使用三段式版本号；正式 Git 标签和安装制品只有在发布门禁通过后创建。
 
+## [1.4.3-rc.6] - 2026-08-18
+
+### Windows 安装兼容
+
+- 修复部分 Windows 10/11 电脑安装时出现 `[INSTALL_DIR_CHECK_FAILED]`：安装目录校验脚本改为 Windows PowerShell 5.1 可确定识别的 UTF-8 BOM，避免简体中文系统按 GBK/ANSI 错误解码中文注释并产生语法错误。
+- 安装器把校验脚本的标准输出与错误输出完整写入 Inno 安装日志；即使脚本在解析或参数绑定阶段失败，也能保留退出码和真实原因，不再只显示笼统提示。
+- 新增构建期编码硬门禁和 Windows PowerShell 5.1 中文/空格路径回归，最终封装后还会从 EXE 重新提取脚本复测，防止源码正确但安装器内载荷错误。
+
+### Windows 7 选包与运行时
+
+- Windows 10/11 通用安装器明确要求 Windows 10 或更高版本；在 Windows 7 上会用中文提示改下 `windows7_amd64` 或 `windows7_x86` 专用安装包，避免 Python 3.11 运行时触发 `api-ms-win-core-path-l1-1-0.dll` 缺失。
+- Win7 专用包继续使用隔离的 Python 3.8 Legacy 运行时，并对最终 EXE、DLL、PYD 全量检查 PE 架构、6.1 子系统及 Win8/10 专属导入；禁止通过网上下载单个系统 DLL 的方式绕过兼容性问题。
+- Windows 7 安装前仍检查 SP1、KB2533623 和 Universal CRT。由于本轮没有 Win7 真机，制品保持“未真机验证”，仅建议在受控局域网使用。
+
+### 发布
+
+- 七个平台安装包、应用内更新包、机器可读清单、SBOM、VEX、README、官网与更新日志统一提升为 `1.4.3-rc.6`；线上只挂载本版本安装包。
+
 ## [1.4.3-rc.5] - 2026-08-18
 
 ### Windows 安装修复

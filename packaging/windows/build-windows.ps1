@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
-$releaseVersion = "1.4.3-rc.5"
-$releaseTag = "v1.4.3-rc.5"
+$releaseVersion = "1.4.3-rc.6"
+$releaseTag = "v1.4.3-rc.6"
 $isLegacy = [bool]$LegacyArchitecture
 $targetArchitecture = if ($isLegacy) { $LegacyArchitecture } else { "amd64" }
 $runtimeProfile = if (-not $isLegacy) { "full" } elseif ($targetArchitecture -eq "amd64") { "legacy-full" } else { "legacy-core" }
@@ -54,8 +54,38 @@ $outputRoot = Join-Path $repoRoot "artifacts"
 $frontendDist = Join-Path $repoRoot "frontend\dist"
 $localAiRoot = Join-Path $repoRoot "vendor\windows\local-ai\llama-b10331"
 $siteCustomizeRoot = Join-Path $repoRoot ".build-windows\sitecustomize"
+$installPathValidator = Join-Path $PSScriptRoot "validate-install-path.ps1"
 function Assert-NativeSuccess([string]$Stage) {
   if ($LASTEXITCODE -ne 0) { throw "$Stage 失败，退出码：$LASTEXITCODE" }
+}
+$validatorBytes = [IO.File]::ReadAllBytes($installPathValidator)
+if ($validatorBytes.Length -lt 3 -or
+    $validatorBytes[0] -ne 0xEF -or
+    $validatorBytes[1] -ne 0xBB -or
+    $validatorBytes[2] -ne 0xBF) {
+  throw "安装期 PowerShell 脚本必须使用 UTF-8 BOM；否则 Windows PowerShell 5.1 会在传统 ANSI/GBK 系统上误解码中文并导致安装失败。"
+}
+$windowsPowerShell51 = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+if (-not (Test-Path -LiteralPath $windowsPowerShell51)) {
+  throw "构建机缺少 Windows PowerShell 5.1，无法验证安装目录脚本的真实兼容性。"
+}
+$validatorProbeId = [guid]::NewGuid().ToString("N")
+$validatorProbePath = Join-Path $env:TEMP "PartyOps-rc6-安装路径-$validatorProbeId\中文 空格"
+$validatorProbeDiagnostic = Join-Path $env:TEMP "PartyOps-rc6-validator-$validatorProbeId.txt"
+try {
+  & $windowsPowerShell51 -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+    -File $installPathValidator -Path $validatorProbePath `
+    -DiagnosticFile $validatorProbeDiagnostic
+  if ($LASTEXITCODE -ne 0) {
+    $validatorProbeMessage = if (Test-Path -LiteralPath $validatorProbeDiagnostic) {
+      Get-Content -Raw -LiteralPath $validatorProbeDiagnostic -Encoding UTF8
+    } else {
+      "未生成诊断文件"
+    }
+    throw "安装目录脚本未通过 Windows PowerShell 5.1 真实执行门禁：$validatorProbeMessage"
+  }
+} finally {
+  Remove-Item -LiteralPath $validatorProbeDiagnostic -Force -ErrorAction SilentlyContinue
 }
 if ($isLegacy) {
   if (-not (Test-Path -LiteralPath $ucrtSource)) {
@@ -333,7 +363,7 @@ try {
 }
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
-$installerBase = if ($isLegacy) { "PartyOps_1.4.3-rc.5_windows7_$targetArchitecture" } else { "PartyOps_1.4.3-rc.5_windows_amd64" }
+$installerBase = if ($isLegacy) { "PartyOps_1.4.3-rc.6_windows7_$targetArchitecture" } else { "PartyOps_1.4.3-rc.6_windows_amd64" }
 $installer = Join-Path $outputRoot "$installerBase.exe"
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"

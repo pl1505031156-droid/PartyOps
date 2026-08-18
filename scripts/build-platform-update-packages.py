@@ -27,15 +27,15 @@ _VALIDATOR_SPEC.loader.exec_module(_VALIDATOR)
 validate_package = _VALIDATOR.validate_package
 
 
-VERSION = "1.4.3-rc.5"
+VERSION = "1.4.3-rc.6"
 PLATFORMS = {
-    ("windows", "amd64"): "PartyOps_1.4.3-rc.5_windows_amd64.exe",
-    ("windows7", "amd64"): "PartyOps_1.4.3-rc.5_windows7_amd64.exe",
-    ("windows7", "x86"): "PartyOps_1.4.3-rc.5_windows7_x86.exe",
-    ("linux-deb", "amd64"): "PartyOps_1.4.3-rc.5_linux_amd64.deb",
-    ("linux-deb", "arm64"): "PartyOps_1.4.3-rc.5_linux_arm64.deb",
-    ("linux-rpm", "amd64"): "PartyOps-1.4.3-0.rc.5.1.x86_64.rpm",
-    ("linux-rpm", "arm64"): "PartyOps-1.4.3-0.rc.5.1.aarch64.rpm",
+    ("windows", "amd64"): "PartyOps_1.4.3-rc.6_windows_amd64.exe",
+    ("windows7", "amd64"): "PartyOps_1.4.3-rc.6_windows7_amd64.exe",
+    ("windows7", "x86"): "PartyOps_1.4.3-rc.6_windows7_x86.exe",
+    ("linux-deb", "amd64"): "PartyOps_1.4.3-rc.6_linux_amd64.deb",
+    ("linux-deb", "arm64"): "PartyOps_1.4.3-rc.6_linux_arm64.deb",
+    ("linux-rpm", "amd64"): "PartyOps-1.4.3-0.rc.6.1.x86_64.rpm",
+    ("linux-rpm", "arm64"): "PartyOps-1.4.3-0.rc.6.1.aarch64.rpm",
 }
 RELEASE_NOTES = [
     "新增系统内检查、后台下载和一键原位升级，失败自动回滚且不丢失业务数据",
@@ -46,6 +46,8 @@ RELEASE_NOTES = [
     "新增麒麟、UOS、deepin 的 DEB 与 openEuler RPM 双架构原生包",
     "安装后自动核对文件、前端、SQLite/FTS5、OCR、智能运行时与健康端点",
     "Windows 自定义固定磁盘目录不再被父目录通用 ACL 误拦截，安装器自动保护最终程序目录并避免旧安装包缓存",
+    "修复 Windows PowerShell 5.1 误按系统代码页读取校验脚本导致的 INSTALL_DIR_CHECK_FAILED，并把完整错误写入安装日志",
+    "Windows 10/11 通用包会阻止在 Win7 上运行；Win7 必须使用独立 Python 3.8 Legacy 安装包，避免 api-ms-win-core-path-l1-1-0.dll 缺失",
 ]
 
 

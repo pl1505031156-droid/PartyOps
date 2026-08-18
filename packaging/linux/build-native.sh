@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FORMAT="${1:-}"
 ARCH="${PARTYOPS_BUILD_ARCH:-}"
-DEB_VERSION="1.4.3~rc.5"
+DEB_VERSION="1.4.3~rc.6"
 RPM_VERSION="1.4.3"
-RPM_RELEASE="0.rc.5.1"
+RPM_RELEASE="0.rc.6.1"
 ARTIFACTS="$ROOT/artifacts"
 
 [[ "$FORMAT" == "deb" || "$FORMAT" == "rpm" ]] || {
@@ -110,7 +110,7 @@ zstd -dc -- "$PORTABLE_COPY" |
     --no-same-owner --no-same-permissions
 cp -a "$BUILD/PartyOps/." "$PKG/opt/partyops/"
 # 兼容由旧版便携构建或不保存 POSIX 权限的工作区提供的载荷。原生包在
-# 写入文件清单之前再次收敛静态资源权限，保证本次 rc.5 即使复用已经通过
+# 写入文件清单之前再次收敛静态资源权限，保证本次 rc.6 即使复用已经通过
 # 功能自检的便携载荷，也不会把网页、文档或桌面配置安装为可执行文件。
 find "$PKG/opt/partyops" -type f \( \
   -name '*.css' -o -name '*.desktop' -o -name '*.html' -o \
@@ -195,7 +195,7 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 echo "PartyOps 业务数据保留在 /var/lib/partyops，卸载不会自动删除。" >&2
 EOF
   chmod 0755 "$PKG/DEBIAN/preinst" "$PKG/DEBIAN/postinst" "$PKG/DEBIAN/prerm" "$PKG/DEBIAN/postrm"
-  OUTPUT="$ARTIFACTS/PartyOps_1.4.3-rc.5_linux_${ARCH}.deb"
+  OUTPUT="$ARTIFACTS/PartyOps_1.4.3-rc.6_linux_${ARCH}.deb"
   if dpkg-deb --help 2>&1 | grep -q -- '--root-owner-group'; then
     dpkg-deb --root-owner-group --build "$PKG" "$OUTPUT"
   else
@@ -313,7 +313,7 @@ EOF
     --define "partyops_release $RPM_RELEASE" \
     --define "with_rollback_cache 1" \
     -bb "$BUILD/rpmbuild/SPECS/partyops.spec"
-  OUTPUT="$ARTIFACTS/PartyOps-1.4.3-0.rc.5.1.${RPM_ARCH}.rpm"
+  OUTPUT="$ARTIFACTS/PartyOps-1.4.3-0.rc.6.1.${RPM_ARCH}.rpm"
   cp "$BUILD/rpmbuild/RPMS/$RPM_ARCH/partyops-$RPM_VERSION-$RPM_RELEASE.$RPM_ARCH.rpm" "$OUTPUT"
 fi
 if [[ "$FORMAT" == deb ]]; then

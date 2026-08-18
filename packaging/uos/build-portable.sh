@@ -320,7 +320,7 @@ USER_DOCUMENTS=(
   "installation-checklist.md"
   "backup-restore.md"
   "operations-runbook.md"
-  "release-notes-v1.4.3-rc.5.md"
+  "release-notes-v1.4.3-rc.6.md"
 )
 for document in "${USER_DOCUMENTS[@]}"; do
   [[ -f "$ROOT/docs/$document" ]] || {

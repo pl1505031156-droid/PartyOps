@@ -1,10 +1,10 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.3-rc.5"
+#define MyAppVersion "1.4.3-rc.6"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
 #ifndef PartyOpsOutputBase
-  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.5_windows_amd64"
+  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.6_windows_amd64"
 #endif
 
 [Setup]
@@ -12,7 +12,7 @@ AppId={{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
-VersionInfoVersion=1.4.3.5
+VersionInfoVersion=1.4.3.6
 AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://www.partyops.cn/
 AppSupportURL=https://www.partyops.cn/guide
@@ -24,6 +24,11 @@ ArchitecturesAllowed=x86compatible
 #else
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#endif
+#ifdef PartyOpsLegacy
+MinVersion=6.1sp1
+#else
+MinVersion=10.0
 #endif
 PrivilegesRequired=admin
 OutputDir={#OutputRoot}
@@ -49,7 +54,12 @@ WizardSmallImageFile={#BuildRoot}\partyops-1024.png
 Name: "chinesesimp"; MessagesFile: "{#SourcePath}\languages\ChineseSimplified.isl"
 
 [Messages]
-BeveledLabel=PartyOps 1.4.3-rc.5 · 未签名候选版
+BeveledLabel=PartyOps 1.4.3-rc.6 · 未签名候选版
+#ifdef PartyOpsLegacy
+WinVersionTooLowError=此 Windows 7 专用安装包要求 Windows 7 SP1 或更高版本。请先安装 SP1 后重试。
+#else
+WinVersionTooLowError=此安装包仅支持 Windows 10/11。Windows 7 SP1 请返回官网下载文件名包含 windows7_amd64 或 windows7_x86 的专用安装包。
+#endif
 WelcomeLabel1=欢迎使用党建智办 PartyOps 安装向导
 WelcomeLabel2=本向导将安装 [name/ver]。%n%n程序安装目录和业务数据目录可以分别选择；升级时会保留原有选择。安装前会自动安全停止旧服务。
 SelectDirDesc=选择 PartyOps 程序安装目录
@@ -563,7 +573,7 @@ begin
   InAppServiceUpdate := CompareText(
     ExpandConstant('{param:INAPPUPDATE|0}'), '1'
   ) = 0;
-  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.5 安装向导';
+  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.6 安装向导';
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     '选择 PartyOps 业务数据目录',
@@ -711,7 +721,8 @@ begin
     4: Result := '[INSTALL_DIR_NOT_PARTYOPS] 所选程序目录不是空目录，也不是可识别的 PartyOps 旧安装目录。';
     6: Result := '[INSTALL_DIR_ACL_UNSAFE] 所选目录仍允许其他普通用户替换服务文件。管理员自己创建的 D/E 盘、中文和空格目录均受支持；请改选由您本人或管理员控制的目录。';
   else
-    Result := '[INSTALL_DIR_CHECK_FAILED] 无法完成程序目录安全检查。安装日志已保留具体原因，请重试或复制日志给技术支持。';
+    Result := '[INSTALL_DIR_CHECK_FAILED] 无法完成程序目录安全检查（退出码：' +
+      IntToStr(ResultCode) + '）。安装日志已保留 PowerShell 的具体原因，请重试或复制日志给技术支持。';
   end;
 end;
 
@@ -727,6 +738,29 @@ begin
     Result := Trim(DiagnosticLines[0]);
   if (Result = '') or (Pos('[INSTALL_DIR_OK]', Result) = 1) then
     Result := InstallPathValidationMessage(ResultCode);
+end;
+
+function RunInstallPathValidator(
+  PowerShell, Parameters: String; var ResultCode: Integer
+): Boolean;
+begin
+  ResultCode := 5;
+  try
+    { 将 PowerShell 的 stdout/stderr 写入安装日志。即使脚本在参数绑定或
+      解析阶段失败、来不及创建诊断文件，技术支持仍能看到真实错误。 }
+    Result := ExecAndLogOutput(
+      PowerShell,
+      Parameters,
+      '',
+      SW_SHOWNORMAL,
+      ewWaitUntilTerminated,
+      ResultCode,
+      nil
+    );
+  except
+    Log('安装目录校验进程启动或日志捕获失败：' + GetExceptionMessage);
+    Result := False;
+  end;
 end;
 
 function ValidateAndSecureInstallDirectory: String;
@@ -750,7 +784,7 @@ begin
     Result := '[INSTALL_DIR_CHECK_FAILED] 系统缺少 Windows PowerShell，无法安全配置自定义程序目录。';
     exit;
   end;
-  if (not Exec(PowerShell, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or
+  if (not RunInstallPathValidator(PowerShell, Parameters, ResultCode)) or
      (ResultCode <> 0) then
   begin
     Result := ReadInstallPathDiagnostic(DiagnosticFile, ResultCode);
@@ -762,7 +796,7 @@ begin
     exit;
   end;
   { 新建目录后再次检查，收窄普通用户在首次检查与目录创建之间替换路径的窗口。 }
-  if (not Exec(PowerShell, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or
+  if (not RunInstallPathValidator(PowerShell, Parameters, ResultCode)) or
      (ResultCode <> 0) then
   begin
     Result := ReadInstallPathDiagnostic(DiagnosticFile, ResultCode);
@@ -823,7 +857,11 @@ begin
     exit;
   end;
   { ACL 收敛后最后回查；普通用户仍可读取并执行，但不能替换服务二进制。 }
-  if (not Exec(PowerShell, Parameters + ' -VerifyTargetAcl', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or
+  if (not RunInstallPathValidator(
+    PowerShell,
+    Parameters + ' -VerifyTargetAcl',
+    ResultCode
+  )) or
      (ResultCode <> 0) then
     Result := ReadInstallPathDiagnostic(DiagnosticFile, ResultCode);
 end;

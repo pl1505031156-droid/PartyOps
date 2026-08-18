@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "release": "1.4.3-rc.5",
+  "release": "1.4.3-rc.6",
   "platform": "windows7-amd64",
   "recorded_at_beijing": "2026-08-17T12:49:30+08:00",
   "decision": "使用仍支持 Python 3.8 且不导入 Win8/10 专属 API 的最后兼容组件线；模型包必须通过 PartyOps Ed25519 签名及逐文件 SHA-256 校验。",

@@ -6,8 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
-$releaseVersion = "1.4.3-rc.5"
-$releaseTag = "v1.4.3-rc.5"
+$releaseVersion = "1.4.3-rc.6"
+$releaseTag = "v1.4.3-rc.6"
 $runtimeRoot = Join-Path $repoRoot "artifacts\windows-runtime"
 $artifactRoot = Join-Path $repoRoot "artifacts"
 $bundleRoot = Join-Path $artifactRoot "PartyOps-$releaseVersion-windows-amd64"
@@ -16,6 +16,37 @@ $sqliteDll = Join-Path $repoRoot "vendor\windows\sqlite-3.53.4\runtime\sqlite3.d
 $expectedSqliteVersion = "3.53.4"
 $expectedSqliteSha256 = "AB57D0437795ECC757CB693F32EA224173FA9856594D95CFA6B5033E645CD1EC"
 $localAiRoot = Join-Path $repoRoot "vendor\windows\local-ai\llama-b10331"
+$installPathValidator = Join-Path $PSScriptRoot "validate-install-path.ps1"
+
+$validatorBytes = [IO.File]::ReadAllBytes($installPathValidator)
+if ($validatorBytes.Length -lt 3 -or
+    $validatorBytes[0] -ne 0xEF -or
+    $validatorBytes[1] -ne 0xBB -or
+    $validatorBytes[2] -ne 0xBF) {
+  throw "安装期 PowerShell 脚本必须使用 UTF-8 BOM；否则 Windows PowerShell 5.1 会在传统 ANSI/GBK 系统上误解码中文并导致安装失败。"
+}
+$windowsPowerShell51 = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+if (-not (Test-Path -LiteralPath $windowsPowerShell51)) {
+  throw "构建机缺少 Windows PowerShell 5.1，无法验证安装目录脚本的真实兼容性。"
+}
+$validatorProbeId = [guid]::NewGuid().ToString("N")
+$validatorProbePath = Join-Path $env:TEMP "PartyOps-rc6-安装路径-$validatorProbeId\中文 空格"
+$validatorProbeDiagnostic = Join-Path $env:TEMP "PartyOps-rc6-validator-$validatorProbeId.txt"
+try {
+  & $windowsPowerShell51 -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+    -File $installPathValidator -Path $validatorProbePath `
+    -DiagnosticFile $validatorProbeDiagnostic
+  if ($LASTEXITCODE -ne 0) {
+    $validatorProbeMessage = if (Test-Path -LiteralPath $validatorProbeDiagnostic) {
+      Get-Content -Raw -LiteralPath $validatorProbeDiagnostic -Encoding UTF8
+    } else {
+      "未生成诊断文件"
+    }
+    throw "安装目录脚本未通过 Windows PowerShell 5.1 真实执行门禁：$validatorProbeMessage"
+  }
+} finally {
+  Remove-Item -LiteralPath $validatorProbeDiagnostic -Force -ErrorAction SilentlyContinue
+}
 
 if (-not $Python) {
   $Python = if ($env:PARTYOPS_PYTHON) {
@@ -139,7 +170,7 @@ if ($LASTEXITCODE -ne 0) {
   throw "Inno Setup 安装器构建失败，退出码：$LASTEXITCODE"
 }
 
-$installer = Join-Path $artifactRoot "PartyOps_1.4.3-rc.5_windows_amd64.exe"
+$installer = Join-Path $artifactRoot "PartyOps_1.4.3-rc.6_windows_amd64.exe"
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"
 }
@@ -166,7 +197,7 @@ $candidate = [ordered]@{
   limitations = @("Windows 10 未实机验证", "未签名候选版")
 }
 [System.IO.File]::WriteAllText(
-  (Join-Path $artifactRoot "PartyOps_1.4.3-rc.5_windows_amd64.candidate.json"),
+  (Join-Path $artifactRoot "PartyOps_1.4.3-rc.6_windows_amd64.candidate.json"),
   ($candidate | ConvertTo-Json -Depth 5),
   (New-Object System.Text.UTF8Encoding($false))
 )
