@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS="$ROOT/artifacts"
+python3 "$ROOT/scripts/verify-version-consistency.py" \
+  --root "$ROOT" --expected "1.4.3-rc.6"
 BUILD_PARENT="${PARTYOPS_BUILD_BASE:-$ROOT/.build-uos}"
 mkdir -p "$BUILD_PARENT"
 BUILD_PARENT="$(cd "$BUILD_PARENT" && pwd -P)"

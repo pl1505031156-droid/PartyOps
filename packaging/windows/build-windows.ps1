@@ -11,6 +11,9 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
 $releaseVersion = "1.4.3-rc.6"
 $releaseTag = "v1.4.3-rc.6"
+& $Python (Join-Path $repoRoot "scripts\verify-version-consistency.py") `
+  --root $repoRoot --expected $releaseVersion
+if ($LASTEXITCODE -ne 0) { throw "版本一致性门禁失败，拒绝冻结 Windows 制品。" }
 $isLegacy = [bool]$LegacyArchitecture
 $targetArchitecture = if ($isLegacy) { $LegacyArchitecture } else { "amd64" }
 $runtimeProfile = if (-not $isLegacy) { "full" } elseif ($targetArchitecture -eq "amd64") { "legacy-full" } else { "legacy-core" }

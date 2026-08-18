@@ -9,6 +9,9 @@ RPM_VERSION="1.4.3"
 RPM_RELEASE="0.rc.6.1"
 ARTIFACTS="$ROOT/artifacts"
 
+python3 "$ROOT/scripts/verify-version-consistency.py" \
+  --root "$ROOT" --expected "1.4.3-rc.6"
+
 [[ "$FORMAT" == "deb" || "$FORMAT" == "rpm" ]] || {
   echo "用法：build-native.sh deb|rpm（通过 PARTYOPS_BUILD_ARCH 指定 amd64/arm64）" >&2
   exit 2
