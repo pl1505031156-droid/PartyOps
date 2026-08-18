@@ -40,6 +40,25 @@ for required in \
   "$RUNTIME/release-files.sha256"; do
   [ -e "$required" ] || fail PACKAGE_FILE_MISSING "缺少安装文件：$required"
 done
+(command -v bash >/dev/null 2>&1 &&
+  bash -n "$RUNTIME/desktop-launcher.sh" "$RUNTIME/start.sh") ||
+  fail PACKAGE_DESKTOP_SCRIPT_INVALID "桌面启动脚本缺失或语法检查失败"
+for desktop_entry in \
+  /usr/share/applications/partyops.desktop \
+  /usr/share/applications/partyops-client.desktop; do
+  [ -r "$desktop_entry" ] ||
+    fail PACKAGE_DESKTOP_ENTRY_MISSING "缺少桌面入口：$desktop_entry"
+  grep -q '^Type=Application$' "$desktop_entry" ||
+    fail PACKAGE_DESKTOP_ENTRY_INVALID "桌面入口格式无效：$desktop_entry"
+  grep -q '^TryExec=/opt/partyops/desktop-launcher.sh$' "$desktop_entry" ||
+    fail PACKAGE_DESKTOP_ENTRY_INVALID "桌面入口未绑定受控启动器：$desktop_entry"
+done
+if command -v desktop-file-validate >/dev/null 2>&1; then
+  desktop-file-validate \
+    /usr/share/applications/partyops.desktop \
+    /usr/share/applications/partyops-client.desktop >/dev/null 2>&1 ||
+    fail PACKAGE_DESKTOP_ENTRY_INVALID "桌面入口未通过系统格式校验"
+fi
 (cd "$RUNTIME" && sha256sum -c release-files.sha256) ||
   fail PACKAGE_FILE_HASH_MISMATCH "安装文件清单校验失败"
 
@@ -106,4 +125,4 @@ systemctl daemon-reload >/dev/null 2>&1 || fail PACKAGE_SYSTEMD_RELOAD_FAILED "s
 systemd-analyze verify /lib/systemd/system/partyops.service \
   /lib/systemd/system/partyops-updater.service >/dev/null 2>&1 ||
   fail PACKAGE_SYSTEMD_INVALID "systemd 服务定义验证失败"
-printf 'PartyOps 安装后自检通过：架构=%s，健康端点与完整运行时正常。\n' "$ACTUAL_ARCH" >&3
+printf 'PartyOps 安装后自检通过：架构=%s，桌面入口、健康端点与完整运行时正常。\n' "$ACTUAL_ARCH" >&3

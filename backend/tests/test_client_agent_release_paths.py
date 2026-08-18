@@ -4,12 +4,49 @@ import hashlib
 import io
 import json
 import logging
+import os
+import stat
 import urllib.error
 from pathlib import Path
 
 import pytest
 
 from app import client_agent
+
+
+def test_browser_launch_url_file_is_private_and_config_scoped(tmp_path: Path) -> None:
+    """Linux 桌面启动器只能接收当前协同配置旁的受保护页面地址。"""
+
+    config_path = tmp_path / "partyops" / "client.json"
+    config_path.parent.mkdir()
+    config_path.write_text("{}", encoding="utf-8")
+    marker = config_path.parent / "client-browser.url"
+    result = client_agent.write_browser_launch_url(
+        config_path,
+        marker,
+        "https://192.168.20.5:18765/device-launch?token=short-lived",
+    )
+    assert result == marker
+    assert marker.read_text(encoding="utf-8") == (
+        "https://192.168.20.5:18765/device-launch?token=short-lived\n"
+    )
+    if os.name != "nt":
+        assert stat.S_IMODE(marker.stat().st_mode) & 0o077 == 0
+
+    with pytest.raises(ValueError, match="当前协同配置目录"):
+        client_agent.write_browser_launch_url(
+            config_path,
+            tmp_path / "outside.url",
+            "https://host.example/",
+        )
+    with pytest.raises(ValueError, match="HTTP/HTTPS"):
+        client_agent.write_browser_launch_url(config_path, marker, "file:///etc/passwd")
+    with pytest.raises(ValueError, match="控制字符"):
+        client_agent.write_browser_launch_url(
+            config_path,
+            marker,
+            "https://host.example/\n--unexpected-option",
+        )
 
 
 class _Response:

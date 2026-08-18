@@ -141,6 +141,40 @@ def _write_private(path: Path, content: str, mode: int = 0o600) -> None:
     temporary.replace(path)
 
 
+def _publish_linux_desktop_tool_url(tool: str, url: str) -> Path | None:
+    """向 Linux 桌面启动器发布只绑定回环地址的本地工具入口。"""
+
+    if not sys.platform.startswith("linux"):
+        return None
+    parsed = urllib.parse.urlparse(url)
+    if (
+        tool not in {"wizard", "shared-root-manager"}
+        or parsed.scheme != "http"
+        or parsed.hostname != "127.0.0.1"
+        or parsed.port is None
+        or parsed.path not in {"", "/"}
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("本地桌面工具只能发布到 127.0.0.1 临时端口")
+    marker = config_root() / f"{tool}.url"
+    _write_private(marker, url + "\n")
+    return marker
+
+
+def _clear_linux_desktop_tool_url(marker: Path | None, url: str) -> None:
+    """仅清理由当前进程写入的地址，避免并发向导互删状态。"""
+
+    if marker is None:
+        return
+    try:
+        if marker.read_text(encoding="utf-8").strip() == url:
+            marker.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def write_mode_config(mode: str, *, config_path: Path | None = None) -> Path:
     if mode not in {"host", "personal", "client"}:
         raise ValueError("运行模式必须是 host、personal 或 client")
@@ -1537,7 +1571,10 @@ def write_personal_config(data_dir: Path, port: int = 18775) -> Path:
     path = config_root() / "personal.env"
     mode_path = config_root() / "mode.json"
     marker_path = resolved_data_dir / ".partyops-data-root.json"
-    transaction_paths = (path, mode_path, marker_path)
+    linux_autostart_path = config_root().parent / "autostart" / "partyops-host.desktop"
+    transaction_paths = (path, mode_path, marker_path) + (
+        (linux_autostart_path,) if sys.platform.startswith("linux") else ()
+    )
     previous_files = {
         candidate: candidate.read_text(encoding="utf-8")
         if candidate.is_file()
@@ -1604,7 +1641,10 @@ def write_personal_config(data_dir: Path, port: int = 18775) -> Path:
         _write_data_root_marker(resolved_data_dir, "personal")
         write_mode_config("personal", config_path=path)
         clear_windows_client_autostart()
-        install_windows_personal_autostart()
+        if sys.platform.startswith("linux"):
+            install_host_autostart(path)
+        else:
+            install_windows_personal_autostart()
         finalize_windows_host_switch(host_deactivated)
     except Exception as original_error:
         rollback_errors: list[str] = []
@@ -2499,7 +2539,11 @@ def install_host_autostart(config_path: Path) -> Path | None:
             "[Desktop Entry]",
             "Type=Application",
             "Name=党建智办主机服务",
-            f"Exec={desktop_quote(start_script)}",
+            (
+                "Exec=env "
+                f"PARTYOPS_ENV_FILE={desktop_quote(config_path.resolve())} "
+                f"{desktop_quote(start_script)}"
+            ),
             "Terminal=false",
             "NoDisplay=true",
             "X-GNOME-Autostart-enabled=true",
@@ -3131,6 +3175,7 @@ def run_shared_root_manager(open_browser: bool = True, action_token: str = "") -
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     url = f"http://127.0.0.1:{server.server_port}"
+    desktop_marker = _publish_linux_desktop_tool_url("shared-root-manager", url)
     if open_browser:
         webbrowser.open(url)
     server.timeout = 0.5
@@ -3141,6 +3186,7 @@ def run_shared_root_manager(open_browser: bool = True, action_token: str = "") -
         return 130
     finally:
         server.server_close()
+        _clear_linux_desktop_tool_url(desktop_marker, url)
     return 0
 
 
@@ -3419,6 +3465,7 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     url = f"http://127.0.0.1:{server.server_port}"
+    desktop_marker = _publish_linux_desktop_tool_url("wizard", url)
     if open_browser:
         webbrowser.open(url)
     server.timeout = 0.5
@@ -3429,6 +3476,7 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
         return 130
     finally:
         server.server_close()
+        _clear_linux_desktop_tool_url(desktop_marker, url)
     return 0
 
 

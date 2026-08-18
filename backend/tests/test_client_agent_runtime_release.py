@@ -576,7 +576,11 @@ def test_agent_once_configuration_errors_and_main_dispatch(
     monkeypatch.setattr(client_agent, "configure_ssl_context", lambda _config: None)
     assert client_agent.run(invalid, once=True) == 2
 
-    monkeypatch.setattr(client_agent, "run", lambda path, once=False, open_browser=None: 7)
+    monkeypatch.setattr(
+        client_agent,
+        "run",
+        lambda path, once=False, open_browser=None, browser_url_file=None: 7,
+    )
     monkeypatch.setattr(
         sys,
         "argv",

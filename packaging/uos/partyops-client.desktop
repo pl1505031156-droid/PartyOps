@@ -2,8 +2,8 @@
 Type=Application
 Name=党建智办本机共享助手
 Comment=选择并发布本机真实文件夹，不向主机上传绝对路径
-Exec=/opt/partyops/partyops-wizard --manage-shared-roots --action-uri "%u"
-TryExec=/opt/partyops/partyops-wizard
+Exec=/opt/partyops/desktop-launcher.sh --manage-shared-roots --action-uri "%u"
+TryExec=/opt/partyops/desktop-launcher.sh
 NoDisplay=true
 Terminal=false
 StartupNotify=true

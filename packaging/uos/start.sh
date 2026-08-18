@@ -2,8 +2,22 @@
 set -euo pipefail
 
 APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-USER_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/partyops/partyops.env"
-CONFIG="${PARTYOPS_ENV_FILE:-$USER_CONFIG}"
+CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}/partyops"
+USER_CONFIG="$CONFIG_ROOT/partyops.env"
+PERSONAL_CONFIG="$CONFIG_ROOT/personal.env"
+MODE_CONFIG="$CONFIG_ROOT/mode.json"
+CONFIG="${PARTYOPS_ENV_FILE:-}"
+if [[ -z "$CONFIG" ]]; then
+  MODE=""
+  if [[ -r "$MODE_CONFIG" ]]; then
+    MODE="$(sed -n 's/.*"mode"[[:space:]]*:[[:space:]]*"\(personal\|host\)".*/\1/p' "$MODE_CONFIG" | head -n 1)"
+  fi
+  if [[ "$MODE" == "personal" && -f "$PERSONAL_CONFIG" ]]; then
+    CONFIG="$PERSONAL_CONFIG"
+  else
+    CONFIG="$USER_CONFIG"
+  fi
+fi
 
 migrate_legacy_host_config() {
   local config="$1" configured_port agent_port temporary changed

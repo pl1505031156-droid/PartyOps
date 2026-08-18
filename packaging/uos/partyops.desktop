@@ -15,8 +15,8 @@ Actions=Configure;ManageFolders;
 
 [Desktop Action Configure]
 Name=重新配置主机或协同终端
-Exec=/opt/partyops/partyops-wizard
+Exec=/opt/partyops/desktop-launcher.sh --configure
 
 [Desktop Action ManageFolders]
 Name=管理本机共享文件夹
-Exec=/opt/partyops/partyops-wizard --manage-shared-roots
+Exec=/opt/partyops/desktop-launcher.sh --manage-shared-roots

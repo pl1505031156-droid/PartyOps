@@ -389,6 +389,46 @@ def create_browser_launch_url(
     return host_url.rstrip("/")
 
 
+def write_browser_launch_url(
+    config_path: Path,
+    destination: Path,
+    url: str,
+) -> Path:
+    """把协同页面地址安全交给 Linux 桌面启动器，避免无界面的静默失败。"""
+
+    expected = config_path.parent / "client-browser.url"
+    if os.path.abspath(destination) != os.path.abspath(expected):
+        raise ValueError("浏览器地址文件必须位于当前协同配置目录")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("协同页面地址不是有效的 HTTP/HTTPS 地址")
+    if any(character in url for character in ("\r", "\n", "\x00")):
+        raise ValueError("协同页面地址包含非法控制字符")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.is_symlink():
+        raise ValueError("浏览器地址文件不能是符号链接")
+    temporary = destination.with_name(
+        f".{destination.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
+    )
+    descriptor = os.open(
+        temporary,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(url + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, destination)
+        if os.name != "nt":
+            destination.chmod(0o600)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    return destination
+
+
 def normalize_enrollment_code(value: str) -> str:
     """兼容国产浏览器剪贴板，并在请求前识别被截断或污染的入网码。"""
 
@@ -2110,6 +2150,7 @@ def run(
     config_path: Path,
     once: bool = False,
     open_browser: bool | None = None,
+    browser_url_file: Path | None = None,
 ) -> int:
     if not config_path.exists():
         print(f"配置不存在：{config_path}", file=sys.stderr)
@@ -2128,8 +2169,16 @@ def run(
         else open_browser
     )
     agent_host_url = str(config.get("agent_url") or host_url).rstrip("/")
-    if should_open_browser:
-        webbrowser.open(create_browser_launch_url(host_url, agent_host_url, token))
+    if should_open_browser or browser_url_file is not None:
+        browser_url = create_browser_launch_url(host_url, agent_host_url, token)
+        if browser_url_file is not None:
+            try:
+                write_browser_launch_url(config_path, browser_url_file, browser_url)
+            except (OSError, ValueError) as exc:
+                print(f"无法准备协同页面：{exc}", file=sys.stderr)
+                return 2
+        if should_open_browser:
+            webbrowser.open(browser_url)
     backup_interval = int(config.get("interval_seconds", 600))
     notification_interval = max(
         15,
@@ -2260,9 +2309,19 @@ def main() -> None:
         action="store_true",
         help="后台自启动时不打开浏览器",
     )
+    parser.add_argument(
+        "--browser-url-file",
+        type=Path,
+        help="由桌面启动器读取的受保护页面地址文件",
+    )
     args = parser.parse_args()
     raise SystemExit(
-        run(args.config, args.once, open_browser=False if args.no_open_browser else None)
+        run(
+            args.config,
+            args.once,
+            open_browser=False if args.no_open_browser else None,
+            browser_url_file=args.browser_url_file,
+        )
     )
 
 

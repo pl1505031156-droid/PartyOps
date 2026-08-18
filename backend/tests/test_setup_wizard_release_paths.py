@@ -21,6 +21,42 @@ def _local_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     return root
 
 
+def test_linux_desktop_tool_marker_and_personal_autostart_are_deterministic(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """首次配置与个人模式重登都必须把真实入口交给桌面启动器。"""
+
+    root = _local_config(monkeypatch, tmp_path)
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "start.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    monkeypatch.setattr(setup_wizard.sys, "platform", "linux")
+    monkeypatch.setattr(setup_wizard, "runtime_root", lambda: runtime)
+
+    url = "http://127.0.0.1:18791"
+    marker = setup_wizard._publish_linux_desktop_tool_url("wizard", url)
+    assert marker == root / "wizard.url"
+    assert marker.read_text(encoding="utf-8") == url + "\n"
+    setup_wizard._clear_linux_desktop_tool_url(marker, "http://127.0.0.1:18792")
+    assert marker.exists()
+    setup_wizard._clear_linux_desktop_tool_url(marker, url)
+    assert not marker.exists()
+    with pytest.raises(ValueError, match="127.0.0.1"):
+        setup_wizard._publish_linux_desktop_tool_url(
+            "wizard", "http://192.168.8.20:18791"
+        )
+
+    config_path = root / "personal.env"
+    config_path.write_text("PARTYOPS_MODE=personal\n", encoding="utf-8")
+    autostart = setup_wizard.install_host_autostart(config_path)
+    assert autostart is not None
+    content = autostart.read_text(encoding="utf-8")
+    assert "Exec=env PARTYOPS_ENV_FILE=" in content
+    assert str(config_path.resolve()) in content
+    assert str((runtime / "start.sh").resolve()).replace("\\", "\\\\") in content
+
+
 def test_host_and_client_config_are_validated_and_written_atomically(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

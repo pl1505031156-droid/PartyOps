@@ -190,7 +190,7 @@ Section: office
 Priority: optional
 Architecture: $ARCH
 Maintainer: PartyOps Local
-Depends: libc6 (>= 2.17), systemd, util-linux, coreutils, iproute2, curl, xdg-utils, policykit-1
+Depends: libc6 (>= 2.17), bash, systemd, util-linux, coreutils, iproute2, curl, xdg-utils, policykit-1
 Description: 党建智办 PartyOps 局域网协同系统
  原生离线主机、协同、中文 OCR、语义重排和本地 LLM。
 EOF
@@ -255,7 +255,7 @@ Release: %{partyops_release}
 Summary: 党建智办 PartyOps 局域网协同系统
 License: GPL-3.0-or-later AND AGPL-3.0-only
 BuildArch: $RPM_ARCH
-Requires: glibc >= 2.17, systemd, util-linux, coreutils, iproute, curl, xdg-utils, polkit
+Requires: glibc >= 2.17, bash, systemd, util-linux, coreutils, iproute, curl, xdg-utils, polkit
 Source0: partyops-payload.tar.gz
 
 %description

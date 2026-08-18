@@ -987,6 +987,38 @@ def test_desktop_launcher_repairs_ca_trust_once_for_existing_configs() -> None:
     assert "certutil -A" in helper
 
 
+def test_linux_desktop_launcher_covers_every_configured_mode_and_visible_failure() -> None:
+    """安装成功后的四条桌面入口都必须等待就绪并能显示中文失败原因。"""
+
+    project_root = Path(__file__).resolve().parents[2]
+    launcher = (project_root / "packaging/uos/desktop-launcher.sh").read_text(
+        encoding="utf-8"
+    )
+    start = (project_root / "packaging/uos/start.sh").read_text(encoding="utf-8")
+    selftest = (
+        project_root / "packaging/linux/post-install-selftest.sh"
+    ).read_text(encoding="utf-8")
+    main_entry = (project_root / "packaging/uos/partyops.desktop").read_text(
+        encoding="utf-8"
+    )
+    client_entry = (
+        project_root / "packaging/uos/partyops-client.desktop"
+    ).read_text(encoding="utf-8")
+
+    assert '"\\(personal\\|host\\|client\\)"' in launcher
+    assert "launch_browser_tool" in launcher
+    assert "wait_and_open_local_host" in launcher
+    assert '--browser-url-file "$CLIENT_BROWSER_URL"' in launcher
+    assert "show_launch_failure" in launcher
+    assert 'PARTYOPS_ENV_FILE="$HOST_CONFIG"' in launcher
+    assert "PERSONAL_CONFIG" in start and "MODE_CONFIG" in start
+    assert "PARTYOPS_ENV_FILE" in start
+    assert "bash -n" in selftest
+    assert "PACKAGE_DESKTOP_ENTRY_INVALID" in selftest
+    assert "Exec=/opt/partyops/desktop-launcher.sh" in main_entry
+    assert "--manage-shared-roots" in client_entry
+
+
 def test_setup_wizard_requires_first_device_heartbeat_before_success(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
