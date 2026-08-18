@@ -2,7 +2,7 @@
 Description=PartyOps 主机签名更新与回滚服务
 After=partyops.service
 StartLimitIntervalSec=300
-StartLimitBurst=10
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -13,8 +13,8 @@ Environment=PARTYOPS_ENVIRONMENT=production
 Environment=PARTYOPS_DATA_DIR=/var/lib/partyops
 Environment=PARTYOPS_STRICT_SQLITE=true
 ExecStart=/opt/partyops/partyops-updater --supervisor
-Restart=always
-RestartSec=5
+Restart=on-failure
+RestartSec=10
 TimeoutStartSec=60
 TimeoutStopSec=30
 UMask=0027

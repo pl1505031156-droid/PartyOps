@@ -109,17 +109,25 @@ zstd -dc -- "$PORTABLE_COPY" |
   tar --extract --file - --directory "$BUILD" \
     --no-same-owner --no-same-permissions
 cp -a "$BUILD/PartyOps/." "$PKG/opt/partyops/"
-# 兼容由旧版便携构建或不保存 POSIX 权限的工作区提供的载荷。原生包在
-# 写入文件清单之前再次收敛静态资源权限，保证本次 rc.6 即使复用已经通过
-# 功能自检的便携载荷，也不会把网页、文档或桌面配置安装为可执行文件。
-find "$PKG/opt/partyops" -type f \( \
-  -name '*.css' -o -name '*.desktop' -o -name '*.html' -o \
-  -name '*.ico' -o -name '*.jpeg' -o -name '*.jpg' -o \
-  -name '*.js' -o -name '*.json' -o -name '*.map' -o \
-  -name '*.md' -o -name '*.pem' -o -name '*.png' -o \
-  -name '*.svg' -o -name '*.txt' -o -name '*.woff' -o \
-  -name '*.woff2' -o -name '*.xml' \
-\) -exec chmod 0644 {} +
+# 原生包对旧便携载荷再执行一次默认拒绝权限收敛。只有固定应用入口可以
+# 执行；共享库、WASM、图片和许可证必须保持 0644，避免麒麟安全中心把
+# libgcc_s.so.1 等运行库误判为自启动程序。
+find "$PKG/opt/partyops" -type f -exec chmod 0644 {} +
+chmod 0755 \
+  "$PKG/opt/partyops/partyops" \
+  "$PKG/opt/partyops/partyops-client" \
+  "$PKG/opt/partyops/partyops-wizard" \
+  "$PKG/opt/partyops/partyops-updater" \
+  "$PKG/opt/partyops/start.sh" \
+  "$PKG/opt/partyops/stop.sh" \
+  "$PKG/opt/partyops/desktop-launcher.sh" \
+  "$PKG/opt/partyops/open-local-file.sh" \
+  "$PKG/opt/partyops/install-desktop-shortcut.sh" \
+  "$PKG/opt/partyops/install-internal-ca.sh" \
+  "$PKG/opt/partyops/ocr/bin/tesseract"
+if [[ -f "$PKG/opt/partyops/llama-server" ]]; then
+  chmod 0755 "$PKG/opt/partyops/llama-server"
+fi
 EXPECTED_PAYLOAD_PATTERN='x86-64'
 [[ "$ARCH" == arm64 ]] && EXPECTED_PAYLOAD_PATTERN='ARM aarch64'
 file "$PKG/opt/partyops/partyops" | grep -q "$EXPECTED_PAYLOAD_PATTERN" || {
@@ -148,6 +156,28 @@ chmod 0644 \
   "$PKG/usr/share/polkit-1/actions/cn.partyops.update.policy"
 cp "$ROOT/packaging/linux/post-install-selftest.sh" "$PKG/opt/partyops/"
 chmod 0755 "$PKG/opt/partyops/post-install-selftest.sh"
+while IFS= read -r -d '' executable; do
+  case "$executable" in
+    "$PKG/opt/partyops/partyops"|"$PKG/opt/partyops/partyops-client"|\
+    "$PKG/opt/partyops/partyops-wizard"|"$PKG/opt/partyops/partyops-updater"|\
+    "$PKG/opt/partyops/start.sh"|"$PKG/opt/partyops/stop.sh"|\
+    "$PKG/opt/partyops/desktop-launcher.sh"|\
+    "$PKG/opt/partyops/open-local-file.sh"|\
+    "$PKG/opt/partyops/install-desktop-shortcut.sh"|\
+    "$PKG/opt/partyops/install-internal-ca.sh"|\
+    "$PKG/opt/partyops/ocr/bin/tesseract"|\
+    "$PKG/opt/partyops/llama-server"|\
+    "$PKG/opt/partyops/post-install-selftest.sh") ;;
+    *)
+      echo "原生包包含未授权的可执行文件：$executable" >&2
+      exit 2
+      ;;
+  esac
+done < <(find "$PKG/opt/partyops" -type f -perm /111 -print0)
+if find "$PKG/opt/partyops" -type f -name '*.so*' -perm /111 -print -quit | grep -q .; then
+  echo "原生包共享库被错误标记为可执行文件，拒绝封装。" >&2
+  exit 2
+fi
 (cd "$PKG/opt/partyops" && find . -type f ! -name release-files.sha256 -print0 | \
   sort -z | xargs -0 sha256sum >release-files.sha256)
 

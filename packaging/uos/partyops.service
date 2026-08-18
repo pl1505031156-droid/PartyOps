@@ -3,7 +3,7 @@ Description=PartyOps 基层党建工作闭环协同系统
 Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=300
-StartLimitBurst=10
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -15,8 +15,8 @@ Environment=PARTYOPS_DATA_DIR=/var/lib/partyops
 Environment=PARTYOPS_STRICT_SQLITE=true
 Environment=PARTYOPS_SEED_DEMO=false
 ExecStart=/opt/partyops/partyops
-Restart=always
-RestartSec=5
+Restart=on-failure
+RestartSec=10
 TimeoutStartSec=60
 TimeoutStopSec=30
 UMask=0027

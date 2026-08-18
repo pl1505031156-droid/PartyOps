@@ -403,18 +403,12 @@ grep -qx chi_sim <<<"$OCR_LANGS" && grep -qx eng <<<"$OCR_LANGS" || {
   echo "OCR 中英文离线语言数据未完整加载。" >&2
   exit 2
 }
-# WSL DrvFS 会把源码树中的普通文件统一显示为可执行。运行时已经在真正
-# 支持 POSIX 权限的临时目录中生成，因此在封装前按“静态数据后缀”收敛
-# 权限；随后再只为已知入口恢复执行位，避免 HTML、清单或桌面文件被误
-# 标为程序，也不误伤 PyInstaller/AI/OCR 的原生二进制。
-find "$RUNTIME" -type f \( \
-  -name '*.css' -o -name '*.desktop' -o -name '*.html' -o \
-  -name '*.ico' -o -name '*.jpeg' -o -name '*.jpg' -o \
-  -name '*.js' -o -name '*.json' -o -name '*.map' -o \
-  -name '*.md' -o -name '*.pem' -o -name '*.png' -o \
-  -name '*.svg' -o -name '*.txt' -o -name '*.woff' -o \
-  -name '*.woff2' -o -name '*.xml' \
-\) -exec chmod 0644 {} +
+# WSL DrvFS 和部分 PyInstaller wheel 会把共享库、前端图片、WASM 乃至
+# 许可证统一标成可执行文件。麒麟安全中心会因此把 libgcc_s.so.1 当成
+# “启动程序”反复拦截。权限安全模型改成默认拒绝：先清除所有普通文件
+# 的执行位，再只为经过审计的 PartyOps 入口恢复执行位。动态链接器加载
+# .so 只需要读取权限，不需要文件本身具有执行位。
+find "$RUNTIME" -type f -exec chmod 0644 {} +
 chmod 0755 "$RUNTIME/partyops" "$RUNTIME/partyops-client" "$RUNTIME/partyops-wizard" \
   "$RUNTIME/partyops-updater" \
   "$RUNTIME/start.sh" "$RUNTIME/stop.sh" "$RUNTIME/desktop-launcher.sh" \
@@ -423,6 +417,28 @@ chmod 0755 "$RUNTIME/partyops" "$RUNTIME/partyops-client" "$RUNTIME/partyops-wiz
   "$OCR_ROOT/bin/tesseract"
 if [[ "$LOCAL_LLM_AVAILABLE" == "1" ]]; then
   chmod 0755 "$RUNTIME/llama-server"
+fi
+
+# 封包前再次执行白名单门禁，防止后续新增依赖把任意共享库或数据文件
+# 重新带上执行位，避免同类问题只更换一个库名后再次出现。
+while IFS= read -r -d '' executable; do
+  case "$executable" in
+    "$RUNTIME/partyops"|"$RUNTIME/partyops-client"|\
+    "$RUNTIME/partyops-wizard"|"$RUNTIME/partyops-updater"|\
+    "$RUNTIME/start.sh"|"$RUNTIME/stop.sh"|\
+    "$RUNTIME/desktop-launcher.sh"|"$RUNTIME/open-local-file.sh"|\
+    "$RUNTIME/install-desktop-shortcut.sh"|\
+    "$RUNTIME/install-internal-ca.sh"|"$OCR_ROOT/bin/tesseract"|\
+    "$RUNTIME/llama-server") ;;
+    *)
+      echo "运行时包含未授权的可执行文件：$executable" >&2
+      exit 2
+      ;;
+  esac
+done < <(find "$RUNTIME" -type f -perm /111 -print0)
+if find "$RUNTIME" -type f -name '*.so*' -perm /111 -print -quit | grep -q .; then
+  echo "共享库被错误标记为可执行文件，拒绝生成 Linux 制品。" >&2
+  exit 2
 fi
 
 # 回归解压后的单文件入口，特别防止向导程序在构建时

@@ -913,26 +913,35 @@ def test_linux_native_packages_preserve_frozen_runtime_and_verify_identity() -> 
     assert "dpkg-deb --field" in script
     assert "rpm -qp --queryformat" in script
     assert "元数据与冻结版本/架构不一致" in script
-    assert 'find "$PKG/opt/partyops" -type f' in script
-    assert "-name '*.desktop'" in script
-    assert "-name '*.html'" in script
-    assert ") -exec chmod 0644 {} +" in script
+    assert 'find "$PKG/opt/partyops" -type f -exec chmod 0644 {} +' in script
+    assert 'find "$PKG/opt/partyops" -type f -perm /111 -print0' in script
+    assert "原生包共享库被错误标记为可执行文件" in script
 
 
-def test_portable_builder_normalizes_static_resource_modes() -> None:
-    """DrvFS 静态资源不得以可执行权限进入便携或原生安装包。"""
+def test_portable_builder_uses_an_executable_allowlist() -> None:
+    """共享库和静态资源不得以可执行权限进入便携或原生安装包。"""
 
     script = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
         encoding="utf-8"
     )
 
-    assert 'find "$RUNTIME" -type f' in script
-    assert "-name '*.desktop'" in script
-    assert "-name '*.html'" in script
-    assert ") -exec chmod 0644 {} +" in script
-    assert script.index('find "$RUNTIME" -type f') < script.index(
+    assert 'find "$RUNTIME" -type f -exec chmod 0644 {} +' in script
+    assert 'find "$RUNTIME" -type f -perm /111 -print0' in script
+    assert "共享库被错误标记为可执行文件" in script
+    assert script.index('find "$RUNTIME" -type f -exec chmod 0644') < script.index(
         'chmod 0755 "$RUNTIME/partyops"'
     )
+
+
+def test_linux_services_cap_restart_storms() -> None:
+    """运行库被系统策略拦截时不得无限重启并持续弹出安全中心提示。"""
+
+    for name in ("partyops.service", "partyops-updater.service"):
+        unit = (ROOT / "packaging" / "uos" / name).read_text(encoding="utf-8")
+        assert "StartLimitBurst=3" in unit
+        assert "Restart=on-failure" in unit
+        assert "RestartSec=10" in unit
+        assert "Restart=always" not in unit
 
 
 def test_linux_ocr_uses_locked_glibc217_runtime_not_build_host() -> None:
