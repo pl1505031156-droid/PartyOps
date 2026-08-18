@@ -28,7 +28,7 @@ sha256sum PartyOps_1.4.3-rc.6_linux_amd64.deb
 dpkg-deb --info PartyOps_1.4.3-rc.6_linux_amd64.deb
 ```
 
-哈希不一致时停止安装。当前 `rc.5` Windows 文件未做 Authenticode 正式签名，SmartScreen 显示未知发布者属于已知限制，不应误称为正式签名版本。
+哈希不一致时停止安装。当前 `rc.6` Windows 文件未做 Authenticode 正式签名，SmartScreen 显示未知发布者属于已知限制，不应误称为正式签名版本。
 
 ### 2.2 Windows 10/11 x64
 

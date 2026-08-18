@@ -48,6 +48,8 @@ RELEASE_NOTES = [
     "Windows 自定义固定磁盘目录不再被父目录通用 ACL 误拦截，安装器自动保护最终程序目录并避免旧安装包缓存",
     "修复 Windows PowerShell 5.1 误按系统代码页读取校验脚本导致的 INSTALL_DIR_CHECK_FAILED，并把完整错误写入安装日志",
     "Windows 10/11 通用包会阻止在 Win7 上运行；Win7 必须使用独立 Python 3.8 Legacy 安装包，避免 api-ms-win-core-path-l1-1-0.dll 缺失",
+    "修复麒麟 ARM64 安全中心反复拦截 libgcc_s.so.1：共享库不可执行，服务连续失败三次后停止重试并保留日志",
+    "修复国产 Linux 和 Windows 安装成功后桌面入口静默失败：等待页面真实就绪，浏览器关联失败时显示中文诊断",
 ]
 
 
