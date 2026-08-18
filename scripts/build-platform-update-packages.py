@@ -50,6 +50,7 @@ RELEASE_NOTES = [
     "Windows 10/11 通用包会阻止在 Win7 上运行；Win7 必须使用独立 Python 3.8 Legacy 安装包，避免 api-ms-win-core-path-l1-1-0.dll 缺失",
     "修复麒麟 ARM64 安全中心反复拦截 libgcc_s.so.1：共享库不可执行，服务连续失败三次后停止重试并保留日志",
     "修复国产 Linux 和 Windows 安装成功后桌面入口静默失败：等待页面真实就绪，浏览器关联失败时显示中文诊断",
+    "补齐 Windows 冻结向导的 backports.tarfile 运行依赖，最终 EXE 无法真实启动时阻断安装器生成",
 ]
 
 

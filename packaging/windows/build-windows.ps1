@@ -240,7 +240,12 @@ foreach ($entry in $entries) {
     # SQLite DLL；pysqlite3 仅用于 Linux 静态运行时，不能作为缺失隐藏模块。
     "sqlalchemy.dialects.sqlite.pysqlite",
     "uvicorn.logging", "uvicorn.loops.asyncio", "uvicorn.protocols.http.h11_impl",
-    "cryptography", "cryptography.fernet", "httpx", "win32timezone"
+    "cryptography", "cryptography.fernet", "httpx", "win32timezone",
+    # setuptools 的 pkg_resources 运行钩子会经 jaraco.context 在 Python
+    # 3.11 及以下导入 vendored backports.tarfile。部分入口的静态图较小，
+    # PyInstaller 不会自动发现该分支，导致安装成功后向导/启动器立即退出。
+    # 显式触发官方 hook-backports 别名收集，并由下方最终 EXE 自检把关。
+    "backports", "backports.tarfile"
   )
   if ($runtimeProfile -ne "legacy-core") {
     $hiddenModules += @("numpy", "onnxruntime", "tokenizers")
