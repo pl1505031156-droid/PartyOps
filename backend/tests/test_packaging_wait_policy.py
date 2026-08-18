@@ -385,6 +385,8 @@ def test_legacy_host_config_is_migrated_to_tls_agent_port() -> None:
         assert "PARTYOPS_AGENT_PORT" in script
         assert "PARTYOPS_TLS_ENABLED=true" in script
         assert "旧版主机配置已迁移" in script
+    assert 'if [[ "$CONFIG" != "$PERSONAL_CONFIG" ]]; then' in start
+    assert "个人模式刻意使用本机 HTTP" in start
     assert "/home/*/.config/partyops/partyops.env" not in deb
     assert "/data/home/*/.config/partyops/partyops.env" not in deb
     assert "! -perm /022" in deb

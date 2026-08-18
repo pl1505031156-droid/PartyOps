@@ -61,7 +61,11 @@ fi
 if [[ ! -f "$CONFIG" ]]; then
   exec "$APP_ROOT/partyops-wizard"
 fi
-migrate_legacy_host_config "$CONFIG"
+# 旧版迁移只属于主机配置。个人模式刻意使用本机 HTTP；若把 personal.env
+# 强制改成 HTTPS，首次重启会在尚未生成主机证书时表现为“双击无反应”。
+if [[ "$CONFIG" != "$PERSONAL_CONFIG" ]]; then
+  migrate_legacy_host_config "$CONFIG"
+fi
 if [[ -f "$CONFIG" ]]; then
   set -a
   source "$CONFIG"
