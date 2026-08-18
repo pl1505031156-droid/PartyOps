@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:70630c3e-5372-473e-a220-163b0b010843",
+  "serialNumber": "urn:uuid:24f81c8b-3973-4a7a-b8eb-0bb4ad0c6b27",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-18T03:25:09.616Z",
+    "timestamp": "2026-08-18T07:54:15.216Z",
     "lifecycles": [
       {
         "phase": "build"
@@ -23,85 +23,12 @@
     "component": {
       "type": "library",
       "name": "website",
-      "version": "1.4.3-rc.5",
-      "purl": "pkg:npm/website@1.4.3-rc.5",
-      "bom-ref": "pkg:npm/website@1.4.3-rc.5"
+      "version": "1.4.3-rc.6",
+      "purl": "pkg:npm/website@1.4.3-rc.6",
+      "bom-ref": "pkg:npm/website@1.4.3-rc.6"
     }
   },
   "components": [
-    {
-      "type": "library",
-      "name": "plugin-react",
-      "version": "5.0.4",
-      "purl": "pkg:npm/%40vitejs/plugin-react@5.0.4",
-      "bom-ref": "pkg:npm/%40vitejs/plugin-react@5.0.4",
-      "group": "@vitejs",
-      "description": "The default Vite plugin for React projects",
-      "authors": [
-        {
-          "name": "Evan You"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-5.0.4.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "2dad0a0f4bc691591293a2bea6258329153283c465e62008291307d2f309234120e3b6ead5e3b19a839b01a406dfb58c5bd312ca4ec2b3c1085b0242d4fb7328"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/vitejs/vite-plugin-react.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/vitejs/vite-plugin-react/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "pages-blob",
-      "version": "0.0.16",
-      "purl": "pkg:npm/%40edgeone/pages-blob@0.0.16",
-      "bom-ref": "pkg:npm/%40edgeone/pages-blob@0.0.16",
-      "group": "@edgeone",
-      "description": "Blob storage SDK for EdgeOne Pages functions",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@edgeone/pages-blob/-/pages-blob-0.0.16.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "424dd21d34af085edac252ac1b9b78e45a251ddf24547e38c8929e5ccdb5a8dabc035235993194b9059afa3e2c870b81760413bd11d31416d0c40bcaaa2476d8"
-            }
-          ]
-        }
-      ]
-    },
     {
       "type": "library",
       "name": "react",
@@ -144,6 +71,79 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/phosphor-icons/react/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "pages-blob",
+      "version": "0.0.16",
+      "purl": "pkg:npm/%40edgeone/pages-blob@0.0.16",
+      "bom-ref": "pkg:npm/%40edgeone/pages-blob@0.0.16",
+      "group": "@edgeone",
+      "description": "Blob storage SDK for EdgeOne Pages functions",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@edgeone/pages-blob/-/pages-blob-0.0.16.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "424dd21d34af085edac252ac1b9b78e45a251ddf24547e38c8929e5ccdb5a8dabc035235993194b9059afa3e2c870b81760413bd11d31416d0c40bcaaa2476d8"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "plugin-react",
+      "version": "5.0.4",
+      "purl": "pkg:npm/%40vitejs/plugin-react@5.0.4",
+      "bom-ref": "pkg:npm/%40vitejs/plugin-react@5.0.4",
+      "group": "@vitejs",
+      "description": "The default Vite plugin for React projects",
+      "authors": [
+        {
+          "name": "Evan You"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-5.0.4.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "2dad0a0f4bc691591293a2bea6258329153283c465e62008291307d2f309234120e3b6ead5e3b19a839b01a406dfb58c5bd312ca4ec2b3c1085b0242d4fb7328"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vitejs/vite-plugin-react.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/vitejs/vite-plugin-react/issues"
         }
       ]
     },
@@ -237,6 +237,45 @@
     },
     {
       "type": "library",
+      "name": "react",
+      "version": "19.2.0",
+      "purl": "pkg:npm/react@19.2.0",
+      "bom-ref": "pkg:npm/react@19.2.0",
+      "description": "React is a JavaScript library for building user interfaces.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/react/-/react-19.2.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "b666d683a5b7d6d40b781e5c74804e89c2432514762b35ec57bb922bd88d7cb590e5b2197f1b8f107a7b33cc221f21e79f40c3d62ef0dd99a29f416d92bc2809"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://react.dev/"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/facebook/react.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/facebook/react/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "react-dom",
       "version": "19.2.0",
       "purl": "pkg:npm/react-dom@19.2.0",
@@ -276,11 +315,16 @@
     },
     {
       "type": "library",
-      "name": "react",
-      "version": "19.2.0",
-      "purl": "pkg:npm/react@19.2.0",
-      "bom-ref": "pkg:npm/react@19.2.0",
-      "description": "React is a JavaScript library for building user interfaces.",
+      "name": "vite",
+      "version": "6.4.3",
+      "purl": "pkg:npm/vite@6.4.3",
+      "bom-ref": "pkg:npm/vite@6.4.3",
+      "description": "Native-ESM powered web dev build tool",
+      "authors": [
+        {
+          "name": "Evan You"
+        }
+      ],
       "licenses": [
         {
           "license": {
@@ -291,25 +335,25 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/react/-/react-19.2.0.tgz",
+          "url": "https://registry.npmjs.org/vite/-/vite-6.4.3.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "b666d683a5b7d6d40b781e5c74804e89c2432514762b35ec57bb922bd88d7cb590e5b2197f1b8f107a7b33cc221f21e79f40c3d62ef0dd99a29f416d92bc2809"
+              "content": "3532a57108e500aecc950a326fa2e06aa1dcf2cb28fe9572509616330b378e0db5b93270fcb75da8814f70fa8fe8fce981b21c672288f39b051381c1ad00c0f0"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://react.dev/"
+          "url": "https://vite.dev"
         },
         {
           "type": "vcs",
-          "url": "git+https://github.com/facebook/react.git"
+          "url": "git+https://github.com/vitejs/vite.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/facebook/react/issues"
+          "url": "https://github.com/vitejs/vite/issues"
         }
       ]
     },
@@ -360,14 +404,15 @@
     },
     {
       "type": "library",
-      "name": "vite",
-      "version": "6.4.3",
-      "purl": "pkg:npm/vite@6.4.3",
-      "bom-ref": "pkg:npm/vite@6.4.3",
-      "description": "Native-ESM powered web dev build tool",
+      "name": "plugin-transform-react-jsx-self",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/plugin-transform-react-jsx-self@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/plugin-transform-react-jsx-self@7.29.7",
+      "group": "@babel",
+      "description": "Add a __self prop to all JSX Elements",
       "authors": [
         {
-          "name": "Evan You"
+          "name": "The Babel Team"
         }
       ],
       "licenses": [
@@ -380,25 +425,25 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/vite/-/vite-6.4.3.tgz",
+          "url": "https://registry.npmjs.org/@babel/plugin-transform-react-jsx-self/-/plugin-transform-react-jsx-self-7.29.7.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "3532a57108e500aecc950a326fa2e06aa1dcf2cb28fe9572509616330b378e0db5b93270fcb75da8814f70fa8fe8fce981b21c672288f39b051381c1ad00c0f0"
+              "content": "4cbd2131cf71cf2f3a543df59d48b0cdde68b5101cc843dcb1e802c6894ed0fbdc5ee1f5bf490409efd42339d816286992f539c20fe3938bf44d31057e6e777f"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://vite.dev"
+          "url": "https://babel.dev/docs/en/next/babel-plugin-transform-react-jsx-self"
         },
         {
           "type": "vcs",
-          "url": "git+https://github.com/vitejs/vite.git"
+          "url": "git+https://github.com/babel/babel.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/vitejs/vite/issues"
+          "url": "https://github.com/babel/babel/issues"
         }
       ]
     },
@@ -483,51 +528,6 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/rolldown/rolldown/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "plugin-transform-react-jsx-self",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/plugin-transform-react-jsx-self@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/plugin-transform-react-jsx-self@7.29.7",
-      "group": "@babel",
-      "description": "Add a __self prop to all JSX Elements",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/plugin-transform-react-jsx-self/-/plugin-transform-react-jsx-self-7.29.7.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "4cbd2131cf71cf2f3a543df59d48b0cdde68b5101cc843dcb1e802c6894ed0fbdc5ee1f5bf490409efd42339d816286992f539c20fe3938bf44d31057e6e777f"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://babel.dev/docs/en/next/babel-plugin-transform-react-jsx-self"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues"
         }
       ]
     },
@@ -781,6 +781,284 @@
     },
     {
       "type": "library",
+      "name": "esbuild",
+      "version": "0.25.12",
+      "purl": "pkg:npm/esbuild@0.25.12",
+      "bom-ref": "pkg:npm/esbuild@0.25.12",
+      "description": "An extremely fast JavaScript and CSS bundler and minifier.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/esbuild/-/esbuild-0.25.12.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "6db3c1618aed65b92de8eb3a1624cb093171beae2db7724a6a5975bd1c2c840ddf755cedb0b01ab45699a1b864042f3f06b3deb686b4a24b18a0a5e81b8af226"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/evanw/esbuild#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/evanw/esbuild.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/evanw/esbuild/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "fdir",
+      "version": "6.5.0",
+      "purl": "pkg:npm/fdir@6.5.0",
+      "bom-ref": "pkg:npm/fdir@6.5.0",
+      "description": "The fastest directory crawler & globbing alternative to glob, fast-glob, & tiny-glob. Crawls 1m files in < 1s",
+      "authors": [
+        {
+          "name": "thecodrr"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "b486d8b596ee70eb340511aa3c992c84951874bf920c7edd54cf208f2f84469dd60148cb105244fb4da46a7c87b708d63a7c2b298062c0098cd29e242c90275e"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/thecodrr/fdir#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/thecodrr/fdir.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/thecodrr/fdir/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "picomatch",
+      "version": "4.0.5",
+      "purl": "pkg:npm/picomatch@4.0.5",
+      "bom-ref": "pkg:npm/picomatch@4.0.5",
+      "description": "Blazing fast and accurate glob matcher written in JavaScript, with no dependencies and full support for standard and extended Bash glob features, including braces, extglobs, POSIX brackets, and regular expressions.",
+      "authors": [
+        {
+          "name": "Jon Schlinkert"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.5.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "46fc3072bb8d8c8d67713e7145a91ec92f4b7fc95c22dbf7e0a0fe6a27fe547f6476e0327d8062a46875db6ef8c6d7a720f675d7dfd1f4175305af200304a1d0"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/micromatch/picomatch"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/micromatch/picomatch.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/micromatch/picomatch/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "fsevents",
+      "version": "2.3.3",
+      "purl": "pkg:npm/fsevents@2.3.3",
+      "bom-ref": "pkg:npm/fsevents@2.3.3",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "e71a037d7f9f2fb7da0139da82658fa5b16dc21fd1efb5a630caaa1c64bae42defbc1d181eb805f81d58999df8e35b4c8f99fade4d36d765cda09c339617df43"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "postcss",
+      "version": "8.5.26",
+      "purl": "pkg:npm/postcss@8.5.26",
+      "bom-ref": "pkg:npm/postcss@8.5.26",
+      "description": "Tool for transforming styles with JS plugins",
+      "authors": [
+        {
+          "name": "Andrey Sitnik"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/postcss/-/postcss-8.5.26.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "bbcd8def82c5cc6f1c6be743f29b8f9e99535e8187e1f4cfa551ae21bb77e86deabcd964bdf0f49440194b16a5cb7297f134bf2f503582c0849af2a605c55b91"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://postcss.org/"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/postcss/postcss.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/postcss/postcss/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "rollup",
+      "version": "4.62.4",
+      "purl": "pkg:npm/rollup@4.62.4",
+      "bom-ref": "pkg:npm/rollup@4.62.4",
+      "description": "Next-generation ES module bundler",
+      "authors": [
+        {
+          "name": "Rich Harris"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/rollup/-/rollup-4.62.4.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "4573aac1a3ec0468cc34c6b8b108c38c789e1c46431688ff45daf8ea5d8c5390df12cd7ac0724f0b644f4cf1d684d97e337688e3bd8b2ea16414abade126e53a"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://rollupjs.org/"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/rollup/rollup.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/rollup/rollup/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "tinyglobby",
+      "version": "0.2.17",
+      "purl": "pkg:npm/tinyglobby@0.2.17",
+      "bom-ref": "pkg:npm/tinyglobby@0.2.17",
+      "description": "A fast and minimal alternative to globby and fast-glob",
+      "authors": [
+        {
+          "name": "Superchupu"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "c1747f758a5ca8a99f5a911d66388a24ec023459dd0f40cc9eb5bf7188d51adb449017d581c2c51e836b963e3b9a339589cf72c8dbbae5a96c805e0d4324dada"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://superchupu.dev/tinyglobby"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/SuperchupuDev/tinyglobby.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/SuperchupuDev/tinyglobby/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "code-frame",
       "version": "7.29.7",
       "purl": "pkg:npm/%40babel/code-frame@7.29.7",
@@ -821,51 +1099,6 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/babel/babel/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "helper-module-transforms",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/helper-module-transforms@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/helper-module-transforms@7.29.7",
-      "group": "@babel",
-      "description": "Babel helper functions for implementing ES6 module transformations",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/helper-module-transforms/-/helper-module-transforms-7.29.7.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "50f5154b25db3a1eb6eca8822064128305b319e04a2e4689f4f24476b9e0230312cf12d1e234b8f9fd5fd636fb57305b83c9c52da628b6f54f1424ea76b99302"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://babel.dev/docs/en/next/babel-helper-module-transforms"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues"
         }
       ]
     },
@@ -1006,6 +1239,51 @@
     },
     {
       "type": "library",
+      "name": "helper-module-transforms",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/helper-module-transforms@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/helper-module-transforms@7.29.7",
+      "group": "@babel",
+      "description": "Babel helper functions for implementing ES6 module transformations",
+      "authors": [
+        {
+          "name": "The Babel Team"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@babel/helper-module-transforms/-/helper-module-transforms-7.29.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "50f5154b25db3a1eb6eca8822064128305b319e04a2e4689f4f24476b9e0230312cf12d1e234b8f9fd5fd636fb57305b83c9c52da628b6f54f1424ea76b99302"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://babel.dev/docs/en/next/babel-helper-module-transforms"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/babel/babel.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/babel/babel/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "parser",
       "version": "7.29.8",
       "purl": "pkg:npm/%40babel/parser@7.29.8",
@@ -1096,51 +1374,6 @@
     },
     {
       "type": "library",
-      "name": "types",
-      "version": "7.29.8",
-      "purl": "pkg:npm/%40babel/types@7.29.8",
-      "bom-ref": "pkg:npm/%40babel/types@7.29.8",
-      "group": "@babel",
-      "description": "Babel Types is a Lodash-esque utility library for AST nodes",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/types/-/types-7.29.8.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "563d6317770f7f183b3807e823b42754a2e820b966d8917da67547ad7f2ac7b0073226164fe343000ee30a194d8114b85932dcfdf0f59572e63e2c65ba3fb71a"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://babel.dev/docs/en/next/babel-types"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues?utf8=%E2%9C%93&q=is%3Aissue+label%3A%22pkg%3A%20types%22+is%3Aopen"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "traverse",
       "version": "7.29.8",
       "purl": "pkg:npm/%40babel/traverse@7.29.8",
@@ -1186,15 +1419,15 @@
     },
     {
       "type": "library",
-      "name": "remapping",
-      "version": "2.3.5",
-      "purl": "pkg:npm/%40jridgewell/remapping@2.3.5",
-      "bom-ref": "pkg:npm/%40jridgewell/remapping@2.3.5",
-      "group": "@jridgewell",
-      "description": "Remap sequential sourcemaps through transformations to point at the original source code",
+      "name": "types",
+      "version": "7.29.8",
+      "purl": "pkg:npm/%40babel/types@7.29.8",
+      "bom-ref": "pkg:npm/%40babel/types@7.29.8",
+      "group": "@babel",
+      "description": "Babel Types is a Lodash-esque utility library for AST nodes",
       "authors": [
         {
-          "name": "Justin Ridgewell"
+          "name": "The Babel Team"
         }
       ],
       "licenses": [
@@ -1207,25 +1440,25 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/@jridgewell/remapping/-/remapping-2.3.5.tgz",
+          "url": "https://registry.npmjs.org/@babel/types/-/types-7.29.8.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "2c8f6effe95a606e03b354c3292256d983eb22571560ec22d9f502eb1078de5b9e0a383157895f7ce0990ad605887e9334e5feb50297c7ded3e082876e1c8711"
+              "content": "563d6317770f7f183b3807e823b42754a2e820b966d8917da67547ad7f2ac7b0073226164fe343000ee30a194d8114b85932dcfdf0f59572e63e2c65ba3fb71a"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://github.com/jridgewell/sourcemaps/tree/main/packages/remapping"
+          "url": "https://babel.dev/docs/en/next/babel-types"
         },
         {
           "type": "vcs",
-          "url": "git+https://github.com/jridgewell/sourcemaps.git"
+          "url": "git+https://github.com/babel/babel.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/jridgewell/sourcemaps/issues"
+          "url": "https://github.com/babel/babel/issues?utf8=%E2%9C%93&q=is%3Aissue+label%3A%22pkg%3A%20types%22+is%3Aopen"
         }
       ]
     },
@@ -1270,6 +1503,51 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/thlorenz/convert-source-map/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "remapping",
+      "version": "2.3.5",
+      "purl": "pkg:npm/%40jridgewell/remapping@2.3.5",
+      "bom-ref": "pkg:npm/%40jridgewell/remapping@2.3.5",
+      "group": "@jridgewell",
+      "description": "Remap sequential sourcemaps through transformations to point at the original source code",
+      "authors": [
+        {
+          "name": "Justin Ridgewell"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@jridgewell/remapping/-/remapping-2.3.5.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "2c8f6effe95a606e03b354c3292256d983eb22571560ec22d9f502eb1078de5b9e0a383157895f7ce0990ad605887e9334e5feb50297c7ded3e082876e1c8711"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/jridgewell/sourcemaps/tree/main/packages/remapping"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/jridgewell/sourcemaps.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/jridgewell/sourcemaps/issues"
         }
       ]
     },
@@ -1451,284 +1729,6 @@
     },
     {
       "type": "library",
-      "name": "fdir",
-      "version": "6.5.0",
-      "purl": "pkg:npm/fdir@6.5.0",
-      "bom-ref": "pkg:npm/fdir@6.5.0",
-      "description": "The fastest directory crawler & globbing alternative to glob, fast-glob, & tiny-glob. Crawls 1m files in < 1s",
-      "authors": [
-        {
-          "name": "thecodrr"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "b486d8b596ee70eb340511aa3c992c84951874bf920c7edd54cf208f2f84469dd60148cb105244fb4da46a7c87b708d63a7c2b298062c0098cd29e242c90275e"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/thecodrr/fdir#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/thecodrr/fdir.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/thecodrr/fdir/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "esbuild",
-      "version": "0.25.12",
-      "purl": "pkg:npm/esbuild@0.25.12",
-      "bom-ref": "pkg:npm/esbuild@0.25.12",
-      "description": "An extremely fast JavaScript and CSS bundler and minifier.",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/esbuild/-/esbuild-0.25.12.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "6db3c1618aed65b92de8eb3a1624cb093171beae2db7724a6a5975bd1c2c840ddf755cedb0b01ab45699a1b864042f3f06b3deb686b4a24b18a0a5e81b8af226"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/evanw/esbuild#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/evanw/esbuild.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/evanw/esbuild/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "rollup",
-      "version": "4.62.4",
-      "purl": "pkg:npm/rollup@4.62.4",
-      "bom-ref": "pkg:npm/rollup@4.62.4",
-      "description": "Next-generation ES module bundler",
-      "authors": [
-        {
-          "name": "Rich Harris"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/rollup/-/rollup-4.62.4.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "4573aac1a3ec0468cc34c6b8b108c38c789e1c46431688ff45daf8ea5d8c5390df12cd7ac0724f0b644f4cf1d684d97e337688e3bd8b2ea16414abade126e53a"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://rollupjs.org/"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/rollup/rollup.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/rollup/rollup/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "fsevents",
-      "version": "2.3.3",
-      "purl": "pkg:npm/fsevents@2.3.3",
-      "bom-ref": "pkg:npm/fsevents@2.3.3",
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "e71a037d7f9f2fb7da0139da82658fa5b16dc21fd1efb5a630caaa1c64bae42defbc1d181eb805f81d58999df8e35b4c8f99fade4d36d765cda09c339617df43"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "postcss",
-      "version": "8.5.26",
-      "purl": "pkg:npm/postcss@8.5.26",
-      "bom-ref": "pkg:npm/postcss@8.5.26",
-      "description": "Tool for transforming styles with JS plugins",
-      "authors": [
-        {
-          "name": "Andrey Sitnik"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/postcss/-/postcss-8.5.26.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "bbcd8def82c5cc6f1c6be743f29b8f9e99535e8187e1f4cfa551ae21bb77e86deabcd964bdf0f49440194b16a5cb7297f134bf2f503582c0849af2a605c55b91"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://postcss.org/"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/postcss/postcss.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/postcss/postcss/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "picomatch",
-      "version": "4.0.5",
-      "purl": "pkg:npm/picomatch@4.0.5",
-      "bom-ref": "pkg:npm/picomatch@4.0.5",
-      "description": "Blazing fast and accurate glob matcher written in JavaScript, with no dependencies and full support for standard and extended Bash glob features, including braces, extglobs, POSIX brackets, and regular expressions.",
-      "authors": [
-        {
-          "name": "Jon Schlinkert"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.5.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "46fc3072bb8d8c8d67713e7145a91ec92f4b7fc95c22dbf7e0a0fe6a27fe547f6476e0327d8062a46875db6ef8c6d7a720f675d7dfd1f4175305af200304a1d0"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/micromatch/picomatch"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/micromatch/picomatch.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/micromatch/picomatch/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "tinyglobby",
-      "version": "0.2.17",
-      "purl": "pkg:npm/tinyglobby@0.2.17",
-      "bom-ref": "pkg:npm/tinyglobby@0.2.17",
-      "description": "A fast and minimal alternative to globby and fast-glob",
-      "authors": [
-        {
-          "name": "Superchupu"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "c1747f758a5ca8a99f5a911d66388a24ec023459dd0f40cc9eb5bf7188d51adb449017d581c2c51e836b963e3b9a339589cf72c8dbbae5a96c805e0d4324dada"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://superchupu.dev/tinyglobby"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/SuperchupuDev/tinyglobby.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/SuperchupuDev/tinyglobby/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "helper-plugin-utils",
       "version": "7.29.7",
       "purl": "pkg:npm/%40babel/helper-plugin-utils@7.29.7",
@@ -1769,617 +1769,6 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/babel/babel/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "babel__generator",
-      "version": "7.27.0",
-      "purl": "pkg:npm/%40types/babel__generator@7.27.0",
-      "bom-ref": "pkg:npm/%40types/babel__generator@7.27.0",
-      "group": "@types",
-      "description": "TypeScript definitions for @babel/generator",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@types/babel__generator/-/babel__generator-7.27.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "b9f15dd978bdd8e0153d8b32f8fe27eff53b7baf1f7b1d3e11ef20486f4a5fb7a8d3ce025a2438b1dc64b6f765d1b38fba95ed5493d8d7dce4e84c16a9443c96"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/babel__generator"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/DefinitelyTyped/DefinitelyTyped.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "babel__template",
-      "version": "7.4.4",
-      "purl": "pkg:npm/%40types/babel__template@7.4.4",
-      "bom-ref": "pkg:npm/%40types/babel__template@7.4.4",
-      "group": "@types",
-      "description": "TypeScript definitions for @babel/template",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@types/babel__template/-/babel__template-7.4.4.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "87f354692c86e44cb1048a7c611c68e1131edbfa9082fca8c11c1533385884108e35b5bc3d4b20e2590532b86066151ee73dcbdcc88b0eebf227f09a3dad80f0"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/babel__template"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/DefinitelyTyped/DefinitelyTyped.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "helper-validator-identifier",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
-      "group": "@babel",
-      "description": "Validate identifier/keywords name",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-7.29.7.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "a9e8711a4463e7987f7dff0431a27e71887268a947231a980e7ebcdb0403ed1369f54ba3390b07a20dae4b4af6bf3af8a56fac5dff7435e79aca370d697ddf16"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/babel/babel#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "picocolors",
-      "version": "1.1.1",
-      "purl": "pkg:npm/picocolors@1.1.1",
-      "bom-ref": "pkg:npm/picocolors@1.1.1",
-      "description": "The tiniest and the fastest library for terminal output formatting with ANSI colors",
-      "authors": [
-        {
-          "name": "Alexey Raspopov"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "ISC"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "c5c787dac9e1b5be4cf658aa0ec984c39ea57b7efa993664117fe311bfd1c4d1727a036e97b78db250973fd1438ff2dcbb45fc284c8c71e3f69eda5a1eb0c454"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/alexeyraspopov/picocolors#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/alexeyraspopov/picocolors.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/alexeyraspopov/picocolors/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "babel__traverse",
-      "version": "7.28.0",
-      "purl": "pkg:npm/%40types/babel__traverse@7.28.0",
-      "bom-ref": "pkg:npm/%40types/babel__traverse@7.28.0",
-      "group": "@types",
-      "description": "TypeScript definitions for @babel/traverse",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@types/babel__traverse/-/babel__traverse-7.28.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "f0fbdc5dfef48130d9060b7da6dc49f1e9417818dc2ce01c3ada0efe63c98ed8e2d7e09d19b1e09bbee89b51abb0fc6c884fae5c8a4d48aeb8518688c105dde1"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/babel__traverse"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/DefinitelyTyped/DefinitelyTyped.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "js-tokens",
-      "version": "4.0.0",
-      "purl": "pkg:npm/js-tokens@4.0.0",
-      "bom-ref": "pkg:npm/js-tokens@4.0.0",
-      "description": "A regex that tokenizes JavaScript.",
-      "authors": [
-        {
-          "name": "Simon Lydell"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/js-tokens/-/js-tokens-4.0.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "45d2547e5704ddc5332a232a420b02bb4e853eef5474824ed1b7986cf84737893a6a9809b627dca02b53f5b7313a9601b690f690233a49bce0e026aeb16fcf29"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/lydell/js-tokens#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/lydell/js-tokens.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/lydell/js-tokens/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "helper-module-imports",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/helper-module-imports@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/helper-module-imports@7.29.7",
-      "group": "@babel",
-      "description": "Babel helper functions for inserting module loads",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/helper-module-imports/-/helper-module-imports-7.29.7.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "7a31f0ad0418726f719d38af4a19f62033a5233227377e005ec92fabd42272f0ad133ab5573725bbfb4a17c26ad4283c246d862fafc49a382c093ee55dea44de"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://babel.dev/docs/en/next/babel-helper-module-imports"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "gen-mapping",
-      "version": "0.3.13",
-      "purl": "pkg:npm/%40jridgewell/gen-mapping@0.3.13",
-      "bom-ref": "pkg:npm/%40jridgewell/gen-mapping@0.3.13",
-      "group": "@jridgewell",
-      "description": "Generate source maps",
-      "authors": [
-        {
-          "name": "Justin Ridgewell"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "da492dffb9e227a32010fc45d1b61d43a7ad65a03e7d0bc370b29c921cb5c8840ecdaa0a8c10634a3eb7fda2d58d8137aa146de5dbccfae5327c283a50a0816c"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/jridgewell/sourcemaps/tree/main/packages/gen-mapping"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/jridgewell/sourcemaps.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/jridgewell/sourcemaps/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "trace-mapping",
-      "version": "0.3.31",
-      "purl": "pkg:npm/%40jridgewell/trace-mapping@0.3.31",
-      "bom-ref": "pkg:npm/%40jridgewell/trace-mapping@0.3.31",
-      "group": "@jridgewell",
-      "description": "Trace the original position through a source map",
-      "authors": [
-        {
-          "name": "Justin Ridgewell"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@jridgewell/trace-mapping/-/trace-mapping-0.3.31.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "cf3351f9275048327373c8e869e3fc410a0242bf0db98c76748232b65d507811191c9f6e5ba85e6ecad881bcfc849c1441aa374d608cb667d5f0dbb5b7038b03"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/jridgewell/sourcemaps/tree/main/packages/trace-mapping"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/jridgewell/sourcemaps.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/jridgewell/sourcemaps/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "helper-validator-option",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/helper-validator-option@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/helper-validator-option@7.29.7",
-      "group": "@babel",
-      "description": "Validate plugin/preset options",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/helper-validator-option/-/helper-validator-option-7.29.7.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "37d644aeb0fec96e607820ed06a9cea31991f3eb4d2a21aec4a943a6e2717ecaa96b674571ec5ace218013faa81cb8830eb79534cba9c46992a0d972bec03783"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/babel/babel#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "jsesc",
-      "version": "3.1.0",
-      "purl": "pkg:npm/jsesc@3.1.0",
-      "bom-ref": "pkg:npm/jsesc@3.1.0",
-      "description": "Given some data, jsesc returns the shortest possible stringified & ASCII-safe representation of that data.",
-      "authors": [
-        {
-          "name": "Mathias Bynens"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/jsesc/-/jsesc-3.1.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "fec33774ed853b35e3290849ba8d10d7bdf07f628ea3cb7823cbc7cba945f69a14a7b6ca4f4fcd1c4f1f3d7db73f07e19f291faa70b6c51c4e9d5c395ee18868"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://mths.be/jsesc"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/mathiasbynens/jsesc.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/mathiasbynens/jsesc/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "compat-data",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/compat-data@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/compat-data@7.29.7",
-      "group": "@babel",
-      "description": "The compat-data to determine required Babel plugins",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/compat-data/-/compat-data-7.29.7.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "968713910c8abf0204801cd5ae7f3af7779b73dec5d94f191e36d7c035c9e459f64c2a4dc1394a71a28b91d1e8a7973f89c38513baaded0f490b986728d6ba1a"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/babel/babel#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "helper-string-parser",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/helper-string-parser@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/helper-string-parser@7.29.7",
-      "group": "@babel",
-      "description": "A utility package to parse strings",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/helper-string-parser/-/helper-string-parser-7.29.7.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "3dbe628cfad9f3d1831fcdb6dcbe143fc8ba400a56c6cd3845b3d02537960d5d3f91e476137e8c78a9f2afa2d899452fa91448f88bfced2b85d56e84ac837363"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://babel.dev/docs/en/next/babel-helper-string-parser"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "browserslist",
-      "version": "4.28.8",
-      "purl": "pkg:npm/browserslist@4.28.8",
-      "bom-ref": "pkg:npm/browserslist@4.28.8",
-      "description": "Share target browsers between different front-end tools, like Autoprefixer, Stylelint and babel-env-preset",
-      "authors": [
-        {
-          "name": "Andrey Sitnik"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/browserslist/-/browserslist-4.28.8.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "576369a1f2db946eb899f3ad4a00e13891126441a88330cc06ffeaf96ea87382d758ffeaef978e5e839a68ebb510e69d07d538070c7f7b4cb36efc0a1fccda94"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/browserslist/browserslist#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/browserslist/browserslist.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/browserslist/browserslist/issues"
         }
       ]
     },
@@ -2885,59 +2274,94 @@
     },
     {
       "type": "library",
-      "name": "lru-cache",
-      "version": "5.1.1",
-      "purl": "pkg:npm/lru-cache@5.1.1",
-      "bom-ref": "pkg:npm/lru-cache@5.1.1",
-      "description": "A cache object that deletes the least-recently-used items.",
-      "authors": [
-        {
-          "name": "Isaac Z. Schlueter"
-        }
-      ],
+      "name": "babel__generator",
+      "version": "7.27.0",
+      "purl": "pkg:npm/%40types/babel__generator@7.27.0",
+      "bom-ref": "pkg:npm/%40types/babel__generator@7.27.0",
+      "group": "@types",
+      "description": "TypeScript definitions for @babel/generator",
       "licenses": [
         {
           "license": {
-            "id": "ISC"
+            "id": "MIT"
           }
         }
       ],
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/lru-cache/-/lru-cache-5.1.1.tgz",
+          "url": "https://registry.npmjs.org/@types/babel__generator/-/babel__generator-7.27.0.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "2a9340450037230bfe8d3034bad51555bae1f8996baf516fd1ee7a186cc014e5cdedd93f16f89a0d6f0b1e62b9d8395c1f858fda7ea023cbcdd5a7ac045828f7"
+              "content": "b9f15dd978bdd8e0153d8b32f8fe27eff53b7baf1f7b1d3e11ef20486f4a5fb7a8d3ce025a2438b1dc64b6f765d1b38fba95ed5493d8d7dce4e84c16a9443c96"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://github.com/isaacs/node-lru-cache#readme"
+          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/babel__generator"
         },
         {
           "type": "vcs",
-          "url": "git://github.com/isaacs/node-lru-cache.git"
+          "url": "git+https://github.com/DefinitelyTyped/DefinitelyTyped.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/isaacs/node-lru-cache/issues"
+          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/issues"
         }
       ]
     },
     {
       "type": "library",
-      "name": "helper-globals",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/helper-globals@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/helper-globals@7.29.7",
-      "group": "@babel",
-      "description": "A collection of JavaScript globals for Babel internal usage",
+      "name": "babel__template",
+      "version": "7.4.4",
+      "purl": "pkg:npm/%40types/babel__template@7.4.4",
+      "bom-ref": "pkg:npm/%40types/babel__template@7.4.4",
+      "group": "@types",
+      "description": "TypeScript definitions for @babel/template",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@types/babel__template/-/babel__template-7.4.4.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "87f354692c86e44cb1048a7c611c68e1131edbfa9082fca8c11c1533385884108e35b5bc3d4b20e2590532b86066151ee73dcbdcc88b0eebf227f09a3dad80f0"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/babel__template"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/DefinitelyTyped/DefinitelyTyped.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "nanoid",
+      "version": "3.3.18",
+      "purl": "pkg:npm/nanoid@3.3.18",
+      "bom-ref": "pkg:npm/nanoid@3.3.18",
+      "description": "A tiny (116 bytes), secure URL-friendly unique string ID generator",
       "authors": [
         {
-          "name": "The Babel Team"
+          "name": "Andrey Sitnik"
         }
       ],
       "licenses": [
@@ -2950,25 +2374,109 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/helper-globals/-/helper-globals-7.29.7.tgz",
+          "url": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "de7415500b6f90a1fdcda85f5a0c3de8973fb853a68c0084d64433f3613696a5a61c1823cdb365b02db69ee4137da86659e42d4eae6743fe0d9ddd80d708f8cc"
+              "content": "0d38383096c631691f8ba55915d36ddbf71a31b432e0ebbe3a9fe1250bc611672755fa00d5003ec7344a033c3d8c3ebe19538e798aff98872e0d276e83a17afb"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://github.com/babel/babel#readme"
+          "url": "https://github.com/ai/nanoid#readme"
         },
         {
           "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
+          "url": "git+https://github.com/ai/nanoid.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues"
+          "url": "https://github.com/ai/nanoid/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "picocolors",
+      "version": "1.1.1",
+      "purl": "pkg:npm/picocolors@1.1.1",
+      "bom-ref": "pkg:npm/picocolors@1.1.1",
+      "description": "The tiniest and the fastest library for terminal output formatting with ANSI colors",
+      "authors": [
+        {
+          "name": "Alexey Raspopov"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "c5c787dac9e1b5be4cf658aa0ec984c39ea57b7efa993664117fe311bfd1c4d1727a036e97b78db250973fd1438ff2dcbb45fc284c8c71e3f69eda5a1eb0c454"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/alexeyraspopov/picocolors#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/alexeyraspopov/picocolors.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/alexeyraspopov/picocolors/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "win32-x64",
+      "version": "0.25.12",
+      "purl": "pkg:npm/%40esbuild/win32-x64@0.25.12",
+      "bom-ref": "pkg:npm/%40esbuild/win32-x64@0.25.12",
+      "group": "@esbuild",
+      "description": "The Windows 64-bit binary for esbuild, a JavaScript bundler.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.12.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "6a5242d2e099a5316b48bd020838dc8257815cf9c2ac40214c120ba5e029eccfce160a2ab407ad7c1cd7d31334d0c52c5553e956394fb8c6d112a9d90976939c"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/evanw/esbuild#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/evanw/esbuild.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/evanw/esbuild/issues"
         }
       ]
     },
@@ -3454,91 +2962,12 @@
     },
     {
       "type": "library",
-      "name": "win32-x64",
-      "version": "0.25.12",
-      "purl": "pkg:npm/%40esbuild/win32-x64@0.25.12",
-      "bom-ref": "pkg:npm/%40esbuild/win32-x64@0.25.12",
-      "group": "@esbuild",
-      "description": "The Windows 64-bit binary for esbuild, a JavaScript bundler.",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.12.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "6a5242d2e099a5316b48bd020838dc8257815cf9c2ac40214c120ba5e029eccfce160a2ab407ad7c1cd7d31334d0c52c5553e956394fb8c6d112a9d90976939c"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/evanw/esbuild#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/evanw/esbuild.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/evanw/esbuild/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "ms",
-      "version": "2.1.3",
-      "purl": "pkg:npm/ms@2.1.3",
-      "bom-ref": "pkg:npm/ms@2.1.3",
-      "description": "Tiny millisecond conversion utility",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "e85973b9b4cb646dc9d9afcd542025784863ceae68c601f268253dc985ef70bb2fa1568726afece715c8ebf5d73fab73ed1f7100eb479d23bfb57b45dd645394"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/vercel/ms#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/vercel/ms.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/vercel/ms/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "estree",
-      "version": "1.0.9",
-      "purl": "pkg:npm/%40types/estree@1.0.9",
-      "bom-ref": "pkg:npm/%40types/estree@1.0.9",
+      "name": "babel__traverse",
+      "version": "7.28.0",
+      "purl": "pkg:npm/%40types/babel__traverse@7.28.0",
+      "bom-ref": "pkg:npm/%40types/babel__traverse@7.28.0",
       "group": "@types",
-      "description": "TypeScript definitions for estree",
+      "description": "TypeScript definitions for @babel/traverse",
       "licenses": [
         {
           "license": {
@@ -3549,17 +2978,17 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
+          "url": "https://registry.npmjs.org/@types/babel__traverse/-/babel__traverse-7.28.0.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "1a174f832d5e978fc898fd395f4e54c38730dbf33ddc10949a712f599352b650b310a304e05924f98a680393a21cd426a12ec269f6fc5dadcfc9af26d50af37a"
+              "content": "f0fbdc5dfef48130d9060b7da6dc49f1e9417818dc2ce01c3ada0efe63c98ed8e2d7e09d19b1e09bbee89b51abb0fc6c884fae5c8a4d48aeb8518688c105dde1"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/estree"
+          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/babel__traverse"
         },
         {
           "type": "vcs",
@@ -3568,50 +2997,6 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "nanoid",
-      "version": "3.3.18",
-      "purl": "pkg:npm/nanoid@3.3.18",
-      "bom-ref": "pkg:npm/nanoid@3.3.18",
-      "description": "A tiny (116 bytes), secure URL-friendly unique string ID generator",
-      "authors": [
-        {
-          "name": "Andrey Sitnik"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "0d38383096c631691f8ba55915d36ddbf71a31b432e0ebbe3a9fe1250bc611672755fa00d5003ec7344a033c3d8c3ebe19538e798aff98872e0d276e83a17afb"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/ai/nanoid#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/ai/nanoid.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/ai/nanoid/issues"
         }
       ]
     },
@@ -3656,6 +3041,46 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/7rulnik/source-map-js/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "estree",
+      "version": "1.0.9",
+      "purl": "pkg:npm/%40types/estree@1.0.9",
+      "bom-ref": "pkg:npm/%40types/estree@1.0.9",
+      "group": "@types",
+      "description": "TypeScript definitions for estree",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "1a174f832d5e978fc898fd395f4e54c38730dbf33ddc10949a712f599352b650b310a304e05924f98a680393a21cd426a12ec269f6fc5dadcfc9af26d50af37a"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/estree"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/DefinitelyTyped/DefinitelyTyped.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/issues"
         }
       ]
     },
@@ -3751,6 +3176,581 @@
     },
     {
       "type": "library",
+      "name": "helper-validator-identifier",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
+      "group": "@babel",
+      "description": "Validate identifier/keywords name",
+      "authors": [
+        {
+          "name": "The Babel Team"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-7.29.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "a9e8711a4463e7987f7dff0431a27e71887268a947231a980e7ebcdb0403ed1369f54ba3390b07a20dae4b4af6bf3af8a56fac5dff7435e79aca370d697ddf16"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/babel/babel#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/babel/babel.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/babel/babel/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "js-tokens",
+      "version": "4.0.0",
+      "purl": "pkg:npm/js-tokens@4.0.0",
+      "bom-ref": "pkg:npm/js-tokens@4.0.0",
+      "description": "A regex that tokenizes JavaScript.",
+      "authors": [
+        {
+          "name": "Simon Lydell"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/js-tokens/-/js-tokens-4.0.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "45d2547e5704ddc5332a232a420b02bb4e853eef5474824ed1b7986cf84737893a6a9809b627dca02b53f5b7313a9601b690f690233a49bce0e026aeb16fcf29"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/lydell/js-tokens#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/lydell/js-tokens.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/lydell/js-tokens/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "jsesc",
+      "version": "3.1.0",
+      "purl": "pkg:npm/jsesc@3.1.0",
+      "bom-ref": "pkg:npm/jsesc@3.1.0",
+      "description": "Given some data, jsesc returns the shortest possible stringified & ASCII-safe representation of that data.",
+      "authors": [
+        {
+          "name": "Mathias Bynens"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/jsesc/-/jsesc-3.1.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "fec33774ed853b35e3290849ba8d10d7bdf07f628ea3cb7823cbc7cba945f69a14a7b6ca4f4fcd1c4f1f3d7db73f07e19f291faa70b6c51c4e9d5c395ee18868"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://mths.be/jsesc"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/mathiasbynens/jsesc.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/mathiasbynens/jsesc/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "gen-mapping",
+      "version": "0.3.13",
+      "purl": "pkg:npm/%40jridgewell/gen-mapping@0.3.13",
+      "bom-ref": "pkg:npm/%40jridgewell/gen-mapping@0.3.13",
+      "group": "@jridgewell",
+      "description": "Generate source maps",
+      "authors": [
+        {
+          "name": "Justin Ridgewell"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "da492dffb9e227a32010fc45d1b61d43a7ad65a03e7d0bc370b29c921cb5c8840ecdaa0a8c10634a3eb7fda2d58d8137aa146de5dbccfae5327c283a50a0816c"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/jridgewell/sourcemaps/tree/main/packages/gen-mapping"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/jridgewell/sourcemaps.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/jridgewell/sourcemaps/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "trace-mapping",
+      "version": "0.3.31",
+      "purl": "pkg:npm/%40jridgewell/trace-mapping@0.3.31",
+      "bom-ref": "pkg:npm/%40jridgewell/trace-mapping@0.3.31",
+      "group": "@jridgewell",
+      "description": "Trace the original position through a source map",
+      "authors": [
+        {
+          "name": "Justin Ridgewell"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@jridgewell/trace-mapping/-/trace-mapping-0.3.31.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "cf3351f9275048327373c8e869e3fc410a0242bf0db98c76748232b65d507811191c9f6e5ba85e6ecad881bcfc849c1441aa374d608cb667d5f0dbb5b7038b03"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/jridgewell/sourcemaps/tree/main/packages/trace-mapping"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/jridgewell/sourcemaps.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/jridgewell/sourcemaps/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "helper-validator-option",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/helper-validator-option@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/helper-validator-option@7.29.7",
+      "group": "@babel",
+      "description": "Validate plugin/preset options",
+      "authors": [
+        {
+          "name": "The Babel Team"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@babel/helper-validator-option/-/helper-validator-option-7.29.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "37d644aeb0fec96e607820ed06a9cea31991f3eb4d2a21aec4a943a6e2717ecaa96b674571ec5ace218013faa81cb8830eb79534cba9c46992a0d972bec03783"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/babel/babel#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/babel/babel.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/babel/babel/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "compat-data",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/compat-data@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/compat-data@7.29.7",
+      "group": "@babel",
+      "description": "The compat-data to determine required Babel plugins",
+      "authors": [
+        {
+          "name": "The Babel Team"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@babel/compat-data/-/compat-data-7.29.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "968713910c8abf0204801cd5ae7f3af7779b73dec5d94f191e36d7c035c9e459f64c2a4dc1394a71a28b91d1e8a7973f89c38513baaded0f490b986728d6ba1a"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/babel/babel#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/babel/babel.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/babel/babel/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "browserslist",
+      "version": "4.28.8",
+      "purl": "pkg:npm/browserslist@4.28.8",
+      "bom-ref": "pkg:npm/browserslist@4.28.8",
+      "description": "Share target browsers between different front-end tools, like Autoprefixer, Stylelint and babel-env-preset",
+      "authors": [
+        {
+          "name": "Andrey Sitnik"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/browserslist/-/browserslist-4.28.8.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "576369a1f2db946eb899f3ad4a00e13891126441a88330cc06ffeaf96ea87382d758ffeaef978e5e839a68ebb510e69d07d538070c7f7b4cb36efc0a1fccda94"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/browserslist/browserslist#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/browserslist/browserslist.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/browserslist/browserslist/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "lru-cache",
+      "version": "5.1.1",
+      "purl": "pkg:npm/lru-cache@5.1.1",
+      "bom-ref": "pkg:npm/lru-cache@5.1.1",
+      "description": "A cache object that deletes the least-recently-used items.",
+      "authors": [
+        {
+          "name": "Isaac Z. Schlueter"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/lru-cache/-/lru-cache-5.1.1.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "2a9340450037230bfe8d3034bad51555bae1f8996baf516fd1ee7a186cc014e5cdedd93f16f89a0d6f0b1e62b9d8395c1f858fda7ea023cbcdd5a7ac045828f7"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/isaacs/node-lru-cache#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git://github.com/isaacs/node-lru-cache.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/isaacs/node-lru-cache/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "helper-module-imports",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/helper-module-imports@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/helper-module-imports@7.29.7",
+      "group": "@babel",
+      "description": "Babel helper functions for inserting module loads",
+      "authors": [
+        {
+          "name": "The Babel Team"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@babel/helper-module-imports/-/helper-module-imports-7.29.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "7a31f0ad0418726f719d38af4a19f62033a5233227377e005ec92fabd42272f0ad133ab5573725bbfb4a17c26ad4283c246d862fafc49a382c093ee55dea44de"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://babel.dev/docs/en/next/babel-helper-module-imports"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/babel/babel.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/babel/babel/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "helper-string-parser",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/helper-string-parser@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/helper-string-parser@7.29.7",
+      "group": "@babel",
+      "description": "A utility package to parse strings",
+      "authors": [
+        {
+          "name": "The Babel Team"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@babel/helper-string-parser/-/helper-string-parser-7.29.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "3dbe628cfad9f3d1831fcdb6dcbe143fc8ba400a56c6cd3845b3d02537960d5d3f91e476137e8c78a9f2afa2d899452fa91448f88bfced2b85d56e84ac837363"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://babel.dev/docs/en/next/babel-helper-string-parser"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/babel/babel.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/babel/babel/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "helper-globals",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/helper-globals@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/helper-globals@7.29.7",
+      "group": "@babel",
+      "description": "A collection of JavaScript globals for Babel internal usage",
+      "authors": [
+        {
+          "name": "The Babel Team"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@babel/helper-globals/-/helper-globals-7.29.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "de7415500b6f90a1fdcda85f5a0c3de8973fb853a68c0084d64433f3613696a5a61c1823cdb365b02db69ee4137da86659e42d4eae6743fe0d9ddd80d708f8cc"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/babel/babel#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/babel/babel.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/babel/babel/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "ms",
+      "version": "2.1.3",
+      "purl": "pkg:npm/ms@2.1.3",
+      "bom-ref": "pkg:npm/ms@2.1.3",
+      "description": "Tiny millisecond conversion utility",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "e85973b9b4cb646dc9d9afcd542025784863ceae68c601f268253dc985ef70bb2fa1568726afece715c8ebf5d73fab73ed1f7100eb479d23bfb57b45dd645394"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/vercel/ms#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vercel/ms.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/vercel/ms/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "sourcemap-codec",
       "version": "1.5.5",
       "purl": "pkg:npm/%40jridgewell/sourcemap-codec@1.5.5",
@@ -3796,45 +3796,6 @@
     },
     {
       "type": "library",
-      "name": "baseline-browser-mapping",
-      "version": "2.11.13",
-      "purl": "pkg:npm/baseline-browser-mapping@2.11.13",
-      "bom-ref": "pkg:npm/baseline-browser-mapping@2.11.13",
-      "description": "A library for obtaining browser versions with their maximum supported Baseline feature set and Widely Available status.",
-      "licenses": [
-        {
-          "license": {
-            "id": "Apache-2.0"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.11.13.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "93d1cdb9454c96a56343d507cdf3e322a8836d6c3b5aa4f50284fb18bf15c2f177af465f02bb608923c0966ba9c8daae3603891d3b87e022987fcb6d3135814d"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/web-platform-dx/baseline-browser-mapping#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/web-platform-dx/baseline-browser-mapping.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/web-platform-dx/baseline-browser-mapping/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "resolve-uri",
       "version": "3.1.2",
       "purl": "pkg:npm/%40jridgewell/resolve-uri@3.1.2",
@@ -3875,6 +3836,45 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/jridgewell/resolve-uri/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "baseline-browser-mapping",
+      "version": "2.11.13",
+      "purl": "pkg:npm/baseline-browser-mapping@2.11.13",
+      "bom-ref": "pkg:npm/baseline-browser-mapping@2.11.13",
+      "description": "A library for obtaining browser versions with their maximum supported Baseline feature set and Widely Available status.",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.11.13.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "93d1cdb9454c96a56343d507cdf3e322a8836d6c3b5aa4f50284fb18bf15c2f177af465f02bb608923c0966ba9c8daae3603891d3b87e022987fcb6d3135814d"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/web-platform-dx/baseline-browser-mapping#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/web-platform-dx/baseline-browser-mapping.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/web-platform-dx/baseline-browser-mapping/issues"
         }
       ]
     },
@@ -4145,7 +4145,7 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:npm/website@1.4.3-rc.5",
+      "ref": "pkg:npm/website@1.4.3-rc.6",
       "dependsOn": [
         "pkg:npm/%40edgeone/pages-blob@0.0.16",
         "pkg:npm/%40phosphor-icons/react@2.1.10",
@@ -4158,6 +4158,14 @@
       ]
     },
     {
+      "ref": "pkg:npm/%40phosphor-icons/react@2.1.10",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40edgeone/pages-blob@0.0.16",
+      "dependsOn": []
+    },
+    {
       "ref": "pkg:npm/%40vitejs/plugin-react@5.0.4",
       "dependsOn": [
         "pkg:npm/%40babel/core@7.29.7",
@@ -4167,14 +4175,6 @@
         "pkg:npm/%40types/babel__core@7.20.5",
         "pkg:npm/react-refresh@0.17.0"
       ]
-    },
-    {
-      "ref": "pkg:npm/%40edgeone/pages-blob@0.0.16",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40phosphor-icons/react@2.1.10",
-      "dependsOn": []
     },
     {
       "ref": "pkg:npm/framer-motion@13.1.0",
@@ -4189,14 +4189,26 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:npm/react@19.2.0",
+      "dependsOn": []
+    },
+    {
       "ref": "pkg:npm/react-dom@19.2.0",
       "dependsOn": [
         "pkg:npm/scheduler@0.27.0"
       ]
     },
     {
-      "ref": "pkg:npm/react@19.2.0",
-      "dependsOn": []
+      "ref": "pkg:npm/vite@6.4.3",
+      "dependsOn": [
+        "pkg:npm/esbuild@0.25.12",
+        "pkg:npm/fdir@6.5.0",
+        "pkg:npm/picomatch@4.0.5",
+        "pkg:npm/postcss@8.5.26",
+        "pkg:npm/rollup@4.62.4",
+        "pkg:npm/tinyglobby@0.2.17",
+        "pkg:npm/fsevents@2.3.3"
+      ]
     },
     {
       "ref": "pkg:npm/%40babel/core@7.29.7",
@@ -4219,29 +4231,17 @@
       ]
     },
     {
-      "ref": "pkg:npm/vite@6.4.3",
-      "dependsOn": [
-        "pkg:npm/esbuild@0.25.12",
-        "pkg:npm/fdir@6.5.0",
-        "pkg:npm/picomatch@4.0.5",
-        "pkg:npm/postcss@8.5.26",
-        "pkg:npm/rollup@4.62.4",
-        "pkg:npm/tinyglobby@0.2.17",
-        "pkg:npm/fsevents@2.3.3"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40babel/plugin-transform-react-jsx-source@7.29.7",
+      "ref": "pkg:npm/%40babel/plugin-transform-react-jsx-self@7.29.7",
       "dependsOn": [
         "pkg:npm/%40babel/helper-plugin-utils@7.29.7"
       ]
     },
     {
-      "ref": "pkg:npm/%40rolldown/pluginutils@1.0.0-beta.38",
+      "ref": "pkg:npm/%40babel/plugin-transform-react-jsx-source@7.29.7",
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40babel/plugin-transform-react-jsx-self@7.29.7",
+      "ref": "pkg:npm/%40rolldown/pluginutils@1.0.0-beta.38",
       "dependsOn": []
     },
     {
@@ -4273,91 +4273,6 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40babel/code-frame@7.29.7",
-      "dependsOn": [
-        "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
-        "pkg:npm/js-tokens@4.0.0",
-        "pkg:npm/picocolors@1.1.1"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40babel/helper-module-transforms@7.29.7",
-      "dependsOn": [
-        "pkg:npm/%40babel/helper-module-imports@7.29.7"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40babel/generator@7.29.8",
-      "dependsOn": [
-        "pkg:npm/%40jridgewell/gen-mapping@0.3.13",
-        "pkg:npm/%40jridgewell/trace-mapping@0.3.31",
-        "pkg:npm/jsesc@3.1.0"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40babel/helper-compilation-targets@7.29.7",
-      "dependsOn": [
-        "pkg:npm/%40babel/compat-data@7.29.7",
-        "pkg:npm/%40babel/helper-validator-option@7.29.7",
-        "pkg:npm/browserslist@4.28.8",
-        "pkg:npm/lru-cache@5.1.1"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40babel/helpers@7.29.7",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40babel/parser@7.29.8",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40babel/template@7.29.7",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40babel/types@7.29.8",
-      "dependsOn": [
-        "pkg:npm/%40babel/helper-string-parser@7.29.7"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40babel/traverse@7.29.8",
-      "dependsOn": [
-        "pkg:npm/%40babel/helper-globals@7.29.7"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40jridgewell/remapping@2.3.5",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/convert-source-map@2.0.0",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/debug@4.4.3",
-      "dependsOn": [
-        "pkg:npm/ms@2.1.3"
-      ]
-    },
-    {
-      "ref": "pkg:npm/gensync@1.0.0-beta.2",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/json5@2.2.3",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/semver@6.3.1",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/fdir@6.5.0",
-      "dependsOn": []
-    },
-    {
       "ref": "pkg:npm/esbuild@0.25.12",
       "dependsOn": [
         "pkg:npm/%40esbuild/aix-ppc64@0.25.12",
@@ -4386,6 +4301,26 @@
         "pkg:npm/%40esbuild/win32-arm64@0.25.12",
         "pkg:npm/%40esbuild/win32-ia32@0.25.12",
         "pkg:npm/%40esbuild/win32-x64@0.25.12"
+      ]
+    },
+    {
+      "ref": "pkg:npm/fdir@6.5.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/picomatch@4.0.5",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/fsevents@2.3.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/postcss@8.5.26",
+      "dependsOn": [
+        "pkg:npm/nanoid@3.3.18",
+        "pkg:npm/picocolors@1.1.1",
+        "pkg:npm/source-map-js@1.2.1"
       ]
     },
     {
@@ -4421,93 +4356,92 @@
       ]
     },
     {
-      "ref": "pkg:npm/fsevents@2.3.3",
+      "ref": "pkg:npm/tinyglobby@0.2.17",
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/postcss@8.5.26",
+      "ref": "pkg:npm/%40babel/code-frame@7.29.7",
       "dependsOn": [
-        "pkg:npm/nanoid@3.3.18",
-        "pkg:npm/source-map-js@1.2.1"
+        "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
+        "pkg:npm/js-tokens@4.0.0"
       ]
     },
     {
-      "ref": "pkg:npm/picomatch@4.0.5",
+      "ref": "pkg:npm/%40babel/generator@7.29.8",
+      "dependsOn": [
+        "pkg:npm/%40jridgewell/gen-mapping@0.3.13",
+        "pkg:npm/%40jridgewell/trace-mapping@0.3.31",
+        "pkg:npm/jsesc@3.1.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40babel/helper-compilation-targets@7.29.7",
+      "dependsOn": [
+        "pkg:npm/%40babel/compat-data@7.29.7",
+        "pkg:npm/%40babel/helper-validator-option@7.29.7",
+        "pkg:npm/browserslist@4.28.8",
+        "pkg:npm/lru-cache@5.1.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40babel/helpers@7.29.7",
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/tinyglobby@0.2.17",
+      "ref": "pkg:npm/%40babel/helper-module-transforms@7.29.7",
+      "dependsOn": [
+        "pkg:npm/%40babel/helper-module-imports@7.29.7"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40babel/parser@7.29.8",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40babel/template@7.29.7",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40babel/traverse@7.29.8",
+      "dependsOn": [
+        "pkg:npm/%40babel/helper-globals@7.29.7"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40babel/types@7.29.8",
+      "dependsOn": [
+        "pkg:npm/%40babel/helper-string-parser@7.29.7"
+      ]
+    },
+    {
+      "ref": "pkg:npm/convert-source-map@2.0.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40jridgewell/remapping@2.3.5",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/debug@4.4.3",
+      "dependsOn": [
+        "pkg:npm/ms@2.1.3"
+      ]
+    },
+    {
+      "ref": "pkg:npm/gensync@1.0.0-beta.2",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/json5@2.2.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/semver@6.3.1",
       "dependsOn": []
     },
     {
       "ref": "pkg:npm/%40babel/helper-plugin-utils@7.29.7",
       "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40types/babel__generator@7.27.0",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40types/babel__template@7.4.4",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/picocolors@1.1.1",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40types/babel__traverse@7.28.0",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/js-tokens@4.0.0",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40babel/helper-module-imports@7.29.7",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40jridgewell/gen-mapping@0.3.13",
-      "dependsOn": [
-        "pkg:npm/%40jridgewell/sourcemap-codec@1.5.5"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40jridgewell/trace-mapping@0.3.31",
-      "dependsOn": [
-        "pkg:npm/%40jridgewell/resolve-uri@3.1.2"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40babel/helper-validator-option@7.29.7",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/jsesc@3.1.0",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40babel/compat-data@7.29.7",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40babel/helper-string-parser@7.29.7",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/browserslist@4.28.8",
-      "dependsOn": [
-        "pkg:npm/baseline-browser-mapping@2.11.13",
-        "pkg:npm/caniuse-lite@1.0.30001809",
-        "pkg:npm/electron-to-chromium@1.5.405",
-        "pkg:npm/node-releases@2.0.53",
-        "pkg:npm/update-browserslist-db@1.3.1"
-      ]
     },
     {
       "ref": "pkg:npm/%40esbuild/aix-ppc64@0.25.12",
@@ -4610,13 +4544,23 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/lru-cache@5.1.1",
-      "dependsOn": [
-        "pkg:npm/yallist@3.1.1"
-      ]
+      "ref": "pkg:npm/%40types/babel__generator@7.27.0",
+      "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40babel/helper-globals@7.29.7",
+      "ref": "pkg:npm/%40types/babel__template@7.4.4",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/nanoid@3.3.18",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/picocolors@1.1.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40esbuild/win32-x64@0.25.12",
       "dependsOn": []
     },
     {
@@ -4716,23 +4660,15 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40esbuild/win32-x64@0.25.12",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/ms@2.1.3",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40types/estree@1.0.9",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/nanoid@3.3.18",
+      "ref": "pkg:npm/%40types/babel__traverse@7.28.0",
       "dependsOn": []
     },
     {
       "ref": "pkg:npm/source-map-js@1.2.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40types/estree@1.0.9",
       "dependsOn": []
     },
     {
@@ -4744,15 +4680,79 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/js-tokens@4.0.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/jsesc@3.1.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40jridgewell/gen-mapping@0.3.13",
+      "dependsOn": [
+        "pkg:npm/%40jridgewell/sourcemap-codec@1.5.5"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40jridgewell/trace-mapping@0.3.31",
+      "dependsOn": [
+        "pkg:npm/%40jridgewell/resolve-uri@3.1.2"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40babel/helper-validator-option@7.29.7",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40babel/compat-data@7.29.7",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/browserslist@4.28.8",
+      "dependsOn": [
+        "pkg:npm/baseline-browser-mapping@2.11.13",
+        "pkg:npm/caniuse-lite@1.0.30001809",
+        "pkg:npm/electron-to-chromium@1.5.405",
+        "pkg:npm/node-releases@2.0.53",
+        "pkg:npm/update-browserslist-db@1.3.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/lru-cache@5.1.1",
+      "dependsOn": [
+        "pkg:npm/yallist@3.1.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40babel/helper-module-imports@7.29.7",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40babel/helper-string-parser@7.29.7",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40babel/helper-globals@7.29.7",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/ms@2.1.3",
+      "dependsOn": []
+    },
+    {
       "ref": "pkg:npm/%40jridgewell/sourcemap-codec@1.5.5",
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/baseline-browser-mapping@2.11.13",
+      "ref": "pkg:npm/%40jridgewell/resolve-uri@3.1.2",
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40jridgewell/resolve-uri@3.1.2",
+      "ref": "pkg:npm/baseline-browser-mapping@2.11.13",
       "dependsOn": []
     },
     {
