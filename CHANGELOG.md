@@ -2,7 +2,7 @@
 
 本项目按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的结构记录用户可感知变更。PartyOps 当前使用三段式版本号；正式 Git 标签和安装制品只有在发布门禁通过后创建。
 
-## [1.4.3-rc.5] - 2026-08-17
+## [1.4.3-rc.5] - 2026-08-18
 
 ### Windows 安装修复
 

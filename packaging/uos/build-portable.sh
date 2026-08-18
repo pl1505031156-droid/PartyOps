@@ -6,6 +6,25 @@ ARTIFACTS="$ROOT/artifacts"
 BUILD_PARENT="${PARTYOPS_BUILD_BASE:-$ROOT/.build-uos}"
 mkdir -p "$BUILD_PARENT"
 BUILD_PARENT="$(cd "$BUILD_PARENT" && pwd -P)"
+# Windows 的 WSL DrvFS 在未启用 metadata 时会把所有条目呈现为 0777，
+# 即使 chmod 返回成功也不会保存 POSIX 权限。若继续在该目录构建，最终
+# TAR 会让普通文档也可执行且全员可写。发布构建必须先实测权限语义；
+# 默认目录不具备 POSIX 权限时，自动转到 Linux 本地临时文件系统。
+MODE_PROBE="$(mktemp -d "$BUILD_PARENT/.mode-probe.XXXXXX")"
+touch "$MODE_PROBE/file"
+chmod 0700 "$MODE_PROBE"
+chmod 0600 "$MODE_PROBE/file"
+if [[ "$(stat -c '%a' "$MODE_PROBE")" != "700" ||
+  "$(stat -c '%a' "$MODE_PROBE/file")" != "600" ]]; then
+  PROBE_PARENT="$BUILD_PARENT"
+  BUILD_PARENT="${TMPDIR:-/tmp}/partyops-build"
+  mkdir -p "$BUILD_PARENT"
+  chmod 0700 "$BUILD_PARENT"
+  echo "构建目录 $PROBE_PARENT 不保存 POSIX 权限；改用 $BUILD_PARENT。"
+fi
+rm -f -- "$MODE_PROBE/file"
+rmdir -- "$MODE_PROBE"
+BUILD_PARENT="$(cd "$BUILD_PARENT" && pwd -P)"
 BUILD="$(mktemp -d "$BUILD_PARENT/portable.XXXXXX")"
 PYI_DIST="$BUILD/pyinstaller-dist"
 PYI_WORK="$BUILD/pyinstaller-work"
@@ -384,6 +403,18 @@ grep -qx chi_sim <<<"$OCR_LANGS" && grep -qx eng <<<"$OCR_LANGS" || {
   echo "OCR 中英文离线语言数据未完整加载。" >&2
   exit 2
 }
+# WSL DrvFS 会把源码树中的普通文件统一显示为可执行。运行时已经在真正
+# 支持 POSIX 权限的临时目录中生成，因此在封装前按“静态数据后缀”收敛
+# 权限；随后再只为已知入口恢复执行位，避免 HTML、清单或桌面文件被误
+# 标为程序，也不误伤 PyInstaller/AI/OCR 的原生二进制。
+find "$RUNTIME" -type f \( \
+  -name '*.css' -o -name '*.desktop' -o -name '*.html' -o \
+  -name '*.ico' -o -name '*.jpeg' -o -name '*.jpg' -o \
+  -name '*.js' -o -name '*.json' -o -name '*.map' -o \
+  -name '*.md' -o -name '*.pem' -o -name '*.png' -o \
+  -name '*.svg' -o -name '*.txt' -o -name '*.woff' -o \
+  -name '*.woff2' -o -name '*.xml' \
+\) -exec chmod 0644 {} +
 chmod 0755 "$RUNTIME/partyops" "$RUNTIME/partyops-client" "$RUNTIME/partyops-wizard" \
   "$RUNTIME/partyops-updater" \
   "$RUNTIME/start.sh" "$RUNTIME/stop.sh" "$RUNTIME/desktop-launcher.sh" \

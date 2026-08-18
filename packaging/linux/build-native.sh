@@ -55,13 +55,33 @@ PORTABLE="$ARTIFACTS/PartyOps-linux-$ARCH.tar.zst"
   echo "缺少严格模式便携载荷：$PORTABLE" >&2
   exit 2
 }
-mkdir -p "$ROOT/.build-linux" "$ARTIFACTS"
-BUILD="$(mktemp -d "$ROOT/.build-linux/native.XXXXXX")"
+BUILD_PARENT="${PARTYOPS_NATIVE_BUILD_BASE:-$ROOT/.build-linux}"
+mkdir -p "$BUILD_PARENT" "$ARTIFACTS"
+BUILD_PARENT="$(cd "$BUILD_PARENT" && pwd -P)"
+# DEB/RPM 元数据要求真实 POSIX 权限。WSL DrvFS 未启用 metadata 时会把
+# DEBIAN/control 等文件和目录全部呈现为 0777，dpkg-deb 会直接拒绝；
+# 先实测权限语义，不满足时把暂存树放到 Linux 本地文件系统。
+MODE_PROBE="$(mktemp -d "$BUILD_PARENT/.mode-probe.XXXXXX")"
+touch "$MODE_PROBE/file"
+chmod 0700 "$MODE_PROBE"
+chmod 0600 "$MODE_PROBE/file"
+if [[ "$(stat -c '%a' "$MODE_PROBE")" != "700" ||
+  "$(stat -c '%a' "$MODE_PROBE/file")" != "600" ]]; then
+  PROBE_PARENT="$BUILD_PARENT"
+  BUILD_PARENT="${TMPDIR:-/tmp}/partyops-native-build"
+  mkdir -p "$BUILD_PARENT"
+  chmod 0700 "$BUILD_PARENT"
+  echo "原生包暂存目录 $PROBE_PARENT 不保存 POSIX 权限；改用 $BUILD_PARENT。"
+fi
+rm -f -- "$MODE_PROBE/file"
+rmdir -- "$MODE_PROBE"
+BUILD_PARENT="$(cd "$BUILD_PARENT" && pwd -P)"
+BUILD="$(mktemp -d "$BUILD_PARENT/native.XXXXXX")"
 cleanup() {
   status=$?
   trap - EXIT
   case "$BUILD" in
-    "$ROOT/.build-linux/native."*) rm -rf -- "$BUILD" ;;
+    "$BUILD_PARENT/native."*) rm -rf -- "$BUILD" ;;
     *) echo "拒绝清理异常构建目录：$BUILD" >&2 ;;
   esac
   exit "$status"
@@ -89,6 +109,17 @@ zstd -dc -- "$PORTABLE_COPY" |
   tar --extract --file - --directory "$BUILD" \
     --no-same-owner --no-same-permissions
 cp -a "$BUILD/PartyOps/." "$PKG/opt/partyops/"
+# 兼容由旧版便携构建或不保存 POSIX 权限的工作区提供的载荷。原生包在
+# 写入文件清单之前再次收敛静态资源权限，保证本次 rc.5 即使复用已经通过
+# 功能自检的便携载荷，也不会把网页、文档或桌面配置安装为可执行文件。
+find "$PKG/opt/partyops" -type f \( \
+  -name '*.css' -o -name '*.desktop' -o -name '*.html' -o \
+  -name '*.ico' -o -name '*.jpeg' -o -name '*.jpg' -o \
+  -name '*.js' -o -name '*.json' -o -name '*.map' -o \
+  -name '*.md' -o -name '*.pem' -o -name '*.png' -o \
+  -name '*.svg' -o -name '*.txt' -o -name '*.woff' -o \
+  -name '*.woff2' -o -name '*.xml' \
+\) -exec chmod 0644 {} +
 EXPECTED_PAYLOAD_PATTERN='x86-64'
 [[ "$ARCH" == arm64 ]] && EXPECTED_PAYLOAD_PATTERN='ARM aarch64'
 file "$PKG/opt/partyops/partyops" | grep -q "$EXPECTED_PAYLOAD_PATTERN" || {
@@ -105,6 +136,16 @@ cp "$ROOT/packaging/uos/partyops.svg" "$PKG/usr/share/icons/hicolor/scalable/app
 cp "$ROOT/packaging/uos/partyops.service" "$ROOT/packaging/uos/partyops-updater.service" \
   "$PKG/lib/systemd/system/"
 cp "$ROOT/packaging/uos/cn.partyops.update.policy" "$PKG/usr/share/polkit-1/actions/"
+# 源码可能位于不保存 POSIX 权限的 WSL DrvFS；复制后显式收敛静态配置，
+# 避免 systemd 单元、桌面入口和 polkit 策略被误标为可执行文件。
+chmod 0644 \
+  "$PKG/usr/share/applications/partyops.desktop" \
+  "$PKG/usr/share/applications/partyops-file.desktop" \
+  "$PKG/usr/share/applications/partyops-client.desktop" \
+  "$PKG/usr/share/icons/hicolor/scalable/apps/partyops.svg" \
+  "$PKG/lib/systemd/system/partyops.service" \
+  "$PKG/lib/systemd/system/partyops-updater.service" \
+  "$PKG/usr/share/polkit-1/actions/cn.partyops.update.policy"
 cp "$ROOT/packaging/linux/post-install-selftest.sh" "$PKG/opt/partyops/"
 chmod 0755 "$PKG/opt/partyops/post-install-selftest.sh"
 (cd "$PKG/opt/partyops" && find . -type f ! -name release-files.sha256 -print0 | \
@@ -288,5 +329,9 @@ else
     exit 2
   }
 fi
-sha256sum "$OUTPUT" >"$OUTPUT.sha256"
+(
+  cd "$(dirname "$OUTPUT")"
+  output_name="$(basename "$OUTPUT")"
+  sha256sum "$output_name" >"$output_name.sha256"
+)
 echo "原生安装包已生成：$OUTPUT"

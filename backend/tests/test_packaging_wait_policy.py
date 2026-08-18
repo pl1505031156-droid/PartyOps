@@ -283,13 +283,16 @@ def test_portable_smoke_waits_for_slow_uos_startup() -> None:
 
 
 def test_portable_build_isolates_architecture_specific_pyinstaller_outputs() -> None:
-    """双架构构建不能共享根目录下的 build/dist，也应允许使用原生临时盘。"""
+    """双架构构建不能共享输出，也不能在不保存 POSIX 权限的盘上冻结。"""
 
     script = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
         encoding="utf-8"
     )
 
     assert 'BUILD_PARENT="${PARTYOPS_BUILD_BASE:-$ROOT/.build-uos}"' in script
+    assert 'stat -c \'%a\' "$MODE_PROBE"' in script
+    assert 'stat -c \'%a\' "$MODE_PROBE/file"' in script
+    assert 'BUILD_PARENT="${TMPDIR:-/tmp}/partyops-build"' in script
     assert 'BUILD="$(mktemp -d "$BUILD_PARENT/portable.XXXXXX")"' in script
     assert '--distpath "$PYI_DIST" --workpath "$PYI_WORK"' in script
     assert 'cp -a "$PYI_DIST/PartyOps/." "$RUNTIME/"' in script
@@ -830,6 +833,36 @@ def test_linux_native_release_requires_embedded_update_trust_key() -> None:
     assert "拒绝生成无法应用内升级的正式包" in script
 
 
+def test_linux_native_build_uses_a_posix_permission_build_root() -> None:
+    """DrvFS 不保存 chmod 时，DEB/RPM 暂存树必须自动转入 Linux 本地盘。"""
+
+    script = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'BUILD_PARENT="${PARTYOPS_NATIVE_BUILD_BASE:-$ROOT/.build-linux}"' in script
+    assert 'stat -c \'%a\' "$MODE_PROBE"' in script
+    assert 'stat -c \'%a\' "$MODE_PROBE/file"' in script
+    assert 'BUILD_PARENT="${TMPDIR:-/tmp}/partyops-native-build"' in script
+    assert 'BUILD="$(mktemp -d "$BUILD_PARENT/native.XXXXXX")"' in script
+    assert 'chmod 0644 \\' in script
+    assert '"$PKG/lib/systemd/system/partyops.service"' in script
+    assert '"$PKG/usr/share/polkit-1/actions/cn.partyops.update.policy"' in script
+
+
+def test_linux_native_checksum_sidecar_uses_only_the_artifact_filename() -> None:
+    """发布校验文件不得泄露构建机绝对路径，且必须可跨目录复用。"""
+
+    script = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'cd "$(dirname "$OUTPUT")"' in script
+    assert 'output_name="$(basename "$OUTPUT")"' in script
+    assert 'sha256sum "$output_name" >"$output_name.sha256"' in script
+    assert 'sha256sum "$OUTPUT" >"$OUTPUT.sha256"' not in script
+
+
 def test_linux_deb_old_builder_checks_ownership_before_compat_build() -> None:
     """glibc 2.17 构建机的旧 dpkg-deb 仅在 root:root 载荷上降级参数。"""
 
@@ -853,6 +886,26 @@ def test_linux_native_packages_preserve_frozen_runtime_and_verify_identity() -> 
     assert "dpkg-deb --field" in script
     assert "rpm -qp --queryformat" in script
     assert "元数据与冻结版本/架构不一致" in script
+    assert 'find "$PKG/opt/partyops" -type f' in script
+    assert "-name '*.desktop'" in script
+    assert "-name '*.html'" in script
+    assert ") -exec chmod 0644 {} +" in script
+
+
+def test_portable_builder_normalizes_static_resource_modes() -> None:
+    """DrvFS 静态资源不得以可执行权限进入便携或原生安装包。"""
+
+    script = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'find "$RUNTIME" -type f' in script
+    assert "-name '*.desktop'" in script
+    assert "-name '*.html'" in script
+    assert ") -exec chmod 0644 {} +" in script
+    assert script.index('find "$RUNTIME" -type f') < script.index(
+        'chmod 0755 "$RUNTIME/partyops"'
+    )
 
 
 def test_linux_ocr_uses_locked_glibc217_runtime_not_build_host() -> None:
