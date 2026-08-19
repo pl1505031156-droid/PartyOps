@@ -176,7 +176,7 @@ rc.8 使用全新的版本化文件名和不可变标签，不覆盖历史 Relea
 
 普通 Windows 用户只需下载一个 EXE。安装器会校验其内部载荷；最终文件大小与 SHA-256 直接显示在 Release 和官网，无需再下载第二个“校验包”。同名 `.sha256` 仅为自动化工具提供，不是安装必需步骤。
 
-国产 Linux 用户不再需要下载“构建套件 + 校验包”。每台电脑只下载一个与 CPU 架构匹配的 DEB 或 RPM：飞腾/鲲鹏通常选 ARM64，海光/兆芯/Intel/AMD 通常选 AMD64；最准确的方法是运行 `uname -m`，`aarch64` 对应 ARM64、`x86_64` 对应 AMD64。龙芯 LoongArch 与 RISC-V 本轮没有对应包，不要强制安装其他架构。
+国产 Linux 用户不再需要下载“构建套件 + 校验包”。每台电脑只下载一个与 CPU 架构匹配的 DEB 或 RPM：飞腾 D2000/FT-2000、麒麟 9000C/9006C/990、鲲鹏通常选 ARM64，海光/兆芯/Intel/AMD 通常选 AMD64；最准确的方法是运行 `uname -m`，`aarch64` 对应 ARM64、`x86_64` 对应 AMD64。银河麒麟桌面 V10 SP1 的 2107/2203/2303/2403/2503 使用同一套选包规则，不需要按小版本重复下载。龙芯 LoongArch 与 RISC-V 本轮没有对应包，不要强制安装其他架构。
 
 Windows 7 x64 提供完整主机、协同、OCR、语义重排和本地 LLM；x86 提供核心主机、协同、数据库、文件、档案、备份和 OCR，受 32 位地址空间限制不启用语义重排与本地 LLM。两者均使用独立 Python 3.8 Legacy 锁、经证据校验的安全回移组件和 Microsoft 官方 app-local UCRT；由于没有 Win7 真机，仍不能把静态/冻结验证表述为真机通过。
 
@@ -226,13 +226,15 @@ sha256sum PartyOps_1.4.3-rc.8_linux_amd64.deb
 
 ### 麒麟 / UOS / deepin / openEuler
 
+银河麒麟桌面 V10 SP1 的系列版本、处理器示例与验收边界见[兼容说明](docs/kylin-v10-sp1-compatibility.md)。
+
 先确认架构：
 
 ```bash
 dpkg --print-architecture
 ```
 
-海光、兆芯、Intel、AMD 通常使用 `amd64/x86_64`；飞腾、鲲鹏等使用 `arm64/aarch64`。麒麟、UOS、deepin 下载 DEB，openEuler 下载 RPM：
+海光、兆芯、Intel、AMD 通常使用 `amd64/x86_64`；飞腾 D2000/FT-2000、麒麟 9000C/9006C/990、鲲鹏等使用 `arm64/aarch64`。银河麒麟桌面 V10 SP1 2107—2503、UOS、deepin 下载 DEB，openEuler 下载 RPM。截图中 `D2000`、`HUAWEI Kirin 9000C` 且 `uname -m` 返回 `aarch64` 的电脑，都选择同一个 ARM64 DEB：
 
 ```bash
 sudo install -m 0644 ./PartyOps_1.4.3-rc.8_linux_amd64.deb /var/tmp/partyops.deb

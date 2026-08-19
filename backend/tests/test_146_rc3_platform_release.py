@@ -59,6 +59,31 @@ def test_linux_distribution_and_package_detection(monkeypatch, tmp_path: Path) -
     assert update_platform_key(info) == "linux-rpm"
 
 
+@pytest.mark.parametrize("release_track", ["2107", "2203", "2303", "2403", "2503"])
+def test_kylin_v10_sp1_series_selects_arm64_deb(
+    monkeypatch, tmp_path: Path, release_track: str
+) -> None:
+    """银河麒麟 V10 SP1 同系列 ARM 设备共用 ARM64 DEB，不按 CPU 型号拆包。"""
+
+    release = tmp_path / "os-release"
+    release.write_text(
+        'ID="kylin"\n'
+        f'VERSION_ID="V10-SP1-{release_track}"\n'
+        'ID_LIKE="debian"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("app.platform_info.sys.platform", "linux")
+    monkeypatch.setattr("app.platform_info.platform.machine", lambda: "aarch64")
+
+    info = detect_platform_info(os_release_path=release)
+
+    assert info["distribution"] == "kylin"
+    assert info["distribution_version"] == f"V10-SP1-{release_track}"
+    assert info["package_format"] == "deb"
+    assert info["architecture"] == "arm64"
+    assert update_platform_key(info) == "linux-deb"
+
+
 def test_windows7_x86_reports_legacy_core_without_local_ai(monkeypatch) -> None:
     monkeypatch.setattr("app.platform_info.sys.platform", "win32")
     monkeypatch.setattr("app.platform_info.platform.machine", lambda: "i686")
