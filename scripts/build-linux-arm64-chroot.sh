@@ -58,6 +58,9 @@ if [[ "$ACTION" == deb || "$ACTION" == rpm ]]; then
     export PYTHON_BIN="$HOST_PYTHON_BIN"
     export PARTYOPS_BUILD_ARCH=arm64
     export PARTYOPS_BUILD_BASE=/tmp/partyops-build-arm64-package
+    # 本入口的 portable 阶段只会在上方受控 ARM64 chroot 中成功产出；
+    # 普通 build-native 直接交叉封装仍保持默认拒绝。
+    export PARTYOPS_ALLOW_CROSS_PACKAGE=1
     bash packaging/linux/build-native.sh "$ACTION"
   )
   exit 0
