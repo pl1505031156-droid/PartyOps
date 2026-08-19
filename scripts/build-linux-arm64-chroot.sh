@@ -48,7 +48,7 @@ esac
 # DEB/RPM 的 cpio/tar 元数据封装与目标 CPU 无关；ARM64 最小运行根故意
 # 不安装 dpkg/rpmbuild。载荷仍必须先在上面的 ARM64 chroot 中冻结并通过
 # 自检，随后由宿主官方包工具封装，最终成品再送回 chroot 动态启动。
-if [[ "$ACTION" == deb || "$ACTION" == rpm ]]; then
+if [[ "$ACTION" == deb ]]; then
   [[ -x "$HOST_PYTHON_BIN" ]] || {
     echo "宿主缺少 Linux 打包门禁 Python：$HOST_PYTHON_BIN" >&2
     exit 2
@@ -61,7 +61,7 @@ if [[ "$ACTION" == deb || "$ACTION" == rpm ]]; then
     # 本入口的 portable 阶段只会在上方受控 ARM64 chroot 中成功产出；
     # 普通 build-native 直接交叉封装仍保持默认拒绝。
     export PARTYOPS_ALLOW_CROSS_PACKAGE=1
-    bash packaging/linux/build-native.sh "$ACTION"
+    bash packaging/linux/build-native.sh deb
   )
   exit 0
 fi
@@ -121,6 +121,7 @@ chroot "$ROOTFS" /bin/bash -lc "
   export PARTYOPS_BUILD_BASE=/tmp/partyops-build-arm64
   case '$ACTION' in
     portable) bash packaging/uos/build-portable.sh ;;
+    rpm) bash packaging/linux/build-native.sh rpm ;;
     test-deb)
       bash scripts/test-native-package-runtime.sh \
         artifacts/PartyOps_1.4.3-rc.8_linux_arm64.deb arm64
