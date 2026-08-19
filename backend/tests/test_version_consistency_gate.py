@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 from pathlib import Path
 
 import pytest
@@ -15,40 +14,47 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
+VERSION_INPUTS = (
+    "backend/app/__init__.py",
+    "backend/app/client_agent.py",
+    "backend/pyproject.toml",
+    "backend/uv.lock",
+    "frontend/package.json",
+    "packaging/windows/PartyOps.iss",
+    "packaging/windows/build-windows.ps1",
+    "packaging/windows/build-windows7.ps1",
+    "packaging/uos/build-update-package.sh",
+    "scripts/generate-update-catalog.py",
+    "packaging/linux/build-native.sh",
+    "scripts/build-platform-update-packages.py",
+    "scripts/generate-release-bundle-manifest.py",
+)
+
+
+def _copy_version_inputs(target_root: Path) -> None:
+    for relative in VERSION_INPUTS:
+        target = target_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((ROOT / relative).read_bytes())
+
+
 def test_repository_versions_are_consistent() -> None:
     MODULE.verify(ROOT, "1.4.3-rc.7")
 
 
-def test_python_metadata_mismatch_is_rejected(tmp_path: Path) -> None:
-    files = {
-        "backend/app/__init__.py": '__version__ = "1.4.3-rc.7"\n',
-        "backend/app/client_agent.py": 'AGENT_VERSION = "1.4.3-rc.7"\n',
-        "backend/pyproject.toml": '[project]\nversion = "1.4.3rc4"\n',
-        "backend/uv.lock": '[[package]]\nname = "partyops"\nversion = "1.4.3rc7"\n',
-    }
-    for relative, content in files.items():
-        target = tmp_path / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
-    for relative in ("frontend/package.json", "website/package.json"):
-        target = tmp_path / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps({"version": "1.4.3-rc.7"}), encoding="utf-8")
+def test_independent_website_is_not_required_by_application_freeze(
+    tmp_path: Path,
+) -> None:
+    _copy_version_inputs(tmp_path)
 
-    release_files = {
-        "packaging/windows/PartyOps.iss": '#define MyAppVersion "1.4.3-rc.7"\n',
-        "packaging/windows/build-windows.ps1": '$releaseVersion = "1.4.3-rc.7"\n',
-        "packaging/windows/build-windows7.ps1": '$releaseVersion = "1.4.3-rc.7"\n',
-        "packaging/uos/build-update-package.sh": 'VERSION="1.4.3-rc.7"\n',
-        "scripts/generate-update-catalog.py": 'VERSION = "1.4.3-rc.7"\n',
-        "packaging/linux/build-native.sh": 'DEB_VERSION="1.4.3~rc.7"\n',
-        "scripts/build-platform-update-packages.py": '"PartyOps_1.4.3-rc.7_windows_amd64.exe"\n',
-        "scripts/generate-release-bundle-manifest.py": '"PartyOps_1.4.3-rc.7_linux_arm64.deb"\n',
-    }
-    for relative, content in release_files.items():
-        target = tmp_path / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+    MODULE.verify(tmp_path, "1.4.3-rc.7")
+
+
+def test_python_metadata_mismatch_is_rejected(tmp_path: Path) -> None:
+    _copy_version_inputs(tmp_path)
+    (tmp_path / "backend/pyproject.toml").write_text(
+        '[project]\nversion = "1.4.3rc4"\n', encoding="utf-8"
+    )
 
     with pytest.raises(ValueError, match="Python 项目元数据版本不一致"):
         MODULE.verify(tmp_path, "1.4.3-rc.7")

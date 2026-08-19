@@ -16,7 +16,7 @@ def _expect(pattern: str, text: str, expected: str, label: str) -> None:
 
 
 def verify(root: Path, expected: str) -> None:
-    """验证应用、打包入口、发布生成器与两个前端使用同一发布版本。"""
+    """验证应用仓库内的运行时、打包入口与发布生成器版本。"""
 
     pep440 = expected.replace("-rc.", "rc")
     _expect(
@@ -44,14 +44,12 @@ def verify(root: Path, expected: str) -> None:
         pep440,
         "Python 锁文件",
     )
-    for relative, label in (
-        ("frontend/package.json", "业务前端"),
-        ("website/package.json", "官网"),
-    ):
-        payload = json.loads((root / relative).read_text(encoding="utf-8"))
-        actual = payload.get("version")
-        if actual != expected:
-            raise ValueError(f"{label}版本不一致：期望 {expected}，实际 {actual}")
+    payload = json.loads(
+        (root / "frontend/package.json").read_text(encoding="utf-8")
+    )
+    actual = payload.get("version")
+    if actual != expected:
+        raise ValueError(f"业务前端版本不一致：期望 {expected}，实际 {actual}")
 
     for relative, pattern, label, transformed in (
         (
