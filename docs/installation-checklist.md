@@ -1,6 +1,6 @@
 # PartyOps 1.4.3 安装与上线检查清单
 
-适用于 Windows 10/11 x64、Windows 7 SP1 x64/x86、麒麟/UOS/deepin amd64/arm64 和 openEuler x86_64/aarch64 的主机与协同机。当前 `v1.4.3-rc.7` 为未签名候选版；Windows 7 与国产 Linux 制品未真机验证，未关闭项不得勾选为通过。Win7 还必须确认 SP1、KB2533623、Universal CRT，并仅在受控局域网使用。Win7 不得使用文件名只有 `windows_amd64` 的 Windows 10/11 通用包。
+适用于 Windows 10/11 x64、Windows 7 SP1 x64/x86、麒麟/UOS/deepin amd64/arm64 和 openEuler x86_64/aarch64 的主机与协同机。当前 `v1.4.3-rc.8` 为未签名候选版；Windows 7 与国产 Linux 制品未真机验证，未关闭项不得勾选为通过。Win7 还必须确认 SP1、KB2533623、Universal CRT，并仅在受控局域网使用。Win7 不得使用文件名只有 `windows_amd64` 的 Windows 10/11 通用包。
 
 ## 制品
 
@@ -55,4 +55,4 @@
 - [ ] 20GB、断线续传、主机重启、哈希失败、权限中途撤销和 24 小时连续运行通过。
 - [ ] 发布签名、升级、原位回滚、备份恢复和小范围试运行证据齐全。
 
-任一未勾选的正式放行项都使稳定版本结论保持 **NO-GO**；这不阻止在本地发布门禁全部通过后，将明确标注未真机验证的 rc.7 候选版作为普通 Release 发布。详细命令与配置见[部署说明](deployment.md)、[1.4.3 升级与回滚](upgrade-1.4.3.md)，发布就绪判定以官网、Gitee 和 GitHub Release 同步公开的记录为准。
+任一未勾选的正式放行项都使稳定版本结论保持 **NO-GO**；这不阻止在本地发布门禁全部通过后，将明确标注未真机验证的 rc.8 候选版作为普通 Release 发布。详细命令与配置见[部署说明](deployment.md)、[1.4.3 升级与回滚](upgrade-1.4.3.md)，发布就绪判定以官网、Gitee 和 GitHub Release 同步公开的记录为准。
