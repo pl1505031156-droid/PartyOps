@@ -1011,6 +1011,19 @@ def test_linux_native_build_uses_a_posix_permission_build_root() -> None:
     assert '"$PKG/usr/share/polkit-1/actions/cn.partyops.update.policy"' in script
 
 
+def test_arm64_native_package_is_host_wrapped_then_chroot_tested() -> None:
+    """ARM 运行根无需塞入宿主包工具，封装和架构内动态门禁必须分离。"""
+
+    script = (ROOT / "scripts" / "build-linux-arm64-chroot.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "HOST_PYTHON_BIN=" in script
+    assert 'if [[ "$ACTION" == deb || "$ACTION" == rpm ]]' in script
+    assert 'bash packaging/linux/build-native.sh "$ACTION"' in script
+    assert "test-native-package-runtime.sh" in script
+    assert "deb|rpm) bash packaging/linux/build-native.sh '$ACTION'" not in script
+
+
 def test_linux_native_checksum_sidecar_uses_only_the_artifact_filename() -> None:
     """发布校验文件不得泄露构建机绝对路径，且必须可跨目录复用。"""
 

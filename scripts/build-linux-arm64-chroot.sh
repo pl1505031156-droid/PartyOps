@@ -9,6 +9,7 @@ ACTION="${1:-portable}"
 ROOTFS="${PARTYOPS_ARM64_ROOTFS:-/opt/manylinux2014-aarch64-rootfs}"
 MOUNT_POINT="$ROOTFS/workspace/partyops"
 QEMU_INTERPRETER="${PARTYOPS_QEMU_AARCH64:-/usr/bin/qemu-aarch64-static}"
+HOST_PYTHON_BIN="${PARTYOPS_HOST_PYTHON_BIN:-/opt/partyops-python/cpython-3.11.15-linux-x86_64-gnu/bin/python3}"
 REGISTERED_BY_SCRIPT=0
 MOUNTS=()
 
@@ -43,6 +44,24 @@ esac
   echo "ARM64 根文件系统缺少冻结 Python 3.11 或 GCC 11。" >&2
   exit 2
 }
+
+# DEB/RPM 的 cpio/tar 元数据封装与目标 CPU 无关；ARM64 最小运行根故意
+# 不安装 dpkg/rpmbuild。载荷仍必须先在上面的 ARM64 chroot 中冻结并通过
+# 自检，随后由宿主官方包工具封装，最终成品再送回 chroot 动态启动。
+if [[ "$ACTION" == deb || "$ACTION" == rpm ]]; then
+  [[ -x "$HOST_PYTHON_BIN" ]] || {
+    echo "宿主缺少 Linux 打包门禁 Python：$HOST_PYTHON_BIN" >&2
+    exit 2
+  }
+  (
+    cd "$ROOT"
+    export PYTHON_BIN="$HOST_PYTHON_BIN"
+    export PARTYOPS_BUILD_ARCH=arm64
+    export PARTYOPS_BUILD_BASE=/tmp/partyops-build-arm64-package
+    bash packaging/linux/build-native.sh "$ACTION"
+  )
+  exit 0
+fi
 
 cleanup() {
   local status=$? index
@@ -99,7 +118,6 @@ chroot "$ROOTFS" /bin/bash -lc "
   export PARTYOPS_BUILD_BASE=/tmp/partyops-build-arm64
   case '$ACTION' in
     portable) bash packaging/uos/build-portable.sh ;;
-    deb|rpm) bash packaging/linux/build-native.sh '$ACTION' ;;
     test-deb)
       bash scripts/test-native-package-runtime.sh \
         artifacts/PartyOps_1.4.3-rc.8_linux_arm64.deb arm64
