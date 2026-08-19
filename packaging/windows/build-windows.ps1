@@ -356,7 +356,10 @@ Assert-NativeSuccess "读取源码提交"
   --output (Join-Path $bundleRoot "release-manifest.json") `
   --version $releaseVersion `
   --tag $releaseTag `
-  --commit $sourceCommit
+  --commit $sourceCommit `
+  --platform $platformFamily `
+  --architecture $targetArchitecture `
+  --runtime-profile $runtimeProfile
 Assert-NativeSuccess "生成嵌入式发布清单"
 
 if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw "未找到 Inno Setup 6：$InnoCompiler" }

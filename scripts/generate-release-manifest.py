@@ -24,6 +24,9 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--commit", required=True)
+    parser.add_argument("--platform", required=True)
+    parser.add_argument("--architecture", required=True)
+    parser.add_argument("--runtime-profile", required=True)
     args = parser.parse_args()
     root = args.root.resolve()
     output = args.output.resolve()
@@ -45,7 +48,9 @@ def main() -> int:
         "release_tag": args.tag,
         "source_commit": args.commit,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "platform": "windows-amd64",
+        "platform": args.platform,
+        "architecture": args.architecture,
+        "runtime_profile": args.runtime_profile,
         "signed": False,
         "files": files,
     }

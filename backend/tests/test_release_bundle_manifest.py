@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -47,3 +50,50 @@ def test_manifest_rejects_old_installer(tmp_path: Path) -> None:
             tooling_commit="b" * 40,
             generated_at="2026-08-18T10:00:00+08:00",
         )
+
+
+@pytest.mark.parametrize(
+    ("platform", "architecture", "runtime_profile"),
+    [
+        ("windows", "amd64", "full"),
+        ("windows7", "amd64", "legacy-full"),
+        ("windows7", "x86", "legacy-core"),
+    ],
+)
+def test_embedded_windows_manifest_preserves_target_identity(
+    tmp_path: Path,
+    platform: str,
+    architecture: str,
+    runtime_profile: str,
+) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "PartyOps.exe").write_bytes(b"MZ")
+    output = bundle / "release-manifest.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "generate-release-manifest.py"),
+            "--root",
+            str(bundle),
+            "--output",
+            str(output),
+            "--version",
+            "1.4.3-rc.7",
+            "--tag",
+            "v1.4.3-rc.7",
+            "--commit",
+            "a" * 40,
+            "--platform",
+            platform,
+            "--architecture",
+            architecture,
+            "--runtime-profile",
+            runtime_profile,
+        ],
+        check=True,
+    )
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    assert manifest["platform"] == platform
+    assert manifest["architecture"] == architecture
+    assert manifest["runtime_profile"] == runtime_profile
