@@ -593,10 +593,19 @@ def test_wizard_health_terminal_invalid_personal_and_timeout_diagnostics(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    terminal_statuses = [
+        {"updated_at": "old", "code": "CHILD_EXITED", "detail": "旧诊断"}
+    ]
     monkeypatch.setattr(
         setup_wizard,
         "read_service_status",
-        lambda _path: {"code": "CHILD_EXITED", "detail": "子进程退出"},
+        lambda _path: terminal_statuses.pop(0)
+        if terminal_statuses
+        else {
+            "updated_at": "current",
+            "code": "CHILD_EXITED",
+            "detail": "子进程退出",
+        },
     )
     with pytest.raises(setup_wizard.HostStartupError) as terminal:
         setup_wizard.wait_for_host_health(
@@ -676,10 +685,19 @@ def test_wizard_health_status_file_overrides_generic_timeout(
     monkeypatch.setattr(setup_wizard, "os", _os_proxy("posix"))
     times = iter([0.0, 6.0])
     monkeypatch.setattr(setup_wizard.time, "monotonic", lambda: next(times))
+    statuses = [
+        {"updated_at": "old", "code": "TLS_INIT_FAILED", "detail": "旧诊断"}
+    ]
     monkeypatch.setattr(
         setup_wizard,
         "read_service_status",
-        lambda _path: {"code": "TLS_INIT_FAILED", "detail": "证书初始化失败"},
+        lambda _path: statuses.pop(0)
+        if statuses
+        else {
+            "updated_at": "current",
+            "code": "TLS_INIT_FAILED",
+            "detail": "证书初始化失败",
+        },
     )
     with pytest.raises(setup_wizard.HostStartupError) as caught:
         setup_wizard.wait_for_host_health(

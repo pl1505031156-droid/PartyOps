@@ -277,7 +277,63 @@ def test_dpkg_preflight_repairs_pending_configuration(monkeypatch) -> None:
 
     monkeypatch.setattr(update_executor, "_run", successful)
     assert update_executor._ensure_dpkg_ready() is True
-    assert commands == [["dpkg", "--configure", "-a"]]
+    assert commands == [["dpkg", "--audit"]]
+
+    commands.clear()
+
+    def partyops_pending(command, **_kwargs):
+        commands.append(command)
+        if command[:2] == ["dpkg", "--audit"]:
+            return subprocess.CompletedProcess(
+                command, 0, " partyops 软件包尚未完成配置\n", ""
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(update_executor, "_run", partyops_pending)
+    assert update_executor._ensure_dpkg_ready() is True
+    assert commands == [
+        ["dpkg", "--audit"],
+        ["dpkg", "--audit", "partyops"],
+        ["dpkg", "--configure", "partyops"],
+    ]
+
+    commands.clear()
+
+    def unrelated_pending(command, **_kwargs):
+        commands.append(command)
+        output = (
+            " partyops 软件包尚未完成配置\n other-package 软件包尚未完成配置\n"
+            if command == ["dpkg", "--audit"]
+            else " partyops 软件包尚未完成配置\n"
+        )
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    monkeypatch.setattr(update_executor, "_run", unrelated_pending)
+    assert update_executor._ensure_dpkg_ready() is False
+    assert commands == [["dpkg", "--audit"], ["dpkg", "--audit", "partyops"]]
+
+    def partyops_audit_failure(command, **_kwargs):
+        if command == ["dpkg", "--audit"]:
+            return subprocess.CompletedProcess(command, 0, " partyops 待配置\n", "")
+        return subprocess.CompletedProcess(command, 2, "", "查询失败")
+
+    monkeypatch.setattr(update_executor, "_run", partyops_audit_failure)
+    assert update_executor._ensure_dpkg_ready() is False
+
+    def empty_partyops_audit(command, **_kwargs):
+        output = " partyops 待配置\n" if command == ["dpkg", "--audit"] else ""
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    monkeypatch.setattr(update_executor, "_run", empty_partyops_audit)
+    assert update_executor._ensure_dpkg_ready() is False
+
+    def configure_failure(command, **_kwargs):
+        if command[:2] == ["dpkg", "--audit"]:
+            return subprocess.CompletedProcess(command, 0, " partyops 待配置\n", "")
+        return subprocess.CompletedProcess(command, 1, "", "配置失败")
+
+    monkeypatch.setattr(update_executor, "_run", configure_failure)
+    assert update_executor._ensure_dpkg_ready() is False
 
     monkeypatch.setattr(
         update_executor,
@@ -499,7 +555,7 @@ def test_execute_host_update_success_and_failure_rollback(
     assert progress_states[-1][0] == UpdateStatus.FAILED
     assert "原版本保持不变" in progress_states[-1][2]
     new_commands = commands[len(commands_before_preflight_failure) :]
-    assert new_commands == [["dpkg", "--configure", "-a"]]
+    assert new_commands == [["dpkg", "--audit"]]
     assert not any(command[:2] == ["systemctl", "stop"] for command in new_commands)
     assert not any(command[:2] == ["dpkg", "--unpack"] for command in new_commands)
     assert not (data_dir / ".update.lock").exists()

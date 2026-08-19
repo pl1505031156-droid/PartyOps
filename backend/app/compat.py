@@ -6,10 +6,39 @@ import asyncio
 import builtins
 import contextvars
 import functools
+import hashlib
 import sys
 from collections.abc import Callable, Iterable, Iterator
 from enum import Enum
 from typing import Any
+
+
+def install_legacy_hashlib_compat() -> None:
+    """让官方 Python 3.8 接受新版 Starlette 的非安全 MD5 标志。
+
+    Starlette 只用 MD5 为静态文件生成缓存 ETag，不用于签名或密码。Python
+    3.9+ 接受 ``usedforsecurity=False``，但 Windows 官方 Python 3.8 的
+    ``openssl_md5`` 只有一个位置参数，导致首页 FileResponse 稳定返回 500。
+    这里只在旧解释器确实缺少该关键字时增加同语义适配，不改变摘要算法。
+    """
+
+    if sys.version_info >= (3, 9):
+        return
+    original = hashlib.md5
+    try:
+        original(b"", usedforsecurity=False)
+        return
+    except TypeError:
+        pass
+
+    @functools.wraps(original)
+    def compatible_md5(
+        data: bytes = b"", *, usedforsecurity: bool = True
+    ) -> Any:
+        del usedforsecurity
+        return original(data)
+
+    hashlib.md5 = compatible_md5
 
 try:
     from enum import StrEnum as StrEnum

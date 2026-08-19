@@ -68,7 +68,13 @@ if [[ "$CONFIG" != "$PERSONAL_CONFIG" ]]; then
 fi
 if [[ -f "$CONFIG" ]]; then
   set -a
-  source "$CONFIG"
+  set +u
+  if ! source "$CONFIG"; then
+    set -u
+    echo "[CONFIG_INVALID] 配置文件无法读取：$CONFIG。请重新打开配置向导修复。" >&2
+    exit 2
+  fi
+  set -u
   set +a
 fi
 export PARTYOPS_ENVIRONMENT="${PARTYOPS_ENVIRONMENT:-production}"
@@ -80,10 +86,51 @@ export PARTYOPS_PORT="${PARTYOPS_PORT:-18765}"
 
 mkdir -p "$PARTYOPS_DATA_DIR"
 PIDFILE="$PARTYOPS_DATA_DIR/partyops.pid"
-if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-  echo "党建智办已在运行。"
-  exit 0
+is_partyops_process() {
+  local pid="$1" state executable
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  [[ -r "/proc/$pid/stat" ]] || return 1
+  state="$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null || true)"
+  [[ -n "$state" && "$state" != "Z" ]] || return 1
+  executable="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+  case "$executable" in
+    "$APP_ROOT/partyops"|"$APP_ROOT/PartyOps/partyops") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if [[ -f "$PIDFILE" ]]; then
+  RECORDED_PID="$(cat "$PIDFILE" 2>/dev/null || true)"
+  if is_partyops_process "$RECORDED_PID"; then
+    echo "党建智办已在运行。"
+    exit 0
+  fi
+  # PID 已结束、损坏或被其他程序复用时只能删除 PartyOps 自己的记录；
+  # 绝不向身份不明的进程发信号，也不能因此永久跳过启动。
+  rm -f -- "$PIDFILE"
 fi
-nohup "$APP_ROOT/partyops" >> "$PARTYOPS_DATA_DIR/launcher.log" 2>&1 &
-echo "$!" > "$PIDFILE"
+LAUNCHER_LOG="$PARTYOPS_DATA_DIR/launcher.log"
+rotate_launcher_log() {
+  local log="$1" index
+  [[ -f "$log" ]] || return 0
+  [[ "$(wc -c <"$log" 2>/dev/null || printf 0)" -ge 5242880 ]] || return 0
+  rm -f -- "$log.5"
+  index=4
+  while ((index >= 1)); do
+    [[ ! -e "$log.$index" ]] || mv -f -- "$log.$index" "$log.$((index + 1))"
+    index=$((index - 1))
+  done
+  mv -f -- "$log" "$log.1"
+}
+rotate_launcher_log "$LAUNCHER_LOG" || true
+nohup "$APP_ROOT/partyops" >> "$LAUNCHER_LOG" 2>&1 &
+STARTED_PID=$!
+echo "$STARTED_PID" > "$PIDFILE"
+sleep 0.5
+if ! is_partyops_process "$STARTED_PID"; then
+  rm -f -- "$PIDFILE"
+  echo "[CHILD_EXITED] 党建智办启动后提前退出；启动日志如下：" >&2
+  tail -n 80 "$LAUNCHER_LOG" >&2 2>/dev/null || true
+  exit 2
+fi
 echo "党建智办已启动：http://$PARTYOPS_HOST:$PARTYOPS_PORT"

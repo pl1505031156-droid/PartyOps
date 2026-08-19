@@ -13,14 +13,23 @@ const apiMocks = vi.hoisted(() => ({
   post: vi.fn<(path: string, body?: unknown) => Promise<unknown>>(),
   patch: vi.fn<(path: string, body?: unknown) => Promise<unknown>>(),
   put: vi.fn<(path: string, body?: unknown) => Promise<unknown>>(),
-  delete: vi.fn<(path: string) => Promise<unknown>>(),
+  delete: vi.fn<(path: string, headers?: HeadersInit) => Promise<unknown>>(),
 }));
 
 vi.mock("../api", () => ({
   ApiError: class ApiError extends Error {
-    status = 400;
-    code = "TEST_ERROR";
-    fields: Record<string, string> = {};
+    status: number;
+    code: string;
+    problem: Record<string, unknown>;
+    fields: Record<string, string>;
+
+    constructor(status: number, problem: Record<string, unknown>) {
+      super(String(problem.detail || problem.title || "请求失败"));
+      this.status = status;
+      this.code = String(problem.code || "TEST_ERROR");
+      this.problem = problem;
+      this.fields = {};
+    }
   },
   api: apiMocks,
   downloadUrl: (path: string) => `/api/v1${path}`,
@@ -680,7 +689,7 @@ describe("核心页面真实挂载", () => {
     apiMocks.post.mockImplementation(async (path) => path === "/tasks" || path.includes("/actions") || path.includes("/participants") || path.includes("/versions") || path.includes("/apply") ? task : {});
     apiMocks.patch.mockImplementation(async (path) => path === "/tasks/task-1" ? task : {});
     apiMocks.delete.mockResolvedValue(task);
-    const wrapper = await mountView(TaskDetailView, "/tasks/task-1");
+    const wrapper = await mountView(TaskDetailView, "/tasks/task-1", true);
     const state = setupState(wrapper);
 
     await runAction(state, "materialCategoryLabel", "final");
@@ -719,10 +728,55 @@ describe("核心页面真实挂载", () => {
     state.conflict = { draft_id: "draft-1", current_version: "2", current: { title: "新版" }, submitted: { title: "草稿" } };
     await runAction(state, "applyConflictDraft");
 
+    state.task = { ...task };
+    await runAction(state, "deleteCurrentTask");
+
     expect(apiMocks.post).toHaveBeenCalled();
     expect(apiMocks.patch).toHaveBeenCalled();
-    expect(apiMocks.delete).toHaveBeenCalled();
+    expect(apiMocks.delete).toHaveBeenCalledWith(
+      "/tasks/task-1",
+      { "If-Match": "1" },
+    );
     wrapper.unmount();
+  });
+
+  it("事项删除只对管理者显示并覆盖成功、冲突与普通失败", async () => {
+    const ordinary = await mountView(TaskDetailView, "/tasks/task-1");
+    const ordinaryState = setupState(ordinary);
+    ordinaryState.task = { ...task };
+    expect(ordinary.text()).not.toContain("删除事项");
+    await runAction(ordinaryState, "deleteCurrentTask");
+    expect(apiMocks.delete).not.toHaveBeenCalled();
+    ordinary.unmount();
+
+    const admin = await mountView(TaskDetailView, "/tasks/task-1", true);
+    const adminState = setupState(admin);
+    adminState.task = { ...task };
+    expect(admin.text()).toContain("删除事项");
+    apiMocks.delete.mockResolvedValueOnce({});
+    await runAction(adminState, "deleteCurrentTask");
+    expect(apiMocks.delete).toHaveBeenCalledWith(
+      "/tasks/task-1",
+      { "If-Match": "1" },
+    );
+    expect((admin.vm as unknown as { $router: { currentRoute: { value: { path: string } } } }).$router.currentRoute.value.path).toBe("/tasks");
+    admin.unmount();
+
+    const conflict = await mountView(TaskDetailView, "/tasks/task-1", true);
+    const conflictState = setupState(conflict);
+    conflictState.task = { ...task };
+    apiMocks.delete.mockRejectedValueOnce(new ApiError(409, {
+      code: "VERSION_CONFLICT",
+      detail: "事项已更新",
+    }));
+    const readsBeforeConflict = apiMocks.get.mock.calls.length;
+    await runAction(conflictState, "deleteCurrentTask");
+    expect(apiMocks.get.mock.calls.length).toBeGreaterThan(readsBeforeConflict);
+
+    apiMocks.delete.mockRejectedValueOnce(new Error("删除服务暂不可用"));
+    await runAction(conflictState, "deleteCurrentTask");
+    expect((conflict.vm as unknown as { $router: { currentRoute: { value: { path: string } } } }).$router.currentRoute.value.path).toBe("/tasks/task-1");
+    conflict.unmount();
   });
 
   it("事项详情覆盖无数据守卫、受限事项和失败恢复分支", async () => {

@@ -23,9 +23,9 @@
     "component": {
       "type": "library",
       "name": "partyops-frontend",
-      "version": "1.4.3-rc.6",
-      "purl": "pkg:npm/partyops-frontend@1.4.3-rc.6",
-      "bom-ref": "pkg:npm/partyops-frontend@1.4.3-rc.6"
+      "version": "1.4.3-rc.7",
+      "purl": "pkg:npm/partyops-frontend@1.4.3-rc.7",
+      "bom-ref": "pkg:npm/partyops-frontend@1.4.3-rc.7"
     }
   },
   "components": [
@@ -2836,7 +2836,7 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:npm/partyops-frontend@1.4.3-rc.6",
+      "ref": "pkg:npm/partyops-frontend@1.4.3-rc.7",
       "dependsOn": [
         "pkg:npm/%40arco-design/web-vue@2.57.0",
         "pkg:npm/%40firecrawl/anydoc-wasm@0.1.7",

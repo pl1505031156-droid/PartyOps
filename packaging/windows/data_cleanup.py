@@ -322,7 +322,7 @@ def _remove_owned_autostarts() -> None:
     install_root = Path(sys.executable).resolve().parent
     expected = {
         "PartyOpsPersonal": (install_root / "PartyOpsLauncher.exe").resolve(),
-        "PartyOpsAgent": (install_root / "PartyOpsAgent.exe").resolve(),
+        "PartyOpsAgent": (install_root / "PartyOpsLauncher.exe").resolve(),
     }
     keys: list[tuple[object, str]] = [
         (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run")

@@ -418,7 +418,7 @@ def test_host_switch_snapshot_validation_matrix(monkeypatch, tmp_path: Path) -> 
     )
     monkeypatch.setattr(
         setup_wizard,
-        "_restore_windows_services_after_data_migration",
+        "_restore_windows_services_after_mode_switch",
         lambda states: running.append(states),
     )
     setup_wizard._restore_windows_host_switch_privileged()
@@ -650,10 +650,17 @@ def test_windows_launcher_blocks_all_roles_until_pending_switch_recovers(
     pending.write_text("{}", encoding="utf-8")
     monkeypatch.setenv("PROGRAMDATA", str(program_data))
     monkeypatch.setattr(launcher.sys, "argv", [str(tmp_path / "PartyOps.exe")])
-    launched: list[list[str]] = []
-    monkeypatch.setattr(launcher, "detached", lambda command: launched.append(command))
+    launched: list[tuple[Path, Path, list[str]]] = []
+    monkeypatch.setattr(
+        launcher,
+        "launch_wizard_and_wait",
+        lambda runtime, local, arguments: launched.append(
+            (runtime, local, arguments)
+        )
+        or True,
+    )
     assert launcher.main() == 1
-    assert launched and launched[0][-1].endswith("PartyOpsWizard.exe")
+    assert launched and launched[0][2] == []
 
     launched.clear()
     monkeypatch.setattr(

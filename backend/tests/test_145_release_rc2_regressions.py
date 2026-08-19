@@ -112,6 +112,24 @@ def test_health_probe_fails_fast_on_service_terminal_status(monkeypatch, tmp_pat
         detail="主进程退出码 1",
     )
     monkeypatch.setattr(
+        setup_wizard,
+        "read_service_status",
+        lambda _path, states=iter(
+            [
+                {
+                    "updated_at": "2026-08-19T00:00:00+00:00",
+                    "code": CHILD_EXITED,
+                    "detail": "上次启动失败",
+                },
+                {
+                    "updated_at": "2026-08-19T00:00:05+00:00",
+                    "code": CHILD_EXITED,
+                    "detail": "主进程退出码 1",
+                },
+            ]
+        ): next(states),
+    )
+    monkeypatch.setattr(
         setup_wizard.urllib.request,
         "urlopen",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("不应继续访问端口")),
@@ -124,6 +142,63 @@ def test_health_probe_fails_fast_on_service_terminal_status(monkeypatch, tmp_pat
             timeout=180,
             data_dir=tmp_path,
         )
+
+
+def test_health_probe_ignores_unchanged_terminal_status_from_previous_attempt(
+    monkeypatch, tmp_path
+) -> None:
+    stale = {
+        "updated_at": "2026-08-18T00:00:00+00:00",
+        "stage": "child_exited",
+        "code": CHILD_EXITED,
+        "detail": "上一次启动失败",
+    }
+    monkeypatch.setattr(setup_wizard, "read_service_status", lambda _path: stale)
+    monkeypatch.setattr(
+        setup_wizard.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("尚未监听")),
+    )
+    times = iter([0.0, 0.0, 10.0])
+    monkeypatch.setattr(setup_wizard.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(setup_wizard.time, "sleep", lambda _seconds: None)
+    with pytest.raises(setup_wizard.HostStartupError) as failure:
+        setup_wizard.wait_for_host_health(
+            "127.0.0.1", 18765, timeout=5, data_dir=tmp_path
+        )
+    assert failure.value.code == windows_host_status.HEALTH_TIMEOUT
+    assert "上一次启动失败" not in failure.value.detail
+
+
+def test_service_log_tail_without_newline_keeps_bounded_suffix(tmp_path) -> None:
+    path = windows_host_status.service_log_path(tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"abcdef")
+    assert windows_host_status.tail_service_log(tmp_path, max_bytes=4) == "cdef"
+
+
+def test_personal_startup_failure_trims_partial_large_log_line(tmp_path) -> None:
+    log_path = tmp_path / "launcher.log"
+    log_path.write_bytes(b"x" * 9000 + b"\ncurrent failure")
+
+    class ExitedProcess:
+        returncode = 7
+
+        @staticmethod
+        def poll():
+            return 7
+
+    with pytest.raises(setup_wizard.HostStartupError) as failure:
+        setup_wizard.wait_for_host_health(
+            "127.0.0.1",
+            18765,
+            timeout=5,
+            data_dir=tmp_path,
+            service_managed=False,
+            process=ExitedProcess(),
+        )
+    assert failure.value.code == CHILD_EXITED
+    assert failure.value.detail == "current failure"
 
 
 def test_data_directory_migration_copies_and_keeps_source(tmp_path) -> None:

@@ -6,7 +6,7 @@ import typing
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update as sql_update
 from sqlalchemy.orm import Session
 
 from ..audit import emit_event, write_audit
@@ -267,17 +267,40 @@ def delete_task(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> dict:
-    task = get_task_or_404(db, task_id, user)
-    if not can_manage_task(db, task, user):
-        raise ProblemException(403, "TASK_DELETE_DENIED", "无权删除", "只有主办人或管理员可以删除事项。")
     expected = parse_if_match(if_match)
-    if task.version != expected:
-        raise ProblemException(409, "VERSION_CONFLICT", "事项已更新", "请刷新后重试。")
+    task = get_task_or_404(db, task_id, user)
     with db_runtime.write_lock:
         from ..models import utcnow
 
-        task.deleted_at = utcnow()
-        task.version += 1
+        # 在写锁内强制回读权限与版本，并由 SQL 的版本条件完成最终 CAS。
+        # 即使另一进程不共享本进程锁，也不能用旧 If-Match 删除刚更新的事项。
+        db.refresh(task)
+        if not can_view_task(db, task, user):
+            raise ProblemException(404, "TASK_NOT_FOUND", "事项不存在", "未找到该事项。")
+        if not can_manage_task(db, task, user):
+            raise ProblemException(
+                403,
+                "TASK_DELETE_DENIED",
+                "无权删除",
+                "只有主办人或管理员可以删除事项。",
+            )
+        if task.version != expected:
+            raise ProblemException(409, "VERSION_CONFLICT", "事项已更新", "请刷新后重试。")
+        deleted_at = utcnow()
+        result = db.execute(
+            sql_update(Task)
+            .where(
+                Task.id == task_id,
+                Task.version == expected,
+                Task.deleted_at.is_(None),
+            )
+            .values(deleted_at=deleted_at, version=Task.version + 1)
+        )
+        if result.rowcount != 1:
+            db.rollback()
+            raise ProblemException(409, "VERSION_CONFLICT", "事项已更新", "请刷新后重试。")
+        task.deleted_at = deleted_at
+        task.version = expected + 1
         write_audit(db, user, "task.delete", "task", task.id, {}, client_ip(request))
         emit_event(db, "task.deleted", task.id, {})
         db.commit()

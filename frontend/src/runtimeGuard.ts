@@ -2,6 +2,7 @@ import packageMetadata from "../package.json";
 
 export const FRONTEND_VERSION = packageMetadata.version;
 export const ROUTE_RELOAD_KEY = "partyops:route-reload";
+export const RUNTIME_RELOAD_KEY = "partyops:runtime-reload";
 
 export type RuntimeCompatibility =
   | { status: "compatible"; expected: string; actual: string }
@@ -12,6 +13,44 @@ type FetchLike = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
+
+type SessionStorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+export function safeSessionStorage(): SessionStorageLike | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    // 隐私模式、组织策略或嵌入式浏览器可能在读取属性时直接抛出 SecurityError。
+    return null;
+  }
+}
+
+export function safeSessionStorageGet(key: string): string | null {
+  try {
+    return safeSessionStorage()?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function safeSessionStorageSet(key: string, value: string): boolean {
+  try {
+    const storage = safeSessionStorage();
+    if (!storage) return false;
+    storage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function safeSessionStorageRemove(key: string): void {
+  try {
+    safeSessionStorage()?.removeItem(key);
+  } catch {
+    // 清理刷新指纹失败不应阻断应用启动。
+  }
+}
 
 export async function checkRuntimeCompatibility(
   fetcher: FetchLike = fetch,
@@ -52,6 +91,29 @@ export async function checkRuntimeCompatibility(
       actual: "",
       detail: "无法读取主机健康状态",
     };
+  }
+}
+
+export function tryRecoverRuntimeMismatch(
+  compatibility: Extract<RuntimeCompatibility, { status: "mismatch" }>,
+  storage?: Pick<Storage, "getItem" | "setItem"> | null,
+  navigate: (url: string) => void = (url) => window.location.replace(url),
+  href: string = window.location.href,
+): boolean {
+  const fingerprint = `${compatibility.expected}:${compatibility.actual}`;
+  try {
+    const targetStorage = storage ?? safeSessionStorage();
+    if (!targetStorage) return false;
+    if (targetStorage.getItem(RUNTIME_RELOAD_KEY) === fingerprint) return false;
+    targetStorage.setItem(RUNTIME_RELOAD_KEY, fingerprint);
+    const target = new URL(href);
+    target.searchParams.set("partyops_runtime", compatibility.actual);
+    navigate(target.toString());
+    return true;
+  } catch {
+    // 隐私模式或组织策略可能禁用 sessionStorage；此时停止自动刷新，
+    // 由调用方显示一次中文恢复页，不能因存储异常变成空白页面或刷新环。
+    return false;
   }
 }
 

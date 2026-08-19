@@ -21,7 +21,7 @@ def _installers(root: Path) -> None:
 
 def test_manifest_requires_only_current_seven_installers(tmp_path: Path) -> None:
     _installers(tmp_path)
-    output = tmp_path / "PartyOps_1.4.3-rc.6_release-manifest.json"
+    output = tmp_path / "PartyOps_1.4.3-rc.7_release-manifest.json"
     payload = MODULE.build_manifest(
         root=tmp_path,
         output=output,

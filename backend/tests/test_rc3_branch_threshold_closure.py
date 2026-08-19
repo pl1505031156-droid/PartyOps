@@ -913,6 +913,7 @@ def test_personal_data_dir_fixed_drive_and_mode_launch_branches(
         "wait_for_host_health",
         lambda *_args, **_kwargs: "http://127.0.0.1:18775",
     )
+    monkeypatch.setattr(setup_wizard, "_personal_process_is_owned", lambda _path: True)
     assert setup_wizard.launch_personal(config) == "http://127.0.0.1:18775"
 
     host_env = {

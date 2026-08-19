@@ -14,6 +14,21 @@ import pytest
 from app import setup_wizard
 
 
+class _ExitedProcess:
+    returncode = 23
+
+    def poll(self) -> int:
+        return self.returncode
+
+
+class _SocketConnection:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args: object) -> bool:
+        return False
+
+
 def _local_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     root = tmp_path / "config"
     root.mkdir(parents=True, exist_ok=True)
@@ -35,17 +50,27 @@ def test_linux_desktop_tool_marker_and_personal_autostart_are_deterministic(
     monkeypatch.setattr(setup_wizard, "runtime_root", lambda: runtime)
 
     url = "http://127.0.0.1:18791"
-    marker = setup_wizard._publish_linux_desktop_tool_url("wizard", url)
+    marker = setup_wizard._publish_desktop_tool_url("wizard", url)
     assert marker == root / "wizard.url"
     assert marker.read_text(encoding="utf-8") == url + "\n"
-    setup_wizard._clear_linux_desktop_tool_url(marker, "http://127.0.0.1:18792")
+    setup_wizard._clear_desktop_tool_url(marker, "http://127.0.0.1:18792")
     assert marker.exists()
-    setup_wizard._clear_linux_desktop_tool_url(marker, url)
+    setup_wizard._clear_desktop_tool_url(marker, url)
     assert not marker.exists()
     with pytest.raises(ValueError, match="127.0.0.1"):
-        setup_wizard._publish_linux_desktop_tool_url(
+        setup_wizard._publish_desktop_tool_url(
             "wizard", "http://192.168.8.20:18791"
         )
+
+    monkeypatch.setattr(setup_wizard.sys, "platform", "win32")
+    windows_marker = setup_wizard._publish_desktop_tool_url(
+        "wizard", "http://127.0.0.1:18792"
+    )
+    assert windows_marker == root / "wizard.url"
+    assert windows_marker.read_text(encoding="utf-8") == (
+        "http://127.0.0.1:18792\n"
+    )
+    monkeypatch.setattr(setup_wizard.sys, "platform", "linux")
 
     config_path = root / "personal.env"
     config_path.write_text("PARTYOPS_MODE=personal\n", encoding="utf-8")
@@ -185,10 +210,165 @@ def test_runtime_helpers_autostart_and_ca_failure_paths(
     monkeypatch.setattr(
         setup_wizard.subprocess,
         "run",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired("pkexec", 120)),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired("pkexec", 120)
+        ),
     )
     with pytest.raises(ValueError, match="PolicyKit"):
         setup_wizard.install_internal_ca(ca)
+
+
+def test_personal_early_exit_reports_personal_launcher_log(tmp_path: Path) -> None:
+    """个人进程退出时必须返回它自己的日志，而不是主机服务日志。"""
+
+    (tmp_path / "launcher.log").write_text(
+        "启动阶段\n数据库初始化失败：测试诊断\n", encoding="utf-8"
+    )
+    with pytest.raises(setup_wizard.HostStartupError) as captured:
+        setup_wizard.wait_for_host_health(
+            "127.0.0.1",
+            18765,
+            timeout=5,
+            data_dir=tmp_path,
+            service_managed=False,
+            process=_ExitedProcess(),  # type: ignore[arg-type]
+        )
+    assert captured.value.code == setup_wizard.CHILD_EXITED
+    assert "数据库初始化失败：测试诊断" in captured.value.detail
+
+
+def test_health_version_mismatch_fails_immediately(monkeypatch) -> None:
+    """已确认的旧进程版本不能被吞成 180 秒超时。"""
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "status": "ok",
+                    "app_version": "1.4.3-rc.5",
+                    "mode": "personal",
+                    "safe_version": True,
+                    "fts5": True,
+                }
+            ).encode("utf-8")
+
+    monkeypatch.setattr(
+        setup_wizard.urllib.request, "urlopen", lambda *_args, **_kwargs: Response()
+    )
+    with pytest.raises(setup_wizard.HostStartupError) as captured:
+        setup_wizard.wait_for_host_health(
+            "127.0.0.1", 18775, timeout=180, service_managed=False
+        )
+    assert captured.value.code == setup_wizard.RUNTIME_VERSION_MISMATCH
+    assert "1.4.3-rc.5" in captured.value.detail
+
+
+def test_personal_upgrade_replaces_only_recorded_old_process(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """同一数据目录的受控旧版本应被替换，未知端口占用者仍不得终止。"""
+
+    data_dir = tmp_path / "个人数据"
+    data_dir.mkdir()
+    executable = tmp_path / "PartyOps.exe"
+    executable.write_bytes(b"MZ")
+    config = tmp_path / "personal.env"
+    config.write_text("PARTYOPS_MODE=personal\n", encoding="utf-8")
+    monkeypatch.setattr(
+        setup_wizard,
+        "load_host_environment",
+        lambda _path: {
+            "PARTYOPS_PORT": "18775",
+            "PARTYOPS_DATA_DIR": str(data_dir),
+        },
+    )
+    monkeypatch.setattr(
+        setup_wizard.socket,
+        "create_connection",
+        lambda *_args, **_kwargs: _SocketConnection(),
+    )
+    waits = iter(
+        [
+            setup_wizard.HostStartupError(
+                setup_wizard.RUNTIME_VERSION_MISMATCH,
+                "旧版本",
+                detail="1.4.3-rc.5",
+            ),
+            "http://127.0.0.1:18775",
+        ]
+    )
+
+    def wait(*_args, **_kwargs):
+        result = next(waits)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    stopped: list[tuple[Path, int]] = []
+    spawned: list[list[str]] = []
+    recorded: list[object] = []
+    monkeypatch.setattr(setup_wizard, "wait_for_host_health", wait)
+    monkeypatch.setattr(setup_wizard, "_personal_process_is_owned", lambda _path: True)
+    monkeypatch.setattr(
+        setup_wizard,
+        "_stop_personal_process_for_data_migration",
+        lambda path, port: stopped.append((path, port)) is None or True,
+    )
+    monkeypatch.setattr(setup_wizard, "_executable", lambda _name: executable)
+    monkeypatch.setattr(
+        setup_wizard,
+        "_spawn",
+        lambda command, *_args: spawned.append(command) or SimpleNamespace(pid=77),
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "_record_personal_process",
+        lambda _path, process: recorded.append(process),
+    )
+
+    assert setup_wizard.launch_personal(config) == "http://127.0.0.1:18775"
+    assert stopped == [(data_dir, 18775)]
+    assert spawned == [[str(executable)]]
+    assert getattr(recorded[0], "pid") == 77
+
+
+def test_personal_existing_port_requires_owned_process_before_health_probe(
+    monkeypatch, tmp_path: Path
+) -> None:
+    data_dir = tmp_path / "个人数据"
+    data_dir.mkdir()
+    config = tmp_path / "personal.env"
+    config.write_text("PARTYOPS_MODE=personal\n", encoding="utf-8")
+    monkeypatch.setattr(
+        setup_wizard,
+        "load_host_environment",
+        lambda _path: {"PARTYOPS_PORT": "18775", "PARTYOPS_DATA_DIR": str(data_dir)},
+    )
+    monkeypatch.setattr(
+        setup_wizard.socket,
+        "create_connection",
+        lambda *_args, **_kwargs: _SocketConnection(),
+    )
+    monkeypatch.setattr(setup_wizard, "_personal_process_is_owned", lambda _path: False)
+    probes: list[str] = []
+    monkeypatch.setattr(
+        setup_wizard,
+        "wait_for_host_health",
+        lambda *_args, **_kwargs: probes.append("health") or "http://127.0.0.1:18775",
+    )
+
+    with pytest.raises(setup_wizard.HostStartupError) as captured:
+        setup_wizard.launch_personal(config)
+
+    assert captured.value.code == setup_wizard.PORT_IN_USE
+    assert "身份不明" in str(captured.value)
+    assert probes == []
 
 
 def test_launch_client_requires_live_agent_heartbeat(
@@ -321,6 +501,83 @@ def test_first_admin_validation_and_problem_detail(
             display_name="管理员",
             password="password",
         )
+
+
+def test_first_admin_connection_refused_is_localized_without_secret_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """连接结果不明确时不得在后台自动重放管理员密码和引导令牌。"""
+
+    opened: list[str] = []
+
+    def open_request(request, **_kwargs):
+        opened.append(request.full_url)
+        raise urllib.error.URLError(ConnectionRefusedError(10061, "refused"))
+
+    monkeypatch.setattr(setup_wizard.urllib.request, "urlopen", open_request)
+    monkeypatch.setattr(setup_wizard.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(ValueError, match="LOCAL_SERVICE_CONNECTION_REFUSED"):
+        setup_wizard.bootstrap_first_admin(
+            "http://127.0.0.1:18775",
+            username="admin",
+            display_name="管理员",
+            password="PartyOps@2026",
+            expected_mode="personal",
+        )
+
+    assert opened == ["http://127.0.0.1:18775/api/v1/bootstrap/host"]
+
+
+def test_admin_submit_readiness_reuses_personal_and_recovers_host(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "partyops.env"
+    config.write_text("fixture", encoding="utf-8")
+    calls: list[str] = []
+    monkeypatch.setattr(
+        setup_wizard,
+        "launch_personal",
+        lambda path: calls.append(f"personal:{path.name}")
+        or "http://127.0.0.1:18775",
+    )
+    assert (
+        setup_wizard.ensure_configured_runtime_ready(config, "personal")
+        == "http://127.0.0.1:18775"
+    )
+
+    monkeypatch.setattr(
+        setup_wizard,
+        "load_host_environment",
+        lambda _path: {
+            "PARTYOPS_HOST": "192.168.8.20",
+            "PARTYOPS_PORT": "18765",
+            "PARTYOPS_TLS_ENABLED": "false",
+            "PARTYOPS_DATA_DIR": str(tmp_path / "data"),
+        },
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "wait_for_host_health",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            setup_wizard.HostStartupError(
+                setup_wizard.SERVICE_STOPPED, "主机尚未运行"
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "launch_host",
+        lambda path: calls.append(f"host:{path.name}")
+        or "http://192.168.8.20:18765",
+    )
+    assert (
+        setup_wizard.ensure_configured_runtime_ready(config, "host")
+        == "http://192.168.8.20:18765"
+    )
+    assert calls == ["personal:partyops.env", "host:partyops.env"]
+    with pytest.raises(ValueError, match="个人或主机"):
+        setup_wizard.ensure_configured_runtime_ready(config, "client")
 
 
 def test_failure_diagnostic_and_shared_root_page_escape_sensitive_text(

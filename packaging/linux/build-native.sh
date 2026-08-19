@@ -4,13 +4,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FORMAT="${1:-}"
 ARCH="${PARTYOPS_BUILD_ARCH:-}"
-DEB_VERSION="1.4.3~rc.6"
+DEB_VERSION="1.4.3~rc.7"
 RPM_VERSION="1.4.3"
-RPM_RELEASE="0.rc.6.1"
+RPM_RELEASE="0.rc.7.1"
 ARTIFACTS="$ROOT/artifacts"
 
 python3 "$ROOT/scripts/verify-version-consistency.py" \
-  --root "$ROOT" --expected "1.4.3-rc.6"
+  --root "$ROOT" --expected "1.4.3-rc.7"
 
 [[ "$FORMAT" == "deb" || "$FORMAT" == "rpm" ]] || {
   echo "用法：build-native.sh deb|rpm（通过 PARTYOPS_BUILD_ARCH 指定 amd64/arm64）" >&2
@@ -157,8 +157,14 @@ chmod 0644 \
   "$PKG/lib/systemd/system/partyops.service" \
   "$PKG/lib/systemd/system/partyops-updater.service" \
   "$PKG/usr/share/polkit-1/actions/cn.partyops.update.policy"
-cp "$ROOT/packaging/linux/post-install-selftest.sh" "$PKG/opt/partyops/"
-chmod 0755 "$PKG/opt/partyops/post-install-selftest.sh"
+cp "$ROOT/packaging/linux/post-install-selftest.sh" \
+  "$ROOT/packaging/linux/post-install-services.sh" \
+  "$ROOT/packaging/linux/post-install-transaction.sh" \
+  "$PKG/opt/partyops/"
+chmod 0755 \
+  "$PKG/opt/partyops/post-install-selftest.sh" \
+  "$PKG/opt/partyops/post-install-services.sh" \
+  "$PKG/opt/partyops/post-install-transaction.sh"
 while IFS= read -r -d '' executable; do
   case "$executable" in
     "$PKG/opt/partyops/partyops"|"$PKG/opt/partyops/partyops-client"|\
@@ -170,7 +176,9 @@ while IFS= read -r -d '' executable; do
     "$PKG/opt/partyops/install-internal-ca.sh"|\
     "$PKG/opt/partyops/ocr/bin/tesseract"|\
     "$PKG/opt/partyops/llama-server"|\
-    "$PKG/opt/partyops/post-install-selftest.sh") ;;
+    "$PKG/opt/partyops/post-install-selftest.sh"|\
+    "$PKG/opt/partyops/post-install-services.sh"|\
+    "$PKG/opt/partyops/post-install-transaction.sh") ;;
     *)
       echo "原生包包含未授权的可执行文件：$executable" >&2
       exit 2
@@ -200,21 +208,7 @@ EOF
   cp "$ROOT/packaging/linux/pre-install-stop.sh" "$PKG/DEBIAN/preinst"
   {
     cat "$ROOT/packaging/linux/post-install-configure.sh"
-    printf '\n/opt/partyops/post-install-selftest.sh %s\n' "$ARCH"
-    cat <<'EOF'
-if ! systemctl enable --now partyops-updater.service >/dev/null 2>&1; then
-  systemctl disable --now partyops-updater.service >/dev/null 2>&1 || true
-  echo '[PACKAGE_UPDATER_START_FAILED] PartyOps 更新服务未能启用，安装配置已停止。' >&2
-  exit 2
-fi
-if [ -f /run/partyops/restart-after-upgrade ]; then
-  if ! systemctl restart partyops.service >/dev/null 2>&1; then
-    echo '[PACKAGE_HOST_RESTART_FAILED] 升级后主机服务未能恢复，保留重试标记。' >&2
-    exit 2
-  fi
-  rm -f /run/partyops/restart-after-upgrade
-fi
-EOF
+    printf '\n/opt/partyops/post-install-transaction.sh %s deb\n' "$ARCH"
   } >"$PKG/DEBIAN/postinst"
   cat >"$PKG/DEBIAN/prerm" <<'EOF'
 #!/bin/sh
@@ -228,7 +222,7 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 echo "PartyOps 业务数据保留在 /var/lib/partyops，卸载不会自动删除。" >&2
 EOF
   chmod 0755 "$PKG/DEBIAN/preinst" "$PKG/DEBIAN/postinst" "$PKG/DEBIAN/prerm" "$PKG/DEBIAN/postrm"
-  OUTPUT="$ARTIFACTS/PartyOps_1.4.3-rc.6_linux_${ARCH}.deb"
+  OUTPUT="$ARTIFACTS/PartyOps_1.4.3-rc.7_linux_${ARCH}.deb"
   if dpkg-deb --help 2>&1 | grep -q -- '--root-owner-group'; then
     dpkg-deb --root-owner-group --build "$PKG" "$OUTPUT"
   else
@@ -275,19 +269,7 @@ $RPM_PRE_SCRIPT
 
 %post
 $RPM_POST_SCRIPT
-/opt/partyops/post-install-selftest.sh $ARCH
-if ! systemctl enable --now partyops-updater.service >/dev/null 2>&1; then
-  systemctl disable --now partyops-updater.service >/dev/null 2>&1 || true
-  echo '[PACKAGE_UPDATER_START_FAILED] PartyOps 更新服务未能启用，安装配置已停止。' >&2
-  exit 2
-fi
-if [ -f /run/partyops/restart-after-upgrade ]; then
-  if ! systemctl restart partyops.service >/dev/null 2>&1; then
-    echo '[PACKAGE_HOST_RESTART_FAILED] 升级后主机服务未能恢复，保留重试标记。' >&2
-    exit 2
-  fi
-  rm -f /run/partyops/restart-after-upgrade
-fi
+/opt/partyops/post-install-transaction.sh $ARCH rpm
 
 %preun
 if [ "\$1" -eq 0 ]; then
@@ -346,7 +328,7 @@ EOF
     --define "partyops_release $RPM_RELEASE" \
     --define "with_rollback_cache 1" \
     -bb "$BUILD/rpmbuild/SPECS/partyops.spec"
-  OUTPUT="$ARTIFACTS/PartyOps-1.4.3-0.rc.6.1.${RPM_ARCH}.rpm"
+  OUTPUT="$ARTIFACTS/PartyOps-1.4.3-0.rc.7.1.${RPM_ARCH}.rpm"
   cp "$BUILD/rpmbuild/RPMS/$RPM_ARCH/partyops-$RPM_VERSION-$RPM_RELEASE.$RPM_ARCH.rpm" "$OUTPUT"
 fi
 if [[ "$FORMAT" == deb ]]; then

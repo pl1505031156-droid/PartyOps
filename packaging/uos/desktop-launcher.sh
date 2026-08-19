@@ -14,6 +14,20 @@ CA_MARKER="$CONFIG_ROOT/pki/ca-trusted.sha256"
 mkdir -p "$CONFIG_ROOT"
 LAUNCH_LOG="$CONFIG_ROOT/desktop-launch.log"
 
+rotate_desktop_log() {
+  local log="$1" index
+  [[ -f "$log" ]] || return 0
+  [[ "$(wc -c <"$log" 2>/dev/null || printf 0)" -ge 5242880 ]] || return 0
+  rm -f -- "$log.5"
+  index=4
+  while ((index >= 1)); do
+    [[ ! -e "$log.$index" ]] || mv -f -- "$log.$index" "$log.$((index + 1))"
+    index=$((index - 1))
+  done
+  mv -f -- "$log" "$log.1"
+}
+rotate_desktop_log "$LAUNCH_LOG" || true
+
 show_launch_failure() {
   local message="$1"
   printf '%s %s\n' "$(date -Iseconds 2>/dev/null || date)" "$message" >>"$LAUNCH_LOG"
@@ -68,16 +82,20 @@ open_local_tool_url() {
 }
 
 wait_and_open_local_host() {
-  local scheme="$1" port="$2" url attempt=0
+  local scheme="$1" port="$2" base_url url attempt=0 runtime_fingerprint
   [[ "$scheme" == "http" || "$scheme" == "https" ]] || return 1
   [[ "$port" =~ ^[0-9]+$ ]] && ((port >= 1024 && port <= 65534)) || {
     show_launch_failure "配置中的服务端口无效，请重新配置。"
     return 2
   }
-  url="$scheme://127.0.0.1:$port"
+  base_url="$scheme://127.0.0.1:$port"
   while ((attempt < 240)); do
     if curl -kfsS --connect-timeout 1 --max-time 2 \
-      "$url/api/v1/health" >/dev/null 2>&1; then
+      "$base_url/api/v1/health" >/dev/null 2>&1; then
+      # 每次桌面启动使用新的首页指纹，确保原生包覆盖升级后浏览器不会
+      # 复用上个版本的 HTML 入口；带哈希的 JS/CSS 仍可正常使用缓存。
+      runtime_fingerprint="$(date +%s 2>/dev/null || printf '%s' "$$")"
+      url="$base_url/?partyops_runtime=$runtime_fingerprint"
       if open_browser_url "$url"; then
         printf '%s 业务页面已打开：%s\n' \
           "$(date -Iseconds 2>/dev/null || date)" "$url" >>"$LAUNCH_LOG"
@@ -228,6 +246,7 @@ if [[ "$MODE" == "client" ]]; then
   fi
   AGENT_PID_FILE="$CONFIG_ROOT/client-agent.pid"
   AGENT_LOG="$CONFIG_ROOT/client-agent.log"
+  rotate_desktop_log "$AGENT_LOG" || true
   AGENT_RUNNING=0
   if command -v pgrep >/dev/null 2>&1 &&
     pgrep -u "$(id -u)" -f \
@@ -283,7 +302,14 @@ fi
 if [[ ( "$MODE" == "host" || "$MODE" == "personal" ) && -f "$HOST_CONFIG" ]]; then
   set -a
   # shellcheck disable=SC1090
-  source "$HOST_CONFIG"
+  set +u
+  if ! source "$HOST_CONFIG"; then
+    set -u
+    set +a
+    show_launch_failure "配置文件无法读取（诊断码 CONFIG_INVALID），请重新打开配置向导修复。"
+    exit 2
+  fi
+  set -u
   set +a
   PORT="${PARTYOPS_PORT:-18765}"
   SCHEME="http"
@@ -296,7 +322,11 @@ if [[ ( "$MODE" == "host" || "$MODE" == "personal" ) && -f "$HOST_CONFIG" ]]; th
     fi
   fi
   if [[ "$HOST_CONFIG" != "/etc/partyops/partyops.env" ]]; then
-    PARTYOPS_ENV_FILE="$HOST_CONFIG" "$APP_ROOT/start.sh"
+    if ! PARTYOPS_ENV_FILE="$HOST_CONFIG" "$APP_ROOT/start.sh" \
+      >>"$LAUNCH_LOG" 2>&1; then
+      show_launch_failure "党建智办进程启动后提前退出。请查看所选数据目录中的 launcher.log。"
+      exit 2
+    fi
   fi
   wait_and_open_local_host "$SCHEME" "$PORT"
   exit $?

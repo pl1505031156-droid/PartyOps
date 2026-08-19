@@ -574,6 +574,9 @@ def run() -> None:
         "ws": "none",
         "workers": 1,
         "reload": False,
+        # 业务请求已经进入按日轮转的 partyops.log；关闭 Uvicorn 每请求
+        # access log，避免个人模式的 launcher.log 随访问量无上限增长。
+        "access_log": False,
         # SSE、下载或旧浏览器连接不能无限阻塞软件升级。收到 SIGTERM 后
         # 最多等待 15 秒完成请求，随后由 Uvicorn 取消残留连接并执行 lifespan
         # 清理；安装器仍会在覆盖程序前复核进程身份和退出状态。

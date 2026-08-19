@@ -179,6 +179,11 @@ def test_first_run_host_http_flow_keeps_admin_creation_in_wizard(
     monkeypatch.setattr(setup_wizard, "launch_host", lambda _path: "http://192.168.8.20:18765")
     monkeypatch.setattr(
         setup_wizard,
+        "ensure_configured_runtime_ready",
+        lambda _path, _mode: "http://192.168.8.20:18765",
+    )
+    monkeypatch.setattr(
+        setup_wizard,
         "resolve_host_url",
         lambda url, token=None: (url.replace("http://", "https://"), {"status": "ok", "mode": "host", "app_version": "1.4.2"}),
     )

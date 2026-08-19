@@ -58,8 +58,8 @@ bash "$ROOT/packaging/uos/build-portable.sh"
 bash "$ROOT/packaging/uos/build-deb.sh"
 (cd "$ROOT/artifacts" && sha256sum -c "SHA256SUMS.$ARCH")
 
-VERSION="${PARTYOPS_VERSION:-1.4.3-rc.6}"
-as_root apt-get install -y "$ROOT/artifacts/PartyOps_1.4.3-rc.6_linux_${ARCH}.deb"
+VERSION="${PARTYOPS_VERSION:-1.4.3-rc.7}"
+as_root apt-get install -y "$ROOT/artifacts/PartyOps_1.4.3-rc.7_linux_${ARCH}.deb"
 CONFIG="$(mktemp)"
 trap 'rm -f "$CONFIG"' EXIT
 cat > "$CONFIG" <<EOF

@@ -5,6 +5,7 @@ import {
   IconArrowLeft,
   IconCheck,
   IconDownload,
+  IconDelete,
   IconEdit,
   IconFile,
   IconMessage,
@@ -285,6 +286,26 @@ async function applyAction() {
   }
 }
 
+async function deleteCurrentTask() {
+  if (!task.value || !canManageTask.value) return;
+  try {
+    const current = task.value;
+    await api.delete(
+      `/tasks/${current.id}`,
+      { "If-Match": String(current.version) },
+    );
+    Message.success("事项已删除，相关审计记录仍会保留");
+    await router.replace("/tasks");
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "VERSION_CONFLICT") {
+      Message.warning("事项刚被其他电脑更新，已刷新，请确认后再删除");
+      await load();
+    } else {
+      Message.error(error instanceof Error ? error.message : "事项删除失败");
+    }
+  }
+}
+
 async function toggleStep(stepId: string, done: boolean, version: number) {
   if (!task.value) return;
   try {
@@ -539,6 +560,18 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
               <template #icon><IconEdit /></template>
               编辑
             </a-button>
+            <a-popconfirm
+              v-if="canManageTask"
+              content="确认删除这个事项？事项会从工作清单中移除，审计记录仍会保留。"
+              ok-text="确认删除"
+              cancel-text="取消"
+              @ok="deleteCurrentTask"
+            >
+              <a-button status="danger">
+                <template #icon><IconDelete /></template>
+                删除事项
+              </a-button>
+            </a-popconfirm>
             <a-button
               v-for="[key, label, type] in actionOptions"
               :key="key"

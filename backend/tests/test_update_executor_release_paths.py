@@ -318,7 +318,7 @@ def test_artifact_manifest_version_snapshot_and_queue_guards(monkeypatch, tmp_pa
         archive.writestr(name, payload)
 
     base = {
-        "version": "1.4.3-rc.6",
+        "version": "1.4.3-rc.7",
         "architecture_artifacts": {"amd64": name},
         "artifacts": {
             name: {

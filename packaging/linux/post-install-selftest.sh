@@ -21,6 +21,8 @@ fail() {
   fi
   printf '[%s] %s\n' "$code" "$*" >&2
   printf '[%s] %s；详情：%s\n' "$code" "$*" "$LOG" >&3
+  tail -n 120 "$LOG" >&3 2>/dev/null || true
+  printf '修复原因后可执行：sudo dpkg --configure -a（DEB）或重新安装当前 RPM。\n' >&3
   exit 2
 }
 
@@ -122,7 +124,11 @@ grep -q '"fts5":true' "$TEMP_ROOT/health.json" ||
   fail PACKAGE_FTS5_MISSING "SQLite FTS5 自检失败"
 
 systemctl daemon-reload >/dev/null 2>&1 || fail PACKAGE_SYSTEMD_RELOAD_FAILED "systemd 配置刷新失败"
-systemd-analyze verify /lib/systemd/system/partyops.service \
-  /lib/systemd/system/partyops-updater.service >/dev/null 2>&1 ||
-  fail PACKAGE_SYSTEMD_INVALID "systemd 服务定义验证失败"
+SYSTEMD_VERIFY_LOG="$TEMP_ROOT/systemd-verify.log"
+if ! systemd-analyze verify /lib/systemd/system/partyops.service \
+  /lib/systemd/system/partyops-updater.service >"$SYSTEMD_VERIFY_LOG" 2>&1; then
+  cat "$SYSTEMD_VERIFY_LOG" >&2 2>/dev/null || true
+  fail PACKAGE_SYSTEMD_INVALID \
+    "systemd 服务定义与当前麒麟/UOS版本不兼容"
+fi
 printf 'PartyOps 安装后自检通过：架构=%s，桌面入口、健康端点与完整运行时正常。\n' "$ACTUAL_ARCH" >&3

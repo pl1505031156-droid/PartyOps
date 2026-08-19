@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "partyops"
-version = "1.4.3rc6"
+version = "1.4.3rc7"
 description = "党建智办：基层党建工作闭环协同系统"
 requires-python = ">=3.11,<3.14"
 dependencies = [

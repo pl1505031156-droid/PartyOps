@@ -136,7 +136,14 @@ def test_personal_mode_never_requests_service_or_admin(
     )
     assert setup_wizard.launch_personal(path) == "http://127.0.0.1:18775"
     assert spawned == [[str(tmp_path / "PartyOps.exe")]]
-    assert waits == [{"timeout": 180.0, "service_managed": False}]
+    assert waits == [
+        {
+            "timeout": 180.0,
+            "data_dir": data_dir,
+            "service_managed": False,
+            "process": None,
+        }
+    ]
 
     page = setup_wizard.render_page("csrf")
     assert "个人使用" in page and "无需管理员授权" in page
@@ -324,9 +331,11 @@ def test_privileged_host_deactivation_is_transactional(
         "_restore_windows_service_start_config",
         lambda *_args: (_ for _ in ()).throw(ValueError("restore denied")),
     )
-    with pytest.raises(ValueError, match="MODE_SWITCH_ROLLBACK_FAILED"):
-        setup_wizard._deactivate_windows_host_services_privileged()
-    assert not mode_path.exists() and calls == 5
+    setup_wizard._deactivate_windows_host_services_privileged()
+    assert json.loads(mode_path.read_text(encoding="utf-8"))["mode"] == "personal"
+    assert calls == 5
+    warning = mode_path.parent / "mode-switch-warning.log"
+    assert "FIREWALL_RULE_CLEANUP_DEFERRED" in warning.read_text(encoding="utf-8")
 
     monkeypatch.setattr(setup_wizard, "windows_is_admin", lambda: False)
     with pytest.raises(ValueError, match="管理员权限"):
@@ -383,7 +392,7 @@ def test_host_switch_snapshot_restores_exact_services_and_mode(
     )
     monkeypatch.setattr(
         setup_wizard,
-        "_restore_windows_services_after_data_migration",
+        "_restore_windows_services_after_mode_switch",
         lambda states: restored_running.append(states),
     )
     setup_wizard._restore_windows_host_switch_privileged()
@@ -391,6 +400,236 @@ def test_host_switch_snapshot_restores_exact_services_and_mode(
     assert restored_configs == list(configs.items())
     assert restored_running == [running]
     assert not snapshot.exists()
+
+
+def test_host_switch_rollback_keeps_snapshot_when_service_cannot_restart(
+    monkeypatch, tmp_path: Path
+) -> None:
+    program_data = tmp_path / "ProgramData"
+    mode_path = program_data / "PartyOps" / "mode.json"
+    mode_path.parent.mkdir(parents=True)
+    mode_path.write_text('{"mode":"personal"}', encoding="utf-8")
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
+    monkeypatch.setattr(setup_wizard, "windows_is_admin", lambda: True)
+    snapshot = setup_wizard._windows_host_switch_snapshot_path()
+    snapshot.parent.mkdir(parents=True, exist_ok=True)
+    snapshot.write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "transaction_id": "tx_restore_0123456789abcdef01234567",
+                "previous_mode": json.dumps({"mode": "host"}),
+                "services": {
+                    "PartyOpsHost": {
+                        "start_type": 2,
+                        "delayed": False,
+                        "running": True,
+                    },
+                    "PartyOpsUpdateService": {
+                        "start_type": 3,
+                        "delayed": False,
+                        "running": False,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        setup_wizard, "_restore_windows_service_start_config", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "_restore_windows_services_after_mode_switch",
+        lambda *_args: (_ for _ in ()).throw(
+            ValueError("[MODE_SWITCH_ROLLBACK_FAILED] 服务仍为停止状态")
+        ),
+    )
+    with pytest.raises(ValueError, match="MODE_SWITCH_ROLLBACK_FAILED"):
+        setup_wizard._restore_windows_host_switch_privileged(
+            "tx_restore_0123456789abcdef01234567"
+        )
+    assert snapshot.is_file()
+    assert "host" in mode_path.read_text(encoding="utf-8")
+
+
+def test_strict_mode_switch_service_restore_checks_running_state(monkeypatch) -> None:
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
+    monkeypatch.setattr(setup_wizard, "_windows_service_running", lambda _name: False)
+    monkeypatch.setattr(
+        setup_wizard.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 5, "", "策略拒绝"
+        ),
+    )
+    times = iter([0.0, 10.0])
+    monkeypatch.setattr(setup_wizard.time, "monotonic", lambda: next(times))
+    with pytest.raises(ValueError, match="MODE_SWITCH_ROLLBACK_FAILED"):
+        setup_wizard._restore_windows_services_after_mode_switch(
+            {"PartyOpsHost": True, "PartyOpsUpdateService": False}, timeout=5
+        )
+
+
+def test_strict_mode_switch_service_restore_error_matrix(monkeypatch) -> None:
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("posix"))
+    setup_wizard._restore_windows_services_after_mode_switch(
+        {"PartyOpsHost": True}
+    )
+
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
+    calls: list[list[str]] = []
+
+    def should_not_start(command, **_kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(setup_wizard.subprocess, "run", should_not_start)
+    setup_wizard._restore_windows_services_after_mode_switch({})
+    assert calls == []
+
+    monkeypatch.setattr(
+        setup_wizard.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("SCM 不可用")),
+    )
+    with pytest.raises(ValueError, match="SCM 不可用"):
+        setup_wizard._restore_windows_services_after_mode_switch(
+            {"PartyOpsHost": True}
+        )
+
+    monkeypatch.setattr(
+        setup_wizard.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(setup_wizard, "_windows_service_running", lambda _name: True)
+    setup_wizard._restore_windows_services_after_mode_switch({"PartyOpsHost": True})
+
+    monkeypatch.setattr(
+        setup_wizard,
+        "_windows_service_running",
+        lambda _name: (_ for _ in ()).throw(OSError("无法回读状态")),
+    )
+    with pytest.raises(ValueError, match="无法回读状态"):
+        setup_wizard._restore_windows_services_after_mode_switch(
+            {"PartyOpsHost": True}
+        )
+
+    states = iter([False, True])
+    monkeypatch.setattr(
+        setup_wizard, "_windows_service_running", lambda _name: next(states)
+    )
+    monkeypatch.setattr(setup_wizard.time, "sleep", lambda _seconds: None)
+    setup_wizard._restore_windows_services_after_mode_switch(
+        {"PartyOpsHost": True}, timeout=5
+    )
+
+
+def test_host_switch_rollback_wraps_unexpected_restore_error(
+    monkeypatch, tmp_path: Path
+) -> None:
+    program_data = tmp_path / "ProgramData"
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
+    monkeypatch.setattr(setup_wizard, "windows_is_admin", lambda: True)
+    snapshot = setup_wizard._windows_host_switch_snapshot_path()
+    snapshot.parent.mkdir(parents=True, exist_ok=True)
+    transaction_id = "tx_unexpected_0123456789abcdef0123"
+    snapshot.write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "transaction_id": transaction_id,
+                "previous_mode": None,
+                "services": {
+                    "PartyOpsHost": {
+                        "start_type": 2,
+                        "delayed": False,
+                        "running": True,
+                    },
+                    "PartyOpsUpdateService": {
+                        "start_type": 3,
+                        "delayed": False,
+                        "running": False,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "_restore_windows_service_start_config",
+        lambda *_args: (_ for _ in ()).throw(OSError("注册表拒绝")),
+    )
+    with pytest.raises(ValueError, match="MODE_SWITCH_ROLLBACK_FAILED.*注册表拒绝"):
+        setup_wizard._restore_windows_host_switch_privileged(transaction_id)
+    assert snapshot.is_file()
+
+
+def test_bounded_log_and_desktop_marker_branch_matrix(
+    monkeypatch, tmp_path: Path
+) -> None:
+    log_path = tmp_path / "launcher.log"
+    setup_wizard._rotate_bounded_log(log_path, max_bytes=4, backups=4)
+    log_path.write_bytes(b"abc")
+    setup_wizard._rotate_bounded_log(log_path, max_bytes=4, backups=4)
+    assert log_path.read_bytes() == b"abc"
+
+    log_path.write_bytes(b"12345")
+    log_path.with_name("launcher.log.1").write_bytes(b"one")
+    log_path.with_name("launcher.log.3").write_bytes(b"three")
+    log_path.with_name("launcher.log.4").write_bytes(b"oldest")
+    setup_wizard._rotate_bounded_log(log_path, max_bytes=4, backups=4)
+    assert log_path.with_name("launcher.log.1").read_bytes() == b"12345"
+    assert log_path.with_name("launcher.log.2").read_bytes() == b"one"
+    assert log_path.with_name("launcher.log.4").read_bytes() == b"three"
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            Path, "is_file", lambda _self: (_ for _ in ()).throw(OSError("ACL"))
+        )
+        setup_wizard._rotate_bounded_log(log_path, max_bytes=4, backups=4)
+
+    monkeypatch.setattr(setup_wizard.sys, "platform", "darwin")
+    assert setup_wizard._publish_desktop_tool_url("wizard", "http://127.0.0.1:9") is None
+    setup_wizard._clear_desktop_tool_url(None, "http://127.0.0.1:9")
+
+    marker = tmp_path / "wizard.url"
+    marker.write_text("http://127.0.0.1:10\n", encoding="utf-8")
+    setup_wizard._clear_desktop_tool_url(marker, "http://127.0.0.1:9")
+    assert marker.is_file()
+    setup_wizard._clear_desktop_tool_url(marker, "http://127.0.0.1:10")
+    assert not marker.exists()
+    setup_wizard._clear_desktop_tool_url(marker, "http://127.0.0.1:10")
+
+
+def test_windows_acl_precheck_cross_platform_and_precreation_branches(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("posix"))
+    setup_wizard.assert_windows_service_data_path_security(
+        tmp_path, verify_target=True
+    )
+    assert setup_wizard._windows_service_running("PartyOpsHost") is False
+
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    monkeypatch.setitem(sys.modules, "win32security", SimpleNamespace())
+    monkeypatch.setattr(
+        setup_wizard,
+        "_assert_path_components_have_no_reparse_points",
+        lambda _path: None,
+    )
+    setup_wizard.assert_windows_service_data_path_security(
+        tmp_path, verify_target=False
+    )
 
 
 def test_user_mode_failure_invokes_privileged_host_restore(
@@ -1382,6 +1621,7 @@ def test_configure_host_direct_and_elevation_failure_matrix(
 ) -> None:
     program_data = tmp_path / "ProgramData"
     monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
+    monkeypatch.setattr(setup_wizard, "config_root", lambda: tmp_path / "config")
     monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
     monkeypatch.setenv("PROGRAMDATA", str(program_data))
     monkeypatch.setattr(setup_wizard, "discover_lan_addresses", lambda: [])
@@ -1452,6 +1692,120 @@ def test_configure_host_direct_and_elevation_failure_matrix(
         setup_wizard.configure_host_config("127.0.0.1", 18765, tmp_path / "数据")
         == direct
     )
+
+
+def test_configure_host_failure_restores_personal_after_firewall_policy_denial(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """完整覆盖 personal→host→失败→个人恢复，防火墙拒绝不能制造二次回滚失败。"""
+
+    config = tmp_path / "Local" / "PartyOps"
+    config.mkdir(parents=True)
+    personal_data = tmp_path / "个人数据"
+    personal_data.mkdir()
+    personal_config = config / "personal.env"
+    personal_config.write_text(
+        "PARTYOPS_MODE=personal\n"
+        "PARTYOPS_PORT=18775\n"
+        f"PARTYOPS_DATA_DIR={shlex.quote(str(personal_data))}\n",
+        encoding="utf-8",
+    )
+    program_data = tmp_path / "ProgramData"
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
+    monkeypatch.setattr(setup_wizard, "config_root", lambda: config)
+    monkeypatch.setattr(setup_wizard, "windows_is_admin", lambda: True)
+    monkeypatch.setattr(setup_wizard, "_validate_windows_data_dir", lambda path: path)
+    monkeypatch.setattr(
+        setup_wizard, "_stop_personal_process_for_data_migration", lambda *_a: True
+    )
+    host_config = program_data / "PartyOps" / "partyops.env"
+
+    def write_host(*_args):
+        host_config.parent.mkdir(parents=True, exist_ok=True)
+        host_config.write_text("PARTYOPS_MODE=host\n", encoding="utf-8")
+        (host_config.parent / "mode.json").write_text(
+            '{"format_version":1,"mode":"host"}', encoding="utf-8"
+        )
+        return host_config
+
+    monkeypatch.setattr(setup_wizard, "write_host_config", write_host)
+    monkeypatch.setattr(
+        setup_wizard,
+        "_enable_windows_host_service_autostart",
+        lambda: (_ for _ in ()).throw(ValueError("更新服务启动类型设置失败")),
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "_windows_system_host_role_active",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "_windows_service_start_config",
+        lambda service: (2, service == "PartyOpsHost"),
+    )
+    monkeypatch.setattr(
+        setup_wizard, "_windows_service_running", lambda _service: False
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "_stop_windows_service_for_data_migration",
+        lambda: {"PartyOpsHost": False, "PartyOpsUpdateService": False},
+    )
+    monkeypatch.setattr(
+        setup_wizard.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 5 if command[0] == "netsh.exe" else 0, "", "策略拒绝"
+        ),
+    )
+    restarted: list[dict[str, str]] = []
+    autostarts: list[str] = []
+    user_modes: list[str] = []
+    committed: list[str | bool | None] = []
+    monkeypatch.setattr(
+        setup_wizard,
+        "_restart_previous_personal_process",
+        lambda environment: restarted.append(environment),
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "install_windows_personal_autostart",
+        lambda: autostarts.append("personal"),
+    )
+    original_write_mode = setup_wizard.write_mode_config
+    monkeypatch.setattr(
+        setup_wizard,
+        "write_mode_config",
+        lambda mode, **kwargs: (
+            user_modes.append(mode),
+            original_write_mode(mode, **kwargs),
+        )[1],
+    )
+    original_deactivate = setup_wizard._deactivate_windows_host_services_privileged
+
+    def deactivate() -> str:
+        transaction_id = "A" * 32
+        original_deactivate(transaction_id)
+        return transaction_id
+
+    monkeypatch.setattr(setup_wizard, "deactivate_windows_host_for_user_mode", deactivate)
+    monkeypatch.setattr(
+        setup_wizard,
+        "finalize_windows_host_switch",
+        lambda transaction: committed.append(transaction),
+    )
+
+    with pytest.raises(ValueError, match="更新服务启动类型设置失败") as failure:
+        setup_wizard.configure_host_config("127.0.0.1", 18765, tmp_path / "主机数据")
+
+    assert "MODE_SWITCH_ROLLBACK_FAILED" not in str(failure.value)
+    assert restarted and autostarts == ["personal"] and user_modes == ["personal"]
+    assert committed == ["A" * 32]
+    warning = program_data / "PartyOps" / "mode-switch-warning.log"
+    assert "FIREWALL_RULE_CLEANUP_DEFERRED" in warning.read_text(encoding="utf-8")
 
 
 def test_device_config_credentials_paths_and_pki(monkeypatch, tmp_path: Path) -> None:
@@ -1549,6 +1903,31 @@ def test_environment_executable_autostart_and_ca_platform_matrix(
         setup_wizard.install_client_autostart(environment).name
         == "partyops-client.desktop"
     )
+
+    monkeypatch.setattr(setup_wizard.sys, "platform", "win32")
+    launcher = runtime / "PartyOpsLauncher.exe"
+    launcher.write_bytes(b"launcher")
+    registry: dict[str, str] = {}
+
+    class RegistryKey:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    fake_winreg = SimpleNamespace(
+        HKEY_CURRENT_USER=object(),
+        KEY_SET_VALUE=1,
+        REG_SZ=1,
+        CreateKeyEx=lambda *_args: RegistryKey(),
+        SetValueEx=lambda _key, name, _reserved, _kind, value: registry.__setitem__(
+            name, value
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg)
+    assert setup_wizard.install_client_autostart(environment) == environment
+    assert registry["PartyOpsAgent"] == f'"{launcher}" --background'
 
     monkeypatch.setattr(setup_wizard.sys, "platform", "darwin")
     assert setup_wizard.install_host_autostart(environment) is None
@@ -1658,10 +2037,18 @@ def test_start_service_and_health_timeout_diagnostics(
     monkeypatch.setattr(setup_wizard, "os", _os_proxy("posix"))
     times = iter([0.0, 0.0, 10.0])
     monkeypatch.setattr(setup_wizard.time, "monotonic", lambda: next(times))
+    old_statuses = [
+        {"updated_at": "old", "code": HEALTH_TIMEOUT, "detail": "旧诊断"}
+    ]
+    current_status = {
+        "updated_at": "current",
+        "code": HEALTH_TIMEOUT,
+        "detail": "状态文件诊断",
+    }
     monkeypatch.setattr(
         setup_wizard,
         "read_service_status",
-        lambda _path: {"code": HEALTH_TIMEOUT, "detail": "状态文件诊断"},
+        lambda _path: old_statuses.pop(0) if old_statuses else current_status,
     )
     with pytest.raises(setup_wizard.HostStartupError) as status_override:
         setup_wizard.wait_for_host_health(
@@ -1678,7 +2065,16 @@ def test_health_wait_rejects_terminal_child_and_accepts_tls_with_progress(
     monkeypatch.setattr(
         setup_wizard,
         "read_service_status",
-        lambda _path: {"code": "CHILD_EXITED", "detail": "数据库迁移失败"},
+        lambda _path, states=iter(
+            [
+                {"updated_at": "old", "code": "CHILD_EXITED", "detail": "旧诊断"},
+                {
+                    "updated_at": "current",
+                    "code": "CHILD_EXITED",
+                    "detail": "数据库迁移失败",
+                },
+            ]
+        ): next(states),
     )
     with pytest.raises(setup_wizard.HostStartupError) as terminal:
         setup_wizard.wait_for_host_health(

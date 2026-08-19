@@ -1,10 +1,10 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.3-rc.6"
+#define MyAppVersion "1.4.3-rc.7"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
 #ifndef PartyOpsOutputBase
-  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.6_windows_amd64"
+  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.7_windows_amd64"
 #endif
 
 [Setup]
@@ -12,7 +12,7 @@ AppId={{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
-VersionInfoVersion=1.4.3.6
+VersionInfoVersion=1.4.3.7
 AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://www.partyops.cn/
 AppSupportURL=https://www.partyops.cn/guide
@@ -54,7 +54,7 @@ WizardSmallImageFile={#BuildRoot}\partyops-1024.png
 Name: "chinesesimp"; MessagesFile: "{#SourcePath}\languages\ChineseSimplified.isl"
 
 [Messages]
-BeveledLabel=PartyOps 1.4.3-rc.6 · 未签名候选版
+BeveledLabel=PartyOps 1.4.3-rc.7 · 未签名候选版
 #ifdef PartyOpsLegacy
 WinVersionTooLowError=此 Windows 7 专用安装包要求 Windows 7 SP1 或更高版本。请先安装 SP1 后重试。
 #else
@@ -170,24 +170,23 @@ const
   ClassesPrefix = 'Software\Classes\';
 
 #ifdef PartyOpsLegacy
-function IsInstalledUpdateInRoot(RootKey: Integer; UpdateId: String): Boolean;
+function GetModuleHandle(ModuleName: String): THandle;
+  external 'GetModuleHandleW@kernel32.dll stdcall';
+function GetProcAddress(Module: THandle; ProcName: AnsiString): LongWord;
+  external 'GetProcAddress@kernel32.dll stdcall';
+
+function HasWindows7LoaderUpdate: Boolean;
 var
-  PackageNames: TArrayOfString;
-  I: Integer;
+  Kernel32: THandle;
 begin
-  Result := False;
-  if not RegGetSubkeyNames(
-    RootKey,
-    'SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\Packages',
-    PackageNames
-  ) then
-    exit;
-  for I := 0 to GetArrayLength(PackageNames) - 1 do
-    if Pos(Lowercase(UpdateId), Lowercase(PackageNames[I])) > 0 then
-    begin
-      Result := True;
-      exit;
-    end;
+  { KB2533623 已被后续月度汇总更新取代时，CBS 中未必再保留精确 KB 名称。
+    微软要求通过 GetProcAddress 判断 Loader API 是否可用；按真实能力放行，
+    既避免误拦截已完整更新的 Win7，也不会在缺少安全加载能力时继续安装。 }
+  Kernel32 := GetModuleHandle('kernel32.dll');
+  Result :=
+    (Kernel32 <> 0) and
+    (GetProcAddress(Kernel32, 'AddDllDirectory') <> 0) and
+    (GetProcAddress(Kernel32, 'SetDefaultDllDirectories') <> 0);
 end;
 
 function ValidateWindows7Prerequisites(var ErrorMessage: String): Boolean;
@@ -205,12 +204,10 @@ begin
       ErrorMessage := '[WIN7_SP1_REQUIRED] 当前系统不是 Windows 7 SP1。请先安装 SP1 后重新运行 PartyOps 安装器。';
       exit;
     end;
-    HasLoaderUpdate := IsInstalledUpdateInRoot(HKLM, 'KB2533623');
-    if IsWin64 then
-      HasLoaderUpdate := HasLoaderUpdate or IsInstalledUpdateInRoot(HKLM64, 'KB2533623');
+    HasLoaderUpdate := HasWindows7LoaderUpdate;
     if not HasLoaderUpdate then
     begin
-      ErrorMessage := '[WIN7_KB2533623_REQUIRED] 未检测到 KB2533623。请从微软更新目录安装与系统位数匹配的补丁并重启，再运行 PartyOps。';
+      ErrorMessage := '[WIN7_LOADER_API_REQUIRED] 当前 Windows 7 缺少安全 DLL 加载能力。请先完成系统重要更新（至少包含 KB2533623 或其后续汇总更新）并重启，再运行 PartyOps。';
       exit;
     end;
     if not FileExists(ExpandConstant('{sys}\ucrtbase.dll')) then
@@ -573,7 +570,7 @@ begin
   InAppServiceUpdate := CompareText(
     ExpandConstant('{param:INAPPUPDATE|0}'), '1'
   ) = 0;
-  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.6 安装向导';
+  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.7 安装向导';
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     '选择 PartyOps 业务数据目录',
@@ -622,6 +619,118 @@ begin
   Result := FileExists(PowerShell) and
     Exec(PowerShell, Parameters, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and
     (ResultCode = 0);
+end;
+
+function NormalizeOwnedExecutablePath(Value: String): String;
+begin
+  Result := Trim(Value);
+  while (Length(Result) > 3) and
+        ((Result[Length(Result)] = '\') or (Result[Length(Result)] = '/')) do
+    Delete(Result, Length(Result), 1);
+end;
+
+function ExtractServiceExecutablePath(CommandLine: String): String;
+var
+  I: Integer;
+begin
+  Result := '';
+  CommandLine := Trim(CommandLine);
+  if CommandLine = '' then
+    exit;
+  if CommandLine[1] = '"' then
+  begin
+    I := 2;
+    while (I <= Length(CommandLine)) and (CommandLine[I] <> '"') do
+      I := I + 1;
+    if I <= Length(CommandLine) then
+      Result := Copy(CommandLine, 2, I - 2);
+  end
+  else
+  begin
+    I := Pos(' ', CommandLine);
+    if I = 0 then
+      Result := CommandLine
+    else
+      Result := Copy(CommandLine, 1, I - 1);
+  end;
+  Result := NormalizeOwnedExecutablePath(Result);
+end;
+
+function QueryOwnedServiceExecutable(
+  ServiceName, ServiceExecutable: String; var ExecutablePath: String
+): Boolean;
+var
+  ServiceKey, ImagePath, OwnerAppId, PreviousInstallLocation: String;
+  ExpectedCurrent, ExpectedPrevious: String;
+begin
+  Result := False;
+  ExecutablePath := '';
+  ServiceKey := 'SYSTEM\CurrentControlSet\Services\' + ServiceName;
+  if not RegQueryStringValue(HKLM, ServiceKey, 'ImagePath', ImagePath) then
+    exit;
+  ExecutablePath := ExtractServiceExecutablePath(ImagePath);
+  if ExecutablePath = '' then
+    exit;
+
+  ExpectedCurrent := NormalizeOwnedExecutablePath(
+    AddBackslash(ExpandConstant('{app}')) + ServiceExecutable
+  );
+  if CompareText(ExecutablePath, ExpectedCurrent) = 0 then
+  begin
+    Result := True;
+    exit;
+  end;
+
+  { rc.7 起为服务写入不可变产品标识。后续即使旧文件损坏或安装目录变化，
+    仍可在精确文件名匹配的前提下安全修复，不会接管同名第三方服务。 }
+  OwnerAppId := '';
+  RegQueryStringValue(HKLM, ServiceKey, 'PartyOps.AppId', OwnerAppId);
+  if (CompareText(OwnerAppId, PartyOpsAppId) = 0) and
+     (CompareText(ExtractFileName(ExecutablePath), ServiceExecutable) = 0) then
+  begin
+    Result := True;
+    exit;
+  end;
+
+  { 兼容尚未写入服务标识的历史安装器：Inno 的卸载项和 SCM ImagePath
+    必须同时指向同一个精确的 PartyOps 服务管理程序，缺一项都拒绝接管。 }
+  PreviousInstallLocation := '';
+  RegQueryStringValue(
+    HKLM,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
+      PartyOpsAppId + '_is1',
+    'InstallLocation', PreviousInstallLocation
+  );
+  if PreviousInstallLocation = '' then
+    exit;
+  ExpectedPrevious := NormalizeOwnedExecutablePath(
+    AddBackslash(PreviousInstallLocation) + ServiceExecutable
+  );
+  Result := CompareText(ExecutablePath, ExpectedPrevious) = 0;
+end;
+
+function StopOwnedServiceThroughScm(ServiceName, DisplayName: String): String;
+var
+  ResultCode, RemainingChecks: Integer;
+begin
+  Result := '';
+  if not ServiceIsRunning(ServiceName) then
+    exit;
+  ResultCode := -1;
+  Exec(
+    ExpandConstant('{sys}\sc.exe'), 'stop ' + ServiceName,
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+  );
+  RemainingChecks := 180;
+  while (RemainingChecks > 0) and ServiceIsRunning(ServiceName) do
+  begin
+    Sleep(250);
+    RemainingChecks := RemainingChecks - 1;
+  end;
+  if ServiceIsRunning(ServiceName) then
+    Result := '[LEGACY_SERVICE_STOP_FAILED] 无法安全停止' + DisplayName +
+      '（SCM 退出码：' + IntToStr(ResultCode) +
+      '）。请关闭正在使用 PartyOps 的窗口后重试。';
 end;
 
 procedure SnapshotServiceConfiguration(
@@ -688,17 +797,29 @@ function StopServiceBeforeUpgrade(
 ): String;
 var
   ResultCode: Integer;
-  ExecutablePath: String;
+  ExecutablePath, RegisteredExecutable: String;
 begin
   Result := '';
   if not ServiceExists(ServiceName) then
     exit;
 
+  if not QueryOwnedServiceExecutable(
+    ServiceName, ServiceExecutable, RegisteredExecutable
+  ) then
+  begin
+    Result := '[LEGACY_SERVICE_CONFLICT] 检测到同名的“' + DisplayName +
+      '”，但无法证明它属于 PartyOps。为避免修改其他软件的服务，安装已停止；' +
+      '请复制安装日志给技术支持。';
+    exit;
+  end;
+
   ExecutablePath := ExpandConstant('{app}\') + ServiceExecutable;
   if not FileExists(ExecutablePath) then
   begin
-    Result := '检测到旧版' + DisplayName + '，但缺少服务管理程序。' +
-      '请先卸载损坏的旧版本，再重新运行安装器。';
+    { 旧服务管理程序可能被杀毒软件隔离、被手工删除，或旧安装不完整。
+      服务本身仍由 SCM 管理；核验归属后直接停止即可。新文件释放后会使用
+      update/install 原位修复注册，不要求用户先卸载，也不删除业务数据。 }
+    Result := StopOwnedServiceThroughScm(ServiceName, DisplayName);
     exit;
   end;
 
@@ -1313,6 +1434,22 @@ begin
   );
 end;
 
+procedure MarkServiceOwnership(ServiceName, ServiceExecutable: String);
+var
+  ServiceKey, Verified: String;
+begin
+  ServiceKey := 'SYSTEM\CurrentControlSet\Services\' + ServiceName;
+  if (not RegWriteStringValue(HKLM, ServiceKey, 'PartyOps.AppId', PartyOpsAppId)) or
+     (not RegWriteStringValue(
+       HKLM, ServiceKey, 'PartyOps.Executable', ServiceExecutable
+     )) then
+    RaiseException('[SERVICE_OWNERSHIP_MARK_FAILED] 无法写入 PartyOps 服务归属标识。');
+  Verified := '';
+  if (not RegQueryStringValue(HKLM, ServiceKey, 'PartyOps.AppId', Verified)) or
+     (CompareText(Verified, PartyOpsAppId) <> 0) then
+    RaiseException('[SERVICE_OWNERSHIP_VERIFY_FAILED] PartyOps 服务归属标识回读失败。');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
@@ -1352,6 +1489,7 @@ begin
       HostServiceStartup + ServiceInstallAction('PartyOpsHost'),
       '安装 PartyOps 主机服务'
     );
+    MarkServiceOwnership('PartyOpsHost', 'PartyOpsService.exe');
     RunChecked(
       ExpandConstant('{sys}\sc.exe'),
       'failure PartyOpsHost reset= 86400 actions= restart/5000/restart/15000/',
@@ -1367,6 +1505,7 @@ begin
       UpdateServiceStartup + ServiceInstallAction('PartyOpsUpdateService'),
       '安装 PartyOps 更新服务'
     );
+    MarkServiceOwnership('PartyOpsUpdateService', 'PartyOpsUpdaterService.exe');
     RunChecked(
       ExpandConstant('{sys}\sc.exe'),
       'failure PartyOpsUpdateService reset= 86400 actions= restart/5000/restart/15000/',

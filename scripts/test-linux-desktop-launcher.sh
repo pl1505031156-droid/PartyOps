@@ -116,7 +116,7 @@ PARTYOPS_TLS_ENABLED=false
 EOF
 "$RUNTIME/desktop-launcher.sh"
 grep -qx "$CONFIG_ROOT/personal.env" "$TEST_ROOT/started-with-config.log"
-grep -qx "http://127.0.0.1:$TEST_PORT" "$OPEN_LOG"
+grep -Eq "^http://127\\.0\\.0\\.1:$TEST_PORT/\\?partyops_runtime=[0-9]+$" "$OPEN_LOG"
 rm -f "$CONFIG_ROOT/personal.env" "$OPEN_LOG"
 
 # 主机模式：用户配置同样走受控启动、健康等待和本机地址。
@@ -130,7 +130,7 @@ PARTYOPS_TLS_ENABLED=false
 EOF
 "$RUNTIME/desktop-launcher.sh"
 grep -qx "$CONFIG_ROOT/partyops.env" "$TEST_ROOT/started-with-config.log"
-grep -qx "http://127.0.0.1:$TEST_PORT" "$OPEN_LOG"
+grep -Eq "^http://127\\.0\\.0\\.1:$TEST_PORT/\\?partyops_runtime=[0-9]+$" "$OPEN_LOG"
 rm -f "$CONFIG_ROOT/partyops.env" "$OPEN_LOG"
 
 # 协同模式：页面令牌通过 0600 文件交接，不依赖隐藏进程内部打开浏览器。

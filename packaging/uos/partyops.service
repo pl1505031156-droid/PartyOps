@@ -2,7 +2,8 @@
 Description=PartyOps 基层党建工作闭环协同系统
 Wants=network-online.target
 After=network-online.target
-StartLimitIntervalSec=300
+# 使用早期与当前 systemd 均接受的启动限流键。
+StartLimitInterval=300
 StartLimitBurst=3
 
 [Service]

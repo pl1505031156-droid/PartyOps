@@ -40,12 +40,16 @@ def _marker(path: Path, scope: str) -> None:
 def _environment(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
     local = tmp_path / "Users" / "tester" / "AppData" / "Local"
     program_data = tmp_path / "ProgramData"
+    profile = tmp_path / "Users" / "tester"
     monkeypatch.setenv("LOCALAPPDATA", str(local))
     monkeypatch.setenv("PROGRAMDATA", str(program_data))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path / "Users" / "tester"))
+    monkeypatch.setenv("USERPROFILE", str(profile))
     monkeypatch.setenv("WINDIR", str(tmp_path / "Windows"))
     monkeypatch.setenv("ProgramFiles", str(tmp_path / "Program Files"))
     monkeypatch.setenv("ProgramFiles(x86)", str(tmp_path / "Program Files x86"))
+    # 卸载器在真实 Windows 上会读取 ProfileList，以覆盖已登记的本机账号；
+    # 单元测试必须完全隔离，不能因注册表枚举触碰当前开发机的真实配置。
+    monkeypatch.setattr(cleanup, "_profile_paths", lambda: [profile])
     return local, program_data
 
 
@@ -169,6 +173,13 @@ def test_windows_helpers_share_one_verified_runtime_instead_of_embedding_duplica
         encoding="utf-8"
     )
     assert '"PartyOpsDataCleanup"' in package
+
+    cleanup_source = (ROOT / "packaging" / "windows" / "data_cleanup.py").read_text(
+        encoding="utf-8"
+    )
+    assert cleanup_source.count(
+        '"PartyOpsAgent": (install_root / "PartyOpsLauncher.exe").resolve()'
+    ) == 1
     assert 'Join-Path $runtimeRoot "$entry\\$entry.exe"' in package
     assert 'Copy-Item -Path (Join-Path $runtimeRoot "$entry\\*")' in package
     assert 'Join-Path $runtimeRoot "$entry.exe"' not in package

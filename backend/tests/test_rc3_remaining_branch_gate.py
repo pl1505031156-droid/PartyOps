@@ -1199,6 +1199,7 @@ def test_task_router_conflict_delete_and_participant_rejections(
     user = SimpleNamespace(id="user", role=UserRole.STAFF)
     task = _task()
     monkeypatch.setattr(tasks, "get_task_or_404", lambda *_a: task)
+    monkeypatch.setattr(tasks, "can_view_task", lambda *_a: True)
     monkeypatch.setattr(tasks, "can_manage_task", lambda *_a: True)
 
     with pytest.raises(ProblemException) as missing_draft:
@@ -1231,6 +1232,41 @@ def test_task_router_conflict_delete_and_participant_rejections(
     with pytest.raises(ProblemException) as participant_missing:
         tasks.remove_participant("task", "missing", _request(), None, user, _Db())
     assert participant_missing.value.code == "PARTICIPANT_NOT_FOUND"
+
+
+def test_task_delete_database_cas_rejects_interleaved_edit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = SimpleNamespace(id="user", role=UserRole.STAFF)
+    task = _task(version=2)
+
+    class RaceDb(_Db):
+        def __init__(self) -> None:
+            super().__init__()
+            self.rolled_back = False
+
+        def execute(self, *_args, **_kwargs):
+            # 模拟另一进程在本进程回读之后先提交编辑；数据库 UPDATE CAS
+            # 因 version 已变化返回 0 行，删除请求必须拒绝而非覆盖新内容。
+            task.version = 3
+            return SimpleNamespace(rowcount=0)
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+
+    db = RaceDb()
+    monkeypatch.setattr(tasks, "get_task_or_404", lambda *_args: task)
+    monkeypatch.setattr(tasks, "can_view_task", lambda *_args: True)
+    monkeypatch.setattr(tasks, "can_manage_task", lambda *_args: True)
+    with pytest.raises(ProblemException) as conflict:
+        tasks.delete_task("task", _request(), '"2"', user, db)
+    assert conflict.value.code == "VERSION_CONFLICT"
+    assert db.rolled_back is True
+
+    monkeypatch.setattr(tasks, "can_view_task", lambda *_args: False)
+    with pytest.raises(ProblemException) as hidden:
+        tasks.delete_task("task", _request(), '"3"', user, _Db())
+    assert hidden.value.code == "TASK_NOT_FOUND"
 
 
 def test_task_router_step_rejection_matrix(monkeypatch: pytest.MonkeyPatch) -> None:

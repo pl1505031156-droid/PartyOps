@@ -12,6 +12,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
 from app.platform_info import detect_platform_info, read_os_release, update_platform_key
+from app import compat as app_compat
 from app.compat import StrEnum, strict_zip, to_thread
 from app.problems import ProblemException
 from app.routers import updates
@@ -222,6 +223,47 @@ def test_python38_compatibility_layer_behaves_like_mainline() -> None:
     with pytest.raises(ValueError):
         list(strict_zip([1], [2, 3]))
     assert asyncio.run(to_thread(lambda left, right: left + right, 2, 3)) == 5
+
+
+def test_python38_hashlib_compat_accepts_starlette_etag_keyword(monkeypatch) -> None:
+    """Win7 首页静态文件不能因 Starlette 的 ETag 调用返回 500。"""
+
+    calls: list[bytes] = []
+
+    class Digest:
+        def hexdigest(self) -> str:
+            return "etag"
+
+    def legacy_md5(data: bytes = b"") -> Digest:
+        calls.append(data)
+        return Digest()
+
+    monkeypatch.setattr(app_compat.sys, "version_info", (3, 8, 10))
+    monkeypatch.setattr(app_compat.hashlib, "md5", legacy_md5)
+
+    app_compat.install_legacy_hashlib_compat()
+
+    assert (
+        app_compat.hashlib.md5(b"asset", usedforsecurity=False).hexdigest()
+        == "etag"
+    )
+    # 旧函数会在进入函数体前拒绝未知关键字，因此探测调用不会记录 data。
+    assert calls == [b"asset"]
+
+
+def test_win7_installer_probes_loader_capability_instead_of_exact_kb_name() -> None:
+    """汇总更新已提供 Loader API 时，不得因 CBS 中没有旧 KB 名称误拦截。"""
+
+    installer = (
+        Path(__file__).resolve().parents[2]
+        / "packaging"
+        / "windows"
+        / "PartyOps.iss"
+    ).read_text(encoding="utf-8-sig")
+
+    assert "GetProcAddress" in installer
+    assert "AddDllDirectory" in installer
+    assert "IsInstalledUpdateInRoot" not in installer
 
 
 def test_inno_protocol_registration_is_transactional_and_not_hkcr() -> None:

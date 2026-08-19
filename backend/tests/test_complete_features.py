@@ -690,6 +690,11 @@ def test_setup_wizard_browser_flow_and_launch_helpers(
     )
     monkeypatch.setattr(
         setup_wizard,
+        "ensure_configured_runtime_ready",
+        lambda _path, _mode: "http://127.0.0.1:18765",
+    )
+    monkeypatch.setattr(
+        setup_wizard,
         "resolve_host_url",
         lambda value, *_args: (value, {"status": "ok"}),
     )
@@ -765,6 +770,7 @@ def test_setup_wizard_browser_flow_and_launch_helpers(
                 "password": "PartyOps@2026",
                 "ca_file": tmp_path / "data" / "secrets" / "pki" / "ca.pem",
                 "bootstrap_token": "",
+                "expected_mode": "host",
             }
         ]
 
@@ -1008,11 +1014,17 @@ def test_linux_desktop_launcher_covers_every_configured_mode_and_visible_failure
     assert '"\\(personal\\|host\\|client\\)"' in launcher
     assert "launch_browser_tool" in launcher
     assert "wait_and_open_local_host" in launcher
+    assert 'base_url/api/v1/health' in launcher
+    assert "partyops_runtime=" in launcher
+    assert "进程启动后提前退出" in launcher
     assert '--browser-url-file "$CLIENT_BROWSER_URL"' in launcher
     assert "show_launch_failure" in launcher
     assert 'PARTYOPS_ENV_FILE="$HOST_CONFIG"' in launcher
     assert "PERSONAL_CONFIG" in start and "MODE_CONFIG" in start
     assert "PARTYOPS_ENV_FILE" in start
+    assert "is_partyops_process" in start
+    assert 'readlink -f "/proc/$pid/exe"' in start
+    assert "[CHILD_EXITED]" in start
     assert "bash -n" in selftest
     assert "PACKAGE_DESKTOP_ENTRY_INVALID" in selftest
     assert "Exec=/opt/partyops/desktop-launcher.sh" in main_entry

@@ -11,12 +11,18 @@ import {
   isFrontendAssetError,
   renderStartupProblem,
   ROUTE_RELOAD_KEY,
+  RUNTIME_RELOAD_KEY,
+  safeSessionStorageGet,
+  safeSessionStorageRemove,
+  safeSessionStorageSet,
+  tryRecoverRuntimeMismatch,
 } from "./runtimeGuard";
 import "./styles.css";
 
 async function startApplication() {
   const compatibility = await checkRuntimeCompatibility();
   if (compatibility.status === "mismatch") {
+    if (tryRecoverRuntimeMismatch(compatibility)) return;
     renderStartupProblem(
       "程序升级尚未完成",
       `浏览器页面版本为 ${compatibility.expected}，正在运行的主机服务版本为 ${compatibility.actual}。这通常表示旧进程没有退出，不代表业务数据丢失。`,
@@ -24,6 +30,7 @@ async function startApplication() {
     );
     return;
   }
+  safeSessionStorageRemove(RUNTIME_RELOAD_KEY);
   if (compatibility.status === "unavailable") {
     renderStartupProblem(
       "主机服务暂不可用",
@@ -37,9 +44,9 @@ async function startApplication() {
     const fingerprint = `${FRONTEND_VERSION}:${target.fullPath}`;
     if (
       isFrontendAssetError(error)
-      && window.sessionStorage.getItem(ROUTE_RELOAD_KEY) !== fingerprint
+      && safeSessionStorageGet(ROUTE_RELOAD_KEY) !== fingerprint
+      && safeSessionStorageSet(ROUTE_RELOAD_KEY, fingerprint)
     ) {
-      window.sessionStorage.setItem(ROUTE_RELOAD_KEY, fingerprint);
       window.location.reload();
       return;
     }
@@ -53,7 +60,7 @@ async function startApplication() {
     );
   });
   router.afterEach((_to, _from, failure) => {
-    if (!failure) window.sessionStorage.removeItem(ROUTE_RELOAD_KEY);
+    if (!failure) safeSessionStorageRemove(ROUTE_RELOAD_KEY);
   });
 
   const app = createApp(App);

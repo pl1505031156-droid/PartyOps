@@ -732,11 +732,35 @@ def _run_linux_package_manager(
 
 
 def _ensure_dpkg_ready() -> bool:
-    """在覆盖程序前收敛上一次中断留下的 dpkg 半配置状态。"""
+    """只收敛 PartyOps 自己的半配置状态，不擅自修改其他系统软件包。"""
 
-    result = _run(["dpkg", "--configure", "-a"], timeout=300)
+    audit = _run(["dpkg", "--audit"], timeout=60)
+    if audit.returncode != 0:
+        logger.error("dpkg_audit_failed returncode=%s", audit.returncode)
+        return False
+    all_pending = "\n".join(line.rstrip() for line in audit.stdout.splitlines()).strip()
+    if not all_pending:
+        return True
+
+    partyops_audit = _run(["dpkg", "--audit", "partyops"], timeout=60)
+    partyops_pending = "\n".join(
+        line.rstrip() for line in partyops_audit.stdout.splitlines()
+    ).strip()
+    if (
+        partyops_audit.returncode != 0
+        or not partyops_pending
+        or partyops_pending != all_pending
+    ):
+        logger.error(
+            "dpkg_unrelated_pending_packages detected; refuse automatic system-wide configure"
+        )
+        return False
+
+    result = _run_linux_package_manager(
+        ["dpkg", "--configure", "partyops"], timeout=300
+    )
     if result.returncode != 0:
-        logger.error("dpkg_preflight_failed returncode=%s", result.returncode)
+        logger.error("dpkg_partyops_repair_failed returncode=%s", result.returncode)
         return False
     return True
 

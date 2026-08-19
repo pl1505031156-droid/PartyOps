@@ -4,6 +4,11 @@ import {
   FRONTEND_VERSION,
   isFrontendAssetError,
   renderStartupProblem,
+  safeSessionStorage,
+  safeSessionStorageGet,
+  safeSessionStorageRemove,
+  safeSessionStorageSet,
+  tryRecoverRuntimeMismatch,
 } from "./runtimeGuard";
 
 afterEach(() => {
@@ -51,5 +56,82 @@ describe("前后端版本兼容守卫", () => {
     expect(document.body.innerHTML).toContain("ERR_&lt;/p&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(document.body.querySelector("script")).toBeNull();
     expect(document.getElementById("partyops-reload")).not.toBeNull();
+  });
+
+  it("旧页面遇到新服务时只自动强制刷新一次", () => {
+    const navigated: string[] = [];
+    const mismatch = {
+      status: "mismatch" as const,
+      expected: "1.4.3-rc.6",
+      actual: "1.4.3-rc.7",
+    };
+
+    expect(tryRecoverRuntimeMismatch(
+      mismatch,
+      window.sessionStorage,
+      (url) => navigated.push(url),
+      "http://127.0.0.1:18775/work?view=today",
+    )).toBe(true);
+    expect(navigated[0]).toContain("partyops_runtime=1.4.3-rc.7");
+    expect(tryRecoverRuntimeMismatch(
+      mismatch,
+      window.sessionStorage,
+      (url) => navigated.push(url),
+      "http://127.0.0.1:18775/work?view=today",
+    )).toBe(false);
+    expect(navigated).toHaveLength(1);
+  });
+
+  it("浏览器策略禁用会话存储时显示恢复页而不是空白或刷新环", () => {
+    const deniedStorage = {
+      getItem: () => { throw new DOMException("denied", "SecurityError"); },
+      setItem: () => { throw new DOMException("denied", "SecurityError"); },
+    };
+    expect(tryRecoverRuntimeMismatch(
+      { status: "mismatch", expected: "old", actual: "new" },
+      deniedStorage,
+      () => { throw new Error("不应导航"); },
+      "http://127.0.0.1:18775/",
+    )).toBe(false);
+  });
+
+  it("读取 sessionStorage 属性本身被策略拒绝时仍安全降级", () => {
+    const original = Object.getOwnPropertyDescriptor(window, "sessionStorage");
+    Object.defineProperty(window, "sessionStorage", {
+      configurable: true,
+      get: () => { throw new DOMException("denied", "SecurityError"); },
+    });
+    try {
+      expect(safeSessionStorage()).toBeNull();
+      expect(safeSessionStorageGet("key")).toBeNull();
+      expect(safeSessionStorageSet("key", "value")).toBe(false);
+      expect(() => safeSessionStorageRemove("key")).not.toThrow();
+      expect(tryRecoverRuntimeMismatch(
+        { status: "mismatch", expected: "old", actual: "new" },
+        undefined,
+        () => { throw new Error("不应导航"); },
+        "http://127.0.0.1:18775/",
+      )).toBe(false);
+    } finally {
+      if (original) Object.defineProperty(window, "sessionStorage", original);
+      else Reflect.deleteProperty(window, "sessionStorage");
+    }
+  });
+
+  it("会话存储对象可读取但单项操作被策略拒绝时仍安全降级", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("get denied", "SecurityError");
+    });
+    expect(safeSessionStorageGet("key")).toBeNull();
+
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("set denied", "SecurityError");
+    });
+    expect(safeSessionStorageSet("key", "value")).toBe(false);
+
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new DOMException("remove denied", "SecurityError");
+    });
+    expect(() => safeSessionStorageRemove("key")).not.toThrow();
   });
 });

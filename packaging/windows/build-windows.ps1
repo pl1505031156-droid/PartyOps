@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
-$releaseVersion = "1.4.3-rc.6"
-$releaseTag = "v1.4.3-rc.6"
+$releaseVersion = "1.4.3-rc.7"
+$releaseTag = "v1.4.3-rc.7"
 & $Python (Join-Path $repoRoot "scripts\verify-version-consistency.py") `
   --root $repoRoot --expected $releaseVersion
 if ($LASTEXITCODE -ne 0) { throw "版本一致性门禁失败，拒绝冻结 Windows 制品。" }
@@ -73,8 +73,8 @@ if (-not (Test-Path -LiteralPath $windowsPowerShell51)) {
   throw "构建机缺少 Windows PowerShell 5.1，无法验证安装目录脚本的真实兼容性。"
 }
 $validatorProbeId = [guid]::NewGuid().ToString("N")
-$validatorProbePath = Join-Path $env:TEMP "PartyOps-rc6-安装路径-$validatorProbeId\中文 空格"
-$validatorProbeDiagnostic = Join-Path $env:TEMP "PartyOps-rc6-validator-$validatorProbeId.txt"
+$validatorProbePath = Join-Path $env:TEMP "PartyOps-rc7-安装路径-$validatorProbeId\中文 空格"
+$validatorProbeDiagnostic = Join-Path $env:TEMP "PartyOps-rc7-validator-$validatorProbeId.txt"
 try {
   & $windowsPowerShell51 -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
     -File $installPathValidator -Path $validatorProbePath `
@@ -198,15 +198,15 @@ New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 # onefile 会把约 80MB Python/原生依赖重复嵌入每个辅助程序，使安装器、应用内
 # 更新包和弱网续传无谓膨胀；共享运行时仍由发布清单逐文件校验，不降低完整性。
 $entries = @(
-  @{ Name = "PartyOps"; Script = "packaging\uos\entrypoint.py"; Mode = "onedir" },
-  @{ Name = "PartyOpsAgent"; Script = "packaging\uos\client_entrypoint.py"; Mode = "onedir" },
-  @{ Name = "PartyOpsWizard"; Script = "packaging\uos\wizard_entrypoint.py"; Mode = "onedir" },
-  @{ Name = "PartyOpsUpdater"; Script = "packaging\uos\updater_entrypoint.py"; Mode = "onedir" },
-  @{ Name = "PartyOpsLauncher"; Script = "packaging\windows\windows_launcher.py"; Mode = "onedir" },
-  @{ Name = "PartyOpsDataCleanup"; Script = "packaging\windows\data_cleanup.py"; Mode = "onedir" },
-  @{ Name = "PartyOpsFileOpen"; Script = "packaging\windows\windows_file_open.py"; Mode = "onedir" },
-  @{ Name = "PartyOpsService"; Script = "packaging\windows\windows_service.py"; Mode = "onedir" },
-  @{ Name = "PartyOpsUpdaterService"; Script = "packaging\windows\windows_updater_service.py"; Mode = "onedir" }
+  @{ Name = "PartyOps"; Script = "packaging\uos\entrypoint.py"; Mode = "onedir"; Gui = $false },
+  @{ Name = "PartyOpsAgent"; Script = "packaging\uos\client_entrypoint.py"; Mode = "onedir"; Gui = $false },
+  @{ Name = "PartyOpsWizard"; Script = "packaging\uos\wizard_entrypoint.py"; Mode = "onedir"; Gui = $true },
+  @{ Name = "PartyOpsUpdater"; Script = "packaging\uos\updater_entrypoint.py"; Mode = "onedir"; Gui = $false },
+  @{ Name = "PartyOpsLauncher"; Script = "packaging\windows\windows_launcher.py"; Mode = "onedir"; Gui = $true },
+  @{ Name = "PartyOpsDataCleanup"; Script = "packaging\windows\data_cleanup.py"; Mode = "onedir"; Gui = $true },
+  @{ Name = "PartyOpsFileOpen"; Script = "packaging\windows\windows_file_open.py"; Mode = "onedir"; Gui = $true },
+  @{ Name = "PartyOpsService"; Script = "packaging\windows\windows_service.py"; Mode = "onedir"; Gui = $false },
+  @{ Name = "PartyOpsUpdaterService"; Script = "packaging\windows\windows_updater_service.py"; Mode = "onedir"; Gui = $false }
 )
 
 # 统一的 PartyOps 品牌图标：嵌入所有可执行文件，桌面/开始菜单/资源管理器
@@ -231,6 +231,7 @@ foreach ($entry in $entries) {
     "--workpath", (Join-Path $repoRoot ".build-windows\work"),
     "--specpath", (Join-Path $repoRoot ".build-windows\spec")
   )
+  if ($entry.Gui) { $arguments += "--noconsole" }
   if ($entry.Name -eq "PartyOps") {
     $arguments += @(
       "--add-data", "$frontendDist\client;frontend",
@@ -377,7 +378,7 @@ try {
 }
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
-$installerBase = if ($isLegacy) { "PartyOps_1.4.3-rc.6_windows7_$targetArchitecture" } else { "PartyOps_1.4.3-rc.6_windows_amd64" }
+$installerBase = if ($isLegacy) { "PartyOps_1.4.3-rc.7_windows7_$targetArchitecture" } else { "PartyOps_1.4.3-rc.7_windows_amd64" }
 $installer = Join-Path $outputRoot "$installerBase.exe"
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"

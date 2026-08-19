@@ -23,9 +23,9 @@
     "component": {
       "type": "library",
       "name": "website",
-      "version": "1.4.3-rc.6",
-      "purl": "pkg:npm/website@1.4.3-rc.6",
-      "bom-ref": "pkg:npm/website@1.4.3-rc.6"
+      "version": "1.4.3-rc.7",
+      "purl": "pkg:npm/website@1.4.3-rc.7",
+      "bom-ref": "pkg:npm/website@1.4.3-rc.7"
     }
   },
   "components": [
@@ -4145,7 +4145,7 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:npm/website@1.4.3-rc.6",
+      "ref": "pkg:npm/website@1.4.3-rc.7",
       "dependsOn": [
         "pkg:npm/%40edgeone/pages-blob@0.0.16",
         "pkg:npm/%40phosphor-icons/react@2.1.10",

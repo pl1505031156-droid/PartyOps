@@ -1,7 +1,8 @@
 [Unit]
 Description=PartyOps 主机签名更新与回滚服务
 After=partyops.service
-StartLimitIntervalSec=300
+# 使用早期与当前 systemd 均接受的启动限流键。
+StartLimitInterval=300
 StartLimitBurst=3
 
 [Service]

@@ -53,6 +53,7 @@ from .windows_host_status import (
     DATA_DIR_DENIED,
     HEALTH_TIMEOUT,
     PORT_IN_USE,
+    RUNTIME_VERSION_MISMATCH,
     SERVICE_MISSING,
     SERVICE_STOPPED,
     TERMINAL_CODES,
@@ -141,10 +142,30 @@ def _write_private(path: Path, content: str, mode: int = 0o600) -> None:
     temporary.replace(path)
 
 
-def _publish_linux_desktop_tool_url(tool: str, url: str) -> Path | None:
-    """向 Linux 桌面启动器发布只绑定回环地址的本地工具入口。"""
+def _rotate_bounded_log(
+    path: Path, *, max_bytes: int = 5 * 1024 * 1024, backups: int = 5
+) -> None:
+    """在启动新子进程前轮转追加日志，避免数据盘被访问日志耗尽。"""
 
-    if not sys.platform.startswith("linux"):
+    try:
+        if not path.is_file() or path.stat().st_size < max_bytes:
+            return
+        oldest = path.with_name(f"{path.name}.{backups}")
+        oldest.unlink(missing_ok=True)
+        for index in range(backups - 1, 0, -1):
+            source = path.with_name(f"{path.name}.{index}")
+            if source.exists():
+                source.replace(path.with_name(f"{path.name}.{index + 1}"))
+        path.replace(path.with_name(f"{path.name}.1"))
+    except OSError:
+        # 日志轮转属于容量保护，失败不能反向阻断业务启动。
+        return
+
+
+def _publish_desktop_tool_url(tool: str, url: str) -> Path | None:
+    """向受支持桌面启动器发布只绑定回环地址的本地工具入口。"""
+
+    if sys.platform != "win32" and not sys.platform.startswith("linux"):
         return None
     parsed = urllib.parse.urlparse(url)
     if (
@@ -163,7 +184,7 @@ def _publish_linux_desktop_tool_url(tool: str, url: str) -> Path | None:
     return marker
 
 
-def _clear_linux_desktop_tool_url(marker: Path | None, url: str) -> None:
+def _clear_desktop_tool_url(marker: Path | None, url: str) -> None:
     """仅清理由当前进程写入的地址，避免并发向导互删状态。"""
 
     if marker is None:
@@ -799,6 +820,50 @@ def _restore_windows_services_after_data_migration(states: dict[str, bool]) -> N
         )
 
 
+def _restore_windows_services_after_mode_switch(
+    states: dict[str, bool], *, timeout: float = 45.0
+) -> None:
+    """严格恢复模式切换前的服务状态；失败时保留快照供下次恢复。"""
+
+    if os.name != "nt" or os.getenv("PARTYOPS_ENVIRONMENT") == "test":
+        return
+    failures: list[str] = []
+    for service in ("PartyOpsUpdateService", "PartyOpsHost"):
+        if not states.get(service):
+            continue
+        try:
+            result = subprocess.run(
+                ["sc.exe", "start", service],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            failures.append(f"{service} 的 SCM 启动操作失败（{exc}）")
+            continue
+        deadline = time.monotonic() + max(5.0, timeout)
+        while time.monotonic() < deadline:
+            try:
+                if _windows_service_running(service):
+                    break
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                failures.append(f"{service} 的运行状态无法回读（{exc}）")
+                break
+            time.sleep(1.0)
+        else:
+            detail = (result.stdout + result.stderr).strip()[-500:]
+            failures.append(
+                f"{service} 未恢复运行（退出码 {result.returncode}；{detail or 'SCM 未返回详情'}）"
+            )
+    if failures:
+        raise ValueError(
+            "[MODE_SWITCH_ROLLBACK_FAILED] 原主机服务未能完整恢复："
+            + "；".join(failures)
+        )
+
+
 def _windows_privileged_update_lock_path() -> Path:
     """与 SYSTEM 更新器共用同一个受保护事务锁，不能在业务目录另造哨兵。"""
 
@@ -980,23 +1045,34 @@ def _restore_windows_host_switch_privileged(expected_transaction_id: str = "") -
     mode_path = (
         Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps" / "mode.json"
     )
-    if previous_mode is None:
-        mode_path.unlink(missing_ok=True)
-    else:
-        _write_private(mode_path, previous_mode)
-    for service in ("PartyOpsHost", "PartyOpsUpdateService"):
-        state = services[service]
-        raw_start = state.get("start_type")
-        config = (
-            None if raw_start is None else (int(raw_start), bool(state.get("delayed")))
+    try:
+        if previous_mode is None:
+            mode_path.unlink(missing_ok=True)
+        else:
+            _write_private(mode_path, previous_mode)
+        for service in ("PartyOpsHost", "PartyOpsUpdateService"):
+            state = services[service]
+            raw_start = state.get("start_type")
+            config = (
+                None
+                if raw_start is None
+                else (int(raw_start), bool(state.get("delayed")))
+            )
+            _restore_windows_service_start_config(service, config)
+        _restore_windows_services_after_mode_switch(
+            {
+                service: bool(services[service].get("running"))
+                for service in ("PartyOpsHost", "PartyOpsUpdateService")
+            }
         )
-        _restore_windows_service_start_config(service, config)
-    _restore_windows_services_after_data_migration(
-        {
-            service: bool(services[service].get("running"))
-            for service in ("PartyOpsHost", "PartyOpsUpdateService")
-        }
-    )
+    except Exception as exc:
+        if isinstance(exc, ValueError) and str(exc).startswith(
+            "[MODE_SWITCH_ROLLBACK_FAILED]"
+        ):
+            raise
+        raise ValueError(
+            f"[MODE_SWITCH_ROLLBACK_FAILED] 原主机模式未能完整恢复：{exc}"
+        ) from exc
     _windows_host_switch_pending_path().unlink(missing_ok=True)
     snapshot_path.unlink(missing_ok=True)
 
@@ -1137,7 +1213,19 @@ def _deactivate_windows_host_services_privileged(transaction_id: str = "") -> No
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         if firewall_result.returncode != 0:
-            raise ValueError("无法撤销旧主机的局域网防火墙规则")
+            # 主机与更新服务已停止且改为手动，个人模式只绑定 127.0.0.1；
+            # 此时残留的“允许主机程序”规则不会产生监听端口。单位策略可能
+            # 禁止删除规则，不能因此把已安全停用的模式切换误判为回滚失败。
+            warning = (
+                "[FIREWALL_RULE_CLEANUP_DEFERRED] 单位策略未允许删除旧主机"
+                f"防火墙规则（退出码 {firewall_result.returncode}）。服务已停止，"
+                "规则将在卸载或管理员策略允许后再次清理。"
+            )
+            warning_path = mode_path.parent / "mode-switch-warning.log"
+            _rotate_bounded_log(warning_path, max_bytes=1024 * 1024, backups=2)
+            with warning_path.open("a", encoding="utf-8") as stream:
+                stream.write(warning + "\n")
+            print(warning, file=sys.stderr)
     except Exception as original_error:
         rollback_errors: list[str] = []
         try:
@@ -1355,6 +1443,22 @@ def _process_executable_matches(pid: int, expected: Path) -> bool:
         return os.path.normcase(str(Path(buffer.value).resolve())) == expected_text
     finally:
         kernel32.CloseHandle(handle)
+
+
+def _personal_process_is_owned(data_dir: Path) -> bool:
+    """确认监听进程仍是当前安装记录的个人 PartyOps，不能只信公开健康页。"""
+
+    marker = _personal_process_marker(data_dir)
+    if not marker.is_file() or marker.is_symlink():
+        return False
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+        pid = int(payload.get("pid", 0))
+        recorded = Path(str(payload.get("executable", ""))).resolve()
+        expected = _executable("partyops").resolve()
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return False
+    return recorded == expected and _process_executable_matches(pid, expected)
 
 
 def _stop_personal_process_for_data_migration(data_dir: Path, port: int) -> bool:
@@ -1876,9 +1980,10 @@ def configure_host_config(host: str, port: int, data_dir: Path) -> Path:
         return path
     except Exception as original_error:
         rollback_errors: list[str] = []
+        host_deactivation: str | None = None
         if host_configured:
             try:
-                deactivate_windows_host_for_user_mode()
+                host_deactivation = deactivate_windows_host_for_user_mode()
             except Exception as exc:  # noqa: BLE001 - 汇总事务回滚诊断。
                 rollback_errors.append(f"主机服务：{exc}")
         if personal_stopped and personal_environment:
@@ -1888,6 +1993,13 @@ def configure_host_config(host: str, port: int, data_dir: Path) -> Path:
                 write_mode_config("personal", config_path=personal_config)
             except Exception as exc:  # noqa: BLE001 - 汇总事务回滚诊断。
                 rollback_errors.append(f"个人模式：{exc}")
+        if host_deactivation and not rollback_errors:
+            try:
+                # failed host 的停用事务已经由上面的个人模式恢复接管，必须提交；
+                # 否则下次向导会把 pending 快照误当成断电中断并重新启用旧主机。
+                finalize_windows_host_switch(host_deactivation)
+            except Exception as exc:  # noqa: BLE001 - pending 事务不能静默遗留。
+                rollback_errors.append(f"模式事务：{exc}")
         if rollback_errors:
             raise ValueError(
                 "[MODE_SWITCH_ROLLBACK_FAILED] 主机配置失败且原个人模式未能完整恢复："
@@ -2166,14 +2278,23 @@ def _spawn(
     command: list[str], log_path: Path, env: dict[str, str] | None = None
 ) -> subprocess.Popen:
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    _rotate_bounded_log(log_path)
     handle = log_path.open("ab")
+    options: dict[str, object] = {
+        "env": env,
+        "stdin": subprocess.DEVNULL,
+        "stdout": handle,
+        "stderr": subprocess.STDOUT,
+    }
+    if os.name == "nt":
+        # PartyOps.exe 是服务/诊断共用的控制台入口；个人模式由桌面 GUI
+        # 启动时必须隐藏其控制台，否则会出现黑框闪烁。
+        options["creationflags"] = subprocess.CREATE_NO_WINDOW
+    else:
+        options["start_new_session"] = True
     process = subprocess.Popen(  # noqa: S603 - 命令仅指向同包内固定可执行文件。
         command,
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=handle,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
+        **options,
     )
     handle.close()
     return process
@@ -2249,6 +2370,7 @@ def wait_for_host_health(
     data_dir: Path | None = None,
     progress: Callable[[str], None] | None = None,
     service_managed: bool = True,
+    process: subprocess.Popen | None = None,
 ) -> str:
     """通过本机回环轮询健康检查，就绪后返回可共享的展示 URL。
 
@@ -2269,12 +2391,60 @@ def wait_for_host_health(
     )
     context: ssl.SSLContext | None = None
     last_error: BaseException | None = None
+
+    def personal_log_tail() -> str:
+        """读取个人进程自己的启动日志，避免误报不存在的服务日志。"""
+
+        if data_dir is None:
+            return ""
+        path = data_dir / "launcher.log"
+        try:
+            size = path.stat().st_size
+            with path.open("rb") as stream:
+                offset = max(0, size - 8192)
+                stream.seek(offset)
+                text = stream.read(8192).decode("utf-8", errors="replace")
+            if offset and "\n" in text:
+                text = text.split("\n", 1)[1]
+            return text
+        except OSError:
+            return ""
+
+    def status_fingerprint(payload: dict[str, object] | None) -> tuple[object, ...] | None:
+        if not payload:
+            return None
+        return tuple(
+            payload.get(key)
+            for key in ("updated_at", "stage", "code", "pid", "exit_code")
+        )
+
+    initial_terminal_status = None
+    if service_managed and data_dir is not None:
+        initial = read_service_status(data_dir)
+        if initial and str(initial.get("code", "")) in TERMINAL_CODES:
+            initial_terminal_status = status_fingerprint(initial)
+
     while time.monotonic() < deadline:
+        if process is not None and process.poll() is not None:
+            detail = (
+                personal_log_tail()
+                if data_dir is not None
+                else f"个人进程退出码 {process.returncode}"
+            )
+            raise HostStartupError(
+                CHILD_EXITED,
+                "PartyOps 个人进程启动后提前退出。",
+                detail=detail or f"个人进程退出码 {process.returncode}",
+            )
         if progress:
             progress("health_check")
         if service_managed and data_dir is not None:
             status = read_service_status(data_dir)
-            if status and str(status.get("code", "")) in TERMINAL_CODES:
+            if (
+                status
+                and str(status.get("code", "")) in TERMINAL_CODES
+                and status_fingerprint(status) != initial_terminal_status
+            ):
                 code = str(status["code"])
                 detail = str(status.get("detail", "")) or tail_service_log(data_dir)
                 raise HostStartupError(
@@ -2312,7 +2482,21 @@ def wait_for_host_health(
                 if progress:
                     progress("ready")
                 return advertised_url
+            actual_version = str(payload.get("app_version") or "").strip()
+            if payload.get("status") == "ok" and actual_version:
+                if actual_version != __version__:
+                    raise HostStartupError(
+                        RUNTIME_VERSION_MISMATCH,
+                        "检测到升级前仍在运行的 PartyOps 进程。",
+                        detail=(
+                            f"当前程序版本 {__version__}，监听端口上的进程版本 "
+                            f"{actual_version}。系统没有打开混合版本页面。"
+                        ),
+                    )
             last_error = ValueError("健康检查返回内容无效")
+        except HostStartupError:
+            # 版本错配属于已确认的终止状态，不能再退化为 180 秒健康超时。
+            raise
         except (
             http.client.RemoteDisconnected,
             ConnectionResetError,
@@ -2342,10 +2526,16 @@ def wait_for_host_health(
             detail = service_detail
     if service_managed and data_dir is not None:
         status = read_service_status(data_dir)
-        if status and status.get("code"):
+        if (
+            status
+            and status.get("code")
+            and status_fingerprint(status) != initial_terminal_status
+        ):
             code = str(status["code"])
             detail = str(status.get("detail", "")) or detail
         detail = detail or tail_service_log(data_dir)
+    elif not service_managed and data_dir is not None:
+        detail = detail or personal_log_tail()
     raise HostStartupError(
         code,
         (
@@ -2498,14 +2688,53 @@ def launch_personal(config_path: Path) -> str:
     except OSError:
         pass
     if port_open:
+        if not _personal_process_is_owned(data_dir):
+            raise HostStartupError(
+                PORT_IN_USE,
+                f"个人模式端口 {port} 已被身份不明的程序占用。",
+                detail="未找到与当前安装及数据目录匹配的受控个人进程标记。",
+            )
         try:
-            return wait_for_host_health(
+            url = wait_for_host_health(
                 "127.0.0.1",
                 port,
                 timeout=5.0,
                 service_managed=False,
             )
+            if not _personal_process_is_owned(data_dir):
+                raise HostStartupError(
+                    PORT_IN_USE,
+                    f"个人模式端口 {port} 的进程身份在检查期间发生变化。",
+                    detail="系统已拒绝向该端口继续发送首次管理员信息。",
+                )
+            return url
         except HostStartupError as exc:
+            if exc.code == RUNTIME_VERSION_MISMATCH:
+                try:
+                    stopped = _stop_personal_process_for_data_migration(
+                        data_dir, port
+                    )
+                except ValueError as stop_error:
+                    raise HostStartupError(
+                        PORT_IN_USE,
+                        f"个人模式端口 {port} 上的旧进程无法安全接管。",
+                        detail=str(stop_error),
+                    ) from stop_error
+                if stopped:
+                    process = _spawn(
+                        [str(_executable("partyops"))],
+                        data_dir / "launcher.log",
+                        env,
+                    )
+                    _record_personal_process(data_dir, process)
+                    return wait_for_host_health(
+                        "127.0.0.1",
+                        port,
+                        timeout=180.0,
+                        data_dir=data_dir,
+                        service_managed=False,
+                        process=process,
+                    )
             raise HostStartupError(
                 PORT_IN_USE,
                 f"个人模式端口 {port} 已被其他程序占用，请更换端口后重试。",
@@ -2517,7 +2746,9 @@ def launch_personal(config_path: Path) -> str:
         "127.0.0.1",
         port,
         timeout=180.0,
+        data_dir=data_dir,
         service_managed=False,
+        process=process,
     )
 
 
@@ -2563,12 +2794,18 @@ def install_client_autostart(config_path: Path) -> Path | None:
         import winreg
 
         try:
-            executable = _executable("PartyOpsAgent")
+            executable = _executable("PartyOpsLauncher")
         except FileNotFoundError:
-            # 源码运行和旧便携包仍使用 partyops-client；正式安装包使用
-            # PartyOpsAgent.exe。这里只在固定随包名称之间兼容，不接受外部命令。
+            # 源码运行和旧便携包仍使用 partyops-client；正式安装包统一经
+            # 无控制台 Launcher 拉起 Agent，避免每次登录弹出黑色窗口。
             executable = _executable("partyops-client")
-        command = f'"{executable}" --config "{config_path.resolve()}" --no-open-browser'
+        if executable.name.lower() == "partyopslauncher.exe":
+            command = f'"{executable}" --background'
+        else:
+            command = (
+                f'"{executable}" --config "{config_path.resolve()}" '
+                "--no-open-browser"
+            )
         with winreg.CreateKeyEx(
             winreg.HKEY_CURRENT_USER,
             r"Software\Microsoft\Windows\CurrentVersion\Run",
@@ -2769,6 +3006,7 @@ def bootstrap_first_admin(
     password: str,
     ca_file: Path | None = None,
     bootstrap_token: str = "",
+    expected_mode: str | None = None,
 ) -> None:
     """仅通过本机回环连接创建首位管理员，避免首次配置跨到业务登录页。"""
 
@@ -2821,6 +3059,14 @@ def bootstrap_first_admin(
             context = ssl._create_unverified_context()  # nosec B323 - 测试夹具没有真实 CA。
         else:
             raise ValueError("PartyOps 内部 CA 尚未就绪，已拒绝发送管理员密码")
+    def connection_refused(exc: urllib.error.URLError) -> bool:
+        reason = getattr(exc, "reason", None)
+        return bool(
+            isinstance(reason, ConnectionRefusedError)
+            or getattr(reason, "winerror", None) == 10061
+            or getattr(reason, "errno", None) in {10061, 111}
+        )
+
     try:
         with urllib.request.urlopen(  # nosec B310 - URL 在上方固定重写为 127.0.0.1 与固定 API 路径。
             request,
@@ -2837,6 +3083,45 @@ def bootstrap_first_admin(
         except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
             pass
         raise ValueError(detail) from exc
+    except urllib.error.URLError as exc:
+        mode_label = "个人模式" if expected_mode == "personal" else "主机模式"
+        reason = (
+            "本机服务连接被拒绝（诊断码 LOCAL_SERVICE_CONNECTION_REFUSED）"
+            if connection_refused(exc)
+            else "本机连接中断"
+        )
+        # 连接结果不明确时绝不在后台自动重发用户名、密码和一次性令牌；
+        # POST 前的即时健康复核由 ensure_configured_runtime_ready 完成。
+        raise ValueError(
+            f"{mode_label}在创建管理员时{reason}。系统没有自动重复提交账号；"
+            "请点击重试，若仍失败请打开启动日志。"
+        ) from exc
+
+
+def ensure_configured_runtime_ready(config_path: Path, mode: str) -> str:
+    """在管理员真正提交前重新确认运行进程，消除人工填写期间的失活窗口。"""
+
+    if mode not in {"host", "personal"}:
+        raise ValueError("首次管理员只能为个人或主机模式创建")
+    if mode == "personal":
+        # launch_personal 会先识别端口上的同版本 personal 健康契约；进程已
+        # 退出时才重新拉起，因此这里既是即时复核，也不会叠加第二个进程。
+        return launch_personal(config_path)
+    environment = load_host_environment(config_path)
+    port = int(environment["PARTYOPS_PORT"])
+    tls = environment.get("PARTYOPS_TLS_ENABLED", "").lower() == "true"
+    data_dir = Path(environment["PARTYOPS_DATA_DIR"])
+    try:
+        return wait_for_host_health(
+            environment.get("PARTYOPS_HOST", "127.0.0.1"),
+            port,
+            tls=tls,
+            timeout=5.0,
+            data_dir=data_dir,
+            service_managed=mode == "host",
+        )
+    except HostStartupError:
+        return launch_host(config_path)
 
 
 def render_admin_setup_page(csrf: str, service_url: str, error: str = "") -> str:
@@ -3175,7 +3460,7 @@ def run_shared_root_manager(open_browser: bool = True, action_token: str = "") -
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     url = f"http://127.0.0.1:{server.server_port}"
-    desktop_marker = _publish_linux_desktop_tool_url("shared-root-manager", url)
+    desktop_marker = _publish_desktop_tool_url("shared-root-manager", url)
     if open_browser:
         webbrowser.open(url)
     server.timeout = 0.5
@@ -3186,7 +3471,7 @@ def run_shared_root_manager(open_browser: bool = True, action_token: str = "") -
         return 130
     finally:
         server.server_close()
-        _clear_linux_desktop_tool_url(desktop_marker, url)
+        _clear_desktop_tool_url(desktop_marker, url)
     return 0
 
 
@@ -3334,6 +3619,8 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                     url = launch_personal(path)
                     environment = load_host_environment(path)
                     host_setup["service_url"] = url
+                    host_setup["mode"] = "personal"
+                    host_setup["config_path"] = str(path)
                     host_setup["ca_file"] = ""
                     host_setup["bootstrap_token"] = environment.get(
                         "PARTYOPS_BOOTSTRAP_TOKEN", ""
@@ -3352,6 +3639,8 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                         parsed = urllib.parse.urlparse(url)
                         url = urllib.parse.urlunparse(parsed._replace(scheme="https"))
                     host_setup["service_url"] = url
+                    host_setup["mode"] = "host"
+                    host_setup["config_path"] = str(path)
                     configured_data_dir = environment.get("PARTYOPS_DATA_DIR") or str(
                         Path(value("data_dir")).expanduser().resolve()
                     )
@@ -3365,8 +3654,14 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                     return
                 elif mode == "bootstrap_admin":
                     service_url = host_setup.get("service_url", "")
-                    if not service_url:
+                    configured_mode = host_setup.get("mode", "")
+                    configured_path = host_setup.get("config_path", "")
+                    if not service_url or not configured_path:
                         raise ValueError("主机配置状态已失效，请返回第一步重新配置")
+                    service_url = ensure_configured_runtime_ready(
+                        Path(configured_path), configured_mode
+                    )
+                    host_setup["service_url"] = service_url
                     bootstrap_first_admin(
                         service_url,
                         username=value("username"),
@@ -3378,6 +3673,7 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                             else None
                         ),
                         bootstrap_token=host_setup.get("bootstrap_token", ""),
+                        expected_mode=configured_mode,
                     )
                     self._redirect(service_url)
                     threading.Thread(
@@ -3465,7 +3761,7 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     url = f"http://127.0.0.1:{server.server_port}"
-    desktop_marker = _publish_linux_desktop_tool_url("wizard", url)
+    desktop_marker = _publish_desktop_tool_url("wizard", url)
     if open_browser:
         webbrowser.open(url)
     server.timeout = 0.5
@@ -3476,7 +3772,7 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
         return 130
     finally:
         server.server_close()
-        _clear_linux_desktop_tool_url(desktop_marker, url)
+        _clear_desktop_tool_url(desktop_marker, url)
     return 0
 
 
