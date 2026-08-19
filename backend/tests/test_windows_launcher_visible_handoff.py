@@ -175,6 +175,32 @@ def test_business_browser_url_carries_exact_runtime_version() -> None:
     assert f"partyops_runtime={launcher.__version__}" in url
 
 
+def test_unhandled_gui_entry_error_is_visible_and_logged(
+    monkeypatch, tmp_path: Path
+) -> None:
+    launcher = load_launcher()
+    shown: list[str] = []
+    monkeypatch.setenv("TEMP", str(tmp_path))
+    monkeypatch.setattr(launcher, "show_launch_failure", shown.append)
+    monkeypatch.setattr(
+        launcher,
+        "main",
+        lambda: (_ for _ in ()).throw(RuntimeError("fault-injection")),
+    )
+
+    assert launcher.run_entrypoint_safely() == 2
+    emergency_log = tmp_path / "PartyOps-launcher-emergency.log"
+    assert emergency_log.is_file()
+    assert "fault-injection" in emergency_log.read_text(encoding="utf-8")
+    assert shown and "LAUNCHER_UNHANDLED_ERROR" in shown[0]
+
+
+def test_windows_wizard_wait_allows_slow_legacy_startup() -> None:
+    launcher = load_launcher()
+
+    assert launcher.WIZARD_WAIT_SECONDS == 180.0
+
+
 @pytest.mark.parametrize(
     ("payload", "accepted"),
     [

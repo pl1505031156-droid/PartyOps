@@ -3,6 +3,7 @@ set -eu
 
 RUNTIME=/opt/partyops
 EXPECTED_ARCH="${1:-}"
+EXPECTED_VERSION="1.4.3-rc.8"
 LOG=/var/log/partyops-package-selftest.log
 mkdir -p /var/log /var/lib/partyops
 : >"$LOG"
@@ -39,12 +40,18 @@ for required in \
   "$RUNTIME/partyops-client" \
   "$RUNTIME/partyops-wizard" \
   "$RUNTIME/partyops-updater" \
+  "$RUNTIME/VERSION" \
   "$RUNTIME/release-files.sha256"; do
   [ -e "$required" ] || fail PACKAGE_FILE_MISSING "缺少安装文件：$required"
 done
+[ "$(cat "$RUNTIME/VERSION" 2>/dev/null)" = "$EXPECTED_VERSION" ] ||
+  fail PACKAGE_VERSION_MISMATCH "安装载荷版本标识与当前版本不一致"
 (command -v bash >/dev/null 2>&1 &&
   bash -n "$RUNTIME/desktop-launcher.sh" "$RUNTIME/start.sh") ||
   fail PACKAGE_DESKTOP_SCRIPT_INVALID "桌面启动脚本缺失或语法检查失败"
+runuser -u partyops -- "$RUNTIME/partyops-wizard" --runtime-layout-self-test ||
+  fail PACKAGE_RUNTIME_LAYOUT_INVALID \
+    "配置向导仍在临时目录解包共享库，可能被国产系统安全中心拦截"
 for desktop_entry in \
   /usr/share/applications/partyops.desktop \
   /usr/share/applications/partyops-client.desktop; do
@@ -118,6 +125,10 @@ while [ "$attempt" -lt 180 ]; do
   sleep 1
 done
 [ -s "$TEMP_ROOT/health.json" ] || fail PACKAGE_HEALTH_TIMEOUT "健康端点 180 秒内未就绪"
+grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' "$TEMP_ROOT/health.json" ||
+  fail PACKAGE_HEALTH_INVALID "健康端点没有返回就绪状态"
+grep -Fq "\"app_version\":\"$EXPECTED_VERSION\"" "$TEMP_ROOT/health.json" ||
+  fail PACKAGE_VERSION_MISMATCH "健康端点运行的不是当前 PartyOps 版本"
 grep -q '"safe_version":true' "$TEMP_ROOT/health.json" ||
   fail PACKAGE_SQLITE_UNSAFE "SQLite 版本自检失败"
 grep -q '"fts5":true' "$TEMP_ROOT/health.json" ||

@@ -86,6 +86,24 @@ export PARTYOPS_PORT="${PARTYOPS_PORT:-18765}"
 
 mkdir -p "$PARTYOPS_DATA_DIR"
 PIDFILE="$PARTYOPS_DATA_DIR/partyops.pid"
+LAUNCHER_LOG="$PARTYOPS_DATA_DIR/launcher.log"
+rotate_launcher_log() {
+  local log="$1" index
+  [[ -f "$log" ]] || return 0
+  [[ "$(wc -c <"$log" 2>/dev/null || printf 0)" -ge 5242880 ]] || return 0
+  rm -f -- "$log.5"
+  index=4
+  while ((index >= 1)); do
+    [[ ! -e "$log.$index" ]] || mv -f -- "$log.$index" "$log.$((index + 1))"
+    index=$((index - 1))
+  done
+  mv -f -- "$log" "$log.1"
+}
+rotate_launcher_log "$LAUNCHER_LOG" || true
+: >>"$LAUNCHER_LOG"
+chmod 0600 "$LAUNCHER_LOG" 2>/dev/null || true
+printf '%s 主程序启动检查：配置=%s，端口=%s\n' \
+  "$(date -Iseconds 2>/dev/null || date)" "$CONFIG" "$PARTYOPS_PORT" >>"$LAUNCHER_LOG"
 is_partyops_process() {
   local pid="$1" state executable
   [[ "$pid" =~ ^[0-9]+$ ]] || return 1
@@ -102,6 +120,8 @@ is_partyops_process() {
 if [[ -f "$PIDFILE" ]]; then
   RECORDED_PID="$(cat "$PIDFILE" 2>/dev/null || true)"
   if is_partyops_process "$RECORDED_PID"; then
+    printf '%s 复用正在运行的 PartyOps 进程：pid=%s\n' \
+      "$(date -Iseconds 2>/dev/null || date)" "$RECORDED_PID" >>"$LAUNCHER_LOG"
     echo "党建智办已在运行。"
     exit 0
   fi
@@ -109,20 +129,6 @@ if [[ -f "$PIDFILE" ]]; then
   # 绝不向身份不明的进程发信号，也不能因此永久跳过启动。
   rm -f -- "$PIDFILE"
 fi
-LAUNCHER_LOG="$PARTYOPS_DATA_DIR/launcher.log"
-rotate_launcher_log() {
-  local log="$1" index
-  [[ -f "$log" ]] || return 0
-  [[ "$(wc -c <"$log" 2>/dev/null || printf 0)" -ge 5242880 ]] || return 0
-  rm -f -- "$log.5"
-  index=4
-  while ((index >= 1)); do
-    [[ ! -e "$log.$index" ]] || mv -f -- "$log.$index" "$log.$((index + 1))"
-    index=$((index - 1))
-  done
-  mv -f -- "$log" "$log.1"
-}
-rotate_launcher_log "$LAUNCHER_LOG" || true
 nohup "$APP_ROOT/partyops" >> "$LAUNCHER_LOG" 2>&1 &
 STARTED_PID=$!
 echo "$STARTED_PID" > "$PIDFILE"

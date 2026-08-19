@@ -26,6 +26,8 @@ VERSION_INPUTS = (
     "packaging/uos/build-update-package.sh",
     "scripts/generate-update-catalog.py",
     "packaging/linux/build-native.sh",
+    "packaging/uos/build-portable.sh",
+    "packaging/linux/post-install-selftest.sh",
     "scripts/build-platform-update-packages.py",
     "scripts/generate-release-bundle-manifest.py",
 )
@@ -39,7 +41,7 @@ def _copy_version_inputs(target_root: Path) -> None:
 
 
 def test_repository_versions_are_consistent() -> None:
-    MODULE.verify(ROOT, "1.4.3-rc.7")
+    MODULE.verify(ROOT, "1.4.3-rc.8")
 
 
 def test_independent_website_is_not_required_by_application_freeze(
@@ -47,7 +49,7 @@ def test_independent_website_is_not_required_by_application_freeze(
 ) -> None:
     _copy_version_inputs(tmp_path)
 
-    MODULE.verify(tmp_path, "1.4.3-rc.7")
+    MODULE.verify(tmp_path, "1.4.3-rc.8")
 
 
 def test_python_metadata_mismatch_is_rejected(tmp_path: Path) -> None:
@@ -57,4 +59,20 @@ def test_python_metadata_mismatch_is_rejected(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="Python 项目元数据版本不一致"):
-        MODULE.verify(tmp_path, "1.4.3-rc.7")
+        MODULE.verify(tmp_path, "1.4.3-rc.8")
+
+
+def test_linux_installed_runtime_version_mismatch_is_rejected(tmp_path: Path) -> None:
+    _copy_version_inputs(tmp_path)
+    selftest = tmp_path / "packaging/linux/post-install-selftest.sh"
+    selftest.write_text(
+        selftest.read_text(encoding="utf-8").replace(
+            'EXPECTED_VERSION="1.4.3-rc.8"',
+            'EXPECTED_VERSION="1.4.3-rc.7"',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Linux 安装后自检版本不一致"):
+        MODULE.verify(tmp_path, "1.4.3-rc.8")

@@ -1016,7 +1016,7 @@ def test_linux_desktop_launcher_covers_every_configured_mode_and_visible_failure
     assert "wait_and_open_local_host" in launcher
     assert 'base_url/api/v1/health' in launcher
     assert "partyops_runtime=" in launcher
-    assert "进程启动后提前退出" in launcher
+    assert "START_COMMAND_FAILED" in launcher
     assert '--browser-url-file "$CLIENT_BROWSER_URL"' in launcher
     assert "show_launch_failure" in launcher
     assert 'PARTYOPS_ENV_FILE="$HOST_CONFIG"' in launcher

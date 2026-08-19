@@ -6,8 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
-$releaseVersion = "1.4.3-rc.7"
-$releaseTag = "v1.4.3-rc.7"
+$releaseVersion = "1.4.3-rc.8"
+$releaseTag = "v1.4.3-rc.8"
 $runtimeRoot = Join-Path $repoRoot "artifacts\windows-runtime"
 $artifactRoot = Join-Path $repoRoot "artifacts"
 $bundleRoot = Join-Path $artifactRoot "PartyOps-$releaseVersion-windows-amd64"
@@ -30,8 +30,8 @@ if (-not (Test-Path -LiteralPath $windowsPowerShell51)) {
   throw "构建机缺少 Windows PowerShell 5.1，无法验证安装目录脚本的真实兼容性。"
 }
 $validatorProbeId = [guid]::NewGuid().ToString("N")
-$validatorProbePath = Join-Path $env:TEMP "PartyOps-rc7-安装路径-$validatorProbeId\中文 空格"
-$validatorProbeDiagnostic = Join-Path $env:TEMP "PartyOps-rc7-validator-$validatorProbeId.txt"
+$validatorProbePath = Join-Path $env:TEMP "PartyOps-rc8-安装路径-$validatorProbeId\中文 空格"
+$validatorProbeDiagnostic = Join-Path $env:TEMP "PartyOps-rc8-validator-$validatorProbeId.txt"
 try {
   & $windowsPowerShell51 -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
     -File $installPathValidator -Path $validatorProbePath `
@@ -143,7 +143,10 @@ if ($LASTEXITCODE -ne 0) { throw "读取源码提交失败" }
   --output (Join-Path $bundleRoot "release-manifest.json") `
   --version $releaseVersion `
   --tag $releaseTag `
-  --commit $sourceCommit
+  --commit $sourceCommit `
+  --platform windows `
+  --architecture amd64 `
+  --runtime-profile full
 if ($LASTEXITCODE -ne 0) { throw "嵌入式发布清单生成失败" }
 
 $expectedSqliteHash = $expectedSqliteSha256
@@ -170,7 +173,7 @@ if ($LASTEXITCODE -ne 0) {
   throw "Inno Setup 安装器构建失败，退出码：$LASTEXITCODE"
 }
 
-$installer = Join-Path $artifactRoot "PartyOps_1.4.3-rc.7_windows_amd64.exe"
+$installer = Join-Path $artifactRoot "PartyOps_1.4.3-rc.8_windows_amd64.exe"
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"
 }
@@ -197,7 +200,7 @@ $candidate = [ordered]@{
   limitations = @("Windows 10 未实机验证", "未签名候选版")
 }
 [System.IO.File]::WriteAllText(
-  (Join-Path $artifactRoot "PartyOps_1.4.3-rc.7_windows_amd64.candidate.json"),
+  (Join-Path $artifactRoot "PartyOps_1.4.3-rc.8_windows_amd64.candidate.json"),
   ($candidate | ConvertTo-Json -Depth 5),
   (New-Object System.Text.UTF8Encoding($false))
 )

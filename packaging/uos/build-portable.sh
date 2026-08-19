@@ -3,8 +3,20 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS="$ROOT/artifacts"
-python3 "$ROOT/scripts/verify-version-consistency.py" \
-  --root "$ROOT" --expected "1.4.3-rc.7"
+if [[ -z "${PYTHON_BIN:-}" && -f "$ROOT/.partyops-build.env" ]]; then
+  # shellcheck disable=SC1091
+  source "$ROOT/.partyops-build.env"
+fi
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+  PYTHON_BIN="$(command -v python3.11 || command -v python3 || true)"
+fi
+if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
+  echo "未找到可用 Python 3.11，请先运行 ensure-build-environment.sh。" >&2
+  exit 2
+fi
+"$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py" \
+  --root "$ROOT" --expected "1.4.3-rc.8"
+APP_VERSION="1.4.3-rc.8"
 BUILD_PARENT="${PARTYOPS_BUILD_BASE:-$ROOT/.build-uos}"
 mkdir -p "$BUILD_PARENT"
 BUILD_PARENT="$(cd "$BUILD_PARENT" && pwd -P)"
@@ -73,17 +85,6 @@ cleanup_build() {
 }
 trap cleanup_build EXIT
 
-if [[ -z "${PYTHON_BIN:-}" && -f "$ROOT/.partyops-build.env" ]]; then
-  # shellcheck disable=SC1091
-  source "$ROOT/.partyops-build.env"
-fi
-if [[ -z "${PYTHON_BIN:-}" ]]; then
-  PYTHON_BIN="$(command -v python3.11 || true)"
-fi
-if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
-  echo "未找到可用 Python 3.11，请先运行 ensure-build-environment.sh。" >&2
-  exit 2
-fi
 if ! "$PYTHON_BIN" - <<'PY'
 from pathlib import Path
 import sys
@@ -268,7 +269,10 @@ verify_runtime_bundle() {
   [[ -f "$contents/alembic/env.py" ]] || missing+=("alembic/env.py")
   [[ -d "$contents/alembic/versions" ]] || missing+=("alembic/versions/")
   [[ -f "$contents/frontend/index.html" ]] || missing+=("frontend/index.html")
-  [[ -x "$runtime_dir/partyops" ]] || missing+=("partyops 主程序")
+  local entrypoint
+  for entrypoint in partyops partyops-client partyops-wizard partyops-updater; do
+    [[ -x "$runtime_dir/$entrypoint" ]] || missing+=("$entrypoint 运行入口")
+  done
   if [[ ${#missing[@]} -gt 0 ]]; then
     echo "便携运行时打包不完整，缺少以下关键数据：" >&2
     printf '  - %s\n' "${missing[@]}" >&2
@@ -285,8 +289,6 @@ verify_runtime_bundle() {
   echo "便携运行时打包完整性核验通过（alembic 迁移 $bundled_versions 个）。"
 }
 verify_runtime_bundle "$RUNTIME" || exit 2
-cp "$PYI_DIST/partyops-client" "$PYI_DIST/partyops-wizard" \
-  "$PYI_DIST/partyops-updater" "$RUNTIME/"
 cp "$ROOT/packaging/uos/start.sh" "$ROOT/packaging/uos/stop.sh" \
   "$ROOT/packaging/uos/desktop-launcher.sh" \
   "$ROOT/packaging/uos/open-local-file.sh" \
@@ -296,6 +298,7 @@ cp "$ROOT/packaging/uos/partyops.desktop" "$ROOT/packaging/uos/partyops-file.des
   "$ROOT/packaging/uos/partyops-client.desktop" \
   "$ROOT/packaging/uos/partyops.svg" "$RUNTIME/"
 cp "$ROOT/packaging/uos/client-config.example.json" "$RUNTIME/"
+printf '%s\n' "$APP_VERSION" >"$RUNTIME/VERSION"
 if [[ -f "$ROOT/packaging/uos/update-public-key.txt" ]]; then
   cp "$ROOT/packaging/uos/update-public-key.txt" "$RUNTIME/"
 elif [[ "${PARTYOPS_REQUIRE_UPDATE_SIGNING:-0}" == "1" ]]; then
@@ -322,7 +325,7 @@ USER_DOCUMENTS=(
   "installation-checklist.md"
   "backup-restore.md"
   "operations-runbook.md"
-  "release-notes-v1.4.3-rc.7.md"
+  "release-notes-v1.4.3-rc.8.md"
 )
 for document in "${USER_DOCUMENTS[@]}"; do
   [[ -f "$ROOT/docs/$document" ]] || {
@@ -452,6 +455,12 @@ for entrypoint in partyops-client partyops-wizard partyops-updater; do
     exit 2
   }
 done
+# 配置向导是桌面首次启动的必经路径，必须证明当前冻结布局没有退回会在
+# /tmp/_MEI* 解包共享库的单文件模式，并验证所有共享库都没有执行位。
+"$RUNTIME/partyops-wizard" --runtime-layout-self-test || {
+  echo "冻结入口仍在使用不安全的单文件解包布局。" >&2
+  exit 2
+}
 
 SMOKE_PORT="$("$PY" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
 SMOKE_TIMEOUT_SECONDS="${PARTYOPS_SMOKE_TIMEOUT_SECONDS:-180}"

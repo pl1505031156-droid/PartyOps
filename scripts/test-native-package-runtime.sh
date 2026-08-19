@@ -66,10 +66,18 @@ case "$PACKAGE" in
 esac
 
 RUNTIME="$ROOT/opt/partyops"
-[[ -x "$RUNTIME/partyops" && -x "$RUNTIME/desktop-launcher.sh" ]] || {
-  echo "成品缺少可执行主程序或统一桌面入口。" >&2
+[[ "$(cat "$RUNTIME/VERSION" 2>/dev/null || true)" == "1.4.3-rc.8" ]] || {
+  echo "成品缺少正确的冻结版本标识。" >&2
   exit 2
 }
+for runtime_entrypoint in \
+  partyops partyops-client partyops-wizard partyops-updater \
+  desktop-launcher.sh start.sh; do
+  [[ -x "$RUNTIME/$runtime_entrypoint" ]] || {
+    echo "成品缺少可执行入口：$runtime_entrypoint。" >&2
+    exit 2
+  }
+done
 if find "$RUNTIME" -type f -name '*.so*' -perm /111 -print -quit | grep -q .; then
   echo "成品仍有共享库携带执行位，会触发国产系统安全中心反复拦截。" >&2
   exit 2
@@ -83,6 +91,7 @@ if [[ ( "$EXPECTED_ARCH" == "amd64" && "$MACHINE" != "x86_64" ) ||
 fi
 
 "$RUNTIME/partyops" --package-self-test
+"$RUNTIME/partyops-wizard" --runtime-layout-self-test
 
 HOME_DIR="$TEST_ROOT/home"
 CONFIG_ROOT="$HOME_DIR/.config/partyops"
@@ -187,6 +196,43 @@ fi
 grep -qx 'PARTYOPS_TLS_ENABLED=false' "$CONFIG_ROOT/personal.env" || {
   echo "个人模式启动错误地改写了 TLS 配置。" >&2
   exit 7
+}
+
+# 对最终成品执行一次确定性启动失败注入。即使主程序尚未来得及创建自己的
+# launcher.log，桌面入口也必须立即生成非空、0600 的统一诊断文件。
+kill "$SERVER_PID" >/dev/null 2>&1 || true
+wait "$SERVER_PID" >/dev/null 2>&1 || true
+SERVER_PID=""
+rm -f -- "$DATA_ROOT/partyops.pid"
+cat >"$CONFIG_ROOT/personal.env" <<EOF
+PARTYOPS_MODE=personal
+PARTYOPS_BIND_HOST=127.0.0.1
+PARTYOPS_ADVERTISE_HOST=127.0.0.1
+PARTYOPS_PORT=$PORT
+PARTYOPS_TLS_ENABLED=false
+PARTYOPS_DATA_DIR='/proc/partyops-startup-failure-test'
+EOF
+set +e
+"$RUNTIME/desktop-launcher.sh"
+FAILURE_STATUS=$?
+set -e
+[[ "$FAILURE_STATUS" -eq 2 ]] || {
+  echo "故障注入时桌面入口退出码异常：$FAILURE_STATUS" >&2
+  exit 8
+}
+[[ -s "$CONFIG_ROOT/desktop-launch.log" &&
+  -s "$CONFIG_ROOT/startup-diagnostic.txt" ]] || {
+  echo "最终成品启动失败后没有生成非空诊断文件。" >&2
+  exit 8
+}
+[[ "$(stat -c '%a' "$CONFIG_ROOT/startup-diagnostic.txt")" == "600" ]] || {
+  echo "最终成品启动诊断权限不是 0600。" >&2
+  exit 8
+}
+grep -q '\[START_COMMAND_FAILED\]' "$CONFIG_ROOT/startup-diagnostic.txt" || {
+  echo "最终成品启动诊断缺少稳定错误码。" >&2
+  cat "$CONFIG_ROOT/startup-diagnostic.txt" >&2
+  exit 8
 }
 
 echo "原生包动态启动门禁通过：$PACKAGE（$EXPECTED_ARCH）"

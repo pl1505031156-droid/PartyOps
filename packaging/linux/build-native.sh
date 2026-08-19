@@ -4,13 +4,25 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FORMAT="${1:-}"
 ARCH="${PARTYOPS_BUILD_ARCH:-}"
-DEB_VERSION="1.4.3~rc.7"
+DEB_VERSION="1.4.3~rc.8"
 RPM_VERSION="1.4.3"
-RPM_RELEASE="0.rc.7.1"
+RPM_RELEASE="0.rc.8.1"
 ARTIFACTS="$ROOT/artifacts"
 
-python3 "$ROOT/scripts/verify-version-consistency.py" \
-  --root "$ROOT" --expected "1.4.3-rc.7"
+if [[ -z "${PYTHON_BIN:-}" && -f "$ROOT/.partyops-build.env" ]]; then
+  # shellcheck disable=SC1091
+  source "$ROOT/.partyops-build.env"
+fi
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+  PYTHON_BIN="$(command -v python3.11 || command -v python3 || true)"
+fi
+if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
+  echo "未找到可用 Python 3.11，请先运行 ensure-build-environment.sh。" >&2
+  exit 2
+fi
+
+"$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py" \
+  --root "$ROOT" --expected "1.4.3-rc.8"
 
 [[ "$FORMAT" == "deb" || "$FORMAT" == "rpm" ]] || {
   echo "用法：build-native.sh deb|rpm（通过 PARTYOPS_BUILD_ARCH 指定 amd64/arm64）" >&2
@@ -46,7 +58,17 @@ GLIBC="$(getconf GNU_LIBC_VERSION | awk '{print $2}')"
 }
 
 WHEELHOUSE="$ROOT/vendor/wheels/$ARCH"
-python3 "$ROOT/scripts/validate-uos-wheelhouse.py" \
+shopt -s nullglob
+PACKAGING_WHEELS=("$WHEELHOUSE"/packaging-*.whl)
+shopt -u nullglob
+[[ "${#PACKAGING_WHEELS[@]}" -eq 1 ]] || {
+  echo "离线 wheelhouse 必须且只能包含一个 packaging wheel。" >&2
+  exit 2
+}
+# 基础构建解释器刻意不预装第三方包。直接从已经纳入 vendor 哈希门禁的
+# 纯 Python wheel 加载 packaging，避免联网安装和构建机全局环境漂移。
+PYTHONPATH="${PACKAGING_WHEELS[0]}${PYTHONPATH:+:$PYTHONPATH}" \
+  "$PYTHON_BIN" "$ROOT/scripts/validate-uos-wheelhouse.py" \
   --architecture "$ARCH" \
   --wheelhouse "$WHEELHOUSE" \
   --requirements "$ROOT/backend/requirements.txt" \
@@ -104,7 +126,7 @@ COPY_SHA="$(sha256sum "$PORTABLE_COPY" | awk '{print $1}')"
   exit 2
 }
 zstd -dc -- "$PORTABLE_COPY" |
-  python3 "$ROOT/scripts/validate-portable-tar.py" --expected-root PartyOps
+  "$PYTHON_BIN" "$ROOT/scripts/validate-portable-tar.py" --expected-root PartyOps
 mkdir -p "$PKG/opt/partyops" "$PKG/etc/partyops" \
   "$PKG/usr/share/applications" "$PKG/usr/share/icons/hicolor/scalable/apps" \
   "$PKG/lib/systemd/system" "$PKG/usr/share/polkit-1/actions"
@@ -222,7 +244,7 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 echo "PartyOps 业务数据保留在 /var/lib/partyops，卸载不会自动删除。" >&2
 EOF
   chmod 0755 "$PKG/DEBIAN/preinst" "$PKG/DEBIAN/postinst" "$PKG/DEBIAN/prerm" "$PKG/DEBIAN/postrm"
-  OUTPUT="$ARTIFACTS/PartyOps_1.4.3-rc.7_linux_${ARCH}.deb"
+  OUTPUT="$ARTIFACTS/PartyOps_1.4.3-rc.8_linux_${ARCH}.deb"
   if dpkg-deb --help 2>&1 | grep -q -- '--root-owner-group'; then
     dpkg-deb --root-owner-group --build "$PKG" "$OUTPUT"
   else
@@ -328,7 +350,7 @@ EOF
     --define "partyops_release $RPM_RELEASE" \
     --define "with_rollback_cache 1" \
     -bb "$BUILD/rpmbuild/SPECS/partyops.spec"
-  OUTPUT="$ARTIFACTS/PartyOps-1.4.3-0.rc.7.1.${RPM_ARCH}.rpm"
+  OUTPUT="$ARTIFACTS/PartyOps-1.4.3-0.rc.8.1.${RPM_ARCH}.rpm"
   cp "$BUILD/rpmbuild/RPMS/$RPM_ARCH/partyops-$RPM_VERSION-$RPM_RELEASE.$RPM_ARCH.rpm" "$OUTPUT"
 fi
 if [[ "$FORMAT" == deb ]]; then

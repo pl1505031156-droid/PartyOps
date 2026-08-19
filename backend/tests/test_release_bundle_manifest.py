@@ -24,7 +24,7 @@ def _installers(root: Path) -> None:
 
 def test_manifest_requires_only_current_seven_installers(tmp_path: Path) -> None:
     _installers(tmp_path)
-    output = tmp_path / "PartyOps_1.4.3-rc.7_release-manifest.json"
+    output = tmp_path / "PartyOps_1.4.3-rc.8_release-manifest.json"
     payload = MODULE.build_manifest(
         root=tmp_path,
         output=output,
@@ -79,9 +79,9 @@ def test_embedded_windows_manifest_preserves_target_identity(
             "--output",
             str(output),
             "--version",
-            "1.4.3-rc.7",
+            "1.4.3-rc.8",
             "--tag",
-            "v1.4.3-rc.7",
+            "v1.4.3-rc.8",
             "--commit",
             "a" * 40,
             "--platform",

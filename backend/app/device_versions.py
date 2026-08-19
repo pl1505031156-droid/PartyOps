@@ -31,7 +31,7 @@ from .problems import ProblemException
 
 DEVICE_CONTEXT_COOKIE = "partyops_device_context"
 DEVICE_CONTEXT_SECRET_KEY = "device_context_hmac_secret"
-CURRENT_RELEASE_TITLE = "1.4.3-rc.7 Windows 安装兼容与多系统升级候选版"
+CURRENT_RELEASE_TITLE = "1.4.3-rc.8 多系统安装与启动修复候选版"
 CURRENT_RELEASE_NOTES = [
     "新增严格本机私有备忘录，支持清单、置顶、标签、回收站和 AES-GCM 加密备份",
     "新增依据 2026 年 5 月新版细则的确定性党员发展时间计算、风险提示和 Word 导出",
@@ -48,6 +48,8 @@ CURRENT_RELEASE_NOTES = [
     "修复 Windows 协议注册拒绝、主机子进程原始堆栈与乱码，并保留自定义数据目录",
     "彻底移除自定义固定磁盘父目录 ACL 误拦截，安装器自动收敛最终程序目录权限并使用新版本文件名避免旧缓存",
     "数据库升级到 0019，新增真实发行版、包格式、运行档位与能力清单且保留全部业务数据",
+    "国产 Linux 四个入口改用固定共享运行时，避免安全中心拦截临时共享库后无法启动",
+    "桌面入口在打开页面前核对运行版本并生成统一中文启动诊断，旧进程不再冒充新版本",
 ]
 
 

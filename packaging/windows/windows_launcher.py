@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import time
+import traceback
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -22,7 +23,7 @@ from app.setup_wizard import (
     wait_for_host_health,
 )
 
-WIZARD_WAIT_SECONDS = 60.0
+WIZARD_WAIT_SECONDS = 180.0
 WIZARD_POLL_SECONDS = 0.5
 
 
@@ -139,7 +140,7 @@ def launch_wizard_and_wait(runtime: Path, local: Path, arguments: list[str]) -> 
                     return open_browser_or_explain(url)
                 time.sleep(WIZARD_POLL_SECONDS)
             show_launch_failure(
-                "配置向导正在由另一个窗口启动，但 60 秒内未能显示页面。\n\n"
+                f"配置向导正在由另一个窗口启动，但 {int(WIZARD_WAIT_SECONDS)} 秒内未能显示页面。\n\n"
                 f"请把日志复制给技术支持：{log_path}"
             )
             return False
@@ -457,5 +458,39 @@ def main() -> int:
     return 0
 
 
+def run_entrypoint_safely() -> int:
+    """保证无控制台入口遇到未预料异常时仍给出可见中文诊断。"""
+
+    emergency_root = Path(
+        os.getenv("TEMP")
+        or os.getenv("TMP")
+        or os.getenv("LOCALAPPDATA")
+        or Path.home()
+    )
+    emergency_log = emergency_root / "PartyOps-launcher-emergency.log"
+    try:
+        return main()
+    except Exception:  # noqa: BLE001 - GUI 顶层兜底，异常详情写入本机诊断。
+        log_written = False
+        try:
+            emergency_root.mkdir(parents=True, exist_ok=True)
+            _rotate_bounded_log(emergency_log)
+            with emergency_log.open("a", encoding="utf-8") as log:
+                log.write(
+                    f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} "
+                    "Windows 桌面入口未处理异常 =====\n"
+                )
+                log.write(traceback.format_exc(limit=40))
+            log_written = True
+        except OSError:
+            pass
+        location = str(emergency_log) if log_written else "诊断日志也无法写入"
+        show_launch_failure(
+            "党建智办桌面入口遇到未预料错误，系统没有继续打开未就绪页面。\n\n"
+            f"诊断码：LAUNCHER_UNHANDLED_ERROR\n诊断日志：{location}"
+        )
+        return 2
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_entrypoint_safely())

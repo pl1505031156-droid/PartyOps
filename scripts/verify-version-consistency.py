@@ -88,6 +88,18 @@ def verify(root: Path, expected: str) -> None:
             "DEB 构建入口",
             expected.replace("-rc.", "~rc."),
         ),
+        (
+            "packaging/uos/build-portable.sh",
+            r'^APP_VERSION="([^"]+)"',
+            "Linux 便携载荷",
+            expected,
+        ),
+        (
+            "packaging/linux/post-install-selftest.sh",
+            r'^EXPECTED_VERSION="([^"]+)"',
+            "Linux 安装后自检",
+            expected,
+        ),
     ):
         _expect(
             pattern,

@@ -1,10 +1,10 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.3-rc.7"
+#define MyAppVersion "1.4.3-rc.8"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
 #ifndef PartyOpsOutputBase
-  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.7_windows_amd64"
+  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.8_windows_amd64"
 #endif
 
 [Setup]
@@ -54,7 +54,7 @@ WizardSmallImageFile={#BuildRoot}\partyops-1024.png
 Name: "chinesesimp"; MessagesFile: "{#SourcePath}\languages\ChineseSimplified.isl"
 
 [Messages]
-BeveledLabel=PartyOps 1.4.3-rc.7 · 未签名候选版
+BeveledLabel=PartyOps 1.4.3-rc.8 · 未签名候选版
 #ifdef PartyOpsLegacy
 WinVersionTooLowError=此 Windows 7 专用安装包要求 Windows 7 SP1 或更高版本。请先安装 SP1 后重试。
 #else
@@ -613,7 +613,7 @@ begin
   InAppServiceUpdate := CompareText(
     ExpandConstant('{param:INAPPUPDATE|0}'), '1'
   ) = 0;
-  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.7 安装向导';
+  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.8 安装向导';
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     '选择 PartyOps 业务数据目录',

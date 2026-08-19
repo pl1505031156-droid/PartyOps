@@ -73,15 +73,6 @@ host_exe = EXE(
     upx=False,
     console=True,
 )
-host_collect = COLLECT(
-    host_exe,
-    host_analysis.binaries,
-    host_analysis.datas,
-    strip=False,
-    upx=False,
-    name="PartyOps",
-)
-
 client_analysis = Analysis(
     [str(root / "packaging" / "uos" / "client_entrypoint.py")],
     pathex=[str(backend)],
@@ -98,9 +89,8 @@ client_pyz = PYZ(client_analysis.pure)
 client_exe = EXE(
     client_pyz,
     client_analysis.scripts,
-    client_analysis.binaries,
-    client_analysis.datas,
     [],
+    exclude_binaries=True,
     name="partyops-client",
     debug=False,
     strip=False,
@@ -124,9 +114,8 @@ wizard_pyz = PYZ(wizard_analysis.pure)
 wizard_exe = EXE(
     wizard_pyz,
     wizard_analysis.scripts,
-    wizard_analysis.binaries,
-    wizard_analysis.datas,
     [],
+    exclude_binaries=True,
     name="partyops-wizard",
     debug=False,
     strip=False,
@@ -150,12 +139,33 @@ updater_pyz = PYZ(updater_analysis.pure)
 updater_exe = EXE(
     updater_pyz,
     updater_analysis.scripts,
-    updater_analysis.binaries,
-    updater_analysis.datas,
     [],
+    exclude_binaries=True,
     name="partyops-updater",
     debug=False,
     strip=False,
     upx=False,
     console=True,
+)
+
+# 四个入口必须位于同一个 onedir 目录并共享 _internal。此前三个辅助入口
+# 是单文件程序，会把 libgcc_s.so.1 等共享库以 0700 解压到 /tmp/_MEI*；
+# 麒麟/统信安全中心会把共享库误判为待启动程序，最终表现为桌面双击无
+# 响应。单一 COLLECT 同时消除重复运行时和临时可执行共享库。
+host_collect = COLLECT(
+    host_exe,
+    client_exe,
+    wizard_exe,
+    updater_exe,
+    host_analysis.binaries,
+    host_analysis.datas,
+    client_analysis.binaries,
+    client_analysis.datas,
+    wizard_analysis.binaries,
+    wizard_analysis.datas,
+    updater_analysis.binaries,
+    updater_analysis.datas,
+    strip=False,
+    upx=False,
+    name="PartyOps",
 )

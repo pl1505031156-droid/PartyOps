@@ -296,8 +296,53 @@ def test_portable_build_isolates_architecture_specific_pyinstaller_outputs() -> 
     assert 'BUILD="$(mktemp -d "$BUILD_PARENT/portable.XXXXXX")"' in script
     assert '--distpath "$PYI_DIST" --workpath "$PYI_WORK"' in script
     assert 'cp -a "$PYI_DIST/PartyOps/." "$RUNTIME/"' in script
-    assert 'cp "$PYI_DIST/partyops-client" "$PYI_DIST/partyops-wizard"' in script
+    assert 'cp "$PYI_DIST/partyops-client" "$PYI_DIST/partyops-wizard"' not in script
     assert '"$ROOT/dist/PartyOps/."' not in script
+    assert '"$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py"' in script
+    assert 'python3 "$ROOT/scripts/verify-version-consistency.py"' not in script
+
+    native = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(
+        encoding="utf-8"
+    )
+    assert '"$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py"' in native
+    assert '"$PYTHON_BIN" "$ROOT/scripts/validate-uos-wheelhouse.py"' in native
+    assert 'PACKAGING_WHEELS=("$WHEELHOUSE"/packaging-*.whl)' in native
+    assert 'PYTHONPATH="${PACKAGING_WHEELS[0]}' in native
+    assert 'python3 "$ROOT/scripts/verify-version-consistency.py"' not in native
+
+
+def test_linux_auxiliary_entrypoints_share_onedir_runtime() -> None:
+    """辅助入口不得以单文件模式向 /tmp 解包可执行共享库。"""
+
+    spec = (ROOT / "packaging" / "uos" / "partyops.spec").read_text(
+        encoding="utf-8"
+    )
+    portable = (ROOT / "packaging" / "uos" / "build-portable.sh").read_text(
+        encoding="utf-8"
+    )
+    selftest = (
+        ROOT / "packaging" / "linux" / "post-install-selftest.sh"
+    ).read_text(encoding="utf-8")
+    wizard = (ROOT / "packaging" / "uos" / "wizard_entrypoint.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert spec.count("exclude_binaries=True") == 4
+    collect = spec[spec.rindex("host_collect = COLLECT(") :]
+    for entrypoint in ("host_exe", "client_exe", "wizard_exe", "updater_exe"):
+        assert entrypoint in collect
+    assert "client_analysis.binaries" in collect
+    assert "wizard_analysis.binaries" in collect
+    assert "updater_analysis.binaries" in collect
+    assert '"$RUNTIME/partyops-wizard" --runtime-layout-self-test' in portable
+    assert '"$RUNTIME/partyops-wizard" --runtime-layout-self-test' in selftest
+    native_runtime = (
+        ROOT / "scripts" / "test-native-package-runtime.sh"
+    ).read_text(encoding="utf-8")
+    assert '"$RUNTIME/partyops-wizard" --runtime-layout-self-test' in native_runtime
+    assert "partyops partyops-client partyops-wizard partyops-updater" in native_runtime
+    assert "runtime_root != expected_root" in wizard
+    assert 'runtime_root.rglob("*.so*")' in wizard
 
 
 def test_installed_service_waits_for_slow_uos_startup() -> None:
@@ -381,6 +426,25 @@ def test_runtime_and_stop_script_have_bounded_graceful_shutdown() -> None:
     assert "5242880" in start
     assert "CONFIG_INVALID" in start
     assert "CONFIG_INVALID" in desktop
+    assert "startup-diagnostic.txt" in desktop
+    assert "PARTYOPS_DESKTOP_HEALTH_TIMEOUT_SECONDS:-180" in desktop
+    assert "runtime_pid_alive" in desktop
+    assert "[PID_FILE_MISSING]" in desktop
+    assert "[CHILD_EXITED]" in desktop
+    assert "[HEALTH_TIMEOUT]" in desktop
+    assert "RUNTIME_VERSION_MISMATCH" in desktop
+    assert 'EXPECTED_VERSION <"$APP_ROOT/VERSION"' in desktop
+    assert "systemctl is-active" in desktop
+    assert ': >>"$LAUNCH_LOG"' in desktop
+    assert "CONFIG_DIR_UNAVAILABLE" in desktop
+    assert "START_COMMAND_FAILED" in desktop
+    assert "LAUNCH_LOCK_TIMEOUT" in desktop
+    assert "flock -w 190 9" in desktop
+    assert '9>&- &' in desktop
+    assert "while ((attempt < 360))" in desktop
+    assert 'printf \'%s\\n\' "$APP_VERSION" >"$RUNTIME/VERSION"' in (
+        ROOT / "packaging" / "uos" / "build-portable.sh"
+    ).read_text(encoding="utf-8")
 
 
 def test_legacy_host_config_is_migrated_to_tls_agent_port() -> None:
@@ -420,7 +484,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     assert "%post" in build
     assert "/opt/partyops/post-install-transaction.sh $ARCH rpm" in build
     assert "post-install-transaction.sh %s deb" in build
-    assert 'DEB_VERSION="1.4.3~rc.7"' in build
+    assert 'DEB_VERSION="1.4.3~rc.8"' in build
     assert "Version: $DEB_VERSION" in build
     assert "systemd, util-linux, coreutils, iproute2" in build
     assert "systemd, util-linux, coreutils, iproute" in build
@@ -455,8 +519,8 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     one_click = (ROOT / "packaging" / "uos" / "one-click-install.sh").read_text(
         encoding="utf-8"
     )
-    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.7}"' in one_click
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.7}"' in one_click
+    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.8}"' in one_click
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.8}"' in one_click
     assert 'DEB="$ARTIFACTS/PartyOps_${VERSION}_linux_${ARCH}.deb"' in one_click
     assert '[[ "$installed_version" == "$PACKAGE_VERSION" ]]' in one_click
     assert 'chown -R "$CURRENT_USER' not in one_click
@@ -464,7 +528,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     acceptance = (ROOT / "packaging" / "uos" / "target-acceptance.sh").read_text(
         encoding="utf-8"
     )
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.7}"' in acceptance
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.8}"' in acceptance
     assert 'test "$INSTALLED_VERSION" = "$PACKAGE_VERSION"' in acceptance
     assert "LD_LIBRARY_PATH=/opt/partyops/ocr/lib" in acceptance
 
@@ -867,7 +931,7 @@ def test_linux_bundle_only_includes_current_user_documents() -> None:
     )
 
     assert 'cp -a "$ROOT/docs" "$RUNTIME/"' not in script
-    assert '"release-notes-v1.4.3-rc.7.md"' in script
+    assert '"release-notes-v1.4.3-rc.8.md"' in script
     for document in (
         "user-guide.md",
         "deployment.md",
