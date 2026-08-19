@@ -148,6 +148,7 @@ var
   HostServiceDelayedBeforeInstall: Cardinal;
   UpdateServiceDelayedBeforeInstall: Cardinal;
   ConfiguredHostModeBeforeInstall: Boolean;
+  ConfiguredPersonalModeBeforeInstall: Boolean;
   RestartPreviousServicesOnExit: Boolean;
   InstallCompletedSuccessfully: Boolean;
   InstallerCachePath: String;
@@ -535,6 +536,43 @@ begin
   end;
 end;
 
+function LoadConfiguredMode(var ModeValue: String): Boolean;
+var
+  ModeLines: TArrayOfString;
+  I: Integer;
+  Payload: String;
+begin
+  Result := False;
+  ModeValue := '';
+  if not LoadStringsFromFile(
+    ExpandConstant('{commonappdata}\PartyOps\mode.json'), ModeLines
+  ) then
+    exit;
+  Payload := '';
+  for I := 0 to GetArrayLength(ModeLines) - 1 do
+    Payload := Payload + ModeLines[I];
+  Payload := Lowercase(Payload);
+  StringChangeEx(Payload, ' ', '', True);
+  StringChangeEx(Payload, #9, '', True);
+  StringChangeEx(Payload, #13, '', True);
+  StringChangeEx(Payload, #10, '', True);
+  if Pos('"mode":"personal"', Payload) > 0 then
+    ModeValue := 'personal'
+  else if Pos('"mode":"host"', Payload) > 0 then
+    ModeValue := 'host'
+  else if Pos('"mode":"client"', Payload) > 0 then
+    ModeValue := 'client';
+  Result := ModeValue <> '';
+end;
+
+function IsConfiguredPersonalMode: Boolean;
+var
+  ModeValue: String;
+begin
+  Result := LoadConfiguredMode(ModeValue) and
+    (CompareText(ModeValue, 'personal') = 0);
+end;
+
 function IsConfiguredHostMode: Boolean;
 var
   EnvironmentLines: TArrayOfString;
@@ -542,6 +580,11 @@ var
   Line, Prefix, ModeValue: String;
 begin
   Result := False;
+  if LoadConfiguredMode(ModeValue) then
+  begin
+    Result := CompareText(ModeValue, 'host') = 0;
+    exit;
+  end;
   Prefix := 'PARTYOPS_MODE=';
   if not LoadStringsFromFile(
     ExpandConstant('{commonappdata}\PartyOps\partyops.env'),
@@ -847,6 +890,26 @@ begin
   end;
 end;
 
+function HostServiceStartupArgument(
+  Existed, ConfiguredHostMode, ConfiguredPersonalMode: Boolean;
+  StartType, DelayedAutoStart: Cardinal
+): String;
+begin
+  { 旧版可能在切到个人模式后遗留自动主机服务。mode.json 是当前系统模式
+    的原子标记；个人模式升级必须收敛为手动且不再启动，显式禁用仍保留。 }
+  if ConfiguredPersonalMode then
+  begin
+    if Existed and (StartType = 4) then
+      Result := '--startup disabled '
+    else
+      Result := '--startup manual ';
+  end
+  else
+    Result := ServiceStartupArgument(
+      Existed, ConfiguredHostMode, StartType, DelayedAutoStart
+    );
+end;
+
 function ReadInstallPathDiagnostic(
   DiagnosticFile: String; ResultCode: Integer
 ): String;
@@ -1004,7 +1067,9 @@ begin
     exit;
   HostServiceExistedBeforeInstall := ServiceExists('PartyOpsHost');
   UpdateServiceExistedBeforeInstall := ServiceExists('PartyOpsUpdateService');
-  ConfiguredHostModeBeforeInstall := IsConfiguredHostMode;
+  ConfiguredPersonalModeBeforeInstall := IsConfiguredPersonalMode;
+  ConfiguredHostModeBeforeInstall :=
+    (not ConfiguredPersonalModeBeforeInstall) and IsConfiguredHostMode;
   HostServiceRunningBeforeInstall :=
     HostServiceExistedBeforeInstall and ServiceIsRunning('PartyOpsHost');
   UpdateServiceRunningBeforeInstall :=
@@ -1472,9 +1537,10 @@ begin
       RaiseException(ErrorMessage);
     ProtectSystemControlDirectories;
     RegisterPartyOpsProtocols;
-    HostServiceStartup := ServiceStartupArgument(
+    HostServiceStartup := HostServiceStartupArgument(
       HostServiceExistedBeforeInstall,
       ConfiguredHostModeBeforeInstall,
+      ConfiguredPersonalModeBeforeInstall,
       HostServiceStartTypeBeforeInstall,
       HostServiceDelayedBeforeInstall
     );
@@ -1520,8 +1586,9 @@ begin
       'advfirewall firewall delete rule name="党建智办主机"',
       '', SW_HIDE, ewWaitUntilTerminated, ResultCode
     );
-    if HostServiceRunningBeforeInstall or
-       (ConfiguredHostModeBeforeInstall and not HostServiceExistedBeforeInstall) then
+    if (not ConfiguredPersonalModeBeforeInstall) and
+       (HostServiceRunningBeforeInstall or
+        (ConfiguredHostModeBeforeInstall and not HostServiceExistedBeforeInstall)) then
       RunChecked(
         ExpandConstant('{sys}\sc.exe'), 'start PartyOpsHost',
         '恢复升级前运行的 PartyOps 主机服务'

@@ -743,7 +743,13 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "Choice := IDNO" in installer
     assert "UNINSTALL_DATAACTION_INVALID" in installer
     assert "function IsConfiguredHostMode" in installer
-    assert "ConfiguredHostModeBeforeInstall := IsConfiguredHostMode" in installer
+    assert "function LoadConfiguredMode" in installer
+    assert "function IsConfiguredPersonalMode" in installer
+    assert "ConfiguredPersonalModeBeforeInstall := IsConfiguredPersonalMode" in installer
+    assert "(not ConfiguredPersonalModeBeforeInstall) and IsConfiguredHostMode" in installer
+    assert "function HostServiceStartupArgument" in installer
+    assert "if ConfiguredPersonalMode then" in installer
+    assert "(not ConfiguredPersonalModeBeforeInstall) and" in installer
     assert "Existed, ConfiguredHostMode: Boolean" in installer
     assert "else if ConfiguredHostMode then" in installer
     assert (
