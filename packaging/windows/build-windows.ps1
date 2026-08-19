@@ -252,8 +252,17 @@ foreach ($entry in $entries) {
   # 锁定的旧版 setuptools 根本没有此模块，
   # 无条件添加又会产生可被忽略的 ERROR。先真实导入 vendored 模块，
   # 只有运行时确实需要时才触发官方 hook-backports 别名收集。
-  & $Python -c "import importlib; importlib.import_module('setuptools._vendor.backports.tarfile')" 2>$null
-  $requiresBackportsTarfile = $LASTEXITCODE -eq 0
+  # Legacy Python 3.8 固定的 setuptools 没有这个可选 vendored 模块。
+  # 探测失败是预期分支，不能被全局 ErrorActionPreference=Stop 提前变成
+  # NativeCommandError；否则 Win7 构建会在真正冻结之前被误阻断。
+  $previousEap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $Python -c "import importlib; importlib.import_module('setuptools._vendor.backports.tarfile')" 2>$null
+    $requiresBackportsTarfile = $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousEap
+  }
   if ($requiresBackportsTarfile) {
     $hiddenModules += @("backports", "backports.tarfile")
   }

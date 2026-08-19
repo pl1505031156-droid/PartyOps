@@ -876,6 +876,8 @@ def test_frozen_windows_wizard_has_real_gui_self_test_gate() -> None:
     assert "setuptools._vendor.backports.tarfile" in build
     assert '$hiddenModules += @("backports", "backports.tarfile")' in build
     assert "if ($requiresBackportsTarfile)" in build
+    assert '$ErrorActionPreference = "Continue"' in build
+    assert "$ErrorActionPreference = $previousEap" in build
     assert "安装成功后向导/启动器立即退出" in build
     for required in (
         "_tkinter.pyd",
