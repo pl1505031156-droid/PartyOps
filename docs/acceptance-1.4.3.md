@@ -1,6 +1,6 @@
 # PartyOps 1.4.3-rc.8 候选验收记录
 
-最后更新：2026-08-19 20:31（北京时间，UTC+8）。
+最后更新：2026-08-19 22:20（北京时间，UTC+8）。
 产品源码提交：`bc0ad0c0e6eb4f272bcda731e52894dc4a282c48`
 
 ## 自动化与构建
@@ -36,6 +36,11 @@
 - 构建机 Windows Defender 服务未启用，因此未冒充 Defender 扫描通过；已在安全门禁记录中保留该限制。
 - Python、前端与官网 CycloneDX SBOM、VEX 和门禁记录已生成。
 
-## 仍需在线完成
+## 在线发布验收
 
-CloudStudio、GitHub、Gitee 与 EdgeOne 的上传、哈希、Range 206、HTTPS 和桌面/移动端核验必须在实际发布后记录；未完成前不得声称线上交付完成。
+- CloudStudio 七个主安装包完成全量回读，文件大小、SHA-256 与 EXE/DEB/RPM 文件头均与冻结制品一致；网关未提供稳定 `Content-Length`/Range 206，官网不宣称断点续传已验证。
+- GitHub `main` 与 Gitee `main` 均已包含发布文档提交 `968a41b10ea580d1b59eed43d08b9b6ebf1cc5d1`；本验收记录作为随后纯文档证据提交，不移动不可变标签。两端 `v1.4.3-rc.8` 均解引用到产品源码 `bc0ad0c0e6eb4f272bcda731e52894dc4a282c48`。
+- GitHub 普通 Release 于 2026-08-19 21:51:07（北京时间，UTC+8）发布，42 个资产均为 `uploaded`，远端文件名、大小与 GitHub SHA-256 摘要逐项匹配。
+- EdgeOne 生产部署 `dpouc294hjyn` 成功；`partyops.cn`、`www.partyops.cn`、更新日志、个人简历、最新/版本化清单、format v3 更新目录和下载计数接口均返回 HTTP 200。
+- 线上发布清单和 format v3 更新目录与本地构建逐字节 SHA-256 一致；下载总数接口保持历史基数 92，本轮核验值为 2046。
+- 真实 Chrome 生产回归确认 rc.8、七条国内主下载、北京时间、更新日志、赞助榜和简历入口可见；当前页面 rc.7 安装包链接为 0、破图为 0、页面错误与控制台错误为 0。
