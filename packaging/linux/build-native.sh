@@ -332,7 +332,10 @@ EOF
   # RPM 的脚本阶段拿不到原始安装包路径。先构建一个内容相同、Release
   # 略低且不递归包含自身的回滚包，再把它嵌入正式包。首次升级失败时可
   # 降级到该包；后续成功升级会用刚验证过的正式制品原子更新此缓存。
-  SEED_RELEASE="0.rc.3.0"
+  # 回滚种子必须与当前候选保持同一 rc 代际，只降低 RPM release 序号。
+  # 若继续嵌入 rc.3 标识，首次安装失败后的恢复会被运行时版本门禁判为旧版，
+  # 反而触发 RUNTIME_VERSION_MISMATCH。
+  SEED_RELEASE="0.rc.9.0"
   rpmbuild \
     --target "$RPM_ARCH" \
     --define "_topdir $BUILD/rpmbuild" \

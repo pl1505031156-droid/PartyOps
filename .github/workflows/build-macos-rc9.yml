@@ -1,10 +1,10 @@
-name: 手动构建 macOS rc.8 候选
+name: 手动构建 macOS rc.9 候选
 
 on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 输入 BUILD-UNSIGNED-RC8，确认只生成未公证测试候选
+        description: 输入 BUILD-UNSIGNED-RC9，确认只生成未公证测试候选
         required: true
         type: string
 
@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: partyops-macos-rc8-manual
+  group: partyops-macos-rc9-manual
   cancel-in-progress: false
 
 jobs:
   build:
-    if: github.event.inputs.confirmation == 'BUILD-UNSIGNED-RC8'
+    if: github.event.inputs.confirmation == 'BUILD-UNSIGNED-RC9'
     name: ${{ matrix.architecture }} 原生构建
     timeout-minutes: 120
     strategy:
@@ -111,7 +111,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          package="artifacts/release-1.4.3-rc.8-final/PartyOps_1.4.3-rc.8_macos_${{ matrix.architecture }}.pkg"
+          package="artifacts/release-1.4.3-rc.9-final/PartyOps_1.4.3-rc.9_macos_${{ matrix.architecture }}.pkg"
           test -f "$package"
           test -f "$package.sha256"
           test -f "$package.attestation.json"
@@ -154,10 +154,10 @@ jobs:
       - name: 上传待人工审核制品
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: partyops-macos-${{ matrix.architecture }}-rc8
+          name: partyops-macos-${{ matrix.architecture }}-rc9
           path: |
-            artifacts/release-1.4.3-rc.8-final/PartyOps_1.4.3-rc.8_macos_${{ matrix.architecture }}.pkg
-            artifacts/release-1.4.3-rc.8-final/PartyOps_1.4.3-rc.8_macos_${{ matrix.architecture }}.pkg.sha256
-            artifacts/release-1.4.3-rc.8-final/PartyOps_1.4.3-rc.8_macos_${{ matrix.architecture }}.pkg.attestation.json
+            artifacts/release-1.4.3-rc.9-final/PartyOps_1.4.3-rc.9_macos_${{ matrix.architecture }}.pkg
+            artifacts/release-1.4.3-rc.9-final/PartyOps_1.4.3-rc.9_macos_${{ matrix.architecture }}.pkg.sha256
+            artifacts/release-1.4.3-rc.9-final/PartyOps_1.4.3-rc.9_macos_${{ matrix.architecture }}.pkg.attestation.json
           if-no-files-found: error
           retention-days: 7

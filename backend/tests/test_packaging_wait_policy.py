@@ -1011,6 +1011,18 @@ def test_linux_native_release_requires_embedded_update_trust_key() -> None:
     assert "拒绝生成无法应用内升级的正式包" in script
 
 
+def test_linux_rpm_rollback_seed_keeps_current_release_generation() -> None:
+    """首次 RPM 回滚不能伪装成旧 rc，否则健康门禁会再次拒绝运行时。"""
+
+    script = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'RPM_RELEASE="0.rc.9.1"' in script
+    assert 'SEED_RELEASE="0.rc.9.0"' in script
+    assert 'SEED_RELEASE="0.rc.3.0"' not in script
+
+
 def test_linux_native_build_uses_a_posix_permission_build_root() -> None:
     """DrvFS 不保存 chmod 时，DEB/RPM 暂存树必须自动转入 Linux 本地盘。"""
 
