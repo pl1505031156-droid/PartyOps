@@ -66,6 +66,11 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "target_arch=target_arch" in spec
     assert 'name="partyops-updater"' in spec
     assert "update-public-key.txt" in spec
+    update_key = ROOT / "packaging" / "uos" / "update-public-key.txt"
+    assert update_key.is_file()
+    assert update_key.read_text(encoding="ascii").strip() == (
+        "fEbQCm6VLHYv7f8pKYIeGGD+gkW6EHz/W/ODs5DoGkc="
+    )
     assert "独立 onefile" in spec
     assert "MACOS_UPDATE_TRUST_ROOT_MISSING" in validation
     assert "--ownership recommended" in build

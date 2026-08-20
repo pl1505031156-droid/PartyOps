@@ -25,7 +25,6 @@ artifacts/
 artifacts/release-keys/
 output/
 vendor/
-packaging/uos/update-public-key.txt
 *.log
 *.sqlite
 *.sqlite3
