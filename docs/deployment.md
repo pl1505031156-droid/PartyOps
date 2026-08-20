@@ -1,8 +1,8 @@
 # PartyOps 1.4.3 部署与独立搭建
 
-最后核对：2026-08-19（北京时间，UTC+8）。本文只描述当前 `1.4.3-rc.8` / 数据库 `0019`；旧版本文档仅用于迁移追溯。
+最后核对：2026-08-20（北京时间，UTC+8）。本文只描述当前 `1.4.3-rc.9` / 数据库 `0019`；旧版本文档仅用于迁移追溯。
 
-> `v1.4.3-rc.8` 是未签名候选版，不是稳定生产版。Windows 7 与国产 Linux 制品标为“未真机验证”；Windows 7 已停止系统级安全维护，只能在受控局域网使用。
+> `v1.4.3-rc.9` 是未签名候选版，不是稳定生产版。Windows 7、国产 Linux 与 macOS 制品标为“未完成用户真机交互验收”；Windows 7 已停止系统级安全维护，只能在受控局域网使用。
 
 ## 1. 部署结构
 
@@ -19,20 +19,20 @@
 Windows 普通用户只下载版本化 EXE，不需要第二个校验包。官网与 GitHub Release 直接显示最终 SHA-256；安装前计算并逐字核对：
 
 ```powershell
-Get-FileHash .\PartyOps_1.4.3-rc.8_windows_amd64.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\PartyOps_1.4.3-rc.8_windows_amd64.exe
+Get-FileHash .\PartyOps_1.4.3-rc.9_windows_amd64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\PartyOps_1.4.3-rc.9_windows_amd64.exe
 ```
 
 ```bash
-sha256sum PartyOps_1.4.3-rc.8_linux_amd64.deb
-dpkg-deb --info PartyOps_1.4.3-rc.8_linux_amd64.deb
+sha256sum PartyOps_1.4.3-rc.9_linux_amd64.deb
+dpkg-deb --info PartyOps_1.4.3-rc.9_linux_amd64.deb
 ```
 
-哈希不一致时停止安装。当前 `rc.8` Windows 文件未做 Authenticode 正式签名，SmartScreen 显示未知发布者属于已知限制，不应误称为正式签名版本。
+哈希不一致时停止安装。当前 `rc.9` Windows 文件未做 Authenticode 正式签名，SmartScreen 显示未知发布者属于已知限制，不应误称为正式签名版本。
 
 ### 2.2 Windows 10/11 x64
 
-1. Windows 10/11 运行 `PartyOps_1.4.3-rc.8_windows_amd64.exe`，程序目录与业务数据目录都可选择本机固定磁盘路径，例如 `E:\PartyOps` 与 `D:\PartyOps-数据`。Win7 必须改用文件名带 `windows7_amd64` 或 `windows7_x86` 的专用包。
+1. Windows 10/11 运行 `PartyOps_1.4.3-rc.9_windows_amd64.exe`，程序目录与业务数据目录都可选择本机固定磁盘路径，例如 `E:\PartyOps` 与 `D:\PartyOps-数据`。Win7 必须改用文件名带 `windows7_amd64` 或 `windows7_x86` 的专用包。
 2. 首次打开桌面“党建智办”，明确选择“个人使用（新手推荐）”“主机”或“协同机”。个人使用不申请管理员权限且只监听回环地址。
 3. 主机模式再次确认数据目录；数据库、附件、备份、证书、模型、缓存和日志位于该目录，服务在确认主机角色后设为随系统启动。
 4. 协同机模式使用主机生成的限时入网码；小型用户配置位于 `%LOCALAPPDATA%\PartyOps`，备份、接收文件和日志位于向导所选目录。
@@ -45,8 +45,8 @@ dpkg-deb --info PartyOps_1.4.3-rc.8_linux_amd64.deb
 
 ```bash
 uname -m
-sudo apt install ./PartyOps_1.4.3-rc.8_linux_amd64.deb
-# aarch64 / ARM64 使用 PartyOps_1.4.3-rc.8_linux_arm64.deb
+sudo apt install ./PartyOps_1.4.3-rc.9_linux_amd64.deb
+# aarch64 / ARM64 使用 PartyOps_1.4.3-rc.9_linux_arm64.deb
 ```
 
 每台电脑只下载一个原生包，不再下载构建套件或额外校验包。包管理器配置阶段会执行架构、文件清单、前端资源、SQLite/FTS5、中文 OCR、本地智能、更新服务和回环健康端点自检；失败时服务保持停止并返回中文诊断。
@@ -55,8 +55,8 @@ sudo apt install ./PartyOps_1.4.3-rc.8_linux_amd64.deb
 
 ```bash
 uname -m
-sudo dnf install ./PartyOps-1.4.3-0.rc.8.1.x86_64.rpm
-# aarch64 使用 PartyOps-1.4.3-0.rc.8.1.aarch64.rpm
+sudo dnf install ./PartyOps-1.4.3-0.rc.9.1.x86_64.rpm
+# aarch64 使用 PartyOps-1.4.3-0.rc.9.1.aarch64.rpm
 ```
 
 不要使用 `--force-architecture`，也不要关闭 SELinux、防火墙或系统安全策略。安装器只生成最小必要规则。
@@ -68,6 +68,12 @@ systemctl status partyops partyops-updater --no-pager
 journalctl -u partyops -n 100 --no-pager
 curl --cacert /var/lib/partyops/secrets/ca-cert.pem https://主机地址:18765/api/v1/health
 ```
+
+### 2.5 macOS 11+ Apple Silicon / Intel
+
+Apple 芯片选择 `PartyOps_1.4.3-rc.9_macos_arm64.pkg`，Intel 芯片选择 `PartyOps_1.4.3-rc.9_macos_x86_64.pkg`。当前 PKG 只有 ad-hoc 签名，没有 Developer ID Installer/Application 与 Apple 公证；先核对 SHA-256，再在 Finder 中 `Control` 点按 PKG →“打开”，或在“系统设置 → 隐私与安全性”选择对应的“仍要打开”。不得关闭 Gatekeeper。
+
+安装后从“应用程序”打开党建智办。Finder 主入口会先写 `~/Library/Logs/PartyOps/launch-probe.log`，再启动冻结向导；如完全无反应，先检查该文件，再检查同目录 `launcher.log`。永久消除 Gatekeeper 提示需要正式 Developer ID 签名、公证与 staple，不得把本候选包描述为已公证。
 
 ## 3. 从源码独立搭建（仅本机开发/审计）
 

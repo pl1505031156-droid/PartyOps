@@ -2,6 +2,29 @@
 
 本项目按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的结构记录用户可感知变更。PartyOps 当前使用三段式版本号；正式 Git 标签和安装制品只有在发布门禁通过后创建。
 
+## [1.4.3-rc.9] - 2026-08-20
+
+### 跨平台安装与启动
+
+- 修复统信旧配置把失效局域网 IP 用作监听地址导致端口 `18766` 绑定失败；监听地址与对外地址现在分别迁移和校验。
+- 个人模式端口 `18775` 被未知程序占用时自动选择受控回环备用端口；只有 PID、实例锁和可执行路径三项一致时才接管旧 PartyOps 进程。
+- Windows 主机服务、协议注册与覆盖安装均按所有权证据处理，修复 `LEGACY_SERVICE_CONFLICT`、`PROTOCOL_REGISTRY_DENIED`、Win7 KB 等效补丁误判与 Win11 空白页。
+- DEB/RPM 桌面入口、换行、权限与安装后事务统一验证，修复 `PACKAGE_DESKTOP_ENTRY_INVALID`、版本错配和 `LAUNCH_LOCK_TIMEOUT`。
+- 麒麟/UOS 桌面入口统一经 `/bin/bash` 进入受控启动器，缺失 `HOME` 时从账号数据库恢复；安装器在桌面用户 DBus 会话写入可信元数据并保留可执行兜底，解决安装成功但双击无反应且没有日志。
+- macOS Finder 入口改为原生 C 启动探针，在冻结向导运行前先写 `launch-probe.log`；Apple Silicon 与 Intel 原生 Darwin 构建均用 LaunchServices `open -na` 完成安装后双击自检。
+
+### 业务闭环
+
+- 一事一档新增带权限、并发版本与审计记录的“回退到此版”，通过创建新版本保留完整历史。
+- 文档管理中心恢复“操作目录”，主机可纳管目录、协同机可共享本机文件夹，无桌面能力时显示明确说明。
+- 党员发展时间节点结果恢复标准 DOCX 导出，使用稳定 DOM 下载与延迟清理，兼容旧 WebView/Chromium。
+
+### 交付边界
+
+- 九个主安装包均重新冻结；后端行覆盖率 `95.14%`、分支覆盖率 `90.00%`，前端和官网覆盖率均超过正式门禁。
+- Windows 安装器仍无 Authenticode 商业签名；macOS PKG 使用 ad-hoc 签名且未获 Developer ID/Apple 公证，首次打开必须按官网 Gatekeeper 步骤操作。
+- Windows 7、国产 Linux 与 macOS 用户真机交互验收仍未取得；自动化、QEMU 与原生构建主机门禁不能替代对应用户设备验收。
+
 ## [1.4.3-rc.8] - 2026-08-19
 
 ### 国产 Linux 安装与启动

@@ -23,7 +23,10 @@ def test_uos_default_app_handler_is_self_healing_and_ca_aware() -> None:
         project_root / "packaging" / "uos" / "partyops-file.desktop"
     ).read_text(encoding="utf-8")
 
-    assert 'HOME="$USER_HOME"' in installer
+    assert '"HOME=$USER_HOME"' in installer
+    assert '"XDG_RUNTIME_DIR=$USER_RUNTIME_DIR"' in installer
+    assert '"DBUS_SESSION_BUS_ADDRESS=$USER_BUS_ADDRESS"' in installer
+    assert "metadata::trusted true" in installer
     assert "xdg-mime query default" in installer
     assert "partyops-file.desktop" in installer
     assert "install-desktop-shortcut.sh" in launcher

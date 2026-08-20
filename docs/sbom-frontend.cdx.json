@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:210f3a0e-752d-4bf5-b584-033bcbd98e10",
+  "serialNumber": "urn:uuid:d413acd1-5c2a-47ca-8572-e38bcf3ad249",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-19T12:25:25.474Z",
+    "timestamp": "2026-08-20T09:44:12.717Z",
     "lifecycles": [
       {
         "phase": "build"
@@ -23,9 +23,9 @@
     "component": {
       "type": "library",
       "name": "partyops-frontend",
-      "version": "1.4.3-rc.8",
-      "purl": "pkg:npm/partyops-frontend@1.4.3-rc.8",
-      "bom-ref": "pkg:npm/partyops-frontend@1.4.3-rc.8"
+      "version": "1.4.3-rc.9",
+      "purl": "pkg:npm/partyops-frontend@1.4.3-rc.9",
+      "bom-ref": "pkg:npm/partyops-frontend@1.4.3-rc.9"
     }
   },
   "components": [
@@ -70,6 +70,46 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/iamkun/dayjs/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "anydoc-wasm",
+      "version": "0.1.7",
+      "purl": "pkg:npm/%40firecrawl/anydoc-wasm@0.1.7",
+      "bom-ref": "pkg:npm/%40firecrawl/anydoc-wasm@0.1.7",
+      "group": "@firecrawl",
+      "description": "WebAssembly bindings for anydoc: convert documents (doc, docx, odt, rtf, epub, pdf, presentations, spreadsheets, csv) to GitHub-Flavored Markdown in the browser",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@firecrawl/anydoc-wasm/-/anydoc-wasm-0.1.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "164b8797b2bc0a5fe4cadd594bd0db5ffd06b9bbd6edd1cf8220d6ae6328143148dc6180b725accaf027a2a9dc6c503ac96fd90a34a267c8e3847d3379e0717d"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/firecrawl/anydoc#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/firecrawl/anydoc.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/firecrawl/anydoc/issues"
         }
       ]
     },
@@ -160,12 +200,16 @@
     },
     {
       "type": "library",
-      "name": "anydoc-wasm",
-      "version": "0.1.7",
-      "purl": "pkg:npm/%40firecrawl/anydoc-wasm@0.1.7",
-      "bom-ref": "pkg:npm/%40firecrawl/anydoc-wasm@0.1.7",
-      "group": "@firecrawl",
-      "description": "WebAssembly bindings for anydoc: convert documents (doc, docx, odt, rtf, epub, pdf, presentations, spreadsheets, csv) to GitHub-Flavored Markdown in the browser",
+      "name": "pinia",
+      "version": "3.0.3",
+      "purl": "pkg:npm/pinia@3.0.3",
+      "bom-ref": "pkg:npm/pinia@3.0.3",
+      "description": "Intuitive, type safe and flexible Store for Vue",
+      "authors": [
+        {
+          "name": "Eduardo San Martin Morote"
+        }
+      ],
       "licenses": [
         {
           "license": {
@@ -176,25 +220,25 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/@firecrawl/anydoc-wasm/-/anydoc-wasm-0.1.7.tgz",
+          "url": "https://registry.npmjs.org/pinia/-/pinia-3.0.3.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "164b8797b2bc0a5fe4cadd594bd0db5ffd06b9bbd6edd1cf8220d6ae6328143148dc6180b725accaf027a2a9dc6c503ac96fd90a34a267c8e3847d3379e0717d"
+              "content": "b6d5cefc89d450b51790c1e94dda7d163e212e90ffd80a0976601b01e5b6caed62cb593ea6415e9105f0e55a42d3fe69e7520e47f8c368345f45646730cb0638"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://github.com/firecrawl/anydoc#readme"
+          "url": "https://pinia.vuejs.org"
         },
         {
           "type": "vcs",
-          "url": "git+https://github.com/firecrawl/anydoc.git"
+          "url": "git+https://github.com/vuejs/pinia.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/firecrawl/anydoc/issues"
+          "url": "https://github.com/vuejs/pinia/issues"
         }
       ]
     },
@@ -283,50 +327,6 @@
     },
     {
       "type": "library",
-      "name": "pinia",
-      "version": "3.0.3",
-      "purl": "pkg:npm/pinia@3.0.3",
-      "bom-ref": "pkg:npm/pinia@3.0.3",
-      "description": "Intuitive, type safe and flexible Store for Vue",
-      "authors": [
-        {
-          "name": "Eduardo San Martin Morote"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/pinia/-/pinia-3.0.3.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "b6d5cefc89d450b51790c1e94dda7d163e212e90ffd80a0976601b01e5b6caed62cb593ea6415e9105f0e55a42d3fe69e7520e47f8c368345f45646730cb0638"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://pinia.vuejs.org"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/vuejs/pinia.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/vuejs/pinia/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "vue",
       "version": "3.5.21",
       "purl": "pkg:npm/vue@3.5.21",
@@ -366,6 +366,77 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/vuejs/core/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "color",
+      "version": "0.4.0",
+      "purl": "pkg:npm/%40arco-design/color@0.4.0",
+      "bom-ref": "pkg:npm/%40arco-design/color@0.4.0",
+      "group": "@arco-design",
+      "description": "ArcoDesign color utils",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@arco-design/color/-/color-0.4.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "b3ba7d312c0980778bf03c1c013697bd64f79b64a280aa71c78240d4118f1cbe207ef690b2641facb043a63389149b89da31b674cb774773fc3e6f44eb9ab5f2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "vue-router",
+      "version": "4.5.1",
+      "purl": "pkg:npm/vue-router@4.5.1",
+      "bom-ref": "pkg:npm/vue-router@4.5.1",
+      "authors": [
+        {
+          "name": "Eduardo San Martin Morote"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/vue-router/-/vue-router-4.5.1.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "a20005dcff7b34f9bc7c9b04e1bcbd770498b43c17218d67158f53e83c909c61ddd44d836bde30f492289697b8d8b246225d03c0e1c18bc4dc44f94f1b06d3b7"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/vuejs/router#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vuejs/router.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/vuejs/router/issues"
         }
       ]
     },
@@ -415,77 +486,6 @@
     },
     {
       "type": "library",
-      "name": "vue-router",
-      "version": "4.5.1",
-      "purl": "pkg:npm/vue-router@4.5.1",
-      "bom-ref": "pkg:npm/vue-router@4.5.1",
-      "authors": [
-        {
-          "name": "Eduardo San Martin Morote"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/vue-router/-/vue-router-4.5.1.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "a20005dcff7b34f9bc7c9b04e1bcbd770498b43c17218d67158f53e83c909c61ddd44d836bde30f492289697b8d8b246225d03c0e1c18bc4dc44f94f1b06d3b7"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/vuejs/router#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/vuejs/router.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/vuejs/router/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "color",
-      "version": "0.4.0",
-      "purl": "pkg:npm/%40arco-design/color@0.4.0",
-      "bom-ref": "pkg:npm/%40arco-design/color@0.4.0",
-      "group": "@arco-design",
-      "description": "ArcoDesign color utils",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@arco-design/color/-/color-0.4.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "b3ba7d312c0980778bf03c1c013697bd64f79b64a280aa71c78240d4118f1cbe207ef690b2641facb043a63389149b89da31b674cb774773fc3e6f44eb9ab5f2"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "compute-scroll-into-view",
       "version": "1.0.20",
       "purl": "pkg:npm/compute-scroll-into-view@1.0.20",
@@ -525,6 +525,50 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/scroll-into-view/compute-scroll-into-view/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "number-precision",
+      "version": "1.6.0",
+      "purl": "pkg:npm/number-precision@1.6.0",
+      "bom-ref": "pkg:npm/number-precision@1.6.0",
+      "description": "Perform addition, subtraction, multiplication and division operations precisely using javascript",
+      "authors": [
+        {
+          "name": "cam song"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/number-precision/-/number-precision-1.6.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "d3938b3e06e09a78b1270f95bc4875f3234f528de2ca9e0111625cacbbb85fd5b4e4a98c89f37b32ee5ec58bd05eac7178d5a1bc817e8f74628fe1e675d33f85"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/nefe/number-precision"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/nefe/number-precision.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/nefe/number-precision/issues"
         }
       ]
     },
@@ -662,294 +706,6 @@
     },
     {
       "type": "library",
-      "name": "number-precision",
-      "version": "1.6.0",
-      "purl": "pkg:npm/number-precision@1.6.0",
-      "bom-ref": "pkg:npm/number-precision@1.6.0",
-      "description": "Perform addition, subtraction, multiplication and division operations precisely using javascript",
-      "authors": [
-        {
-          "name": "cam song"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/number-precision/-/number-precision-1.6.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "d3938b3e06e09a78b1270f95bc4875f3234f528de2ca9e0111625cacbbb85fd5b4e4a98c89f37b32ee5ec58bd05eac7178d5a1bc817e8f74628fe1e675d33f85"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/nefe/number-precision"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/nefe/number-precision.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/nefe/number-precision/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "entities",
-      "version": "8.0.0",
-      "purl": "pkg:npm/entities@8.0.0",
-      "bom-ref": "pkg:npm/entities@8.0.0",
-      "description": "Encode & decode XML and HTML entities with ease & speed",
-      "authors": [
-        {
-          "name": "Felix Boehm"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "BSD-2-Clause"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/entities/-/entities-8.0.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "cf07f325e710fd47a3eadbac32ac00a94ffa28bd97681d95676260e7825ee9a84d046347e8493a8378e33421747c6f4459028664d75d3635391756509ffb019c"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/fb55/entities#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/fb55/entities.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/fb55/entities/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "linkify-it",
-      "version": "6.1.0",
-      "purl": "pkg:npm/linkify-it@6.1.0",
-      "bom-ref": "pkg:npm/linkify-it@6.1.0",
-      "description": "Links recognition library with FULL unicode support",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/linkify-it/-/linkify-it-6.1.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "c09fd3c294834cb7a90ab42861660813120a83965c85ec76367e729369859c1fba3ed7641edc8bc7be3699df5cb118e33a71a42884bf46b6d8ee5f03ea04fd57"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/markdown-it/linkify-it#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/markdown-it/linkify-it.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/markdown-it/linkify-it/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "argparse",
-      "version": "3.0.0",
-      "purl": "pkg:npm/argparse@3.0.0",
-      "bom-ref": "pkg:npm/argparse@3.0.0",
-      "description": "CLI arguments parser. Native port of python's argparse.",
-      "licenses": [
-        {
-          "license": {
-            "id": "Python-2.0"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/argparse/-/argparse-3.0.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "04ea7934cac7a8ac66abf38bafe725cf3ad1c6038a48b91c8e6916b82869ec8aeac27e2cef85a33813c88167c0fc731c0675646795c4b9ff6e52ace5a5f090e8"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/nodeca/argparse#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/nodeca/argparse.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/nodeca/argparse/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "mdurl",
-      "version": "2.1.0",
-      "purl": "pkg:npm/mdurl@2.1.0",
-      "bom-ref": "pkg:npm/mdurl@2.1.0",
-      "description": "URL utilities for markdown-it",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/mdurl/-/mdurl-2.1.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "d7e1c168ec74ce2fdd41686df2b36ff4c61ff6aaa9a8bfe4c48d215c8994e98e78ef333a4a78bc05089bb7b89f80c718b50838d5aa3722f77a72748cf3a8a7a6"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/markdown-it/mdurl#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/markdown-it/mdurl.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/markdown-it/mdurl/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "punycode.js",
-      "version": "2.3.1",
-      "purl": "pkg:npm/punycode.js@2.3.1",
-      "bom-ref": "pkg:npm/punycode.js@2.3.1",
-      "description": "A robust Punycode converter that fully complies to RFC 3492 and RFC 5891, and works on nearly all JavaScript platforms.",
-      "authors": [
-        {
-          "name": "Mathias Bynens"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/punycode.js/-/punycode.js-2.3.1.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "bb11481d4d189476210d0b55e11f49e9ae7648bc76f010a34fee227a1ec819b83054958efa49b8df5738c9195111402c026b7fb8c8d05324073443dfd0cdfd08"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://mths.be/punycode"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/mathiasbynens/punycode.js.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/mathiasbynens/punycode.js/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "uc.micro",
-      "version": "3.0.0",
-      "purl": "pkg:npm/uc.micro@3.0.0",
-      "bom-ref": "pkg:npm/uc.micro@3.0.0",
-      "description": "Micro subset of unicode data files for markdown-it projects.",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/uc.micro/-/uc.micro-3.0.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "5373e9a449257a84e721f8bc068cccc77ca3bb7a9cfcbe92c2a5a8d92c3ee783d7f8f5f4abd23eaf5526e470a6a83ee7f550d7e7fbf7bd01ff02303a75e0ddb7"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/markdown-it/uc.micro#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/markdown-it/uc.micro.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/markdown-it/uc.micro/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "devtools-api",
       "version": "7.7.10",
       "purl": "pkg:npm/%40vue/devtools-api@7.7.10",
@@ -989,6 +745,45 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/vuejs/devtools/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "argparse",
+      "version": "3.0.0",
+      "purl": "pkg:npm/argparse@3.0.0",
+      "bom-ref": "pkg:npm/argparse@3.0.0",
+      "description": "CLI arguments parser. Native port of python's argparse.",
+      "licenses": [
+        {
+          "license": {
+            "id": "Python-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/argparse/-/argparse-3.0.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "04ea7934cac7a8ac66abf38bafe725cf3ad1c6038a48b91c8e6916b82869ec8aeac27e2cef85a33813c88167c0fc731c0675646795c4b9ff6e52ace5a5f090e8"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/nodeca/argparse#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/nodeca/argparse.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/nodeca/argparse/issues"
         }
       ]
     },
@@ -1038,15 +833,58 @@
     },
     {
       "type": "library",
-      "name": "compiler-sfc",
-      "version": "3.5.21",
-      "purl": "pkg:npm/%40vue/compiler-sfc@3.5.21",
-      "bom-ref": "pkg:npm/%40vue/compiler-sfc@3.5.21",
-      "group": "@vue",
-      "description": "@vue/compiler-sfc",
+      "name": "entities",
+      "version": "8.0.0",
+      "purl": "pkg:npm/entities@8.0.0",
+      "bom-ref": "pkg:npm/entities@8.0.0",
+      "description": "Encode & decode XML and HTML entities with ease & speed",
       "authors": [
         {
-          "name": "Evan You"
+          "name": "Felix Boehm"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/entities/-/entities-8.0.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "cf07f325e710fd47a3eadbac32ac00a94ffa28bd97681d95676260e7825ee9a84d046347e8493a8378e33421747c6f4459028664d75d3635391756509ffb019c"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/fb55/entities#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/fb55/entities.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/fb55/entities/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "punycode.js",
+      "version": "2.3.1",
+      "purl": "pkg:npm/punycode.js@2.3.1",
+      "bom-ref": "pkg:npm/punycode.js@2.3.1",
+      "description": "A robust Punycode converter that fully complies to RFC 3492 and RFC 5891, and works on nearly all JavaScript platforms.",
+      "authors": [
+        {
+          "name": "Mathias Bynens"
         }
       ],
       "licenses": [
@@ -1059,25 +897,142 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/@vue/compiler-sfc/-/compiler-sfc-3.5.21.tgz",
+          "url": "https://registry.npmjs.org/punycode.js/-/punycode.js-2.3.1.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "49797293a239794181776bfc21eeed17a0031c4f64091ea6044b8fc87d67519d21e97c7a9d9236f62d76b092909b36c3cabdad507321853b79d59e9b95b9134d"
+              "content": "bb11481d4d189476210d0b55e11f49e9ae7648bc76f010a34fee227a1ec819b83054958efa49b8df5738c9195111402c026b7fb8c8d05324073443dfd0cdfd08"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://github.com/vuejs/core/tree/main/packages/compiler-sfc#readme"
+          "url": "https://mths.be/punycode"
         },
         {
           "type": "vcs",
-          "url": "git+https://github.com/vuejs/core.git"
+          "url": "git+https://github.com/mathiasbynens/punycode.js.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/vuejs/core/issues"
+          "url": "https://github.com/mathiasbynens/punycode.js/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "mdurl",
+      "version": "2.1.0",
+      "purl": "pkg:npm/mdurl@2.1.0",
+      "bom-ref": "pkg:npm/mdurl@2.1.0",
+      "description": "URL utilities for markdown-it",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/mdurl/-/mdurl-2.1.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "d7e1c168ec74ce2fdd41686df2b36ff4c61ff6aaa9a8bfe4c48d215c8994e98e78ef333a4a78bc05089bb7b89f80c718b50838d5aa3722f77a72748cf3a8a7a6"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/markdown-it/mdurl#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/markdown-it/mdurl.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/markdown-it/mdurl/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "linkify-it",
+      "version": "6.1.0",
+      "purl": "pkg:npm/linkify-it@6.1.0",
+      "bom-ref": "pkg:npm/linkify-it@6.1.0",
+      "description": "Links recognition library with FULL unicode support",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/linkify-it/-/linkify-it-6.1.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "c09fd3c294834cb7a90ab42861660813120a83965c85ec76367e729369859c1fba3ed7641edc8bc7be3699df5cb118e33a71a42884bf46b6d8ee5f03ea04fd57"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/markdown-it/linkify-it#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/markdown-it/linkify-it.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/markdown-it/linkify-it/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "uc.micro",
+      "version": "3.0.0",
+      "purl": "pkg:npm/uc.micro@3.0.0",
+      "bom-ref": "pkg:npm/uc.micro@3.0.0",
+      "description": "Micro subset of unicode data files for markdown-it projects.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/uc.micro/-/uc.micro-3.0.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "5373e9a449257a84e721f8bc068cccc77ca3bb7a9cfcbe92c2a5a8d92c3ee783d7f8f5f4abd23eaf5526e470a6a83ee7f550d7e7fbf7bd01ff02303a75e0ddb7"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/markdown-it/uc.micro#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/markdown-it/uc.micro.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/markdown-it/uc.micro/issues"
         }
       ]
     },
@@ -1115,6 +1070,51 @@
         {
           "type": "website",
           "url": "https://github.com/vuejs/core/tree/main/packages/compiler-dom#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vuejs/core.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/vuejs/core/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "compiler-sfc",
+      "version": "3.5.21",
+      "purl": "pkg:npm/%40vue/compiler-sfc@3.5.21",
+      "bom-ref": "pkg:npm/%40vue/compiler-sfc@3.5.21",
+      "group": "@vue",
+      "description": "@vue/compiler-sfc",
+      "authors": [
+        {
+          "name": "Evan You"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@vue/compiler-sfc/-/compiler-sfc-3.5.21.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "49797293a239794181776bfc21eeed17a0031c4f64091ea6044b8fc87d67519d21e97c7a9d9236f62d76b092909b36c3cabdad507321853b79d59e9b95b9134d"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/vuejs/core/tree/main/packages/compiler-sfc#readme"
         },
         {
           "type": "vcs",
@@ -1218,51 +1218,6 @@
     },
     {
       "type": "library",
-      "name": "devtools-api",
-      "version": "6.6.4",
-      "purl": "pkg:npm/%40vue/devtools-api@6.6.4",
-      "bom-ref": "pkg:npm/%40vue/devtools-api@6.6.4",
-      "group": "@vue",
-      "description": "Interact with the Vue devtools from the page",
-      "authors": [
-        {
-          "name": "Guillaume Chau"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@vue/devtools-api/-/devtools-api-6.6.4.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "b068533ccb97a99d6b54e937d91ca5ced5a47d74d186e4bbbe000abf4ce3aa4f206ec1e427bc5f15ffa36f24b1b7bb5639b109c3229a1cc8a457f5860e2426f2"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/vuejs/vue-devtools#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/vuejs/vue-devtools.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/vuejs/vue-devtools/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "shared",
       "version": "3.5.21",
       "purl": "pkg:npm/%40vue/shared@3.5.21",
@@ -1308,50 +1263,6 @@
     },
     {
       "type": "library",
-      "name": "devtools-kit",
-      "version": "7.7.10",
-      "purl": "pkg:npm/%40vue/devtools-kit@7.7.10",
-      "bom-ref": "pkg:npm/%40vue/devtools-kit@7.7.10",
-      "group": "@vue",
-      "authors": [
-        {
-          "name": "webfansplz"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@vue/devtools-kit/-/devtools-kit-7.7.10.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "dd6362d8aab8b5ba556e686697b462a61980b74dbbf688777ca35e58c408ae5b5f5fc43dd5be22e4f2fc0edc8d29dc2672c1ab5787e0f9eaf058e983d3908b23"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/vuejs/devtools#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/vuejs/devtools.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/vuejs/devtools/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "color",
       "version": "3.2.1",
       "purl": "pkg:npm/color@3.2.1",
@@ -1391,15 +1302,15 @@
     },
     {
       "type": "library",
-      "name": "parser",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/parser@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/parser@7.29.7",
-      "group": "@babel",
-      "description": "A JavaScript parser",
+      "name": "devtools-api",
+      "version": "6.6.4",
+      "purl": "pkg:npm/%40vue/devtools-api@6.6.4",
+      "bom-ref": "pkg:npm/%40vue/devtools-api@6.6.4",
+      "group": "@vue",
+      "description": "Interact with the Vue devtools from the page",
       "authors": [
         {
-          "name": "The Babel Team"
+          "name": "Guillaume Chau"
         }
       ],
       "licenses": [
@@ -1412,25 +1323,25 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/parser/-/parser-7.29.7.tgz",
+          "url": "https://registry.npmjs.org/@vue/devtools-api/-/devtools-api-6.6.4.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "8673919e33ffd4fff31449dda1e5fe9feb7547059126226933f8ceec55b7d8a9fdaf9fac241d8958e758a382fa93bf23d79782c18dc69bfef7eb807510cc2d36"
+              "content": "b068533ccb97a99d6b54e937d91ca5ced5a47d74d186e4bbbe000abf4ce3aa4f206ec1e427bc5f15ffa36f24b1b7bb5639b109c3229a1cc8a457f5860e2426f2"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://babel.dev/docs/en/next/babel-parser"
+          "url": "https://github.com/vuejs/vue-devtools#readme"
         },
         {
           "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
+          "url": "git+https://github.com/vuejs/vue-devtools.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues?utf8=%E2%9C%93&q=is%3Aissue+label%3A%22pkg%3A+parser+%28babylon%29%22+is%3Aopen"
+          "url": "https://github.com/vuejs/vue-devtools/issues"
         }
       ]
     },
@@ -1481,15 +1392,15 @@
     },
     {
       "type": "library",
-      "name": "compiler-ssr",
-      "version": "3.5.21",
-      "purl": "pkg:npm/%40vue/compiler-ssr@3.5.21",
-      "bom-ref": "pkg:npm/%40vue/compiler-ssr@3.5.21",
-      "group": "@vue",
-      "description": "@vue/compiler-ssr",
+      "name": "parser",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/parser@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/parser@7.29.7",
+      "group": "@babel",
+      "description": "A JavaScript parser",
       "authors": [
         {
-          "name": "Evan You"
+          "name": "The Babel Team"
         }
       ],
       "licenses": [
@@ -1502,25 +1413,69 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/@vue/compiler-ssr/-/compiler-ssr-3.5.21.tgz",
+          "url": "https://registry.npmjs.org/@babel/parser/-/parser-7.29.7.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "bca439a251f979d15975fe59ae512048ed63d43300e2edb74d52b95d1d6e321bf09d8bd57431749c75c951b94bfc6bf39528506e3859676baf6260e501b828f7"
+              "content": "8673919e33ffd4fff31449dda1e5fe9feb7547059126226933f8ceec55b7d8a9fdaf9fac241d8958e758a382fa93bf23d79782c18dc69bfef7eb807510cc2d36"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://github.com/vuejs/core/tree/main/packages/compiler-ssr#readme"
+          "url": "https://babel.dev/docs/en/next/babel-parser"
         },
         {
           "type": "vcs",
-          "url": "git+https://github.com/vuejs/core.git"
+          "url": "git+https://github.com/babel/babel.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/vuejs/core/issues"
+          "url": "https://github.com/babel/babel/issues?utf8=%E2%9C%93&q=is%3Aissue+label%3A%22pkg%3A+parser+%28babylon%29%22+is%3Aopen"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "devtools-kit",
+      "version": "7.7.10",
+      "purl": "pkg:npm/%40vue/devtools-kit@7.7.10",
+      "bom-ref": "pkg:npm/%40vue/devtools-kit@7.7.10",
+      "group": "@vue",
+      "authors": [
+        {
+          "name": "webfansplz"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@vue/devtools-kit/-/devtools-kit-7.7.10.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "dd6362d8aab8b5ba556e686697b462a61980b74dbbf688777ca35e58c408ae5b5f5fc43dd5be22e4f2fc0edc8d29dc2672c1ab5787e0f9eaf058e983d3908b23"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/vuejs/devtools#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vuejs/devtools.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/vuejs/devtools/issues"
         }
       ]
     },
@@ -1614,6 +1569,51 @@
     },
     {
       "type": "library",
+      "name": "compiler-ssr",
+      "version": "3.5.21",
+      "purl": "pkg:npm/%40vue/compiler-ssr@3.5.21",
+      "bom-ref": "pkg:npm/%40vue/compiler-ssr@3.5.21",
+      "group": "@vue",
+      "description": "@vue/compiler-ssr",
+      "authors": [
+        {
+          "name": "Evan You"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@vue/compiler-ssr/-/compiler-ssr-3.5.21.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "bca439a251f979d15975fe59ae512048ed63d43300e2edb74d52b95d1d6e321bf09d8bd57431749c75c951b94bfc6bf39528506e3859676baf6260e501b828f7"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/vuejs/core/tree/main/packages/compiler-ssr#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vuejs/core.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/vuejs/core/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "postcss",
       "version": "8.5.23",
       "purl": "pkg:npm/postcss@8.5.23",
@@ -1697,6 +1697,51 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/7rulnik/source-map-js/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "reactivity",
+      "version": "3.5.21",
+      "purl": "pkg:npm/%40vue/reactivity@3.5.21",
+      "bom-ref": "pkg:npm/%40vue/reactivity@3.5.21",
+      "group": "@vue",
+      "description": "@vue/reactivity",
+      "authors": [
+        {
+          "name": "Evan You"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@vue/reactivity/-/reactivity-3.5.21.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "dda87bb1af82c2bf6289810446df497d928fc380365256d8f116db9c7da618213c3701e4866959b7656c1f4a030373f4f17de325ddbda21043b57f936c3f40b0"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/vuejs/core/tree/main/packages/reactivity#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vuejs/core.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/vuejs/core/issues"
         }
       ]
     },
@@ -1791,15 +1836,14 @@
     },
     {
       "type": "library",
-      "name": "reactivity",
-      "version": "3.5.21",
-      "purl": "pkg:npm/%40vue/reactivity@3.5.21",
-      "bom-ref": "pkg:npm/%40vue/reactivity@3.5.21",
-      "group": "@vue",
-      "description": "@vue/reactivity",
+      "name": "color-convert",
+      "version": "1.9.3",
+      "purl": "pkg:npm/color-convert@1.9.3",
+      "bom-ref": "pkg:npm/color-convert@1.9.3",
+      "description": "Plain color conversion functions",
       "authors": [
         {
-          "name": "Evan You"
+          "name": "Heather Arthur"
         }
       ],
       "licenses": [
@@ -1812,25 +1856,158 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/@vue/reactivity/-/reactivity-3.5.21.tgz",
+          "url": "https://registry.npmjs.org/color-convert/-/color-convert-1.9.3.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "dda87bb1af82c2bf6289810446df497d928fc380365256d8f116db9c7da618213c3701e4866959b7656c1f4a030373f4f17de325ddbda21043b57f936c3f40b0"
+              "content": "41f014b5dfaf15d02d150702f020b262dd5f616c52a8088ad9c483eb30c1f0dddca6c10102f471a7dcce1a0e86fd21c7258013f3cfdacff22e0c600bb0d55b1a"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://github.com/vuejs/core/tree/main/packages/reactivity#readme"
+          "url": "https://github.com/Qix-/color-convert#readme"
         },
         {
           "type": "vcs",
-          "url": "git+https://github.com/vuejs/core.git"
+          "url": "git+https://github.com/Qix-/color-convert.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/vuejs/core/issues"
+          "url": "https://github.com/Qix-/color-convert/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "color-string",
+      "version": "1.9.1",
+      "purl": "pkg:npm/color-string@1.9.1",
+      "bom-ref": "pkg:npm/color-string@1.9.1",
+      "description": "Parser and generator for CSS color strings",
+      "authors": [
+        {
+          "name": "Heather Arthur"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/color-string/-/color-string-1.9.1.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "b21ad56b0405a239d9bfac4ce346a7c780a4a033fe7d9b30fd97ab10cb16fe9cb3b116c4969b0bfc30555bbab7131c70bac74d5c8de55e9ba1119933b3ca7912"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/Qix-/color-string#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/Qix-/color-string.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/Qix-/color-string/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "entities",
+      "version": "4.5.0",
+      "purl": "pkg:npm/entities@4.5.0",
+      "bom-ref": "pkg:npm/entities@4.5.0",
+      "description": "Encode & decode XML and HTML entities with ease & speed",
+      "authors": [
+        {
+          "name": "Felix Boehm"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/entities/-/entities-4.5.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "5748631f87463e1f40a39a74328458e8156ab700a3873eaf2392d3f00279e47fb883dff8bdb1f1d48e787d2d17b9c94b8431c0acf40288c8c3c6368bf1f3f187"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/fb55/entities#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git://github.com/fb55/entities.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/fb55/entities/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "types",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/types@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/types@7.29.7",
+      "group": "@babel",
+      "description": "Babel Types is a Lodash-esque utility library for AST nodes",
+      "authors": [
+        {
+          "name": "The Babel Team"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@babel/types/-/types-7.29.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "e33048c693f3a30899a6eb28164c865706a4751254cae1f93f143f3ebaa085f7455966acbe709d3df4171eb7a70da8be8322c046e9598d9a3008e8fa7e34f8a4"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://babel.dev/docs/en/next/babel-types"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/babel/babel.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/babel/babel/issues?utf8=%E2%9C%93&q=is%3Aissue+label%3A%22pkg%3A%20types%22+is%3Aopen"
         }
       ]
     },
@@ -1924,44 +2101,6 @@
     },
     {
       "type": "library",
-      "name": "perfect-debounce",
-      "version": "1.0.0",
-      "purl": "pkg:npm/perfect-debounce@1.0.0",
-      "bom-ref": "pkg:npm/perfect-debounce@1.0.0",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/perfect-debounce/-/perfect-debounce-1.0.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "c42cbd574e7918b12aa05687a02d52a0b21a2e659cb60094681696c4367bfd9c78093c97edc2502c93a893fa2b7e364087d9046298c96b877429c26609b72d64"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/unjs/perfect-debounce#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/unjs/perfect-debounce.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/unjs/perfect-debounce/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "hookable",
       "version": "5.5.3",
       "purl": "pkg:npm/hookable@5.5.3",
@@ -1996,6 +2135,44 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/unjs/hookable/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "perfect-debounce",
+      "version": "1.0.0",
+      "purl": "pkg:npm/perfect-debounce@1.0.0",
+      "bom-ref": "pkg:npm/perfect-debounce@1.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/perfect-debounce/-/perfect-debounce-1.0.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "c42cbd574e7918b12aa05687a02d52a0b21a2e659cb60094681696c4367bfd9c78093c97edc2502c93a893fa2b7e364087d9046298c96b877429c26609b72d64"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/unjs/perfect-debounce#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/unjs/perfect-debounce.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/unjs/perfect-debounce/issues"
         }
       ]
     },
@@ -2084,50 +2261,6 @@
     },
     {
       "type": "library",
-      "name": "color-convert",
-      "version": "1.9.3",
-      "purl": "pkg:npm/color-convert@1.9.3",
-      "bom-ref": "pkg:npm/color-convert@1.9.3",
-      "description": "Plain color conversion functions",
-      "authors": [
-        {
-          "name": "Heather Arthur"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/color-convert/-/color-convert-1.9.3.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "41f014b5dfaf15d02d150702f020b262dd5f616c52a8088ad9c483eb30c1f0dddca6c10102f471a7dcce1a0e86fd21c7258013f3cfdacff22e0c600bb0d55b1a"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/Qix-/color-convert#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/Qix-/color-convert.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/Qix-/color-convert/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "superjson",
       "version": "2.2.6",
       "purl": "pkg:npm/superjson@2.2.6",
@@ -2166,139 +2299,6 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/blitz-js/superjson/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "types",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/types@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/types@7.29.7",
-      "group": "@babel",
-      "description": "Babel Types is a Lodash-esque utility library for AST nodes",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/types/-/types-7.29.7.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "e33048c693f3a30899a6eb28164c865706a4751254cae1f93f143f3ebaa085f7455966acbe709d3df4171eb7a70da8be8322c046e9598d9a3008e8fa7e34f8a4"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://babel.dev/docs/en/next/babel-types"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues?utf8=%E2%9C%93&q=is%3Aissue+label%3A%22pkg%3A%20types%22+is%3Aopen"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "entities",
-      "version": "4.5.0",
-      "purl": "pkg:npm/entities@4.5.0",
-      "bom-ref": "pkg:npm/entities@4.5.0",
-      "description": "Encode & decode XML and HTML entities with ease & speed",
-      "authors": [
-        {
-          "name": "Felix Boehm"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "BSD-2-Clause"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/entities/-/entities-4.5.0.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "5748631f87463e1f40a39a74328458e8156ab700a3873eaf2392d3f00279e47fb883dff8bdb1f1d48e787d2d17b9c94b8431c0acf40288c8c3c6368bf1f3f187"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/fb55/entities#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git://github.com/fb55/entities.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/fb55/entities/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "color-string",
-      "version": "1.9.1",
-      "purl": "pkg:npm/color-string@1.9.1",
-      "bom-ref": "pkg:npm/color-string@1.9.1",
-      "description": "Parser and generator for CSS color strings",
-      "authors": [
-        {
-          "name": "Heather Arthur"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/color-string/-/color-string-1.9.1.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "b21ad56b0405a239d9bfac4ce346a7c780a4a033fe7d9b30fd97ab10cb16fe9cb3b116c4969b0bfc30555bbab7131c70bac74d5c8de55e9ba1119933b3ca7912"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/Qix-/color-string#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/Qix-/color-string.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/Qix-/color-string/issues"
         }
       ]
     },
@@ -2437,50 +2437,6 @@
     },
     {
       "type": "library",
-      "name": "rfdc",
-      "version": "1.4.1",
-      "purl": "pkg:npm/rfdc@1.4.1",
-      "bom-ref": "pkg:npm/rfdc@1.4.1",
-      "description": "Really Fast Deep Clone",
-      "authors": [
-        {
-          "name": "David Mark Clements"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/rfdc/-/rfdc-1.4.1.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "ab56f737942445459497b8b2ca569a8f790ea484f43768bd32a2044173fbdc656c37d730ddf771f17eb77049968491a2d8f3c2176dc88e9ee4b66777f6b6b020"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/davidmarkclements/rfdc#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/davidmarkclements/rfdc.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/davidmarkclements/rfdc/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "color-name",
       "version": "1.1.3",
       "purl": "pkg:npm/color-name@1.1.3",
@@ -2520,140 +2476,6 @@
         {
           "type": "issue-tracker",
           "url": "https://github.com/dfcreative/color-name/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "copy-anything",
-      "version": "4.0.5",
-      "purl": "pkg:npm/copy-anything@4.0.5",
-      "bom-ref": "pkg:npm/copy-anything@4.0.5",
-      "description": "An optimised way to copy'ing an object. A small and simple integration",
-      "authors": [
-        {
-          "name": "Luca Ban - Mesqueeb"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/copy-anything/-/copy-anything-4.0.5.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "ed5bfa6ac8d2e2030eb882da6c3de5ef7f6db1ac454260be6bba4b666d36cf2becf29f7bedb2f7cc482adf20e4e6b9fd0743db62022ffbe8e61dcb9469be1184"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/mesqueeb/copy-anything#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/mesqueeb/copy-anything.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/mesqueeb/copy-anything/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "helper-string-parser",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/helper-string-parser@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/helper-string-parser@7.29.7",
-      "group": "@babel",
-      "description": "A utility package to parse strings",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/helper-string-parser/-/helper-string-parser-7.29.7.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "3dbe628cfad9f3d1831fcdb6dcbe143fc8ba400a56c6cd3845b3d02537960d5d3f91e476137e8c78a9f2afa2d899452fa91448f88bfced2b85d56e84ac837363"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://babel.dev/docs/en/next/babel-helper-string-parser"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "name": "helper-validator-identifier",
-      "version": "7.29.7",
-      "purl": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
-      "bom-ref": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
-      "group": "@babel",
-      "description": "Validate identifier/keywords name",
-      "authors": [
-        {
-          "name": "The Babel Team"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-7.29.7.tgz",
-          "hashes": [
-            {
-              "alg": "SHA-512",
-              "content": "a9e8711a4463e7987f7dff0431a27e71887268a947231a980e7ebcdb0403ed1369f54ba3390b07a20dae4b4af6bf3af8a56fac5dff7435e79aca370d697ddf16"
-            }
-          ]
-        },
-        {
-          "type": "website",
-          "url": "https://github.com/babel/babel#readme"
-        },
-        {
-          "type": "vcs",
-          "url": "git+https://github.com/babel/babel.git"
-        },
-        {
-          "type": "issue-tracker",
-          "url": "https://github.com/babel/babel/issues"
         }
       ]
     },
@@ -2747,11 +2569,145 @@
     },
     {
       "type": "library",
-      "name": "is-what",
-      "version": "5.5.0",
-      "purl": "pkg:npm/is-what@5.5.0",
-      "bom-ref": "pkg:npm/is-what@5.5.0",
-      "description": "JS type check (TypeScript supported) functions like `isPlainObject() isArray()` etc. A simple & small integration.",
+      "name": "helper-string-parser",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/helper-string-parser@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/helper-string-parser@7.29.7",
+      "group": "@babel",
+      "description": "A utility package to parse strings",
+      "authors": [
+        {
+          "name": "The Babel Team"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@babel/helper-string-parser/-/helper-string-parser-7.29.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "3dbe628cfad9f3d1831fcdb6dcbe143fc8ba400a56c6cd3845b3d02537960d5d3f91e476137e8c78a9f2afa2d899452fa91448f88bfced2b85d56e84ac837363"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://babel.dev/docs/en/next/babel-helper-string-parser"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/babel/babel.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/babel/babel/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "rfdc",
+      "version": "1.4.1",
+      "purl": "pkg:npm/rfdc@1.4.1",
+      "bom-ref": "pkg:npm/rfdc@1.4.1",
+      "description": "Really Fast Deep Clone",
+      "authors": [
+        {
+          "name": "David Mark Clements"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/rfdc/-/rfdc-1.4.1.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "ab56f737942445459497b8b2ca569a8f790ea484f43768bd32a2044173fbdc656c37d730ddf771f17eb77049968491a2d8f3c2176dc88e9ee4b66777f6b6b020"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/davidmarkclements/rfdc#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/davidmarkclements/rfdc.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/davidmarkclements/rfdc/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "helper-validator-identifier",
+      "version": "7.29.7",
+      "purl": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
+      "bom-ref": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
+      "group": "@babel",
+      "description": "Validate identifier/keywords name",
+      "authors": [
+        {
+          "name": "The Babel Team"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-7.29.7.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "a9e8711a4463e7987f7dff0431a27e71887268a947231a980e7ebcdb0403ed1369f54ba3390b07a20dae4b4af6bf3af8a56fac5dff7435e79aca370d697ddf16"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/babel/babel#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/babel/babel.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/babel/babel/issues"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "copy-anything",
+      "version": "4.0.5",
+      "purl": "pkg:npm/copy-anything@4.0.5",
+      "bom-ref": "pkg:npm/copy-anything@4.0.5",
+      "description": "An optimised way to copy'ing an object. A small and simple integration",
       "authors": [
         {
           "name": "Luca Ban - Mesqueeb"
@@ -2767,25 +2723,25 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://registry.npmjs.org/is-what/-/is-what-5.5.0.tgz",
+          "url": "https://registry.npmjs.org/copy-anything/-/copy-anything-4.0.5.tgz",
           "hashes": [
             {
               "alg": "SHA-512",
-              "content": "a06edc81b9a0e642d869ed8de4855dde39b6b3ebe5763c49ccad6972ef4b7e91ae43ddcc412ce8d2892f4676beef2e627eb0fedb4144f05be3bacc866b3d787f"
+              "content": "ed5bfa6ac8d2e2030eb882da6c3de5ef7f6db1ac454260be6bba4b666d36cf2becf29f7bedb2f7cc482adf20e4e6b9fd0743db62022ffbe8e61dcb9469be1184"
             }
           ]
         },
         {
           "type": "website",
-          "url": "https://github.com/mesqueeb/is-what#readme"
+          "url": "https://github.com/mesqueeb/copy-anything#readme"
         },
         {
           "type": "vcs",
-          "url": "git+https://github.com/mesqueeb/is-what.git"
+          "url": "git+https://github.com/mesqueeb/copy-anything.git"
         },
         {
           "type": "issue-tracker",
-          "url": "https://github.com/mesqueeb/is-what/issues"
+          "url": "https://github.com/mesqueeb/copy-anything/issues"
         }
       ]
     },
@@ -2832,11 +2788,55 @@
           "url": "https://github.com/qix-/node-is-arrayish/issues"
         }
       ]
+    },
+    {
+      "type": "library",
+      "name": "is-what",
+      "version": "5.5.0",
+      "purl": "pkg:npm/is-what@5.5.0",
+      "bom-ref": "pkg:npm/is-what@5.5.0",
+      "description": "JS type check (TypeScript supported) functions like `isPlainObject() isArray()` etc. A simple & small integration.",
+      "authors": [
+        {
+          "name": "Luca Ban - Mesqueeb"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/is-what/-/is-what-5.5.0.tgz",
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "a06edc81b9a0e642d869ed8de4855dde39b6b3ebe5763c49ccad6972ef4b7e91ae43ddcc412ce8d2892f4676beef2e627eb0fedb4144f05be3bacc866b3d787f"
+            }
+          ]
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/mesqueeb/is-what#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/mesqueeb/is-what.git"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://github.com/mesqueeb/is-what/issues"
+        }
+      ]
     }
   ],
   "dependencies": [
     {
-      "ref": "pkg:npm/partyops-frontend@1.4.3-rc.8",
+      "ref": "pkg:npm/partyops-frontend@1.4.3-rc.9",
       "dependsOn": [
         "pkg:npm/%40arco-design/web-vue@2.57.0",
         "pkg:npm/%40firecrawl/anydoc-wasm@0.1.7",
@@ -2851,6 +2851,10 @@
     },
     {
       "ref": "pkg:npm/dayjs@1.11.13",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40firecrawl/anydoc-wasm@0.1.7",
       "dependsOn": []
     },
     {
@@ -2870,8 +2874,11 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40firecrawl/anydoc-wasm@0.1.7",
-      "dependsOn": []
+      "ref": "pkg:npm/pinia@3.0.3",
+      "dependsOn": [
+        "pkg:npm/%40vue/devtools-api@7.7.10",
+        "pkg:npm/typescript@5.9.2"
+      ]
     },
     {
       "ref": "pkg:npm/lunar-typescript@1.8.6",
@@ -2889,13 +2896,6 @@
       ]
     },
     {
-      "ref": "pkg:npm/pinia@3.0.3",
-      "dependsOn": [
-        "pkg:npm/%40vue/devtools-api@7.7.10",
-        "pkg:npm/typescript@5.9.2"
-      ]
-    },
-    {
       "ref": "pkg:npm/vue@3.5.21",
       "dependsOn": [
         "pkg:npm/%40vue/compiler-dom@3.5.21",
@@ -2906,8 +2906,10 @@
       ]
     },
     {
-      "ref": "pkg:npm/b-tween@0.3.3",
-      "dependsOn": []
+      "ref": "pkg:npm/%40arco-design/color@0.4.0",
+      "dependsOn": [
+        "pkg:npm/color@3.2.1"
+      ]
     },
     {
       "ref": "pkg:npm/vue-router@4.5.1",
@@ -2916,13 +2918,15 @@
       ]
     },
     {
-      "ref": "pkg:npm/%40arco-design/color@0.4.0",
-      "dependsOn": [
-        "pkg:npm/color@3.2.1"
-      ]
+      "ref": "pkg:npm/b-tween@0.3.3",
+      "dependsOn": []
     },
     {
       "ref": "pkg:npm/compute-scroll-into-view@1.0.20",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/number-precision@1.6.0",
       "dependsOn": []
     },
     {
@@ -2938,7 +2942,17 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/number-precision@1.6.0",
+      "ref": "pkg:npm/%40vue/devtools-api@7.7.10",
+      "dependsOn": [
+        "pkg:npm/%40vue/devtools-kit@7.7.10"
+      ]
+    },
+    {
+      "ref": "pkg:npm/argparse@3.0.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/typescript@5.9.2",
       "dependsOn": []
     },
     {
@@ -2946,11 +2960,7 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/linkify-it@6.1.0",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/argparse@3.0.0",
+      "ref": "pkg:npm/punycode.js@2.3.1",
       "dependsOn": []
     },
     {
@@ -2958,7 +2968,7 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/punycode.js@2.3.1",
+      "ref": "pkg:npm/linkify-it@6.1.0",
       "dependsOn": []
     },
     {
@@ -2966,30 +2976,21 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40vue/devtools-api@7.7.10",
+      "ref": "pkg:npm/%40vue/compiler-dom@3.5.21",
       "dependsOn": [
-        "pkg:npm/%40vue/devtools-kit@7.7.10"
+        "pkg:npm/%40vue/compiler-core@3.5.21"
       ]
-    },
-    {
-      "ref": "pkg:npm/typescript@5.9.2",
-      "dependsOn": []
     },
     {
       "ref": "pkg:npm/%40vue/compiler-sfc@3.5.21",
       "dependsOn": [
         "pkg:npm/%40babel/parser@7.29.7",
-        "pkg:npm/%40vue/compiler-core@3.5.21",
         "pkg:npm/%40vue/compiler-ssr@3.5.21",
         "pkg:npm/estree-walker@2.0.2",
         "pkg:npm/magic-string@0.30.21",
         "pkg:npm/postcss@8.5.23",
         "pkg:npm/source-map-js@1.2.1"
       ]
-    },
-    {
-      "ref": "pkg:npm/%40vue/compiler-dom@3.5.21",
-      "dependsOn": []
     },
     {
       "ref": "pkg:npm/%40vue/runtime-dom@3.5.21",
@@ -3004,12 +3005,31 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:npm/%40vue/shared@3.5.21",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/color@3.2.1",
+      "dependsOn": [
+        "pkg:npm/color-convert@1.9.3",
+        "pkg:npm/color-string@1.9.1"
+      ]
+    },
+    {
       "ref": "pkg:npm/%40vue/devtools-api@6.6.4",
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40vue/shared@3.5.21",
-      "dependsOn": []
+      "ref": "pkg:npm/%40vue/compiler-core@3.5.21",
+      "dependsOn": [
+        "pkg:npm/entities@4.5.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40babel/parser@7.29.7",
+      "dependsOn": [
+        "pkg:npm/%40babel/types@7.29.7"
+      ]
     },
     {
       "ref": "pkg:npm/%40vue/devtools-kit@7.7.10",
@@ -3024,29 +3044,6 @@
       ]
     },
     {
-      "ref": "pkg:npm/color@3.2.1",
-      "dependsOn": [
-        "pkg:npm/color-convert@1.9.3",
-        "pkg:npm/color-string@1.9.1"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40babel/parser@7.29.7",
-      "dependsOn": [
-        "pkg:npm/%40babel/types@7.29.7"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40vue/compiler-core@3.5.21",
-      "dependsOn": [
-        "pkg:npm/entities@4.5.0"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40vue/compiler-ssr@3.5.21",
-      "dependsOn": []
-    },
-    {
       "ref": "pkg:npm/magic-string@0.30.21",
       "dependsOn": [
         "pkg:npm/%40jridgewell/sourcemap-codec@1.5.5"
@@ -3054,6 +3051,10 @@
     },
     {
       "ref": "pkg:npm/estree-walker@2.0.2",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40vue/compiler-ssr@3.5.21",
       "dependsOn": []
     },
     {
@@ -3068,6 +3069,10 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:npm/%40vue/reactivity@3.5.21",
+      "dependsOn": []
+    },
+    {
       "ref": "pkg:npm/%40vue/runtime-core@3.5.21",
       "dependsOn": []
     },
@@ -3076,8 +3081,28 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40vue/reactivity@3.5.21",
+      "ref": "pkg:npm/color-convert@1.9.3",
+      "dependsOn": [
+        "pkg:npm/color-name@1.1.3"
+      ]
+    },
+    {
+      "ref": "pkg:npm/color-string@1.9.1",
+      "dependsOn": [
+        "pkg:npm/color-name@1.1.4",
+        "pkg:npm/simple-swizzle@0.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/entities@4.5.0",
       "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40babel/types@7.29.7",
+      "dependsOn": [
+        "pkg:npm/%40babel/helper-string-parser@7.29.7",
+        "pkg:npm/%40babel/helper-validator-identifier@7.29.7"
+      ]
     },
     {
       "ref": "pkg:npm/%40vue/devtools-shared@7.7.10",
@@ -3090,11 +3115,11 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/perfect-debounce@1.0.0",
+      "ref": "pkg:npm/hookable@5.5.3",
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/hookable@5.5.3",
+      "ref": "pkg:npm/perfect-debounce@1.0.0",
       "dependsOn": []
     },
     {
@@ -3106,33 +3131,9 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/color-convert@1.9.3",
-      "dependsOn": [
-        "pkg:npm/color-name@1.1.3"
-      ]
-    },
-    {
       "ref": "pkg:npm/superjson@2.2.6",
       "dependsOn": [
         "pkg:npm/copy-anything@4.0.5"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40babel/types@7.29.7",
-      "dependsOn": [
-        "pkg:npm/%40babel/helper-string-parser@7.29.7",
-        "pkg:npm/%40babel/helper-validator-identifier@7.29.7"
-      ]
-    },
-    {
-      "ref": "pkg:npm/entities@4.5.0",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/color-string@1.9.1",
-      "dependsOn": [
-        "pkg:npm/color-name@1.1.4",
-        "pkg:npm/simple-swizzle@0.2.4"
       ]
     },
     {
@@ -3148,25 +3149,7 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/rfdc@1.4.1",
-      "dependsOn": []
-    },
-    {
       "ref": "pkg:npm/color-name@1.1.3",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/copy-anything@4.0.5",
-      "dependsOn": [
-        "pkg:npm/is-what@5.5.0"
-      ]
-    },
-    {
-      "ref": "pkg:npm/%40babel/helper-string-parser@7.29.7",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
       "dependsOn": []
     },
     {
@@ -3180,11 +3163,29 @@
       ]
     },
     {
-      "ref": "pkg:npm/is-what@5.5.0",
+      "ref": "pkg:npm/%40babel/helper-string-parser@7.29.7",
       "dependsOn": []
     },
     {
+      "ref": "pkg:npm/rfdc@1.4.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40babel/helper-validator-identifier@7.29.7",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/copy-anything@4.0.5",
+      "dependsOn": [
+        "pkg:npm/is-what@5.5.0"
+      ]
+    },
+    {
       "ref": "pkg:npm/is-arrayish@0.3.4",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/is-what@5.5.0",
       "dependsOn": []
     }
   ]
