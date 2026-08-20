@@ -131,13 +131,17 @@ validate_app "$APP" || {
   exit 2
 }
 
-if ((OLD_MOVED == 1)); then
-  remove_owned_app "$BACKUP_APP"
-  remove_private_tree "$BACKUP_ROOT"
-  OLD_MOVED=0
-fi
-remove_private_tree "$STAGE_ROOT"
-/bin/rm -f "$ARCHIVE"
+# 最终 App 已完整验证即视为事务提交。提交后清理失败不能再删除健康新版本，
+# 更不能尝试恢复一个可能已被部分清理的备份；遗留私有目录会在下次安装前
+# 按同一归属校验重新收敛。
+OLD_MOVED=0
 NEW_INSTALLED=0
 trap - EXIT
+if [[ -e "$BACKUP_APP" ]]; then
+  remove_owned_app "$BACKUP_APP" ||
+    printf '%s\n' '[MACOS_ROLLBACK_CLEANUP_DEFERRED] 旧 App 备份将在下次安装时清理。' >&2
+fi
+remove_private_tree "$BACKUP_ROOT" 2>/dev/null || true
+remove_private_tree "$STAGE_ROOT" 2>/dev/null || true
+/bin/rm -f "$ARCHIVE" 2>/dev/null || true
 exit 0
