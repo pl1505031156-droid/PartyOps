@@ -403,5 +403,6 @@ else
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" "$OUTPUT"
 fi
 
-shasum -a 256 "$OUTPUT" >"$OUTPUT.sha256"
+OUTPUT_HASH="$(shasum -a 256 "$OUTPUT" | awk '{print $1}')"
+printf '%s  %s\n' "$OUTPUT_HASH" "$(basename "$OUTPUT")" >"$OUTPUT.sha256"
 printf 'PartyOps macOS %s PKG 已生成：%s\n' "$TARGET_ARCH" "$OUTPUT"

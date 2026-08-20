@@ -168,6 +168,8 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert '"code_signature": "ad-hoc"' in build
     assert '"notarized": False' in build
     assert '"real_device_validation": False' in build
+    assert "OUTPUT_HASH=\"$(shasum -a 256" in build
+    assert '"$(basename "$OUTPUT")"' in build
     assert "MACOS_RUNTIME_NATIVE_REQUIRED" in runtimes
     assert "MACOS_RUNTIME_SOURCE_HASH_MISMATCH" in runtimes
     assert "assert_thin_architecture" in runtimes
@@ -185,6 +187,8 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "BUILD-UNSIGNED-RC8" in workflow
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 2
+    assert 'cd "$(dirname "$package")"' in workflow
+    assert '"$(basename "$package").sha256"' in workflow
     assert "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830" in workflow
     assert "MACOS_INSTALLED_APP_MISSING" in workflow
     assert 'plutil -extract CFBundleIdentifier raw' in workflow

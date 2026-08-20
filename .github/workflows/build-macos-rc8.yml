@@ -115,7 +115,10 @@ jobs:
           test -f "$package"
           test -f "$package.sha256"
           test -f "$package.attestation.json"
-          shasum -a 256 -c "$package.sha256"
+          (
+            cd "$(dirname "$package")"
+            shasum -a 256 -c "$(basename "$package").sha256"
+          )
           sudo /usr/sbin/installer -pkg "$package" -target /
           app='/Applications/PartyOps.app'
           verify_installed_app() {
