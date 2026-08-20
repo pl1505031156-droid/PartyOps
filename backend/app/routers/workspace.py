@@ -40,6 +40,7 @@ from ..models import (
     utcnow,
 )
 from ..problems import ProblemException
+from ..platform_info import detect_platform_info
 from ..schemas import (
     BackgroundJobOut,
     LocalShareActionOut,
@@ -239,7 +240,7 @@ def runtime_context(
             capabilities.update({"workspace.manage_host_roots", "fleet.manage"})
     return RuntimeContextOut(
         node_mode=node_mode,
-        platform="windows" if os.name == "nt" else "uos",
+        platform=str(detect_platform_info().get("platform") or "unsupported"),
         user_role=user.role,
         device_id=device.id if device else None,
         device_name=device.name if device else "",

@@ -36,6 +36,8 @@ PLATFORMS = {
     ("linux-deb", "arm64"): "PartyOps_1.4.3-rc.8_linux_arm64.deb",
     ("linux-rpm", "amd64"): "PartyOps-1.4.3-0.rc.8.1.x86_64.rpm",
     ("linux-rpm", "arm64"): "PartyOps-1.4.3-0.rc.8.1.aarch64.rpm",
+    ("macos", "amd64"): "PartyOps_1.4.3-rc.8_macos_x86_64.pkg",
+    ("macos", "arm64"): "PartyOps_1.4.3-rc.8_macos_arm64.pkg",
 }
 RELEASE_NOTES = [
     "新增系统内检查、后台下载和一键原位升级，失败自动回滚且不丢失业务数据",
@@ -52,6 +54,7 @@ RELEASE_NOTES = [
     "修复麒麟 ARM64 安全中心反复拦截 libgcc_s.so.1：共享库不可执行，服务连续失败三次后停止重试并保留日志",
     "修复国产 Linux 和 Windows 安装成功后桌面入口静默失败：等待页面真实就绪，浏览器关联失败时显示中文诊断",
     "补齐 Windows 冻结向导的 backports.tarfile 运行依赖，最终 EXE 无法真实启动时阻断安装器生成",
+    "新增 macOS 11 及以上 Apple 芯片与 Intel 原生安装包、登录恢复和中文启动诊断",
 ]
 
 
@@ -64,7 +67,7 @@ def _hash(path: Path) -> str:
 
 
 def resolve_targets(values: list[str] | None) -> tuple[tuple[str, str], ...]:
-    """解析显式发布目标；默认仍要求完整七平台，防止无意漏发。"""
+    """解析显式发布目标；默认要求完整九个架构制品，防止无意漏发。"""
 
     if not values:
         return tuple(PLATFORMS)

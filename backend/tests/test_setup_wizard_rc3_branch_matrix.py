@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import shlex
 import sqlite3
 import subprocess
@@ -598,8 +599,12 @@ def test_bounded_log_and_desktop_marker_branch_matrix(
         setup_wizard._rotate_bounded_log(log_path, max_bytes=4, backups=4)
 
     monkeypatch.setattr(setup_wizard.sys, "platform", "darwin")
-    assert setup_wizard._publish_desktop_tool_url("wizard", "http://127.0.0.1:9") is None
-    setup_wizard._clear_desktop_tool_url(None, "http://127.0.0.1:9")
+    monkeypatch.setattr(setup_wizard, "config_root", lambda: tmp_path / "mac-config")
+    mac_marker = setup_wizard._publish_desktop_tool_url(
+        "wizard", "http://127.0.0.1:9"
+    )
+    assert mac_marker == tmp_path / "mac-config" / "wizard.url"
+    setup_wizard._clear_desktop_tool_url(mac_marker, "http://127.0.0.1:9")
 
     marker = tmp_path / "wizard.url"
     marker.write_text("http://127.0.0.1:10\n", encoding="utf-8")
@@ -1930,8 +1935,28 @@ def test_environment_executable_autostart_and_ca_platform_matrix(
     assert registry["PartyOpsAgent"] == f'"{launcher}" --background'
 
     monkeypatch.setattr(setup_wizard.sys, "platform", "darwin")
-    assert setup_wizard.install_host_autostart(environment) is None
-    assert setup_wizard.install_client_autostart(environment) is None
+    monkeypatch.setenv(
+        "PARTYOPS_MACOS_LAUNCH_AGENTS_DIR", str(tmp_path / "LaunchAgents")
+    )
+    mac_launcher = runtime / "partyops-launch-agent"
+    mac_launcher.write_bytes(b"launcher")
+    mac_environment = tmp_path / "mac-personal.env"
+    mac_environment.write_text(
+        f"PARTYOPS_MODE=personal\nPARTYOPS_DATA_DIR={shlex.quote(str(tmp_path / 'mac-data'))}\n",
+        encoding="utf-8",
+    )
+    host_agent = setup_wizard.install_host_autostart(mac_environment)
+    assert host_agent and host_agent.name == "cn.partyops.personal.plist"
+    host_payload = plistlib.loads(host_agent.read_bytes())
+    assert host_payload["Label"] == "cn.partyops.personal"
+    assert host_payload["ProgramArguments"][-2:] == ["--mode", "personal"]
+    mac_client = tmp_path / "mac-client.json"
+    mac_client.write_text(
+        json.dumps({"backup_dir": str(tmp_path / "mac-backup")}),
+        encoding="utf-8",
+    )
+    client_agent = setup_wizard.install_client_autostart(mac_client)
+    assert client_agent and client_agent.name == "cn.partyops.client.plist"
     setup_wizard.install_internal_ca(tmp_path / "missing.pem")
 
     monkeypatch.setattr(setup_wizard.sys, "platform", "linux")

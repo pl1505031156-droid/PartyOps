@@ -26,6 +26,8 @@ V3_SUFFIXES = {
     ("linux-deb", "arm64"): "_linux_arm64.deb",
     ("linux-rpm", "amd64"): ".x86_64.rpm",
     ("linux-rpm", "arm64"): ".aarch64.rpm",
+    ("macos", "amd64"): "_macos_x86_64.pkg",
+    ("macos", "arm64"): "_macos_arm64.pkg",
 }
 MAX_UPDATE_MEMBERS = 16
 MAX_UPDATE_MANIFEST_BYTES = 1024 * 1024

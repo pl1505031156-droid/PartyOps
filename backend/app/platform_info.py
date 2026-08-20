@@ -113,6 +113,19 @@ def detect_platform_info(*, os_release_path: Path = Path("/etc/os-release")) -> 
             # 1.4.x 旧服务只认识 windows/uos；精确发行版由新字段承载。
             "platform": "uos",
         }
+    if sys.platform == "darwin":
+        macos_version = platform.mac_ver()[0]
+        capabilities = [*CORE_CAPABILITIES, *AI_CAPABILITIES]
+        return {
+            "platform_family": "macos",
+            "distribution": "macos",
+            "distribution_version": macos_version[:40],
+            "package_format": "pkg",
+            "architecture": architecture,
+            "runtime_profile": "full",
+            "capabilities": capabilities,
+            "platform": "macos",
+        }
     return {
         "platform_family": sys.platform[:24],
         "distribution": sys.platform[:40],
@@ -135,4 +148,6 @@ def update_platform_key(info: dict[str, object]) -> str:
         return "windows7" if distribution == "windows7" else "windows"
     if family == "linux" and package_format in {"deb", "rpm"}:
         return f"linux-{package_format}"
+    if family == "macos" and package_format == "pkg":
+        return "macos"
     return ""

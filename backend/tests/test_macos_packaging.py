@@ -1,0 +1,247 @@
+"""macOS 构建链静态门禁；原生 Mach-O/PKG 仍必须在真实 Mac 执行。"""
+
+from __future__ import annotations
+
+import ast
+import importlib.util
+import plistlib
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from app import update_executor
+
+ROOT = Path(__file__).resolve().parents[2]
+MACOS = ROOT / "packaging" / "macos"
+
+
+def test_macos_python_entrypoints_parse_and_use_native_user_paths() -> None:
+    for name in ("launcher.py", "launch_agent_entrypoint.py", "updater_entrypoint.py"):
+        ast.parse((MACOS / name).read_text(encoding="utf-8"))
+    launcher = (MACOS / "launcher.py").read_text(encoding="utf-8")
+    agent = (MACOS / "launch_agent_entrypoint.py").read_text(encoding="utf-8")
+    assert "Library\" / \"Application Support\" / \"PartyOps" in launcher
+    assert "fcntl.flock" in launcher
+    assert "wizard.url\").unlink(missing_ok=True)" in launcher
+    assert "runtime-launch.log" in launcher
+    assert "_wait_for_client_browser" in launcher
+    assert "client-browser.url" in launcher
+    assert "/api/v1/health" in launcher
+    assert "app_version" in launcher and "payload.get(\"mode\")" in launcher
+    assert "os.execve" in agent
+    assert 'not key.startswith("PARTYOPS_")' in agent
+    assert ".partyops-personal-process.json" in agent
+    assert "--browser-url-file" in agent
+    updater = (MACOS / "updater_entrypoint.py").read_text(encoding="utf-8")
+    assert "_controlled_environment" in updater
+    assert "PARTYOPS_DATA_DIR" in updater
+    assert "--macos-install-package" in updater
+    assert "device_update_requested and not device_update_mode" in updater
+    client_agent = (ROOT / "backend" / "app" / "client_agent.py").read_text(
+        encoding="utf-8"
+    )
+    assert '[str(helper), "--macos-install-package", str(target)]' in client_agent
+
+
+def test_macos_build_is_native_strict_signed_and_notarized() -> None:
+    build = (MACOS / "build-pkg.sh").read_text(encoding="utf-8")
+    validation = (MACOS / "validate-bundle.sh").read_text(encoding="utf-8")
+    spec = (MACOS / "partyops.spec").read_text(encoding="utf-8")
+    runbook = (MACOS / "README.md").read_text(encoding="utf-8")
+    assert "MACOS_NATIVE_BUILD_REQUIRED" in build
+    assert "MACOS_BUILD_ARCH_MISMATCH" in build
+    assert "UNSIGNED-DO-NOT-PUBLISH" in build
+    assert "codesign --deep" not in build
+    assert "notarytool submit" in build
+    assert "stapler staple" in build and "stapler validate" in build
+    assert 'stapler staple "$APP"' in build
+    assert 'spctl --assess --type execute' in build
+    assert 'data.get("status") == "Accepted"' in build
+    assert "pkgutil --check-signature" in build
+    assert "/opt/homebrew|/usr/local|/Users/" in validation
+    assert "MACOS_ARCH_MISMATCH" in validation
+    assert 'bundle_identifier="cn.partyops.desktop"' in spec
+    assert '"LSMinimumSystemVersion": "11.0"' in spec
+    assert "target_arch=target_arch" in spec
+    assert 'name="partyops-updater"' in spec
+    assert "update-public-key.txt" in spec
+    assert "独立 onefile" in spec
+    assert "MACOS_UPDATE_TRUST_ROOT_MISSING" in validation
+    assert "--ownership recommended" in build
+    assert "不使用 Docker" in runbook
+    assert "UNSIGNED-DO-NOT-PUBLISH" in runbook
+    assert "两条路径实现并通过前" in runbook
+
+
+def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> None:
+    build = (MACOS / "build-pkg.sh").read_text(encoding="utf-8")
+    runtimes = (MACOS / "build-native-runtimes.sh").read_text(encoding="utf-8")
+    workflow = (
+        ROOT / ".github" / "workflows" / "build-macos-rc8.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "--unsigned-candidate" in build
+    assert "setup.py build_static bdist_wheel" in build
+    assert 'sqlite.sqlite_version != "3.51.3"' in build
+    assert "MACOS_SQLITE_FTS5_MISSING" in build
+    assert '"code_signature": "ad-hoc"' in build
+    assert '"notarized": False' in build
+    assert '"real_device_validation": False' in build
+    assert "MACOS_RUNTIME_NATIVE_REQUIRED" in runtimes
+    assert "MACOS_RUNTIME_SOURCE_HASH_MISMATCH" in runtimes
+    assert "assert_thin_architecture" in runtimes
+    assert "assert_system_dependencies_only" in runtimes
+    assert "chi_sim.traineddata" in runtimes
+    assert "llama-server" in runtimes
+
+    assert "workflow_dispatch:" in workflow
+    assert "push:" not in workflow and "pull_request:" not in workflow
+    assert "contents: read" in workflow
+    assert "macos-15-intel" in workflow and "macos-15" in workflow
+    assert "BUILD-UNSIGNED-RC8" in workflow
+    assert "sudo /usr/sbin/installer" in workflow
+    assert "gh release" not in workflow
+    action_lines = [
+        line.strip() for line in workflow.splitlines() if line.strip().startswith("uses:")
+    ]
+    assert action_lines
+    assert all(len(line.rsplit("@", 1)[-1]) == 40 for line in action_lines)
+
+
+def test_macos_is_present_in_platform_release_contracts() -> None:
+    scripts = {
+        name: (ROOT / "scripts" / name).read_text(encoding="utf-8")
+        for name in (
+            "build-platform-update-packages.py",
+            "generate-update-catalog.py",
+            "generate-release-bundle-manifest.py",
+            "validate-partyops-update.py",
+        )
+    }
+    for content in scripts.values():
+        assert "macos" in content
+        assert "arm64" in content
+        assert "amd64" in content or "x86_64" in content
+
+    script = ROOT / "scripts" / "generate-update-catalog.py"
+    spec = importlib.util.spec_from_file_location("macos_catalog_contract", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert ("macos", "amd64") in module.TARGETS
+    assert ("macos", "arm64") in module.TARGETS
+
+    update_route = (ROOT / "backend" / "app" / "routers" / "updates.py").read_text(
+        encoding="utf-8"
+    )
+    assert "if personal_update or macos_local_update:" in update_route
+
+
+def test_macos_bundle_version_rejects_links_and_invalid_plist(tmp_path: Path) -> None:
+    app = tmp_path / "PartyOps.app"
+    info = app / "Contents" / "Info.plist"
+    info.parent.mkdir(parents=True)
+    info.write_bytes(
+        plistlib.dumps({"CFBundleShortVersionString": "1.4.3-rc.8"})
+    )
+    assert update_executor._macos_bundle_version(app) == "1.4.3-rc.8"
+    info.write_text("not a plist", encoding="utf-8")
+    assert update_executor._macos_bundle_version(app) == ""
+    target = tmp_path / "real.app"
+    target.mkdir()
+    link = tmp_path / "linked.app"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("当前测试环境不允许创建目录链接")
+    assert update_executor._macos_bundle_version(link) == ""
+
+
+def test_macos_trust_requires_codesign_and_gatekeeper(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app = tmp_path / "PartyOps.app"
+    app.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "accepted", "")
+
+    monkeypatch.setattr(update_executor, "_run", fake_run)
+    assert update_executor._macos_application_is_trusted(app) is True
+    assert calls[0][:3] == ["/usr/bin/codesign", "--verify", "--strict"]
+    assert calls[1][:4] == ["/usr/sbin/spctl", "--assess", "--type", "execute"]
+
+    monkeypatch.setattr(
+        update_executor,
+        "_run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 1, "", "denied"),
+    )
+    assert update_executor._macos_application_is_trusted(app) is False
+
+
+def test_macos_production_trust_root_is_loaded_only_from_app(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "PartyOps.app" / "Contents" / "MacOS"
+    runtime.mkdir(parents=True)
+    public_key = runtime / "update-public-key.txt"
+    public_key.write_text("A" * 44, encoding="utf-8")
+    public_key.chmod(0o600)
+    monkeypatch.setattr(update_executor.sys, "platform", "darwin")
+    monkeypatch.setattr(update_executor.sys, "executable", str(runtime / "partyops-updater"))
+    monkeypatch.setattr(
+        update_executor,
+        "get_settings",
+        lambda: type("Settings", (), {"environment": "production", "update_public_key": "forged"})(),
+    )
+    assert update_executor._trusted_public_key() == "A" * 44
+
+
+def test_macos_privileged_installer_passes_path_as_osascript_argument(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    package = tmp_path / "PartyOps update 'quoted'.pkg"
+    package.write_bytes(b"pkg")
+    observed: list[str] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        observed.extend(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(update_executor, "_run", fake_run)
+    assert update_executor._run_macos_privileged_installer(package) is True
+    assert observed[:2] == ["/usr/bin/osascript", "-e"]
+    assert "quoted form of packagePath" in observed[2]
+    assert observed[-1] == str(package.resolve())
+    assert str(package.resolve()) not in observed[2]
+
+
+def test_launch_macos_update_missing_helper_fails_without_mutation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    messages: list[dict[str, object]] = []
+    monkeypatch.setattr(update_executor.sys, "platform", "darwin")
+    monkeypatch.setattr(update_executor.sys, "executable", str(tmp_path / "partyops"))
+    monkeypatch.setattr(
+        update_executor,
+        "_set_run",
+        lambda _run_id, **values: messages.append(values),
+    )
+    assert update_executor.launch_macos_update("a" * 32) is False
+    assert messages and "更新助手缺失" in str(messages[0]["message"])
+
+
+def test_execute_macos_update_rejects_non_macos_before_database_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(update_executor.sys, "platform", "win32")
+    monkeypatch.setattr(
+        update_executor.db_runtime,
+        "session_factory",
+        lambda: pytest.fail("非 macOS 不应访问数据库"),
+    )
+    assert update_executor.execute_macos_update("b" * 32) is False
+    assert update_executor.install_macos_device_package(Path("missing.partyops-update")) is False

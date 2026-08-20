@@ -250,6 +250,8 @@ def normalized_platform(value: str) -> str:
         return "uos"
     if raw in {"win32", "windows", "windows10", "windows11"}:
         return "windows"
+    if raw in {"darwin", "mac", "macos", "osx"}:
+        return "macos"
     return raw[:40]
 
 

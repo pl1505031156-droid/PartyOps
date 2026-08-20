@@ -1,0 +1,116 @@
+name: 手动构建 macOS rc.8 候选
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 输入 BUILD-UNSIGNED-RC8，确认只生成未公证测试候选
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partyops-macos-rc8-manual
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event.inputs.confirmation == 'BUILD-UNSIGNED-RC8'
+    name: ${{ matrix.architecture }} 原生构建
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: arm64
+            runner: macos-15
+          - architecture: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    env:
+      PARTYOPS_BUILD_JOBS: '3'
+      PYTHONUTF8: '1'
+    steps:
+      - name: 检出固定提交
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: 配置 Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          architecture: ${{ matrix.architecture == 'x86_64' && 'x64' || 'arm64' }}
+          cache: pip
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: 验证原生架构与准备工具
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = '${{ matrix.architecture }}'
+          python3.11 -m pip install --disable-pip-version-check 'uv==0.8.20'
+          corepack enable
+          corepack prepare 'pnpm@11.9.0' --activate
+          brew install cmake ninja
+          chmod 0755 \
+            packaging/macos/build-native-runtimes.sh \
+            packaging/macos/build-pkg.sh \
+            packaging/macos/validate-bundle.sh
+          df -h /
+
+      - name: 构建锁定的 OCR 与本地 LLM 运行时
+        shell: bash
+        run: |
+          set -euo pipefail
+          packaging/macos/build-native-runtimes.sh \
+            --architecture '${{ matrix.architecture }}' \
+            --output-root "$RUNNER_TEMP/partyops-runtimes"
+
+      - name: 冻结应用并生成未公证候选 PKG
+        shell: bash
+        env:
+          PARTYOPS_MACOS_OCR_RUNTIME: ${{ runner.temp }}/partyops-runtimes/ocr-${{ matrix.architecture }}
+          PARTYOPS_MACOS_LLAMA_RUNTIME: ${{ runner.temp }}/partyops-runtimes/llama-${{ matrix.architecture }}
+        run: |
+          set -euo pipefail
+          packaging/macos/build-pkg.sh \
+            --architecture '${{ matrix.architecture }}' \
+            --unsigned-candidate
+
+      - name: 安装后原生自检
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="artifacts/release-1.4.3-rc.8-final/PartyOps_1.4.3-rc.8_macos_${{ matrix.architecture }}.pkg"
+          test -f "$package"
+          test -f "$package.sha256"
+          test -f "$package.attestation.json"
+          shasum -a 256 -c "$package.sha256"
+          sudo /usr/sbin/installer -pkg "$package" -target /
+          app='/Applications/PartyOps.app'
+          test -d "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          packaging/macos/validate-bundle.sh "$app" '${{ matrix.architecture }}'
+          "$app/Contents/MacOS/PartyOps" --self-test
+          "$app/Contents/MacOS/partyops-launch-agent" --mode personal --self-test
+          "$app/Contents/MacOS/partyops" --package-self-test
+          sudo /usr/bin/find "$app" -depth -delete
+
+      - name: 上传待人工审核制品
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: partyops-macos-${{ matrix.architecture }}-rc8
+          path: |
+            artifacts/release-1.4.3-rc.8-final/PartyOps_1.4.3-rc.8_macos_${{ matrix.architecture }}.pkg
+            artifacts/release-1.4.3-rc.8-final/PartyOps_1.4.3-rc.8_macos_${{ matrix.architecture }}.pkg.sha256
+            artifacts/release-1.4.3-rc.8-final/PartyOps_1.4.3-rc.8_macos_${{ matrix.architecture }}.pkg.attestation.json
+          if-no-files-found: error
+          retention-days: 7

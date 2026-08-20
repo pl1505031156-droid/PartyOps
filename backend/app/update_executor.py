@@ -14,11 +14,13 @@ import os
 import base64
 import logging
 import platform
+import plistlib
 import re
 import secrets
 import shlex
 import sqlite3
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -118,6 +120,8 @@ def _update_lock_path(data_dir: Path) -> Path:
             / "PartyOps-System"
             / "update.lock"
         )
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "PartyOps" / "update.lock"
     return Path("/var/cache/partyops/update.lock")
 
 
@@ -149,6 +153,14 @@ def _secure_update_backup_root(run_id: str) -> Path:
         base = (
             Path(os.getenv("PROGRAMDATA", "C:/ProgramData"))
             / "PartyOps-System"
+            / "update-transactions"
+        )
+    elif sys.platform == "darwin":
+        base = (
+            Path.home()
+            / "Library"
+            / "Caches"
+            / "PartyOps"
             / "update-transactions"
         )
     else:
@@ -559,6 +571,10 @@ def _trusted_public_key() -> str:
         # SYSTEM 更新器只信任与冻结程序同目录、由安装器写入 Program Files
         # 的公钥；不再从业务数据目录回退，避免自定义目录 ACL 被误配后替换根信任。
         candidates = [Path(sys.executable).resolve().parent / "update-public-key.txt"]
+    elif sys.platform == "darwin":
+        # PKG 把根公钥与冻结 helper 一起安装到 root 所有的
+        # PartyOps.app。不从用户 Application Support 或环境变量回退。
+        candidates = [Path(sys.executable).resolve().parent / "update-public-key.txt"]
     for path in candidates:
         try:
             metadata = path.lstat()
@@ -855,6 +871,10 @@ def _select_artifact(
         "linux-rpm": {
             "amd64": ".x86_64.rpm",
             "arm64": ".aarch64.rpm",
+        },
+        "macos": {
+            "amd64": "_macos_x86_64.pkg",
+            "arm64": "_macos_arm64.pkg",
         },
         "uos": {
             "amd64": "_amd64.deb",
@@ -1426,6 +1446,202 @@ def _run_windows_installer(path: Path, *, service_handoff: bool = False) -> bool
         # 当前事务才能继续执行健康检查和失败回滚。
         command.append("/INAPPUPDATE=1")
     result = _run(command, timeout=900)
+    return result.returncode == 0
+
+
+def _macos_application_path() -> Path:
+    """正式环境只更新固定 Applications 目录；测试可注入隔离路径。"""
+
+    if _getenv("PARTYOPS_ENVIRONMENT") == "test":
+        override = _getenv("PARTYOPS_MACOS_APP_PATH", "").strip()
+        if override:
+            return Path(override).expanduser().resolve()
+    return Path("/Applications/PartyOps.app")
+
+
+def _macos_bundle_version(app_path: Path) -> str:
+    if app_path.is_symlink():
+        return ""
+    info = app_path / "Contents" / "Info.plist"
+    if not info.is_file() or info.is_symlink():
+        return ""
+    try:
+        payload = plistlib.loads(info.read_bytes())
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("CFBundleShortVersionString") or "").strip()
+
+
+def _macos_application_is_trusted(app_path: Path) -> bool:
+    """同时核验完整签名和 Gatekeeper。
+
+    版本号只是元数据，不能证明快照或新安装的 app 仍是官方制品。
+    """
+
+    if not app_path.is_dir() or app_path.is_symlink():
+        return False
+    signature = _run(
+        ["/usr/bin/codesign", "--verify", "--strict", "--verbose=2", str(app_path)],
+        timeout=120,
+    )
+    if signature.returncode != 0:
+        return False
+    assessment = _run(
+        ["/usr/sbin/spctl", "--assess", "--type", "execute", str(app_path)],
+        timeout=120,
+    )
+    return assessment.returncode == 0
+
+
+def _macos_process_path(pid: int) -> Path | None:
+    if sys.platform != "darwin" or pid <= 0:
+        return None
+    try:
+        import ctypes
+
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        proc_pidpath = libproc.proc_pidpath
+        proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+        proc_pidpath.restype = ctypes.c_int
+        buffer = ctypes.create_string_buffer(4096)
+        length = proc_pidpath(pid, buffer, len(buffer))
+        if length <= 0:
+            return None
+        return Path(os.fsdecode(buffer.raw[:length])).resolve()
+    except (OSError, ValueError):
+        return None
+
+
+def _stop_macos_runtime(app_path: Path, port: int) -> bool:
+    """只终止固定 app 内、真实监听 PartyOps 端口的进程。"""
+
+    if sys.platform != "darwin" or not 1024 <= port <= 65534:
+        return False
+    for label in ("cn.partyops.host", "cn.partyops.personal"):
+        _run(
+            ["/bin/launchctl", "bootout", f"gui/{os.getuid()}/{label}"],
+            timeout=30,
+        )
+    result = _run(
+        [
+            "/usr/sbin/lsof",
+            "-nP",
+            f"-iTCP:{port}",
+            "-sTCP:LISTEN",
+            "-t",
+        ],
+        timeout=15,
+    )
+    pids = {
+        int(value)
+        for value in result.stdout.split()
+        if value.isdigit() and int(value) != os.getpid()
+    }
+    expected = (app_path / "Contents" / "MacOS" / "partyops").resolve()
+    for pid in pids:
+        if _macos_process_path(pid) != expected:
+            raise RuntimeError("macOS PartyOps 端口被身份不明的进程占用，拒绝更新")
+        os.kill(pid, signal.SIGTERM)
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if all(_macos_process_path(pid) is None for pid in pids):
+            return True
+        time.sleep(0.25)
+    raise RuntimeError("macOS 旧版 PartyOps 进程未能安全退出")
+
+
+def _run_macos_privileged_installer(package_path: Path) -> bool:
+    """通过系统管理员授权安装已验签 PKG，不拼接调用者可控 shell 文本。"""
+
+    script = (
+        "on run argv\n"
+        "set packagePath to item 1 of argv\n"
+        "do shell script \"/usr/sbin/installer -pkg \" & quoted form of packagePath "
+        "& \" -target /\" with administrator privileges\n"
+        "end run"
+    )
+    result = _run(
+        ["/usr/bin/osascript", "-e", script, str(package_path.resolve())],
+        timeout=900,
+    )
+    return result.returncode == 0
+
+
+def _restore_macos_application(snapshot: Path, app_path: Path, failed: Path) -> bool:
+    """把失败的新 app 移入事务目录，再以旧签名快照恢复；不递归删除。"""
+
+    if failed.exists() or not _macos_application_is_trusted(snapshot):
+        return False
+    script = (
+        "on run argv\n"
+        "set sourcePath to item 1 of argv\n"
+        "set appPath to item 2 of argv\n"
+        "set failedPath to item 3 of argv\n"
+        "do shell script \"if [ -e \" & quoted form of appPath & \" ]; then /bin/mv \" "
+        "& quoted form of appPath & \" \" & quoted form of failedPath "
+        "& \"; fi && /usr/bin/ditto --rsrc --extattr --acl \" "
+        "& quoted form of sourcePath & \" \" & quoted form of appPath "
+        "with administrator privileges\n"
+        "end run"
+    )
+    result = _run(
+        [
+            "/usr/bin/osascript",
+            "-e",
+            script,
+            str(snapshot.resolve()),
+            str(app_path.resolve()),
+            str(failed.resolve()),
+        ],
+        timeout=900,
+    )
+    if result.returncode == 0 and _macos_application_is_trusted(app_path):
+        return True
+    # 快照在验证与特权复制之间仍可能被同账号进程替换。
+    # 如恢复后签名不再可信，必须把它移出 Applications 并放回
+    # 刚才的官方新 app，不能在失败路径留下未验签应用。
+    invalid = failed.with_name("PartyOps-invalid-restored.app")
+    recovery_script = (
+        "on run argv\n"
+        "set appPath to item 1 of argv\n"
+        "set failedPath to item 2 of argv\n"
+        "set invalidPath to item 3 of argv\n"
+        "do shell script \"if [ -e \" & quoted form of appPath "
+        "& \" ]; then /bin/mv \" & quoted form of appPath & \" \" "
+        "& quoted form of invalidPath & \"; fi; /bin/mv \" "
+        "& quoted form of failedPath & \" \" & quoted form of appPath "
+        "with administrator privileges\n"
+        "end run"
+    )
+    recovery = _run(
+        [
+            "/usr/bin/osascript",
+            "-e",
+            recovery_script,
+            str(app_path.resolve()),
+            str(failed.resolve()),
+            str(invalid.resolve()),
+        ],
+        timeout=900,
+    )
+    if recovery.returncode != 0 or not _macos_application_is_trusted(app_path):
+        logger.critical("macOS 恢复快照验签失败，且未能放回原官方 app")
+    return False
+
+
+def _launch_macos_application() -> bool:
+    result = _run(
+        [
+            "/usr/bin/open",
+            "-a",
+            str(_macos_application_path()),
+            "--args",
+            "--background",
+        ],
+        timeout=30,
+    )
     return result.returncode == 0
 
 
@@ -2341,7 +2557,6 @@ def launch_linux_personal_update(run_id: str) -> bool:
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        return True
     except OSError:
         logger.exception("Linux 个人模式更新协调器未能启动，诊断编号=%s", run_id)
         _set_run(
@@ -2351,6 +2566,348 @@ def launch_linux_personal_update(run_id: str) -> bool:
             message="更新协调器未能启动，程序和数据均未修改",
         )
         return False
+    return True
+
+
+def execute_macos_update(run_id: str) -> bool:
+    """在独立 onefile helper 中执行 macOS PKG 安装、健康确认与完整回滚。"""
+
+    if sys.platform != "darwin" or not UPDATE_RUN_ID_PATTERN.fullmatch(run_id):
+        return False
+    settings = get_settings()
+    if settings.mode not in {"host", "personal"}:
+        return False
+    with db_runtime.session_factory() as db:
+        run = db.get(UpdateRun, run_id)
+        package = db.get(UpdatePackage, run.package_id) if run else None
+        backup = db.scalar(
+            select(BackupRun)
+            .where(
+                BackupRun.kind == "pre-upgrade",
+                BackupRun.status == "completed",
+            )
+            .order_by(BackupRun.completed_at.desc(), BackupRun.created_at.desc())
+        )
+        if (
+            run is None
+            or run.target_device_id is not None
+            or run.status != UpdateStatus.APPLYING
+            or package is None
+            or not package.signature_valid
+        ):
+            return False
+        package_path = settings.updates_dir / package.filename
+        expected_hash = package.sha256
+        package_id = package.id
+        created_by = run.created_by
+        backup_path = settings.backups_dir / backup.filename if backup else None
+    if (
+        not package_path.is_file()
+        or not hmac.compare_digest(_hash(package_path), expected_hash)
+        or backup_path is None
+        or not backup_path.is_file()
+    ):
+        _set_run(
+            run_id,
+            status=UpdateStatus.FAILED,
+            progress=0,
+            message="macOS 更新包或升级前备份缺失，程序和数据均未修改",
+        )
+        return False
+
+    lock_path = _update_lock_path(settings.data_dir)
+    if not _acquire_update_lock(lock_path):
+        _set_run(
+            run_id,
+            status=UpdateStatus.FAILED,
+            progress=0,
+            message="已有 macOS 更新事务正在运行，请稍后重试",
+        )
+        return False
+    transaction: Path | None = None
+    app_path = _macos_application_path()
+    previous_version = ""
+    mutation_started = False
+    runtime_stopped = False
+    try:
+        transaction = _secure_update_backup_root(run_id)
+        staged_update = transaction / "verified.partyops-update"
+        _cache_verified_rollback_artifact(package_path, staged_update)
+        manifest = _read_update_manifest(staged_update)
+        if not _verify_manifest_signature(manifest):
+            raise RuntimeError("macOS 更新包发布签名无效")
+        _assert_update_not_downgrade(manifest)
+        if _manifest_platform_name(manifest) != "macos":
+            raise RuntimeError("更新包与当前 macOS 平台不匹配")
+        target_version = str(manifest.get("version") or "").strip()
+        previous_version = _macos_bundle_version(app_path)
+        if not previous_version or not _macos_application_is_trusted(app_path):
+            raise RuntimeError("未找到可验签、可回滚的 PartyOps.app 正式安装")
+        with tempfile.TemporaryDirectory(prefix="payload-", dir=transaction) as temporary:
+            artifact = _select_artifact(
+                staged_update,
+                manifest,
+                _architecture(),
+                Path(temporary) / "PartyOps-update.pkg",
+                "macos",
+            )
+            signature = _run(
+                ["/usr/sbin/pkgutil", "--check-signature", str(artifact)], timeout=60
+            )
+            if signature.returncode != 0 or "Developer ID Installer" not in (
+                signature.stdout + signature.stderr
+            ):
+                raise RuntimeError("macOS PKG 没有有效的 Developer ID Installer 签名")
+            assessment = _run(
+                ["/usr/sbin/spctl", "--assess", "--type", "install", str(artifact)],
+                timeout=60,
+            )
+            if assessment.returncode != 0:
+                raise RuntimeError("macOS Gatekeeper 拒绝更新安装包")
+            if previous_version == target_version:
+                _complete_personal_update_run(
+                    run_id, message="macOS 已是目标版本，无需重复安装"
+                )
+                _remove_secure_update_transaction(transaction)
+                transaction = None
+                return True
+            snapshot = transaction / "PartyOps-previous.app"
+            failed_app = transaction / "PartyOps-failed.app"
+            _set_run(
+                run_id,
+                status=UpdateStatus.APPLYING,
+                progress=25,
+                message="正在创建 macOS 应用与数据回滚快照",
+            )
+            copy_result = _run(
+                [
+                    "/usr/bin/ditto",
+                    "--rsrc",
+                    "--extattr",
+                    "--acl",
+                    str(app_path),
+                    str(snapshot),
+                ],
+                timeout=900,
+            )
+            if (
+                copy_result.returncode != 0
+                or _macos_bundle_version(snapshot) != previous_version
+                or not _macos_application_is_trusted(snapshot)
+            ):
+                raise RuntimeError("macOS 旧版应用快照创建或回读失败")
+            db_runtime.dispose()
+            runtime_stopped = _stop_macos_runtime(app_path, settings.port)
+            _set_run(
+                run_id,
+                status=UpdateStatus.APPLYING,
+                progress=45,
+                message="等待 macOS 管理员确认并安装更新",
+            )
+            mutation_started = True
+            if not _run_macos_privileged_installer(artifact):
+                raise RuntimeError("macOS 管理员授权未完成或系统安装器拒绝更新")
+            if (
+                _macos_bundle_version(app_path) != target_version
+                or not _macos_application_is_trusted(app_path)
+            ):
+                raise RuntimeError("macOS 安装器返回成功，但应用版本或签名回读不一致")
+            if not _launch_macos_application() or not _wait_for_health(target_version, 180):
+                raise RuntimeError("macOS 新版应用未通过真实健康检查")
+
+        db_runtime.rebuild()
+        _set_run(
+            run_id,
+            status=UpdateStatus.COMPLETED,
+            progress=100,
+            message="macOS 应用已更新完成",
+        )
+        _remove_secure_update_transaction(transaction)
+        transaction = None
+        return True
+    except Exception:
+        logger.exception("macOS 更新失败，诊断编号=%s", run_id)
+        restored = False
+        if transaction is not None and mutation_started and previous_version:
+            try:
+                _stop_macos_runtime(app_path, settings.port)
+                snapshot = transaction / "PartyOps-previous.app"
+                failed_app = transaction / "PartyOps-failed.app"
+                restored = _restore_macos_application(snapshot, app_path, failed_app)
+                if restored:
+                    db_runtime.dispose()
+                    restore_database_from_upgrade_backup(backup_path)
+                    restored = (
+                        _macos_bundle_version(app_path) == previous_version
+                        and _launch_macos_application()
+                        and _wait_for_health(previous_version, 180)
+                    )
+                    db_runtime.rebuild()
+            except Exception:
+                logger.exception("macOS 自动回滚失败，诊断编号=%s", run_id)
+                restored = False
+        elif runtime_stopped:
+            restored = _launch_macos_application() and _wait_for_health(
+                previous_version or None, 90
+            )
+        if restored:
+            _record_restored_personal_update_run(
+                run_id,
+                package_id=package_id,
+                created_by=created_by,
+                message=f"macOS 更新未通过，已恢复上一版本（诊断编号 {run_id[:8]}）",
+            )
+            _remove_secure_update_transaction(transaction)
+            transaction = None
+        else:
+            _set_run(
+                run_id,
+                status=UpdateStatus.FAILED,
+                progress=0,
+                message=f"macOS 更新在安全边界内停止（诊断编号 {run_id[:8]}）",
+            )
+        return False
+    finally:
+        lock_path.unlink(missing_ok=True)
+
+
+def launch_macos_update(run_id: str) -> bool:
+    """从业务进程启动独立 onefile helper，允许替换当前 `.app` 后继续回滚。"""
+
+    if sys.platform != "darwin" or not UPDATE_RUN_ID_PATTERN.fullmatch(run_id):
+        return False
+    updater = Path(sys.executable).resolve().with_name("partyops-updater")
+    if not updater.is_file() or updater.is_symlink():
+        _set_run(
+            run_id,
+            status=UpdateStatus.FAILED,
+            progress=0,
+            message="macOS 更新助手缺失，程序和数据均未修改",
+        )
+        return False
+    settings = get_settings()
+    log_path = settings.data_dir / "updater.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with log_path.open("ab") as log:
+            subprocess.Popen(  # noqa: S603 - 固定为同一已签名 app 内的更新 helper。
+                [str(updater), "--macos-run-id", run_id],
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+    except OSError:
+        logger.exception("macOS 更新助手未能启动，诊断编号=%s", run_id)
+        _set_run(
+            run_id,
+            status=UpdateStatus.FAILED,
+            progress=0,
+            message="macOS 更新助手未能启动，程序和数据均未修改",
+        )
+        return False
+    return True
+
+
+def install_macos_device_package(package_path: Path) -> bool:
+    """为 macOS 协同 Agent 事务替换 app；业务数据和协同配置始终留在用户目录。"""
+
+    if (
+        sys.platform != "darwin"
+        or not package_path.is_file()
+        or package_path.is_symlink()
+    ):
+        return False
+    transaction_id = secrets.token_hex(16)
+    lock_path = _update_lock_path(Path.home())
+    if not _acquire_update_lock(lock_path):
+        return False
+    transaction: Path | None = None
+    app_path = _macos_application_path()
+    previous_version = ""
+    mutation_started = False
+    try:
+        transaction = _secure_update_backup_root(transaction_id)
+        staged_update = transaction / "verified.partyops-update"
+        _cache_verified_rollback_artifact(package_path, staged_update)
+        manifest = _read_update_manifest(staged_update)
+        if not _verify_manifest_signature(manifest):
+            raise RuntimeError("macOS 协同更新包发布签名无效")
+        _assert_update_not_downgrade(manifest)
+        if _manifest_platform_name(manifest) != "macos":
+            raise RuntimeError("协同更新包与当前 macOS 平台不匹配")
+        target_version = str(manifest.get("version") or "").strip()
+        previous_version = _macos_bundle_version(app_path)
+        if not previous_version or not _macos_application_is_trusted(app_path):
+            raise RuntimeError("当前 PartyOps.app 不是可验签、可回滚的正式安装")
+        with tempfile.TemporaryDirectory(prefix="payload-", dir=transaction) as temporary:
+            artifact = _select_artifact(
+                staged_update,
+                manifest,
+                _architecture(),
+                Path(temporary) / "PartyOps-update.pkg",
+                "macos",
+            )
+            signature = _run(
+                ["/usr/sbin/pkgutil", "--check-signature", str(artifact)], timeout=60
+            )
+            if signature.returncode != 0 or "Developer ID Installer" not in (
+                signature.stdout + signature.stderr
+            ):
+                raise RuntimeError("macOS 协同 PKG 没有有效的 Developer ID Installer 签名")
+            assessment = _run(
+                ["/usr/sbin/spctl", "--assess", "--type", "install", str(artifact)],
+                timeout=60,
+            )
+            if assessment.returncode != 0:
+                raise RuntimeError("macOS Gatekeeper 拒绝协同更新安装包")
+            if previous_version == target_version:
+                _remove_secure_update_transaction(transaction)
+                transaction = None
+                return True
+            snapshot = transaction / "PartyOps-previous.app"
+            copy_result = _run(
+                [
+                    "/usr/bin/ditto",
+                    "--rsrc",
+                    "--extattr",
+                    "--acl",
+                    str(app_path),
+                    str(snapshot),
+                ],
+                timeout=900,
+            )
+            if (
+                copy_result.returncode != 0
+                or _macos_bundle_version(snapshot) != previous_version
+                or not _macos_application_is_trusted(snapshot)
+            ):
+                raise RuntimeError("macOS 协同旧版 app 快照未通过验签")
+            mutation_started = True
+            if not _run_macos_privileged_installer(artifact):
+                raise RuntimeError("macOS 管理员授权未完成或系统安装器拒绝协同更新")
+            if (
+                _macos_bundle_version(app_path) != target_version
+                or not _macos_application_is_trusted(app_path)
+            ):
+                raise RuntimeError("macOS 协同更新后的版本或签名回读不一致")
+        _remove_secure_update_transaction(transaction)
+        transaction = None
+        return True
+    except Exception:
+        logger.exception("macOS 协同设备更新失败")
+        if transaction is not None and mutation_started and previous_version:
+            snapshot = transaction / "PartyOps-previous.app"
+            failed = transaction / "PartyOps-failed.app"
+            if _restore_macos_application(snapshot, app_path, failed):
+                _remove_secure_update_transaction(transaction)
+                transaction = None
+        elif transaction is not None:
+            _remove_secure_update_transaction(transaction)
+            transaction = None
+        return False
+    finally:
+        lock_path.unlink(missing_ok=True)
 
 
 def execute_host_update(run_id: str) -> bool:
@@ -2949,6 +3506,8 @@ def main() -> None:
     parser.add_argument("--run-id", default="")
     parser.add_argument("--personal-run-id", default="")
     parser.add_argument("--linux-personal-run-id", default="")
+    parser.add_argument("--macos-run-id", default="")
+    parser.add_argument("--macos-install-package", type=Path)
     parser.add_argument("--linux-personal-transaction", default="")
     parser.add_argument("--personal-package", type=Path)
     parser.add_argument("--personal-backup", type=Path)
@@ -2967,6 +3526,10 @@ def main() -> None:
         raise SystemExit(
             0 if execute_linux_personal_update(args.linux_personal_run_id) else 1
         )
+    if args.macos_run_id:
+        raise SystemExit(0 if execute_macos_update(args.macos_run_id) else 1)
+    if args.macos_install_package:
+        raise SystemExit(0 if install_macos_device_package(args.macos_install_package) else 1)
     if args.linux_personal_transaction:
         if args.personal_package is None or args.personal_backup is None:
             raise SystemExit(LINUX_PERSONAL_TRANSACTION_FAILED)

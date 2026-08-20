@@ -11,6 +11,8 @@ import ipaddress
 import json
 import math
 import os
+import platform as stdlib_platform
+import plistlib
 import re
 import signal
 import secrets
@@ -98,11 +100,12 @@ def _windows_policy_blocked(detail: str, returncode: int = 0) -> bool:
 
 
 def config_root() -> Path:
-    root = (
-        Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "PartyOps"
-        if os.name == "nt"
-        else Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config")) / "partyops"
-    )
+    if os.name == "nt":
+        root = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "PartyOps"
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support" / "PartyOps" / "Config"
+    else:
+        root = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config")) / "partyops"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -118,6 +121,8 @@ def installer_default_data_dir() -> Path:
 
     control_root = Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps"
     fallback = Path(os.getenv("PROGRAMDATA", "C:/ProgramData")) / "PartyOps-Data"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "PartyOps" / "HostData"
     if os.name != "nt":
         return Path.home() / "PartyOps-数据"
     marker = control_root / "install-data-dir.txt"
@@ -165,7 +170,10 @@ def _rotate_bounded_log(
 def _publish_desktop_tool_url(tool: str, url: str) -> Path | None:
     """向受支持桌面启动器发布只绑定回环地址的本地工具入口。"""
 
-    if sys.platform != "win32" and not sys.platform.startswith("linux"):
+    if (
+        sys.platform not in {"win32", "darwin"}
+        and not sys.platform.startswith("linux")
+    ):
         return None
     parsed = urllib.parse.urlparse(url)
     if (
@@ -213,6 +221,8 @@ def personal_default_data_dir() -> Path:
     if os.name == "nt":
         base = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
         return base / "PartyOps-个人数据"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "PartyOps" / "PersonalData"
     return (
         Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local" / "share"))
         / "partyops-personal"
@@ -1418,6 +1428,22 @@ def _process_executable_matches(pid: int, expected: Path) -> bool:
     if pid <= 0:
         return False
     expected_text = os.path.normcase(str(expected.resolve()))
+    if sys.platform == "darwin":
+        try:
+            import ctypes
+
+            libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+            proc_pidpath = libproc.proc_pidpath
+            proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+            proc_pidpath.restype = ctypes.c_int
+            buffer = ctypes.create_string_buffer(4096)
+            length = proc_pidpath(pid, buffer, len(buffer))
+            if length <= 0:
+                return False
+            actual = Path(os.fsdecode(buffer.raw[:length])).resolve()
+            return os.path.normcase(str(actual)) == expected_text
+        except (OSError, ValueError):
+            return False
     if os.name != "nt":
         try:
             return (
@@ -1676,9 +1702,17 @@ def write_personal_config(data_dir: Path, port: int = 18775) -> Path:
     mode_path = config_root() / "mode.json"
     marker_path = resolved_data_dir / ".partyops-data-root.json"
     linux_autostart_path = config_root().parent / "autostart" / "partyops-host.desktop"
+    macos_autostart_paths = (
+        tuple(
+            _macos_launch_agent_path(MACOS_AGENT_LABELS[mode])
+            for mode in ("host", "personal", "client")
+        )
+        if sys.platform == "darwin"
+        else ()
+    )
     transaction_paths = (path, mode_path, marker_path) + (
         (linux_autostart_path,) if sys.platform.startswith("linux") else ()
-    )
+    ) + macos_autostart_paths
     previous_files = {
         candidate: candidate.read_text(encoding="utf-8")
         if candidate.is_file()
@@ -1745,9 +1779,12 @@ def write_personal_config(data_dir: Path, port: int = 18775) -> Path:
         _write_data_root_marker(resolved_data_dir, "personal")
         write_mode_config("personal", config_path=path)
         clear_windows_client_autostart()
-        if sys.platform.startswith("linux"):
+        if sys.platform == "darwin":
+            _remove_macos_launch_agent("client")
             install_host_autostart(path)
-        else:
+        elif sys.platform.startswith("linux"):
+            install_host_autostart(path)
+        elif sys.platform == "win32":
             install_windows_personal_autostart()
         finalize_windows_host_switch(host_deactivated)
     except Exception as original_error:
@@ -1768,7 +1805,11 @@ def write_personal_config(data_dir: Path, port: int = 18775) -> Path:
         try:
             # 提交失败时先撤销本次可能写入的个人自启动，再精确恢复旧角色。
             clear_windows_personal_autostart()
-            if previous_mode == "personal":
+            if sys.platform == "darwin":
+                # 三个 plist 已由上面的事务快照逐项恢复；配置阶段尚未
+                # bootstrap，不再删除刚恢复的旧角色启动项。
+                pass
+            elif previous_mode == "personal":
                 install_windows_personal_autostart()
             elif (
                 previous_mode == "client" and (config_root() / "client.json").is_file()
@@ -2319,6 +2360,39 @@ def install_internal_ca(ca_path: Path) -> None:
                 "浏览器安全证书安装未完成。请确认当前账号允许写入用户证书库后重试。"
             )
         return
+    if sys.platform == "darwin":
+        trusted_root = (config_root() / "pki").resolve()
+        resolved_ca = ca_path.expanduser().resolve()
+        if not resolved_ca.is_file() or resolved_ca.is_symlink():
+            return
+        try:
+            resolved_ca.relative_to(trusted_root)
+        except ValueError as exc:
+            raise ValueError("macOS 只允许信任 PartyOps 受控配置目录中的内部 CA") from exc
+        keychain = Path.home() / "Library" / "Keychains" / "login.keychain-db"
+        result = subprocess.run(
+            [
+                "/usr/bin/security",
+                "add-trusted-cert",
+                "-d",
+                "-r",
+                "trustRoot",
+                "-k",
+                str(keychain),
+                str(resolved_ca),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            detail = (result.stdout + result.stderr).strip()[-1000:]
+            raise ValueError(
+                "PartyOps 内部证书未能写入当前用户钥匙串。请解锁登录钥匙串后重试；"
+                f"系统诊断：{detail or result.returncode}"
+            )
+        return
     if not sys.platform.startswith("linux"):
         return
     helper = runtime_root() / "install-internal-ca.sh"
@@ -2752,8 +2826,144 @@ def launch_personal(config_path: Path) -> str:
     )
 
 
+MACOS_AGENT_LABELS = {
+    "host": "cn.partyops.host",
+    "personal": "cn.partyops.personal",
+    "client": "cn.partyops.client",
+}
+
+
+def _macos_launch_agent_path(label: str) -> Path:
+    if label not in MACOS_AGENT_LABELS.values():
+        raise ValueError("macOS 启动项标识不受支持")
+    root = Path(
+        os.getenv(
+            "PARTYOPS_MACOS_LAUNCH_AGENTS_DIR",
+            Path.home() / "Library" / "LaunchAgents",
+        )
+    )
+    return root / f"{label}.plist"
+
+
+def _write_macos_launch_agent(
+    *,
+    mode: str,
+    program_arguments: list[str],
+    log_path: Path,
+) -> Path:
+    """写入当前用户 LaunchAgent；不在配置事务中隐式申请管理员权限。"""
+
+    label = MACOS_AGENT_LABELS.get(mode)
+    if label is None or not program_arguments:
+        raise ValueError("macOS 启动项模式无效")
+    executable = Path(program_arguments[0]).expanduser().resolve()
+    if not executable.is_file() or executable.is_symlink():
+        raise FileNotFoundError(f"macOS 启动程序不存在或不是普通文件：{executable}")
+    resolved_log = log_path.expanduser().resolve()
+    resolved_log.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "Label": label,
+        "ProgramArguments": [str(executable), *program_arguments[1:]],
+        "RunAtLoad": True,
+        "KeepAlive": {"Crashed": True},
+        "ThrottleInterval": 15,
+        "ProcessType": "Background",
+        "StandardOutPath": str(resolved_log),
+        "StandardErrorPath": str(resolved_log),
+    }
+    content = plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=True).decode(
+        "utf-8"
+    )
+    path = _macos_launch_agent_path(label)
+    _write_private(path, content)
+    return path
+
+
+def _activate_macos_launch_agent(path: Path, label: str) -> None:
+    """以当前图形会话加载已校验的 LaunchAgent，并保留 launchctl 诊断。"""
+
+    if (
+        sys.platform != "darwin"
+        or os.name != "posix"
+        or stdlib_platform.system() != "Darwin"
+        or os.getenv("PARTYOPS_ENVIRONMENT") == "test"
+    ):
+        return
+    domain = f"gui/{os.getuid()}"
+    subprocess.run(
+        ["/bin/launchctl", "bootout", f"{domain}/{label}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    result = subprocess.run(
+        ["/bin/launchctl", "bootstrap", domain, str(path.resolve())],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        detail = (result.stdout + result.stderr).strip()[-2000:]
+        raise ValueError(
+            "macOS 登录启动项未能加载。请在系统设置的登录项中允许 PartyOps 后重试；"
+            f"launchctl 诊断：{detail or result.returncode}"
+        )
+    result = subprocess.run(
+        ["/bin/launchctl", "kickstart", "-k", f"{domain}/{label}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        detail = (result.stdout + result.stderr).strip()[-2000:]
+        raise ValueError(
+            "macOS 登录启动项已经安装，但首次启动失败；"
+            f"launchctl 诊断：{detail or result.returncode}"
+        )
+
+
+def _remove_macos_launch_agent(mode: str) -> None:
+    label = MACOS_AGENT_LABELS.get(mode)
+    if label is None:
+        raise ValueError("macOS 启动项模式无效")
+    path = _macos_launch_agent_path(label)
+    if (
+        sys.platform == "darwin"
+        and os.name == "posix"
+        and stdlib_platform.system() == "Darwin"
+        and os.getenv("PARTYOPS_ENVIRONMENT") != "test"
+    ):
+        subprocess.run(
+            ["/bin/launchctl", "bootout", f"gui/{os.getuid()}/{label}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    path.unlink(missing_ok=True)
+
+
 def install_host_autostart(config_path: Path) -> Path | None:
-    """在 Linux 登录后自动恢复用户模式主机，不额外打开浏览器。"""
+    """在 Linux/macOS 登录后恢复主机或个人模式，不额外打开浏览器。"""
+
+    if sys.platform == "darwin":
+        environment = load_host_environment(config_path)
+        mode = environment.get("PARTYOPS_MODE", "")
+        if mode not in {"host", "personal"}:
+            raise ValueError("macOS 主机启动项只接受 host 或 personal 配置")
+        launcher = _executable("partyops-launch-agent")
+        data_dir = Path(environment["PARTYOPS_DATA_DIR"])
+        path = _write_macos_launch_agent(
+            mode=mode,
+            program_arguments=[str(launcher), "--mode", mode],
+            log_path=data_dir / "launcher.log",
+        )
+        other_mode = "personal" if mode == "host" else "host"
+        _remove_macos_launch_agent(other_mode)
+        return path
 
     if not sys.platform.startswith("linux"):
         return None
@@ -2814,6 +3024,21 @@ def install_client_autostart(config_path: Path) -> Path | None:
         ) as key:
             winreg.SetValueEx(key, "PartyOpsAgent", 0, winreg.REG_SZ, command)
         return config_path
+    if sys.platform == "darwin":
+        launcher = _executable("partyops-launch-agent")
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        destination_text = str(config.get("backup_dir") or "").strip()
+        if not destination_text:
+            raise ValueError("macOS 协同配置缺少备份目录，拒绝创建无日志启动项")
+        destination = Path(destination_text).expanduser().resolve()
+        path = _write_macos_launch_agent(
+            mode="client",
+            program_arguments=[str(launcher), "--mode", "client"],
+            log_path=destination / "client-agent.log",
+        )
+        for other_mode in ("host", "personal"):
+            _remove_macos_launch_agent(other_mode)
+        return path
     if not sys.platform.startswith("linux"):
         return None
     executable = _executable("partyops-client")

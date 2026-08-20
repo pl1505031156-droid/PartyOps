@@ -64,6 +64,7 @@ from ..upgrades import create_pre_upgrade_backup
 from ..update_executor import (
     _trusted_public_key,
     launch_linux_personal_update,
+    launch_macos_update,
     launch_windows_personal_update,
 )
 
@@ -106,6 +107,13 @@ V3_PLATFORM_ARTIFACTS = {
     "linux-rpm": {
         "amd64": ".x86_64.rpm",
         "arm64": ".aarch64.rpm",
+    },
+}
+V4_PLATFORM_ARTIFACTS = {
+    **V3_PLATFORM_ARTIFACTS,
+    "macos": {
+        "amd64": "_macos_x86_64.pkg",
+        "arm64": "_macos_arm64.pkg",
     },
 }
 
@@ -906,7 +914,7 @@ def _validate_v4_platform_artifacts(manifest: dict, artifacts: dict) -> None:
 
     platform_name = str(manifest.get("target_platform") or "")
     architecture = str(manifest.get("target_architecture") or "")
-    expected_architectures = V3_PLATFORM_ARTIFACTS.get(platform_name)
+    expected_architectures = V4_PLATFORM_ARTIFACTS.get(platform_name)
     suffix = (
         expected_architectures.get(architecture) if expected_architectures else None
     )
@@ -1355,6 +1363,7 @@ def apply_update(
     personal_update = settings.mode == "personal" and payload.include_host
     windows_personal_update = personal_update and os.name == "nt"
     linux_personal_update = personal_update and sys.platform.startswith("linux")
+    macos_local_update = payload.include_host and sys.platform == "darwin"
     active_host_run = db.scalar(
         select(UpdateRun).where(
             UpdateRun.target_device_id.is_(None),
@@ -1368,9 +1377,10 @@ def apply_update(
             "主机已有升级任务正在运行",
             "请等待当前升级完成后再试。",
         )
-    if personal_update:
-        # 先通过活动任务门禁，再由当前用户权限创建可校验备份，避免并发
-        # 双击在被唯一约束拒绝前仍同时生成两份大型数据库快照。
+    if personal_update or macos_local_update:
+        # 先通过活动任务门禁，再创建可校验备份。macOS 的个人
+        # 与主机模式都由同一个本机 PKG 事务替换 `.app`，因此两者
+        # 都必须在启动 helper 之前完成数据库快照。
         create_pre_upgrade_backup()
     devices = []
     target_ids = payload.target_device_ids
@@ -1462,6 +1472,9 @@ def apply_update(
                 "已完成升级前备份，等待 Windows 管理员确认"
                 if windows_personal_update
                 else (
+                    "已完成升级前备份，等待 macOS 系统授权安装并自动回滚"
+                    if macos_local_update
+                    else
                     "已完成升级前备份，等待系统更新服务校验、安装并自动回滚"
                     if personal_update
                     else "已进入主机升级队列；终端将在主机健康检查通过后升级。"
@@ -1528,6 +1541,14 @@ def apply_update(
             target=launch_linux_personal_update,
             args=(personal_run.id,),
             name="partyops-personal-update-polkit",
+            daemon=True,
+        ).start()
+    elif macos_local_update:
+        local_run = next(run for run in runs if run.target_device_id is None)
+        threading.Thread(
+            target=launch_macos_update,
+            args=(local_run.id,),
+            name="partyops-macos-update-helper",
             daemon=True,
         ).start()
     return runs

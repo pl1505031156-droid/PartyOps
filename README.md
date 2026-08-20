@@ -28,10 +28,10 @@
 | 发布时间 | 以 GitHub Release 与官网显示的北京时间为准 |
 | 冻结源码 | 不可变标签 [`v1.4.3-rc.8`](https://github.com/pl1505031156-droid/PartyOps/tree/v1.4.3-rc.8) |
 | 官方网站 | [https://www.partyops.cn/](https://www.partyops.cn/) |
-| 制品校验 | 七个主安装包的文件大小与 SHA-256 以同一 Release、官网和机器可读清单为准 |
+| 制品校验 | 当前已发布的七个 Windows/Linux 主安装包以同一 Release、官网和机器可读清单为准；macOS 双架构 PKG 正在原生验证，尚未公开发布 |
 | 发布边界 | Windows 10/11 已在当前 Win11 构建机执行冻结运行验收；Win7 与国产 Linux 明确标注未真机验证 |
 
-Release 同时提供七个主安装包、可选 `.sha256`、Ed25519 签名应用内更新包、format v3 更新目录、发布清单、SBOM、VEX、安全门禁和验收记录。历史版本变化仍在 `CHANGELOG.md` 中追溯。
+Release 当前提供七个 Windows/Linux 主安装包、可选 `.sha256`、Ed25519 签名应用内更新包、format v3 更新目录、发布清单、SBOM、VEX、安全门禁和验收记录。macOS 11+ Apple Silicon/Intel 源码适配与原生 PKG 构建链已启动，只有通过对应架构 Mac 的签名、公证、安装、双击启动和回滚验证后才会增加到公开下载。历史版本变化仍在 `CHANGELOG.md` 中追溯。
 
 ## 30 秒了解 PartyOps
 

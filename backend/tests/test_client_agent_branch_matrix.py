@@ -131,7 +131,7 @@ def test_ssl_metadata_request_and_enrollment_errors(monkeypatch, tmp_path: Path)
     metadata = client_agent.device_metadata()
     assert metadata["architecture"] == "mips-special-arc" and metadata["platform"] == "uos" and metadata["disk_free_bytes"] == 0
     monkeypatch.setattr(client_agent.sys, "platform", "darwin")
-    assert client_agent.device_metadata()["platform"] == "darwin"
+    assert client_agent.device_metadata()["platform"] == "macos"
 
     captured = []
     monkeypatch.setattr(client_agent, "_urlopen", lambda request, timeout: captured.append((request, timeout)) or _Response(b"[]"))

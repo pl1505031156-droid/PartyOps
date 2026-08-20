@@ -61,6 +61,11 @@ def test_default_data_dir_all_platform_branches(
         "os",
         SimpleNamespace(name="posix", getenv=os.getenv),
     )
+    monkeypatch.setattr(config.sys, "platform", "darwin")
+    assert config.default_data_dir() == (
+        Path.home() / "Library" / "Application Support" / "PartyOps" / "Data"
+    ).resolve()
+    monkeypatch.setattr(config.sys, "platform", "linux")
     assert config.default_data_dir() == (tmp_path / "xdg" / "partyops").resolve()
 
 
@@ -96,6 +101,31 @@ def test_platform_info_invalid_os_release_and_platform_matrix(
     linux = platform_info.detect_platform_info(os_release_path=release)
     assert linux["architecture"] == "arm64"
     assert platform_info.update_platform_key(linux) == "linux-deb"
+
+    monkeypatch.setattr(platform_info, "sys", SimpleNamespace(platform="darwin"))
+    monkeypatch.setattr(
+        platform_info,
+        "platform",
+        SimpleNamespace(
+            machine=lambda: "x86_64",
+            mac_ver=lambda: ("14.7.1", ("", "", ""), ""),
+        ),
+    )
+    macos = platform_info.detect_platform_info()
+    assert macos == {
+        "platform_family": "macos",
+        "distribution": "macos",
+        "distribution_version": "14.7.1",
+        "package_format": "pkg",
+        "architecture": "amd64",
+        "runtime_profile": "full",
+        "capabilities": [
+            *platform_info.CORE_CAPABILITIES,
+            *platform_info.AI_CAPABILITIES,
+        ],
+        "platform": "macos",
+    }
+    assert platform_info.update_platform_key(macos) == "macos"
     assert platform_info.update_platform_key({"platform_family": "plan9"}) == ""
 
 

@@ -59,6 +59,7 @@ def test_fleet_value_guards_enrollment_and_authentication(monkeypatch) -> None:
     assert fleet.enum_value(SimpleNamespace(value="queued")) == "queued"
     assert fleet.normalized_platform("Linux-UOS") == "uos"
     assert fleet.normalized_platform("win32") == "windows"
+    assert fleet.normalized_platform("macOS") == "macos"
     assert fleet.normalized_platform("Other-Platform") == "other-platform"
 
     payload = DeviceEnrollRequest(

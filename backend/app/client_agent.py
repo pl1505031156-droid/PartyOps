@@ -1916,9 +1916,11 @@ def apply_update_command(
     helper = (
         Path(sys.executable).resolve().with_name("PartyOpsUpdater.exe")
         if os.name == "nt"
+        else Path(sys.executable).resolve().with_name("partyops-updater")
+        if sys.platform == "darwin"
         else Path("/opt/partyops/partyops-updater")
     )
-    if not helper.exists():
+    if not helper.is_file() or helper.is_symlink():
         target.unlink(missing_ok=True)
         return {
             "ok": False,
@@ -1928,6 +1930,15 @@ def apply_update_command(
     try:
         if os.name == "nt":
             installed = _run_windows_elevated_update(helper, target)
+        elif sys.platform == "darwin":
+            result = subprocess.run(
+                [str(helper), "--macos-install-package", str(target)],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=900,
+            )
+            installed = result.returncode == 0
         else:
             result = subprocess.run(
                 ["pkexec", str(helper), "--install-package", str(target)],

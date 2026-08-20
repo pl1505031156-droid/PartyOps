@@ -22,7 +22,7 @@ def _installers(root: Path) -> None:
         (root / name).write_bytes(name.encode("utf-8"))
 
 
-def test_manifest_requires_only_current_seven_installers(tmp_path: Path) -> None:
+def test_manifest_requires_only_current_installers(tmp_path: Path) -> None:
     _installers(tmp_path)
     output = tmp_path / "PartyOps_1.4.3-rc.8_release-manifest.json"
     payload = MODULE.build_manifest(
@@ -35,7 +35,9 @@ def test_manifest_requires_only_current_seven_installers(tmp_path: Path) -> None
     assert payload["schema_version"] == 4
     assert payload["prerelease"] is False
     assert payload["make_latest"] is False
-    assert payload["verified_platforms"] == list(MODULE.INSTALLERS.values())
+    assert payload["packaged_platforms"] == list(MODULE.INSTALLERS.values())
+    assert payload["verified_platforms"] == []
+    assert payload["native_verified_platforms"] == []
     assert {asset["filename"] for asset in payload["assets"]} == set(MODULE.INSTALLERS)
 
 

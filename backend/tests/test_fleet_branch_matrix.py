@@ -100,6 +100,7 @@ def test_value_cleanup_notification_and_device_count_branches(monkeypatch, tmp_p
     assert fleet.safe_archive_component(" ... ") == "共享文件"
     assert fleet.normalized_platform("deepin") == "uos"
     assert fleet.normalized_platform("windows11") == "windows"
+    assert fleet.normalized_platform("Darwin") == "macos"
     assert not fleet.device_is_deleted(SimpleNamespace(device_metadata=None))
     assert fleet.managed_device_count(Db(rows=[SimpleNamespace(device_metadata=None), SimpleNamespace(device_metadata={"deleted_at": "now"})])) == 1
 

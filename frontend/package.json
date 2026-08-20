@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
+    "@types/node": "22.20.1",
     "@vitejs/plugin-legacy": "6.1.1",
     "@vitejs/plugin-vue": "6.0.1",
     "@vitest/coverage-v8": "3.2.6",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -19,6 +20,8 @@ def default_data_dir() -> Path:
     if os.name == "nt":
         base = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
         return (base / "PartyOps").resolve()
+    if sys.platform == "darwin":
+        return (Path.home() / "Library" / "Application Support" / "PartyOps" / "Data").resolve()
     xdg = Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local" / "share"))
     return (xdg / "partyops").resolve()
 
