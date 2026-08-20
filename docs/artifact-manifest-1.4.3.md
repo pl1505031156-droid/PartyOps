@@ -4,9 +4,9 @@
 
 | 制品 | 平台 | 字节 | SHA-256 |
 | --- | --- | ---: | --- |
-| `PartyOps_1.4.3-rc.9_windows_amd64.exe` | Windows 10/11 x64 | 129563904 | `19140c35545b958125f5ec049a7265cfa64e4871eae4d208808a2f635a239f0d` |
-| `PartyOps_1.4.3-rc.9_windows7_amd64.exe` | Windows 7 SP1 x64 | 109278890 | `9cff6ccb6dec5c0e53011d545370793bef2bfb80014758a0fe1cd3e4c81f5d55` |
-| `PartyOps_1.4.3-rc.9_windows7_x86.exe` | Windows 7 SP1 x86 | 61005175 | `0072252da8ccccb7f5f1f45f47ffb8dde40aa6c6dfdf167ecaba8434bb8e4468` |
+| `PartyOps_1.4.3-rc.9_windows_amd64.exe` | Windows 10/11 x64 | 129570274 | `68b300d14cc834b52034c5b56354a6410d6d597d8f928a7064cd9ee3493b22b5` |
+| `PartyOps_1.4.3-rc.9_windows7_amd64.exe` | Windows 7 SP1 x64 | 109153959 | `fec897147237e02d98ac348e7a37a4608224e9e9b9a9ba33634d1ebecc4c6752` |
+| `PartyOps_1.4.3-rc.9_windows7_x86.exe` | Windows 7 SP1 x86 | 61129243 | `ba901db265028ae78e8f1c7d5215f9d9cca9a463400f54c9e9a4d694c9fb2142` |
 | `PartyOps_1.4.3-rc.9_linux_amd64.deb` | 麒麟/UOS/deepin x86_64 | 163009588 | `b120994f0830720f8d1477a1148b7b9a5eb921d7c00b0daa435d215be7c83522` |
 | `PartyOps_1.4.3-rc.9_linux_arm64.deb` | 麒麟/UOS/deepin ARM64 | 152475392 | `16661a42aa106bf44328ede383c4f7427b0168b6905ccab2078eefa7a1595a89` |
 | `PartyOps-1.4.3-0.rc.9.1.x86_64.rpm` | openEuler x86_64 | 346957464 | `d6de6b468fb25c88033ad7c39d5f2143911e9cac37fb3067c11462339cd0a4f3` |
