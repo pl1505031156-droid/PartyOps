@@ -31,6 +31,15 @@ if ocr_binary.exists():
     os.environ["TESSDATA_PREFIX"] = str(ocr_root / "tessdata")
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--startup-self-test"]:
+        from app.startup_selftest import main as startup_selftest_main
+
+        raise SystemExit(startup_selftest_main(runtime))
+    if sys.argv[1:] == ["--startup-self-test-child"]:
+        from app.main import run
+
+        run()
+        raise SystemExit(0)
     if "--package-self-test" in sys.argv[1:]:
         from app.package_selftest import main as selftest_main
 

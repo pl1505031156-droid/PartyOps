@@ -1265,6 +1265,33 @@ begin
   end;
 end;
 
+procedure RunRuntimeStartupSelfTest;
+var
+  ResultCode: Integer;
+begin
+  ResultCode := 2;
+  WizardForm.StatusLabel.Caption := '正在验证本机 PartyOps 完整启动链…';
+  { 在真正的目标 Windows 上启动刚释放的冻结主程序。构建机自检和 PE
+    静态扫描无法替代 Win7 的 Loader、UCRT、CPU、RSA 与 SQLite 动态行为。 }
+  if (not ExecAndLogOutput(
+    ExpandConstant('{app}\PartyOps.exe'),
+    '--startup-self-test',
+    ExpandConstant('{app}'),
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode,
+    nil
+  )) or (ResultCode <> 0) then
+  begin
+    ServiceSetupFailed := True;
+    RaiseException(
+      '[PACKAGE_RUNTIME_STARTUP_SELFTEST_FAILED] 当前电脑上的 PartyOps 主程序、' +
+      'RSA/Fernet、SQLite/FTS5、数据库迁移、健康端点或首页未通过真实启动验证。' +
+      '安装已回滚；请复制本安装日志给技术支持。退出码：' + IntToStr(ResultCode)
+    );
+  end;
+end;
+
 procedure RollbackInstallerCache;
 begin
   if not InstallerCacheTransactionActive then
@@ -1563,6 +1590,7 @@ begin
     ErrorMessage := ValidateAndSecureInstallDirectory;
     if ErrorMessage <> '' then
       RaiseException(ErrorMessage);
+    RunRuntimeStartupSelfTest;
     ProtectSystemControlDirectories;
     HostServiceStartup := HostServiceStartupArgument(
       HostServiceExistedBeforeInstall,

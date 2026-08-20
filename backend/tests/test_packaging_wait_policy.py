@@ -906,6 +906,26 @@ def test_frozen_windows_wizard_has_real_gui_self_test_gate() -> None:
         assert required in build
 
 
+def test_windows_installer_runs_target_machine_startup_selftest_before_services() -> None:
+    entrypoint = (ROOT / "packaging" / "uos" / "entrypoint.py").read_text(
+        encoding="utf-8"
+    )
+    installer = (ROOT / "packaging" / "windows" / "PartyOps.iss").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'sys.argv[1:] == ["--startup-self-test"]' in entrypoint
+    assert 'sys.argv[1:] == ["--startup-self-test-child"]' in entrypoint
+    assert "procedure RunRuntimeStartupSelfTest" in installer
+    assert "ExecAndLogOutput" in installer
+    assert "--startup-self-test" in installer
+    assert "PACKAGE_RUNTIME_STARTUP_SELFTEST_FAILED" in installer
+    post_install = installer[installer.index("procedure CurStepChanged") :]
+    assert post_install.index("RunRuntimeStartupSelfTest;") < post_install.index(
+        "ProtectSystemControlDirectories;"
+    )
+
+
 def test_win7_uses_verified_sdk_ucrt_instead_of_build_host_system_dlls() -> None:
     build = (ROOT / "packaging" / "windows" / "build-windows.ps1").read_text(
         encoding="utf-8"
