@@ -41,6 +41,8 @@ export PARTYOPS_MACOS_NOTARY_PROFILE='partyops-notary'
 
 PKG 不把 `.app` 目录直接交给 `pkgbuild` 组件分析。PyInstaller 内嵌的 `Python.framework` 会被 Installer 识别为第二个可重定位组件，在部分系统上破坏 Bundle。构建脚本改为携带经过 ZIP 往返校验的原始 App；`postinstall` 完整解包并验证 Bundle ID、主程序权限和代码签名后，才事务式替换 `/Applications/PartyOps.app`。升级失败会恢复旧 App，用户业务数据不参与该事务。
 
+普通 Mac 的 APFS 默认不区分文件名大小写，因此 Bundle 内任何两个入口都不得只靠大小写区分。桌面入口固定为 `partyops-desktop`，核心主程序固定为 `partyops`；原生门禁会拒绝大小写折叠后重名的载荷，避免出现“安装成功但启动器被主程序覆盖”。
+
 ## 原生门禁与用户真机验收
 
 自动构建成功不等于用户真机验收。发布前，两个原生 runner 都必须完成 PKG 全新安装、覆盖安装和三类入口自检；公开测试后还需要志愿者在真实日常 Mac 上继续执行：

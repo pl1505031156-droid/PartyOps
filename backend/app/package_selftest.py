@@ -15,6 +15,14 @@ ASSET_PATTERN = re.compile(r"(?:src|href)=[\"']/?([^\"'#?]+)")
 
 
 def _runtime_contents(runtime: Path) -> Path:
+    if sys.platform == "darwin":
+        # PyInstaller 的 macOS BUNDLE 会按 Apple 目录约定把数据放在
+        # Contents/Resources，而 Mach-O 入口位于 Contents/MacOS。不能
+        # 假设 Resources 一定经符号链接映射回可执行目录；普通 APFS、
+        # ZIP 往返和 Installer 都可能暴露这种错误假设。
+        resources = runtime.parent / "Resources"
+        if resources.is_dir():
+            return resources
     internal = runtime / "_internal"
     return internal if internal.is_dir() else runtime
 

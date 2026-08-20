@@ -10,10 +10,21 @@ from pathlib import Path
 
 import pytest
 
-from app import update_executor
+from app import package_selftest, update_executor
 
 ROOT = Path(__file__).resolve().parents[2]
 MACOS = ROOT / "packaging" / "macos"
+
+
+def test_macos_package_selftest_uses_bundle_resources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = tmp_path / "PartyOps.app" / "Contents" / "MacOS"
+    resources = runtime.parent / "Resources"
+    runtime.mkdir(parents=True)
+    resources.mkdir()
+    monkeypatch.setattr(package_selftest.sys, "platform", "darwin")
+    assert package_selftest._runtime_contents(runtime) == resources
 
 
 def test_macos_python_entrypoints_parse_and_use_native_user_paths() -> None:
@@ -112,6 +123,12 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert 'runtime.parent / "Resources" / "ocr"' in (
         ROOT / "packaging" / "uos" / "entrypoint.py"
     ).read_text(encoding="utf-8")
+    package_selftest = (ROOT / "backend" / "app" / "package_selftest.py").read_text(
+        encoding="utf-8"
+    )
+    app_main = (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+    assert 'resources = runtime.parent / "Resources"' in package_selftest
+    assert 'parent.parent / "Resources"' in app_main
     assert '"$LLAMA_RUNTIME/llama-server" "$APP/Contents/MacOS/llama-server"' in build
     assert "PARTYOPS_MACOS_OCR_RUNTIME" not in spec
     assert "PARTYOPS_MACOS_LLAMA_RUNTIME" not in spec

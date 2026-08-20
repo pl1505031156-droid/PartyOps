@@ -538,6 +538,11 @@ def frontend_directory() -> Path:
     if settings.frontend_dist:
         return settings.frontend_dist.resolve()
     if getattr(sys, "frozen", False):
+        if sys.platform == "darwin":
+            resources = Path(sys.executable).resolve().parent.parent / "Resources"
+            macos_frontend = resources / "frontend"
+            if macos_frontend.is_dir():
+                return macos_frontend.resolve()
         bundle_root = Path(
             getattr(sys, "_MEIPASS", Path(sys.executable).parent)
         )
