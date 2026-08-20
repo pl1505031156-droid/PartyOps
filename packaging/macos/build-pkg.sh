@@ -230,11 +230,14 @@ export PARTYOPS_MACOS_TARGET_ARCH="$TARGET_ARCH"
   --distpath "$BUILD_ROOT/dist" --workpath "$BUILD_ROOT/work" \
   "$SCRIPT_DIR/partyops.spec"
 APP="$BUILD_ROOT/dist/PartyOps.app"
-# OCR 与本地 LLM 的查找契约同样是冻结可执行文件同级。它们不能作为
-# PyInstaller datas 交给 BUNDLE 重排，否则应用能安装，却会在用户电脑上
-# 报运行时缺失。这里显式复制并保留可执行位，随后由 validate-bundle
-# 对架构、外部依赖和实际启动能力逐项复核。
-/usr/bin/ditto "$OCR_RUNTIME" "$APP/Contents/MacOS/ocr"
+# OCR 与本地 LLM 不能作为 PyInstaller datas 交给 BUNDLE 重排。Mach-O
+# 可执行文件放入 MacOS，词库和许可证放入 Resources；把 traineddata 放进
+# MacOS 会被 codesign 误判成嵌套代码，导致“能自检但无法形成可信 App”。
+/bin/mkdir -p "$APP/Contents/Resources/ocr"
+/usr/bin/install -m 0755 \
+  "$OCR_RUNTIME/bin/tesseract" "$APP/Contents/MacOS/tesseract"
+/usr/bin/ditto "$OCR_RUNTIME/tessdata" "$APP/Contents/Resources/ocr/tessdata"
+/usr/bin/ditto "$OCR_RUNTIME/licenses" "$APP/Contents/Resources/ocr/licenses"
 /usr/bin/install -m 0755 \
   "$LLAMA_RUNTIME/llama-server" "$APP/Contents/MacOS/llama-server"
 /bin/mkdir -p "$APP/Contents/Resources/licenses"
@@ -255,8 +258,8 @@ fi
   printf '%s\n' '[MACOS_UPDATE_TRUST_ROOT_COPY_FAILED] 应用内更新根公钥回读不一致。' >&2
   exit 2
 }
-TESSDATA_PREFIX="$APP/Contents/MacOS/ocr/tessdata" \
-  "$APP/Contents/MacOS/ocr/bin/tesseract" --list-langs | /usr/bin/grep -qx 'chi_sim'
+TESSDATA_PREFIX="$APP/Contents/Resources/ocr/tessdata" \
+  "$APP/Contents/MacOS/tesseract" --list-langs | /usr/bin/grep -qx 'chi_sim'
 "$APP/Contents/MacOS/llama-server" --version >/dev/null
 "$SCRIPT_DIR/validate-bundle.sh" "$APP" "$TARGET_ARCH"
 

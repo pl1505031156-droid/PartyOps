@@ -71,7 +71,12 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert 'UPDATE_PUBLIC_KEY_TARGET="$APP/Contents/MacOS/update-public-key.txt"' in build
     assert '/usr/bin/install -m 0644 "$UPDATE_PUBLIC_KEY_SOURCE"' in build
     assert '/usr/bin/cmp -s "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET"' in build
-    assert '/usr/bin/ditto "$OCR_RUNTIME" "$APP/Contents/MacOS/ocr"' in build
+    assert '"$OCR_RUNTIME/bin/tesseract" "$APP/Contents/MacOS/tesseract"' in build
+    assert '"$OCR_RUNTIME/tessdata" "$APP/Contents/Resources/ocr/tessdata"' in build
+    assert 'Contents/Resources/ocr/tessdata/chi_sim.traineddata' in validation
+    assert 'runtime.parent / "Resources" / "ocr"' in (
+        ROOT / "packaging" / "uos" / "entrypoint.py"
+    ).read_text(encoding="utf-8")
     assert '"$LLAMA_RUNTIME/llama-server" "$APP/Contents/MacOS/llama-server"' in build
     assert "PARTYOPS_MACOS_OCR_RUNTIME" not in spec
     assert "PARTYOPS_MACOS_LLAMA_RUNTIME" not in spec

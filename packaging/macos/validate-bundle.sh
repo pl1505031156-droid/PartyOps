@@ -29,8 +29,8 @@ if [[ ! -f "$RUNTIME/update-public-key.txt" ]] ||
   exit 2
 fi
 
-if [[ ! -f "$APP_PATH/Contents/MacOS/ocr/bin/tesseract" ]] ||
-  [[ ! -f "$APP_PATH/Contents/MacOS/ocr/tessdata/chi_sim.traineddata" ]] ||
+if [[ ! -x "$APP_PATH/Contents/MacOS/tesseract" ]] ||
+  [[ ! -f "$APP_PATH/Contents/Resources/ocr/tessdata/chi_sim.traineddata" ]] ||
   [[ ! -f "$APP_PATH/Contents/MacOS/llama-server" ]]; then
   printf '%s\n' '[MACOS_NATIVE_RUNTIME_INCOMPLETE] OCR 或本地 LLM 运行时不完整。' >&2
   exit 2

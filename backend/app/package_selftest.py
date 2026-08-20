@@ -26,6 +26,16 @@ def _native_executable(runtime: Path, relative: str) -> Path:
     return candidate.with_suffix(".exe") if os.name == "nt" else candidate
 
 
+def _ocr_runtime(runtime: Path) -> tuple[Path, Path, Path]:
+    """返回 OCR 可执行文件、词库与动态库目录，遵守各平台包布局。"""
+
+    if sys.platform == "darwin":
+        resources = runtime.parent / "Resources" / "ocr"
+        return runtime / "tesseract", resources / "tessdata", resources / "lib"
+    root = runtime / "ocr"
+    return _native_executable(runtime, "ocr/bin/tesseract"), root / "tessdata", root / "lib"
+
+
 def run_selftest(runtime: Path) -> dict[str, object]:
     """验证冻结资源、数据库、OCR 与本地智能运行时，任一失败即抛错。"""
 
@@ -47,8 +57,8 @@ def run_selftest(runtime: Path) -> dict[str, object]:
     if not sqlite.get("safe_version") or not sqlite.get("fts5"):
         raise RuntimeError("SQLite 安全版本或 FTS5 自检失败")
 
-    ocr = _native_executable(runtime, "ocr/bin/tesseract")
-    language = runtime / "ocr" / "tessdata" / "chi_sim.traineddata"
+    ocr, tessdata, ocr_library = _ocr_runtime(runtime)
+    language = tessdata / "chi_sim.traineddata"
     if not ocr.is_file() or not language.is_file():
         raise RuntimeError("中文 OCR 运行时不完整")
     ocr_environment = os.environ.copy()
@@ -56,7 +66,7 @@ def run_selftest(runtime: Path) -> dict[str, object]:
     ocr_environment["LD_LIBRARY_PATH"] = os.pathsep.join(
         part
         for part in (
-            str(runtime / "ocr" / "lib"),
+            str(ocr_library),
             ocr_environment.get("LD_LIBRARY_PATH", ""),
         )
         if part

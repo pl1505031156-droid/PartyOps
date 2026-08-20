@@ -42,6 +42,17 @@ def test_runtime_contents_supports_onefile_and_onedir(tmp_path: Path) -> None:
     )
 
 
+def test_macos_ocr_uses_standard_bundle_resource_layout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "PartyOps.app" / "Contents" / "MacOS"
+    monkeypatch.setattr(package_selftest.sys, "platform", "darwin")
+    binary, tessdata, library = package_selftest._ocr_runtime(runtime)
+    assert binary == runtime / "tesseract"
+    assert tessdata == runtime.parent / "Resources" / "ocr" / "tessdata"
+    assert library == runtime.parent / "Resources" / "ocr" / "lib"
+
+
 def test_selftest_rejects_missing_frontend_assets_and_sqlite(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

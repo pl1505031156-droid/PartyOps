@@ -8,8 +8,16 @@ from pathlib import Path
 
 
 runtime = Path(sys.executable).resolve().parent
-ocr_root = runtime / "ocr"
-ocr_binary = ocr_root / "bin" / ("tesseract.exe" if os.name == "nt" else "tesseract")
+if sys.platform == "darwin":
+    # macOS App Bundle 的可执行代码与只读资源必须分别位于 MacOS/Resources；
+    # 混放会破坏 Hardened Runtime 的嵌套代码验证。
+    ocr_root = runtime.parent / "Resources" / "ocr"
+    ocr_binary = runtime / "tesseract"
+else:
+    ocr_root = runtime / "ocr"
+    ocr_binary = ocr_root / "bin" / (
+        "tesseract.exe" if os.name == "nt" else "tesseract"
+    )
 if ocr_binary.exists():
     os.environ["PATH"] = os.pathsep.join(
         part for part in (str(ocr_binary.parent), os.environ.get("PATH", "")) if part
