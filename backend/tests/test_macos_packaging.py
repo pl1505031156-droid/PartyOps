@@ -73,6 +73,7 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "/opt/homebrew|/usr/local|/Users/" in validation
     assert "MACOS_ARCH_MISMATCH" in validation
     assert 'bundle_identifier="cn.partyops.desktop"' in spec
+    assert '"CFBundleExecutable": "partyops-desktop"' in spec
     assert '"LSMinimumSystemVersion": "11.0"' in spec
     assert "target_arch=target_arch" in spec
     assert 'name="partyops-updater"' in spec
