@@ -9,6 +9,7 @@
 - 修复统信旧配置把失效局域网 IP 用作监听地址导致端口 `18766` 绑定失败；监听地址与对外地址现在分别迁移和校验。
 - 个人模式端口 `18775` 被未知程序占用时自动选择受控回环备用端口；只有 PID、实例锁和可执行路径三项一致时才接管旧 PartyOps 进程。
 - Windows 主机服务、协议注册与覆盖安装均按所有权证据处理，修复 `LEGACY_SERVICE_CONFLICT`、`PROTOCOL_REGISTRY_DENIED`、Win7 KB 等效补丁误判与 Win11 空白页。
+- 针对 rc.8 在部分 Win7 电脑出现个人进程 `CHILD_EXITED`、但反馈方未提供 `launcher.log` 的情况，rc.9 不再只做构建机和 PE 静态检查：安装文件释放后会在目标电脑真实启动同一冻结主程序，执行 RSA/Fernet、SQLite 安全版本与 FTS5、数据库迁移、健康端点、运行版本及首页入口检查；任一步提前退出都会回滚安装并把子进程输出写入安装日志，避免安装成功后双击才发现无响应。缺少原始日志时不虚构唯一根因，后续若取得日志仍按新的证据定点修复。
 - DEB/RPM 桌面入口、换行、权限与安装后事务统一验证，修复 `PACKAGE_DESKTOP_ENTRY_INVALID`、版本错配和 `LAUNCH_LOCK_TIMEOUT`。
 - 麒麟/UOS 桌面入口统一经 `/bin/bash` 进入受控启动器，缺失 `HOME` 时从账号数据库恢复；安装器在桌面用户 DBus 会话写入可信元数据并保留可执行兜底，解决安装成功但双击无反应且没有日志。
 - macOS Finder 入口改为原生 C 启动探针，在冻结向导运行前先写 `launch-probe.log`；Apple Silicon 与 Intel 原生 Darwin 构建均用 LaunchServices `open -na` 完成安装后双击自检。

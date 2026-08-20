@@ -8,7 +8,7 @@
 - 前端：180 项测试、类型检查、静态检查与生产构建通过；行覆盖率 `97.10%`，分支覆盖率 `90.00%`。
 - 官网：40 项测试与生产依赖审计通过；行覆盖率 `98.51%`，分支覆盖率 `94.15%`。版本化清单在最终机器可读清单生成后复跑。
 - Windows 10/11：最终 EXE 冻结运行时、协议事务、服务所有权、Web 看门狗和安装脚本语法门禁通过。
-- Win7 x64/x86：最终 PE 架构/子系统/API-set、UCRT、Python 3.8、OpenSSL、RSA、Fernet 与首页运行门禁通过。
+- Win7 x64/x86：最终 PE 架构/子系统/API-set、UCRT、Python 3.8 与 OpenSSL 门禁通过；安装器还会在每一台目标电脑上启动最终 `PartyOps.exe`，验证 RSA/Fernet、SQLite/FTS5、数据库迁移、同版本健康端点与首页入口，失败即回滚。
 - Linux：DEB/RPM 双架构的固定运行时、SQLite 3.51.3/FTS5、OCR、AI、前端、桌面入口、权限、安装后事务与剥离环境变量启动门禁通过；x86_64 使用 glibc 2.17，aarch64 使用 QEMU 动态验证。
 - macOS：GitHub 托管 `macos-15` Apple Silicon 与 `macos-15-intel` 原生构建均通过 PKG 安装、Bundle/嵌套代码、`open -na` LaunchServices、原生启动探针日志与版本回读。
 
@@ -27,6 +27,7 @@
 11. 文档管理：目录操作始终有入口或明确桌面能力说明。
 12. 发展党员：空文件拒绝、稳定对象 URL 与延迟 DOM 清理恢复 DOCX 导出。
 13. macOS 双击无响应：Finder 主入口改为原生 C 探针，冻结向导启动前即写 `launch-probe.log`。
+14. Win7 rc.8 `CHILD_EXITED`：反馈方未提供 `launcher.log`，不虚构唯一异常栈；rc.9 已覆盖独立 Python 3.8、安全回移与完整目标机启动链，并把任何提前退出变为安装期失败和可复制日志。取得原始日志后若发现新原因，进入下一候选版定点修复。
 
 ## 验收边界
 

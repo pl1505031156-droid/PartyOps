@@ -11,6 +11,7 @@
 - 启动器会核对端口健康端点的实际版本。属于当前安装的旧 PartyOps 进程会安全重启；未知进程不会被终止，也不会打开新旧版本混合页面。
 - Windows 10/11 安装器不再把机器级 `HKA\\Software\\Classes` 协议注册作为安装门禁。桌面启动后改在原始用户的 `HKCU` 内事务注册；拒绝写入或检测到第三方协议时只禁用该协议功能，不回滚主程序、不覆盖第三方值。
 - Windows 7 不再只按补丁登记名判断 `KB2533623`，而是探测 `AddDllDirectory`/`SetDefaultDllDirectories` 安全加载 API；安装了等效后续累积更新的系统可正常通过，缺少真实能力时给出明确补丁提示。
+- rc.8 有用户在 Win7 个人模式遇到 `CHILD_EXITED`，但没有提供 `C:\ProgramData\PartyOps-Data\launcher.log`，因此不能负责任地声称只有一个已确认根因。rc.9 在已有 Python 3.8、UCRT/API-set、OpenSSL 与安全回移修复之外，把最终裁决移到安装目标电脑：安装器真实启动刚释放的 `PartyOps.exe`，依次验证 RSA/Fernet、SQLite/FTS5、数据库迁移、健康端点、版本身份和首页静态入口；失败即回滚并保留安装日志，不再留下“显示安装成功、双击却无反应”的包。后续若取得原始日志并发现新的独立原因，将在下一候选版精确修复，不阻塞本次已通过门禁的 rc.9。
 - Windows 11 前端增加启动看门狗，脚本、样式、模块加载或挂载超时会显示可复制诊断，不再“闪一下后永久空白”。
 - UOS 桌面入口改为非阻塞事务锁。重复双击复用同一配置页；真正卡住的向导超过 180 秒后只终止本入口创建且路径明确的子进程，释放锁并输出 `WIZARD_PAGE_TIMEOUT`，不再永久残留 `LAUNCH_LOCK_TIMEOUT`。
 - 麒麟/UOS 桌面入口不再依赖文件管理器直接执行 `/opt` 下的 ELF：统一由 `/bin/bash` 进入受控启动器，并在环境缺少 `HOME` 时从账号数据库恢复；安装器在原桌面用户的 DBus 会话中设置快捷方式可信元数据，失败时仍保留可执行位和启动日志。
@@ -42,6 +43,7 @@ macOS 两个 PKG 分别由 GitHub 托管的 `macos-15`（Apple Silicon）和 `ma
 
 - 后端、前端、官网、版本一致性、Windows 安装脚本真实编译、Linux 双架构动态运行和 macOS 双架构原生构建门禁已通过；最终安装包的大小、SHA-256、平台格式及线上全量回读以发布就绪记录为准。
 - Windows 7、Windows 10/11 与国产 Linux 的自动回归不等价于用户真机交互验收；未取得的证据会继续明确列为限制。
+- Win7 `CHILD_EXITED` 反馈没有随附启动日志，无法还原该电脑上的精确异常栈；rc.9 的目标机启动门禁覆盖可复现和可预见的运行时故障类别，但不把缺失证据写成“已精准复现”。如仍遇到该诊断，请保留安装日志和数据目录下的 `launcher.log`，业务数据无需删除。
 - Windows 安装器仍无 Authenticode 商业证书，可能触发 SmartScreen；安装前必须核对官网或 GitHub Release 显示的 SHA-256。
 - macOS 当前包没有 Developer ID 与公证，首次打开会出现 Apple 无法验证提示。先核对 SHA-256，再用 Finder `Control` 点按 PKG →“打开”，或在“系统设置 → 隐私与安全性”选择对应的“仍要打开”；不得关闭 Gatekeeper。永久消除此提示仍需 Developer ID Installer/Application 证书与 Apple 公证、staple，本候选包不能虚假声明已完成。
 - rc.3 及后续版本的 Ed25519 在线更新信任根保持不变；若发布机未挂载匹配的离线私钥，rc.9 只发布完整安装器，不生成或伪造新的 `.partyops-update` 与更新目录。
