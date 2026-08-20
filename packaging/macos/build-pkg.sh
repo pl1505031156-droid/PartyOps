@@ -51,7 +51,7 @@ OUTPUT_DIR="$ROOT/artifacts/release-$VERSION-final"
 OCR_RUNTIME="${PARTYOPS_MACOS_OCR_RUNTIME:-}"
 LLAMA_RUNTIME="${PARTYOPS_MACOS_LLAMA_RUNTIME:-}"
 for command in python3.11 uv node corepack sips iconutil pkgbuild pkgutil spctl xcrun \
-  ditto tar shasum file otool codesign; do
+  curl ditto gzip tar shasum file otool codesign; do
   if ! command -v "$command" >/dev/null 2>&1; then
     printf '[MACOS_BUILD_TOOL_MISSING] 缺少构建工具：%s\n' "$command" >&2
     exit 2
@@ -111,12 +111,75 @@ UV_PROJECT_ENVIRONMENT="$VENV" uv sync --project "$ROOT/backend" --frozen --no-d
 uv pip install --python "$VENV/bin/python" \
   --requirement "$SCRIPT_DIR/requirements-build.txt"
 
-SQLITE_SOURCE="$ROOT/vendor/sqlite-amalgamation-3510300.zip"
-PYSQLITE_SOURCE="$ROOT/vendor/pysqlite3-0.5.4.tar.gz"
-if [[ ! -f "$SQLITE_SOURCE" ]] || [[ ! -f "$PYSQLITE_SOURCE" ]]; then
-  printf '%s\n' '[MACOS_SQLITE_SOURCE_MISSING] 缺少锁定的 SQLite/pysqlite3 源码归档。' >&2
-  exit 2
-fi
+SOURCE_INPUTS="$BUILD_ROOT/source-inputs"
+mkdir -p "$SOURCE_INPUTS"
+resolve_locked_source() {
+  local name="$1" url="$2" expected="$3" local_source="$4"
+  local target="$SOURCE_INPUTS/$name" actual
+  if [[ -f "$local_source" ]]; then
+    cp "$local_source" "$target"
+  else
+    curl --fail --location --silent --show-error --retry 1 \
+      "$url" --output "$target.download"
+    mv "$target.download" "$target"
+  fi
+  actual="$(shasum -a 256 "$target" | awk '{print $1}')"
+  if [[ "$actual" != "$expected" ]]; then
+    printf '[MACOS_SQLITE_SOURCE_HASH_MISMATCH] %s：期望 %s，实际 %s。\n' \
+      "$name" "$expected" "$actual" >&2
+    exit 2
+  fi
+  printf '%s\n' "$target"
+}
+
+SQLITE_SOURCE="$(resolve_locked_source \
+  'sqlite-amalgamation-3510300.zip' \
+  'https://www.sqlite.org/2026/sqlite-amalgamation-3510300.zip' \
+  'acb1e6f5d832484bf6d32b681e858c38add8b2acdfd42ac5df24b8afb46552b4' \
+  "$ROOT/vendor/sqlite-amalgamation-3510300.zip")"
+PYSQLITE_SOURCE="$(resolve_locked_source \
+  'pysqlite3-0.5.4.tar.gz' \
+  'https://files.pythonhosted.org/packages/33/cb/ef7d041dbecfbf47f9241d7cb6328311fd80fe15bd61a6253d9ab36e9d6d/pysqlite3-0.5.4.tar.gz' \
+  'fbc69bfdc0cb43a5badd5403b126d5151371b5037e0397ba9802bb440c5b0021' \
+  "$ROOT/vendor/pysqlite3-0.5.4.tar.gz")"
+
+# 下载哈希只能证明内容一致，解压前还要拒绝绝对路径、父目录穿越、链接和
+# 异常膨胀归档，避免上游源码包在构建机上写出临时目录。
+"$VENV/bin/python" - "$SQLITE_SOURCE" <<'PY'
+from __future__ import annotations
+
+import stat
+import sys
+import zipfile
+from pathlib import PurePosixPath
+
+archive_path = sys.argv[1]
+expected_root = "sqlite-amalgamation-3510300"
+with zipfile.ZipFile(archive_path) as archive:
+    entries = archive.infolist()
+    if not entries or len(entries) > 1000:
+        raise SystemExit("[MACOS_SQLITE_ARCHIVE_UNSAFE] SQLite 源码归档成员数量异常。")
+    total = 0
+    for entry in entries:
+        path = PurePosixPath(entry.filename)
+        total += entry.file_size
+        mode = (entry.external_attr >> 16) & 0o170000
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or not path.parts
+            or path.parts[0] != expected_root
+            or mode == stat.S_IFLNK
+        ):
+            raise SystemExit(
+                f"[MACOS_SQLITE_ARCHIVE_UNSAFE] SQLite 源码归档包含危险成员：{entry.filename}"
+            )
+    if total > 128 * 1024 * 1024:
+        raise SystemExit("[MACOS_SQLITE_ARCHIVE_UNSAFE] SQLite 源码归档解压大小异常。")
+PY
+gzip -dc "$PYSQLITE_SOURCE" | "$VENV/bin/python" \
+  "$ROOT/scripts/validate-portable-tar.py" \
+  --expected-root 'pysqlite3-0.5.4' --max-members 1000 --max-bytes 134217728
 mkdir -p "$BUILD_ROOT/sqlite" "$BUILD_ROOT/pysqlite"
 ditto -x -k "$SQLITE_SOURCE" "$BUILD_ROOT/sqlite"
 tar -xzf "$PYSQLITE_SOURCE" -C "$BUILD_ROOT/pysqlite" --strip-components=1

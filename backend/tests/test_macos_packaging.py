@@ -85,6 +85,13 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "setup.py build_static bdist_wheel" in build
     assert 'sqlite.sqlite_version != "3.51.3"' in build
     assert "MACOS_SQLITE_FTS5_MISSING" in build
+    assert "resolve_locked_source" in build
+    assert "sqlite-amalgamation-3510300.zip" in build
+    assert "acb1e6f5d832484bf6d32b681e858c38add8b2acdfd42ac5df24b8afb46552b4" in build
+    assert "pysqlite3-0.5.4.tar.gz" in build
+    assert "fbc69bfdc0cb43a5badd5403b126d5151371b5037e0397ba9802bb440c5b0021" in build
+    assert "MACOS_SQLITE_ARCHIVE_UNSAFE" in build
+    assert "validate-portable-tar.py" in build
     assert '"code_signature": "ad-hoc"' in build
     assert '"notarized": False' in build
     assert '"real_device_validation": False' in build
