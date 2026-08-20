@@ -95,6 +95,12 @@ let previewTimeout: number | undefined;
 let previewWorkerReject: ((reason?: unknown) => void) | undefined;
 
 const selectedRoot = computed(() => roots.value.find((item) => item.id === selectedRootId.value));
+const canShareLocalFolder = computed(() =>
+  Boolean(session.runtimeContext?.capabilities.includes("workspace.local_share")),
+);
+const canManageHostFolder = computed(() =>
+  Boolean(session.runtimeContext?.capabilities.includes("workspace.manage_host_roots")),
+);
 const parentId = computed(() => pathStack.value[pathStack.value.length - 1]?.id || null);
 const filteredFolderOptions = computed(() => {
   const value = folderKeyword.value.trim().toLowerCase();
@@ -109,6 +115,15 @@ function formatSize(value: number) {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
   return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+function explainDirectoryOperations() {
+  const mode = session.runtimeContext?.node_mode || "unknown";
+  if (mode === "unknown") {
+    Message.info("当前页面不是主机本机或已入网协同机。请在主机桌面或已入网协同机打开党建智办后操作目录。");
+    return;
+  }
+  Message.info("当前账号或设备没有目录操作权限，请联系主机管理员开启本机共享或目录纳管能力。");
 }
 
 function statusLabel(status: string) {
@@ -824,9 +839,15 @@ onBeforeUnmount(() => {
           :tips="['目录扫描只登记属性；正文只在用户点击预览时按权限临时读取。', 'Office 与 PDF 使用本地 Firecrawl 解析器生成安全阅读视图，原文件不会上传外网。', '共享电脑文件经主机分块中转和哈希校验后，可预览、下载或发送到其他协同机。']"
           help-query="原始文件中心"
         />
-        <a-button v-if="session.runtimeContext?.capabilities.includes('workspace.local_share')" type="primary" aria-label="共享本机文件夹" @click="openLocalShareManager"><template #icon><IconPlus /></template>共享本机文件夹</a-button>
+        <a-dropdown trigger="click">
+          <a-button type="primary" aria-label="操作目录"><template #icon><IconPlus /></template>操作目录</a-button>
+          <template #content>
+            <a-doption v-if="canShareLocalFolder" @click="openLocalShareManager">共享本机文件夹</a-doption>
+            <a-doption v-if="canManageHostFolder" @click="rootVisible = true">纳管主机目录</a-doption>
+            <a-doption v-if="!canShareLocalFolder && !canManageHostFolder" @click="explainDirectoryOperations">查看当前设备为何不能添加目录</a-doption>
+          </template>
+        </a-dropdown>
         <a-button v-if="selectedRoot?.permissions.manage_root && selectedRoot.source === 'device'" aria-label="设置共享范围" @click="openSharing(selectedRoot)"><template #icon><IconSafe /></template>共享范围</a-button>
-        <a-button v-if="session.runtimeContext?.capabilities.includes('workspace.manage_host_roots')" aria-label="纳管目录" @click="rootVisible = true"><template #icon><IconPlus /></template>纳管主机目录</a-button>
         <a-button v-if="selectedRoot && selectedRoot.source !== 'device' && session.runtimeContext?.capabilities.includes('workspace.manage_host_roots')" aria-label="选择接入文件夹" @click="openSelection">
           <template #icon><IconFolder /></template>选择接入文件夹
         </a-button>

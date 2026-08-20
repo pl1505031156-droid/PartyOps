@@ -291,18 +291,30 @@ def test_win7_installer_probes_loader_capability_instead_of_exact_kb_name() -> N
     assert "IsInstalledUpdateInRoot" not in installer
 
 
-def test_inno_protocol_registration_is_transactional_and_not_hkcr() -> None:
+def test_protocol_registration_is_per_user_and_never_blocks_installer() -> None:
     script = (
         Path(__file__).resolve().parents[2] / "packaging" / "windows" / "PartyOps.iss"
     ).read_text(encoding="utf-8")
+    launcher = (
+        Path(__file__).resolve().parents[2]
+        / "packaging"
+        / "windows"
+        / "windows_launcher.py"
+    ).read_text(encoding="utf-8")
     assert "[Registry]" not in script
-    assert "RegisterProtocolAtRoot(HKA, 'partyops-file'" in script
-    assert "RegisterProtocolAtRoot(HKA, 'partyops-client'" in script
-    assert "PROTOCOL_REGISTRY_CONFLICT" in script
-    assert "PROTOCOL_REGISTRY_DENIED" in script
-    assert "PROTOCOL_REGISTRY_VERIFY_FAILED" in script
-    assert "RollbackProtocolRegistry" in script
+    prepare = script.split("function PrepareToInstall", 1)[1].split(
+        "procedure RemoveOwnedProtocol", 1
+    )[0]
+    post_install = script.split("procedure CurStepChanged", 1)[1].split(
+        "procedure DeinitializeSetup", 1
+    )[0]
+    assert "PreflightProtocolRegistry(" not in prepare
+    assert "RegisterPartyOpsProtocols;" not in post_install
     assert "CurUninstallStepChanged" in script
+    assert 'Software\\Classes\\{protocol}' in launcher
+    assert "HKEY_CURRENT_USER" in launcher
+    assert "PROTOCOL_USER_REGISTRY_DENIED" in launcher
+    assert "安装和主功能未回滚" in launcher
 
 
 def test_win7_inno_entries_have_architecture_specific_outputs() -> None:
@@ -331,3 +343,17 @@ def test_win7_build_and_frontend_have_hard_compatibility_gates() -> None:
     assert 'legacy from "@vitejs/plugin-legacy"' in vite
     assert '"Chrome >= 64"' in vite and "renderLegacyChunks: false" in vite
     assert "Internet Explorer 11 不受支持" in html
+
+
+def test_frontend_has_pre_module_startup_watchdog() -> None:
+    """主模块或分包加载失败时必须留下可见恢复页，不能先清空再白屏。"""
+
+    root = Path(__file__).resolve().parents[2] / "frontend"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    main = (root / "src" / "main.ts").read_text(encoding="utf-8")
+    watchdog = (root / "public" / "startup-watchdog.js").read_text(encoding="utf-8")
+    assert html.index("/startup-watchdog.js") < html.index('/src/main.ts')
+    assert "FRONTEND_ASSET_LOAD_FAILED" in watchdog
+    assert "FRONTEND_STARTUP_TIMEOUT" in watchdog
+    assert "partyops:started" in watchdog
+    assert "__PARTYOPS_STARTED__ = true" in main

@@ -14,7 +14,7 @@ import {
 } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { ApiError, api, downloadUrl } from "../api";
-import type { Comment as TaskComment, Material, Task, TaskStatus, User } from "../types";
+import type { Comment as TaskComment, Material, MaterialVersion, Task, TaskStatus, User } from "../types";
 import TaskStatusTag from "../components/TaskStatusTag.vue";
 import ObjectContextPanel from "../components/ObjectContextPanel.vue";
 import PageHelp from "../components/PageHelp.vue";
@@ -43,6 +43,10 @@ const notApplicableVisible = ref(false);
 const uploadVisible = ref(false);
 const uploadMaterial = ref<Material | null>(null);
 const uploadFile = ref<File | null>(null);
+const rollbackVisible = ref(false);
+const rollbackMaterial = ref<Material | null>(null);
+const rollbackVersion = ref<MaterialVersion | null>(null);
+const rollbackReason = ref("");
 const conflict = ref<Record<string, unknown> | null>(null);
 const notApplicableMaterial = ref<Material | null>(null);
 const notApplicableReason = ref("");
@@ -510,6 +514,37 @@ function toggleFinal(value: boolean) {
   if (value) uploadForm.stage = "submitted";
 }
 
+function openRollback(material: Material, version: MaterialVersion) {
+  rollbackMaterial.value = material;
+  rollbackVersion.value = version;
+  rollbackReason.value = "";
+  rollbackVisible.value = true;
+}
+
+async function rollbackAttachment() {
+  if (!task.value || !rollbackMaterial.value || !rollbackVersion.value) return;
+  if (rollbackReason.value.trim().length < 2) {
+    Message.warning("请填写至少两个字的回退原因");
+    return;
+  }
+  try {
+    task.value = await api.post<Task>(
+      `/tasks/${task.value.id}/materials/${rollbackMaterial.value.id}/versions/${rollbackVersion.value.id}/rollback`,
+      { reason: rollbackReason.value.trim() },
+      { "If-Match": String(task.value.version) },
+    );
+    rollbackVisible.value = false;
+    Message.success("已引用所选旧版形成新的最终版本，原版本历史完整保留");
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "VERSION_CONFLICT") {
+      Message.warning("事项刚被其他电脑更新，已刷新版本清单，请重新确认回退");
+      await load();
+    } else {
+      Message.error(error instanceof Error ? error.message : "材料回退失败");
+    }
+  }
+}
+
 async function applyConflictDraft() {
   const draftId = String(conflict.value?.draft_id || "");
   const currentVersion = String(conflict.value?.current_version || "");
@@ -677,12 +712,20 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
                   </div>
                 </div>
                 <div class="versions">
-                  <a v-for="version in material.versions" :key="version.id" :href="downloadUrl(`/attachments/${version.id}/download`)" target="_blank">
-                    <span>v{{ version.version_no }}</span>
-                    {{ version.original_name }}
-                    <b v-if="version.is_final">最终</b>
-                    <IconDownload />
-                  </a>
+                  <div v-for="version in material.versions" :key="version.id" class="version-chip">
+                    <a :href="downloadUrl(`/attachments/${version.id}/download`)" target="_blank">
+                      <span>v{{ version.version_no }}</span>
+                      {{ version.original_name }}
+                      <b v-if="version.is_final">最终</b>
+                      <IconDownload />
+                    </a>
+                    <a-button
+                      v-if="canManageTask && task.status !== 'archived' && !version.is_final && material.versions.some((candidate) => candidate.is_final)"
+                      size="mini"
+                      type="text"
+                      @click="openRollback(material, version)"
+                    >回退到此版</a-button>
+                  </div>
                   <span v-if="!material.versions.length" class="muted">尚未上传</span>
                 </div>
                 <div class="material-status">
@@ -871,6 +914,17 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
         </a-form-item>
         <a-form-item label="确认最终版本"><a-switch :model-value="uploadForm.is_final" @change="toggleFinal(Boolean($event))" /></a-form-item>
         <a-form-item label="版本说明"><a-input v-model="uploadForm.note" /></a-form-item>
+      </a-form>
+    </a-modal>
+
+    <a-modal v-model:visible="rollbackVisible" title="回退材料版本" @ok="rollbackAttachment">
+      <a-alert type="warning" show-icon>
+        将引用 v{{ rollbackVersion?.version_no }}“{{ rollbackVersion?.original_name }}”形成一个新的最终版本；不会删除或覆盖任何历史文件。
+      </a-alert>
+      <a-form :model="{ reason: rollbackReason }" layout="vertical" style="margin-top: 16px">
+        <a-form-item label="回退原因（必填）">
+          <a-textarea v-model="rollbackReason" :max-length="1000" show-word-limit placeholder="例如：现终稿引用数据有误，经复核恢复上一版" :auto-size="{ minRows: 3, maxRows: 6 }" />
+        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -1078,14 +1132,22 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
   gap: 8px;
 }
 
+.version-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  background: #efe7db;
+}
+
 .versions a {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   padding: 6px 9px;
   font-size: 11px;
-  background: #efe7db;
-  border: 1px solid var(--line);
+  background: transparent;
+  border: 0;
 }
 
 .versions a b {

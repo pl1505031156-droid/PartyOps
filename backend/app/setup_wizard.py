@@ -1422,6 +1422,54 @@ def _personal_process_marker(data_dir: Path) -> Path:
     return data_dir / ".partyops-personal-process.json"
 
 
+def _listener_pid_for_loopback_port(port: int) -> int | None:
+    """尽力定位回环监听 PID；只用于恢复旧版 PartyOps 标记，不作为通用杀进程依据。"""
+
+    try:
+        if os.name == "nt":
+            result = subprocess.run(
+                ["netstat.exe", "-ano", "-p", "tcp"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            candidates: set[int] = set()
+            for line in result.stdout.splitlines():
+                fields = line.split()
+                if len(fields) < 5 or fields[0].upper() != "TCP" or fields[3].upper() != "LISTENING":
+                    continue
+                local = fields[1].strip("[]")
+                if not local.endswith(f":{port}"):
+                    continue
+                host = local.rsplit(":", 1)[0].strip("[]")
+                if host in {"127.0.0.1", "0.0.0.0", "::1", "::"}:
+                    candidates.add(int(fields[-1]))
+            return next(iter(candidates)) if len(candidates) == 1 else None
+        if sys.platform == "darwin":
+            result = subprocess.run(
+                ["/usr/sbin/lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            candidates = {int(value) for value in result.stdout.split() if value.isdigit()}
+            return next(iter(candidates)) if len(candidates) == 1 else None
+        result = subprocess.run(
+            ["ss", "-ltnp", f"sport = :{port}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        candidates = {int(value) for value in re.findall(r"pid=(\d+)", result.stdout)}
+        return next(iter(candidates)) if len(candidates) == 1 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
 def _process_executable_matches(pid: int, expected: Path) -> bool:
     """核对 PID 仍指向随包主程序，防止 PID 复用后误终止其他进程。"""
 
@@ -1487,6 +1535,24 @@ def _personal_process_is_owned(data_dir: Path) -> bool:
     return recorded == expected and _process_executable_matches(pid, expected)
 
 
+def _recover_legacy_personal_process_marker(data_dir: Path, port: int) -> bool:
+    """用“监听 PID + 数据目录实例锁 + 当前可执行文件”三项证据恢复旧标记。"""
+
+    pid = _listener_pid_for_loopback_port(port)
+    if not pid:
+        return False
+    lock = data_dir / ".partyops-instance.lock"
+    try:
+        recorded_pid = int(lock.read_text(encoding="ascii").strip())
+        expected = _executable("partyops").resolve()
+    except (OSError, ValueError):
+        return False
+    if recorded_pid != pid or not _process_executable_matches(pid, expected):
+        return False
+    _record_personal_pid(data_dir, pid)
+    return True
+
+
 def _stop_personal_process_for_data_migration(data_dir: Path, port: int) -> bool:
     """停止由当前安装记录的个人进程；身份不明时拒绝迁移。"""
 
@@ -1530,21 +1596,77 @@ def _stop_personal_process_for_data_migration(data_dir: Path, port: int) -> bool
     return True
 
 
-def _record_personal_process(data_dir: Path, process: subprocess.Popen | None) -> None:
-    if process is None or not getattr(process, "pid", 0):
+def _record_personal_pid(data_dir: Path, pid: int) -> None:
+    if pid <= 0:
         return
     _write_private(
         _personal_process_marker(data_dir),
         json.dumps(
             {
                 "format_version": 1,
-                "pid": process.pid,
+                "pid": pid,
                 "executable": str(_executable("partyops").resolve()),
             },
             ensure_ascii=False,
             indent=2,
         ),
     )
+
+
+def _record_personal_process(data_dir: Path, process: subprocess.Popen | None) -> None:
+    if process is None or not getattr(process, "pid", 0):
+        return
+    _record_personal_pid(data_dir, int(process.pid))
+
+
+def _loopback_port_available(port: int) -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            probe.bind(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
+
+
+def _select_alternative_personal_port(current: int) -> int:
+    """未知程序占用默认端口时选择受控回环备用端口，绝不终止占用者。"""
+
+    for candidate in range(18775, 18876):
+        if candidate != current and _loopback_port_available(candidate):
+            return candidate
+    raise HostStartupError(
+        PORT_IN_USE,
+        "个人模式没有找到可用的回环端口。",
+        detail="已检查 18775—18875；系统没有终止任何身份不明的进程。",
+    )
+
+
+def _rewrite_personal_port(config_path: Path, port: int) -> dict[str, str]:
+    """原子更新个人模式端口，保留其余密钥、注释和数据目录配置。"""
+
+    if config_path.is_symlink() or not config_path.is_file():
+        raise ValueError("个人模式配置不是受控普通文件，拒绝自动改写端口")
+    replacements = {
+        "PARTYOPS_PORT": str(port),
+        "PARTYOPS_AGENT_PORT": str(port + 1),
+    }
+    lines = config_path.read_text(encoding="utf-8").splitlines()
+    seen: set[str] = set()
+    updated: list[str] = []
+    for line in lines:
+        key, separator, _value = line.partition("=")
+        if separator and key in replacements:
+            updated.append(f"{key}={replacements[key]}")
+            seen.add(key)
+        else:
+            updated.append(line)
+    for key, value in replacements.items():
+        if key not in seen:
+            updated.append(f"{key}={value}")
+    _write_private(config_path, "\n".join(updated) + "\n")
+    return load_host_environment(config_path)
 
 
 def _restart_previous_personal_process(environment: dict[str, str]) -> None:
@@ -2764,12 +2886,20 @@ def launch_personal(config_path: Path) -> str:
     except OSError:
         pass
     if port_open:
-        if not _personal_process_is_owned(data_dir):
-            raise HostStartupError(
-                PORT_IN_USE,
-                f"个人模式端口 {port} 已被身份不明的程序占用。",
-                detail="未找到与当前安装及数据目录匹配的受控个人进程标记。",
+        if not _personal_process_is_owned(data_dir) and not _recover_legacy_personal_process_marker(
+            data_dir, port
+        ):
+            previous_port = port
+            port = _select_alternative_personal_port(previous_port)
+            env = _rewrite_personal_port(config_path, port)
+            data_dir = Path(env["PARTYOPS_DATA_DIR"])
+            port_open = False
+            print(
+                f"[PERSONAL_PORT_REASSIGNED] 端口 {previous_port} 由身份不明的程序占用；"
+                f"个人模式已切换到 127.0.0.1:{port}，未终止占用者。",
+                file=sys.stderr,
             )
+    if port_open:
         try:
             url = wait_for_host_health(
                 "127.0.0.1",
@@ -2777,7 +2907,9 @@ def launch_personal(config_path: Path) -> str:
                 timeout=5.0,
                 service_managed=False,
             )
-            if not _personal_process_is_owned(data_dir):
+            if not _personal_process_is_owned(data_dir) and not _recover_legacy_personal_process_marker(
+                data_dir, port
+            ):
                 raise HostStartupError(
                     PORT_IN_USE,
                     f"个人模式端口 {port} 的进程身份在检查期间发生变化。",

@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 
 
-VERSION = "1.4.3-rc.8"
+VERSION = "1.4.3-rc.9"
 
 
 def _config_root() -> Path:

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { Message } from "@arco-design/web-vue";
-import { api } from "../api";
+import { api, saveBlobDownload } from "../api";
 import { useSessionStore } from "../stores/session";
 import type { PartyDevelopmentResult, PartyDevelopmentRuleMetadata } from "../types";
 
@@ -127,12 +127,10 @@ async function exportWord() {
   exporting.value = true;
   try {
     const blob = await api.post<Blob>("/party-development/export.docx", payload());
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${form.name.replace(/[\\/:*?"<>|]/g, "_") || "党员发展"}-党员发展时间节点.docx`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    saveBlobDownload(
+      blob,
+      `${form.name.replace(/[\\/:*?"<>|]/g, "_") || "党员发展"}-党员发展时间节点.docx`,
+    );
     Message.success("Word 时间节点文档已生成");
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "Word 导出失败");

@@ -368,6 +368,10 @@ class MaterialPatch(BaseModel):
     version: int | None = None
 
 
+class AttachmentRollbackRequest(BaseModel):
+    reason: str = Field(min_length=2, max_length=1_000)
+
+
 class DashboardBucket(BaseModel):
     key: str
     label: str

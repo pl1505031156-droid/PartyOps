@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError, downloadUrl } from "./api";
+import { api, ApiError, downloadUrl, saveBlobDownload } from "./api";
 import {
   checkRuntimeCompatibility,
   FRONTEND_VERSION,
@@ -46,6 +46,33 @@ describe("API 客户端", () => {
     expect(fetchMock.mock.calls[0][1].headers.has("Content-Type")).toBe(false);
     await expect(api.delete<void>("/sessions/current")).resolves.toBeUndefined();
     expect(downloadUrl("/exports/tasks.xlsx")).toBe("/api/v1/exports/tasks.xlsx");
+  });
+
+  it("把下载链接挂入页面并延迟回收 Blob URL", () => {
+    vi.useFakeTimers();
+    const createObjectURL = vi.mocked(URL.createObjectURL);
+    const revokeObjectURL = vi.mocked(URL.revokeObjectURL);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const blob = new Blob(["docx"], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+
+    saveBlobDownload(blob, "时间节点.docx");
+
+    const anchor = document.querySelector('a[download="时间节点.docx"]');
+    expect(anchor).not.toBeNull();
+    expect(click).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1000);
+    expect(anchor?.isConnected).toBe(false);
+    expect(revokeObjectURL).toHaveBeenCalledWith(createObjectURL.mock.results.at(-1)?.value);
+    vi.useRealTimers();
+  });
+
+  it("拒绝把空响应伪装成成功下载", () => {
+    expect(() => saveBlobDownload(new Blob([]), "empty.docx")).toThrow(
+      "服务端没有返回可下载的文件",
+    );
   });
 
   it("把 problem+json 和非 JSON 错误转换为稳定异常", async () => {

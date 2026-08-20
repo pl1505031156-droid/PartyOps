@@ -3,7 +3,7 @@ set -eu
 
 RUNTIME=/opt/partyops
 EXPECTED_ARCH="${1:-}"
-EXPECTED_VERSION="1.4.3-rc.8"
+EXPECTED_VERSION="1.4.3-rc.9"
 LOG=/var/log/partyops-package-selftest.log
 mkdir -p /var/log /var/lib/partyops
 : >"$LOG"
@@ -52,21 +52,53 @@ done
 runuser -u partyops -- "$RUNTIME/partyops-wizard" --runtime-layout-self-test ||
   fail PACKAGE_RUNTIME_LAYOUT_INVALID \
     "配置向导仍在临时目录解包共享库，可能被国产系统安全中心拦截"
+WIZARD_TEMP_ROOT="$(mktemp -d /run/partyops-wizard-selftest.XXXXXX)"
+chown partyops:partyops "$WIZARD_TEMP_ROOT"
+chmod 0700 "$WIZARD_TEMP_ROOT"
+if ! runuser -u partyops -- env \
+  PARTYOPS_DESKTOP_SELFTEST_ROOT="$WIZARD_TEMP_ROOT" \
+  "$RUNTIME/partyops-wizard" --desktop-server-self-test; then
+  case "$WIZARD_TEMP_ROOT" in
+    /run/partyops-wizard-selftest.*) rm -rf -- "$WIZARD_TEMP_ROOT" ;;
+  esac
+  fail PACKAGE_WIZARD_SERVER_INVALID \
+    "配置向导无法绑定回环页面或发布桌面启动标记"
+fi
+case "$WIZARD_TEMP_ROOT" in
+  /run/partyops-wizard-selftest.*) rm -rf -- "$WIZARD_TEMP_ROOT" ;;
+esac
 for desktop_entry in \
   /usr/share/applications/partyops.desktop \
-  /usr/share/applications/partyops-client.desktop; do
+  /usr/share/applications/partyops-client.desktop \
+  /usr/share/applications/partyops-file.desktop; do
   [ -r "$desktop_entry" ] ||
     fail PACKAGE_DESKTOP_ENTRY_MISSING "缺少桌面入口：$desktop_entry"
+  if LC_ALL=C grep -q "$(printf '\r')" "$desktop_entry"; then
+    fail PACKAGE_DESKTOP_ENTRY_INVALID "桌面入口包含 Windows CRLF 换行：$desktop_entry"
+  fi
   grep -q '^Type=Application$' "$desktop_entry" ||
     fail PACKAGE_DESKTOP_ENTRY_INVALID "桌面入口格式无效：$desktop_entry"
-  grep -q '^TryExec=/opt/partyops/desktop-launcher.sh$' "$desktop_entry" ||
-    fail PACKAGE_DESKTOP_ENTRY_INVALID "桌面入口未绑定受控启动器：$desktop_entry"
+  case "$desktop_entry" in
+    */partyops-file.desktop)
+      grep -q '^TryExec=/opt/partyops/open-local-file.sh$' "$desktop_entry" ||
+        fail PACKAGE_DESKTOP_ENTRY_INVALID "文件桌面入口未绑定受控打开器：$desktop_entry"
+      ;;
+    *)
+      grep -q '^TryExec=/opt/partyops/desktop-launcher.sh$' "$desktop_entry" ||
+        fail PACKAGE_DESKTOP_ENTRY_INVALID "桌面入口未绑定受控启动器：$desktop_entry"
+      ;;
+  esac
 done
 if command -v desktop-file-validate >/dev/null 2>&1; then
-  desktop-file-validate \
+  DESKTOP_VALIDATE_LOG=/var/log/partyops-desktop-file-validate.log
+  : >"$DESKTOP_VALIDATE_LOG"
+  if ! desktop-file-validate \
     /usr/share/applications/partyops.desktop \
-    /usr/share/applications/partyops-client.desktop >/dev/null 2>&1 ||
+    /usr/share/applications/partyops-client.desktop \
+    /usr/share/applications/partyops-file.desktop >"$DESKTOP_VALIDATE_LOG" 2>&1; then
+    cat "$DESKTOP_VALIDATE_LOG" >&2 2>/dev/null || true
     fail PACKAGE_DESKTOP_ENTRY_INVALID "桌面入口未通过系统格式校验"
+  fi
 fi
 (cd "$RUNTIME" && sha256sum -c release-files.sha256) ||
   fail PACKAGE_FILE_HASH_MISMATCH "安装文件清单校验失败"

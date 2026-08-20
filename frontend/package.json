@@ -1,6 +1,6 @@
 {
   "name": "partyops-frontend",
-  "version": "1.4.3-rc.8",
+  "version": "1.4.3-rc.9",
   "private": true,
   "type": "module",
   "scripts": {

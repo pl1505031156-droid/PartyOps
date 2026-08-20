@@ -725,6 +725,19 @@ describe("核心页面真实挂载", () => {
     state.uploadFile = new File(["正文"], "报送稿.txt", { type: "text/plain" });
     await runAction(state, "toggleFinal", true);
     await runAction(state, "uploadVersion");
+    const rollbackVersion = {
+      id: "version-1", version_no: 1, stage: "draft", is_final: false,
+      original_name: "报送稿-初版.txt", note: "", size_bytes: 4,
+      mime_type: "text/plain", uploaded_by: "user-1", created_at: now,
+    };
+    await runAction(state, "openRollback", { ...material, versions: [rollbackVersion] }, rollbackVersion);
+    state.rollbackReason = "终稿内容有误，恢复初版";
+    await runAction(state, "rollbackAttachment");
+    expect(apiMocks.post).toHaveBeenCalledWith(
+      "/tasks/task-1/materials/material-1/versions/version-1/rollback",
+      { reason: "终稿内容有误，恢复初版" },
+      { "If-Match": "1" },
+    );
     state.conflict = { draft_id: "draft-1", current_version: "2", current: { title: "新版" }, submitted: { title: "草稿" } };
     await runAction(state, "applyConflictDraft");
 
@@ -797,6 +810,7 @@ describe("核心页面真实挂载", () => {
     await runAction(state, "removeParticipant", "participant-1");
     await runAction(state, "markNotApplicable");
     await runAction(state, "uploadVersion");
+    await runAction(state, "rollbackAttachment");
     await runAction(state, "applyConflictDraft");
     expect((state.actionOptions as unknown[]).length).toBe(0);
     expect((state.conflictRows as unknown[]).length).toBe(0);
@@ -886,6 +900,8 @@ describe("核心页面真实挂载", () => {
 
     const wrapper = await mountView(WorkspaceView, "/workspace");
     const state = setupState(wrapper);
+    expect(wrapper.text()).toContain("操作目录");
+    await runAction(state, "explainDirectoryOperations");
     await runAction(state, "formatSize", 10);
     await runAction(state, "formatSize", 2048);
     await runAction(state, "formatSize", 2 * 1024 * 1024);

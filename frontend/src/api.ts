@@ -62,3 +62,22 @@ export const api = {
 export function downloadUrl(path: string): string {
   return `/api/v1${path}`;
 }
+
+export function saveBlobDownload(blob: Blob, filename: string): void {
+  if (!(blob instanceof Blob) || blob.size === 0) {
+    throw new Error("服务端没有返回可下载的文件");
+  }
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  // 部分 Windows WebView/旧 Chromium 会异步读取 Blob URL；立即回收会
+  // 出现“提示已导出但没有文件”。下一轮事件循环再清理可兼容这些实现。
+  window.setTimeout(() => {
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }, 1000);
+}

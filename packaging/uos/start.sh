@@ -20,7 +20,8 @@ if [[ -z "$CONFIG" ]]; then
 fi
 
 migrate_legacy_host_config() {
-  local config="$1" configured_port agent_port temporary changed
+  local config="$1" configured_port configured_host bind_host advertise_host
+  local agent_port temporary changed
   [[ -f "$config" && -w "$config" ]] || return 0
   configured_port="$(
     set +u
@@ -32,11 +33,30 @@ migrate_legacy_host_config() {
     ((configured_port >= 1024 && configured_port <= 65534)) ||
     configured_port=18765
   agent_port=$((configured_port + 1))
+  configured_host="$(
+    set +u
+    # shellcheck disable=SC1090
+    source "$config"
+    printf '%s' "${PARTYOPS_HOST:-127.0.0.1}"
+  )"
+  case "$configured_host" in
+    127.*|localhost|::1) bind_host=127.0.0.1 ;;
+    *) bind_host=0.0.0.0 ;;
+  esac
+  advertise_host="$configured_host"
   temporary="${config}.migration.$$"
   cp -p -- "$config" "$temporary"
   changed=0
   if ! grep -q '^PARTYOPS_AGENT_PORT=' "$temporary"; then
     printf 'PARTYOPS_AGENT_PORT=%s\n' "$agent_port" >>"$temporary"
+    changed=1
+  fi
+  if ! grep -q '^PARTYOPS_BIND_HOST=' "$temporary"; then
+    printf 'PARTYOPS_BIND_HOST=%s\n' "$bind_host" >>"$temporary"
+    changed=1
+  fi
+  if ! grep -q '^PARTYOPS_ADVERTISE_HOST=' "$temporary"; then
+    printf 'PARTYOPS_ADVERTISE_HOST=%s\n' "$advertise_host" >>"$temporary"
     changed=1
   fi
   if ! grep -qx 'PARTYOPS_TLS_ENABLED=true' "$temporary"; then
@@ -49,7 +69,7 @@ migrate_legacy_host_config() {
   fi
   if [[ "$changed" -eq 1 ]]; then
     mv -f -- "$temporary" "$config"
-    echo "旧版主机配置已迁移：启用 HTTPS 和设备安全端口。"
+    echo "旧版主机配置已迁移：监听当前网卡并保留原访问地址，启用 HTTPS 和设备安全端口。"
   else
     rm -f -- "$temporary"
   fi
@@ -82,6 +102,12 @@ export PARTYOPS_DATA_DIR="${PARTYOPS_DATA_DIR:-$HOME/.local/share/partyops}"
 export PARTYOPS_STRICT_SQLITE="${PARTYOPS_STRICT_SQLITE:-true}"
 export PARTYOPS_SEED_DEMO="${PARTYOPS_SEED_DEMO:-false}"
 export PARTYOPS_HOST="${PARTYOPS_HOST:-127.0.0.1}"
+case "$PARTYOPS_HOST" in
+  127.*|localhost|::1) DEFAULT_BIND_HOST=127.0.0.1 ;;
+  *) DEFAULT_BIND_HOST=0.0.0.0 ;;
+esac
+export PARTYOPS_BIND_HOST="${PARTYOPS_BIND_HOST:-$DEFAULT_BIND_HOST}"
+export PARTYOPS_ADVERTISE_HOST="${PARTYOPS_ADVERTISE_HOST:-$PARTYOPS_HOST}"
 export PARTYOPS_PORT="${PARTYOPS_PORT:-18765}"
 
 mkdir -p "$PARTYOPS_DATA_DIR"

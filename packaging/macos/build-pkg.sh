@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-VERSION='1.4.3-rc.8'
+VERSION='1.4.3-rc.9'
 PACKAGE_VERSION='1.4.3.8'
 MODE='release'
 TARGET_ARCH=''
@@ -387,7 +387,7 @@ Path(path).write_text(
         {
             "format_version": 1,
             "product": "PartyOps",
-            "version": "1.4.3-rc.8",
+            "version": "1.4.3-rc.9",
             "architecture": architecture,
             "source_commit": source_commit,
             "generated_at_utc": generated_at,

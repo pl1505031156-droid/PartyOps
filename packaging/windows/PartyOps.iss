@@ -1,10 +1,10 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.3-rc.8"
+#define MyAppVersion "1.4.3-rc.9"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
 #ifndef PartyOpsOutputBase
-  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.8_windows_amd64"
+  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.9_windows_amd64"
 #endif
 
 [Setup]
@@ -12,7 +12,7 @@ AppId={{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
-VersionInfoVersion=1.4.3.7
+VersionInfoVersion=1.4.3.9
 AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://www.partyops.cn/
 AppSupportURL=https://www.partyops.cn/guide
@@ -54,7 +54,7 @@ WizardSmallImageFile={#BuildRoot}\partyops-1024.png
 Name: "chinesesimp"; MessagesFile: "{#SourcePath}\languages\ChineseSimplified.isl"
 
 [Messages]
-BeveledLabel=PartyOps 1.4.3-rc.8 · 未签名候选版
+BeveledLabel=PartyOps 1.4.3-rc.9 · 未签名候选版
 #ifdef PartyOpsLegacy
 WinVersionTooLowError=此 Windows 7 专用安装包要求 Windows 7 SP1 或更高版本。请先安装 SP1 后重试。
 #else
@@ -613,7 +613,7 @@ begin
   InAppServiceUpdate := CompareText(
     ExpandConstant('{param:INAPPUPDATE|0}'), '1'
   ) = 0;
-  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.8 安装向导';
+  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.9 安装向导';
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     '选择 PartyOps 业务数据目录',
@@ -667,19 +667,40 @@ end;
 function NormalizeOwnedExecutablePath(Value: String): String;
 begin
   Result := Trim(Value);
+  if Copy(Result, 1, 4) = '\\?\' then
+    Delete(Result, 1, 4)
+  else if Copy(Result, 1, 4) = '\??\' then
+    Delete(Result, 1, 4);
+  StringChangeEx(Result, '/', '\', True);
+  if Result <> '' then
+    Result := ExpandFileName(Result);
+  if FileExists(Result) then
+    Result := GetShortName(Result);
   while (Length(Result) > 3) and
         ((Result[Length(Result)] = '\') or (Result[Length(Result)] = '/')) do
     Delete(Result, Length(Result), 1);
 end;
 
-function ExtractServiceExecutablePath(CommandLine: String): String;
+function ExtractServiceExecutablePath(CommandLine, ServiceExecutable: String): String;
 var
-  I: Integer;
+  I, ExecutableEnd: Integer;
 begin
   Result := '';
   CommandLine := Trim(CommandLine);
   if CommandLine = '' then
     exit;
+  { 历史服务可能留下未加引号且安装目录含空格的 ImagePath。只在完整出现
+    精确服务文件名时截取到该后缀，不能再按第一个空格误读为 C:\Program。 }
+  I := Pos(Lowercase(ServiceExecutable), Lowercase(CommandLine));
+  if I > 0 then
+  begin
+    ExecutableEnd := I + Length(ServiceExecutable) - 1;
+    Result := Copy(CommandLine, 1, ExecutableEnd);
+    if (Length(Result) > 0) and (Result[1] = '"') then
+      Delete(Result, 1, 1);
+    Result := NormalizeOwnedExecutablePath(Result);
+    exit;
+  end;
   if CommandLine[1] = '"' then
   begin
     I := 2;
@@ -711,7 +732,7 @@ begin
   ServiceKey := 'SYSTEM\CurrentControlSet\Services\' + ServiceName;
   if not RegQueryStringValue(HKLM, ServiceKey, 'ImagePath', ImagePath) then
     exit;
-  ExecutablePath := ExtractServiceExecutablePath(ImagePath);
+  ExecutablePath := ExtractServiceExecutablePath(ImagePath, ServiceExecutable);
   if ExecutablePath = '' then
     exit;
 
@@ -738,12 +759,20 @@ begin
   { 兼容尚未写入服务标识的历史安装器：Inno 的卸载项和 SCM ImagePath
     必须同时指向同一个精确的 PartyOps 服务管理程序，缺一项都拒绝接管。 }
   PreviousInstallLocation := '';
-  RegQueryStringValue(
+  if not RegQueryStringValue(
     HKLM,
     'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
       PartyOpsAppId + '_is1',
     'InstallLocation', PreviousInstallLocation
-  );
+  ) then
+    { rc.6 及更早的 32 位安装器会把卸载项写进 WOW6432Node；64 位 rc.9
+      若只看本视图会把同一 PartyOps 服务误报为第三方冲突。 }
+    RegQueryStringValue(
+      HKLM,
+      'Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\' +
+        PartyOpsAppId + '_is1',
+      'InstallLocation', PreviousInstallLocation
+    );
   if PreviousInstallLocation = '' then
     exit;
   ExpectedPrevious := NormalizeOwnedExecutablePath(
@@ -852,7 +881,7 @@ begin
   begin
     Result := '[LEGACY_SERVICE_CONFLICT] 检测到同名的“' + DisplayName +
       '”，但无法证明它属于 PartyOps。为避免修改其他软件的服务，安装已停止；' +
-      '请复制安装日志给技术支持。';
+      'SCM 路径=' + RegisteredExecutable + '；请复制安装日志给技术支持。';
     exit;
   end;
 
@@ -1051,8 +1080,10 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+#ifdef PartyOpsLegacy
 var
   RegistryError: String;
+#endif
 begin
 #ifdef PartyOpsLegacy
   if not ValidateWindows7Prerequisites(RegistryError) then
@@ -1082,11 +1113,8 @@ begin
     UpdateServiceDelayedBeforeInstall
   );
   WizardForm.StatusLabel.Caption := '正在安全停止旧版 PartyOps 服务…';
-  if not PreflightProtocolRegistry(RegistryError) then
-  begin
-    Result := RegistryError;
-    exit;
-  end;
+  { URL 协议改由原始桌面账号在 PartyOpsLauncher 启动时写入 HKCU。
+    安装不再因单位策略拒绝 HKLM\Software\Classes 而整体回滚。 }
   RestartPreviousServicesOnExit :=
     HostServiceExistedBeforeInstall or UpdateServiceExistedBeforeInstall;
   Result := StopServiceBeforeUpgrade(
@@ -1536,7 +1564,6 @@ begin
     if ErrorMessage <> '' then
       RaiseException(ErrorMessage);
     ProtectSystemControlDirectories;
-    RegisterPartyOpsProtocols;
     HostServiceStartup := HostServiceStartupArgument(
       HostServiceExistedBeforeInstall,
       ConfiguredHostModeBeforeInstall,

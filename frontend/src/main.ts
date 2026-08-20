@@ -76,6 +76,8 @@ async function startApplication() {
   app.use(router);
   app.use(ArcoVue);
   app.mount("#app");
+  window.__PARTYOPS_STARTED__ = true;
+  window.dispatchEvent(new Event("partyops:started"));
 }
 
 void startApplication();

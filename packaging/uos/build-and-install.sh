@@ -58,14 +58,16 @@ bash "$ROOT/packaging/uos/build-portable.sh"
 bash "$ROOT/packaging/uos/build-deb.sh"
 (cd "$ROOT/artifacts" && sha256sum -c "SHA256SUMS.$ARCH")
 
-VERSION="${PARTYOPS_VERSION:-1.4.3-rc.8}"
-as_root apt-get install -y "$ROOT/artifacts/PartyOps_1.4.3-rc.8_linux_${ARCH}.deb"
+VERSION="${PARTYOPS_VERSION:-1.4.3-rc.9}"
+as_root apt-get install -y "$ROOT/artifacts/PartyOps_1.4.3-rc.9_linux_${ARCH}.deb"
 CONFIG="$(mktemp)"
 trap 'rm -f "$CONFIG"' EXIT
 cat > "$CONFIG" <<EOF
 PARTYOPS_MODE=host
 PARTYOPS_ENVIRONMENT=production
 PARTYOPS_HOST=$HOST_IP
+PARTYOPS_BIND_HOST=0.0.0.0
+PARTYOPS_ADVERTISE_HOST=$HOST_IP
 PARTYOPS_PORT=$PORT
 PARTYOPS_AGENT_PORT=$((PORT + 1))
 PARTYOPS_DATA_DIR=/var/lib/partyops
@@ -80,7 +82,7 @@ EOF
 as_root install -o root -g partyops -m 0640 "$CONFIG" /etc/partyops/partyops.env
 DESKTOP_CONFIG="$(mktemp)"
 trap 'rm -f "$CONFIG" "$DESKTOP_CONFIG"' EXIT
-grep -E '^(PARTYOPS_HOST|PARTYOPS_PORT|PARTYOPS_TLS_ENABLED)=' "$CONFIG" > "$DESKTOP_CONFIG"
+grep -E '^(PARTYOPS_HOST|PARTYOPS_BIND_HOST|PARTYOPS_ADVERTISE_HOST|PARTYOPS_PORT|PARTYOPS_TLS_ENABLED)=' "$CONFIG" > "$DESKTOP_CONFIG"
 as_root install -o root -g root -m 0644 "$DESKTOP_CONFIG" /etc/partyops/desktop.env
 as_root systemctl enable --now partyops
 as_root systemctl enable --now partyops-updater.service

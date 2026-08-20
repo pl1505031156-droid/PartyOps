@@ -338,7 +338,7 @@ def test_personal_upgrade_replaces_only_recorded_old_process(
     assert getattr(recorded[0], "pid") == 77
 
 
-def test_personal_existing_port_requires_owned_process_before_health_probe(
+def test_personal_existing_unknown_port_is_reassigned_without_health_probe_or_kill(
     monkeypatch, tmp_path: Path
 ) -> None:
     data_dir = tmp_path / "个人数据"
@@ -356,19 +356,83 @@ def test_personal_existing_port_requires_owned_process_before_health_probe(
         lambda *_args, **_kwargs: _SocketConnection(),
     )
     monkeypatch.setattr(setup_wizard, "_personal_process_is_owned", lambda _path: False)
+    monkeypatch.setattr(
+        setup_wizard,
+        "_recover_legacy_personal_process_marker",
+        lambda _path, _port: False,
+    )
+    monkeypatch.setattr(setup_wizard, "_select_alternative_personal_port", lambda _port: 18777)
+    monkeypatch.setattr(
+        setup_wizard,
+        "_rewrite_personal_port",
+        lambda _path, port: {
+            "PARTYOPS_PORT": str(port),
+            "PARTYOPS_DATA_DIR": str(data_dir),
+        },
+    )
+    executable = tmp_path / "PartyOps.exe"
+    executable.write_bytes(b"MZ")
+    monkeypatch.setattr(setup_wizard, "_executable", lambda _name: executable)
+    spawned: list[list[str]] = []
+    monkeypatch.setattr(
+        setup_wizard,
+        "_spawn",
+        lambda command, *_args: spawned.append(command) or SimpleNamespace(pid=88),
+    )
+    monkeypatch.setattr(setup_wizard, "_record_personal_process", lambda *_args: None)
     probes: list[str] = []
     monkeypatch.setattr(
         setup_wizard,
         "wait_for_host_health",
-        lambda *_args, **_kwargs: probes.append("health") or "http://127.0.0.1:18775",
+        lambda host, port, **_kwargs: probes.append(f"{host}:{port}") or f"http://{host}:{port}",
     )
 
-    with pytest.raises(setup_wizard.HostStartupError) as captured:
-        setup_wizard.launch_personal(config)
+    assert setup_wizard.launch_personal(config) == "http://127.0.0.1:18777"
+    assert spawned == [[str(executable)]]
+    assert probes == ["127.0.0.1:18777"]
 
-    assert captured.value.code == setup_wizard.PORT_IN_USE
-    assert "身份不明" in str(captured.value)
-    assert probes == []
+
+def test_personal_port_rewrite_is_atomic_and_preserves_secrets(tmp_path: Path) -> None:
+    config = tmp_path / "personal.env"
+    config.write_text(
+        "# 保留注释\nPARTYOPS_PORT=18775\nPARTYOPS_BOOTSTRAP_TOKEN=secret\n",
+        encoding="utf-8",
+    )
+    environment = setup_wizard._rewrite_personal_port(config, 18779)
+    content = config.read_text(encoding="utf-8")
+    assert "# 保留注释" in content
+    assert "PARTYOPS_BOOTSTRAP_TOKEN=secret" in content
+    assert "PARTYOPS_PORT=18779" in content
+    assert "PARTYOPS_AGENT_PORT=18780" in content
+    assert environment["PARTYOPS_PORT"] == "18779"
+    assert not config.with_suffix(".env.tmp").exists()
+
+
+def test_legacy_personal_marker_recovery_requires_three_matching_signals(
+    monkeypatch, tmp_path: Path
+) -> None:
+    data_dir = tmp_path / "个人数据"
+    data_dir.mkdir()
+    (data_dir / ".partyops-instance.lock").write_text("321", encoding="ascii")
+    executable = tmp_path / "PartyOps.exe"
+    executable.write_bytes(b"MZ")
+    monkeypatch.setattr(setup_wizard, "_listener_pid_for_loopback_port", lambda _port: 321)
+    monkeypatch.setattr(setup_wizard, "_executable", lambda _name: executable)
+    monkeypatch.setattr(
+        setup_wizard,
+        "_process_executable_matches",
+        lambda pid, expected: pid == 321 and expected == executable.resolve(),
+    )
+    assert setup_wizard._recover_legacy_personal_process_marker(data_dir, 18775)
+    marker = json.loads(
+        setup_wizard._personal_process_marker(data_dir).read_text(encoding="utf-8")
+    )
+    assert marker["pid"] == 321
+
+    setup_wizard._personal_process_marker(data_dir).unlink()
+    (data_dir / ".partyops-instance.lock").write_text("999", encoding="ascii")
+    assert not setup_wizard._recover_legacy_personal_process_marker(data_dir, 18775)
+    assert not setup_wizard._personal_process_marker(data_dir).exists()
 
 
 def test_launch_client_requires_live_agent_heartbeat(

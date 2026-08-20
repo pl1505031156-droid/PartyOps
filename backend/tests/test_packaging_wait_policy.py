@@ -438,8 +438,13 @@ def test_runtime_and_stop_script_have_bounded_graceful_shutdown() -> None:
     assert ': >>"$LAUNCH_LOG"' in desktop
     assert "CONFIG_DIR_UNAVAILABLE" in desktop
     assert "START_COMMAND_FAILED" in desktop
-    assert "LAUNCH_LOCK_TIMEOUT" in desktop
-    assert "flock -w 190 9" in desktop
+    assert "LAUNCH_LOCK_TIMEOUT" not in desktop
+    assert "flock -w 190 9" not in desktop
+    assert "flock -n 9" in desktop
+    assert "LAUNCH_IN_PROGRESS" in desktop
+    assert "WIZARD_PAGE_TIMEOUT" in desktop
+    assert 'kill -TERM "$pid"' in desktop
+    assert 'kill -KILL "$pid"' in desktop
     assert '9>&- &' in desktop
     assert "while ((attempt < 360))" in desktop
     assert 'printf \'%s\\n\' "$APP_VERSION" >"$RUNTIME/VERSION"' in (
@@ -456,6 +461,9 @@ def test_legacy_host_config_is_migrated_to_tls_agent_port() -> None:
     for script in (start, deb):
         assert "migrate_legacy_host_config()" in script
         assert "PARTYOPS_AGENT_PORT" in script
+        assert "PARTYOPS_BIND_HOST" in script
+        assert "PARTYOPS_ADVERTISE_HOST" in script
+        assert "bind_host=0.0.0.0" in script
         assert "PARTYOPS_TLS_ENABLED=true" in script
         assert "旧版主机配置已迁移" in script
     assert 'if [[ "$CONFIG" != "$PERSONAL_CONFIG" ]]; then' in start
@@ -484,7 +492,9 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     assert "%post" in build
     assert "/opt/partyops/post-install-transaction.sh $ARCH rpm" in build
     assert "post-install-transaction.sh %s deb" in build
-    assert 'DEB_VERSION="1.4.3~rc.8"' in build
+    assert "sed 's/\\r$//'" in build
+    assert "桌面入口换行规范化失败" in build
+    assert 'DEB_VERSION="1.4.3~rc.9"' in build
     assert "Version: $DEB_VERSION" in build
     assert "systemd, util-linux, coreutils, iproute2" in build
     assert "systemd, util-linux, coreutils, iproute" in build
@@ -519,8 +529,8 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     one_click = (ROOT / "packaging" / "uos" / "one-click-install.sh").read_text(
         encoding="utf-8"
     )
-    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.8}"' in one_click
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.8}"' in one_click
+    assert 'VERSION="${PARTYOPS_VERSION:-1.4.3-rc.9}"' in one_click
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.9}"' in one_click
     assert 'DEB="$ARTIFACTS/PartyOps_${VERSION}_linux_${ARCH}.deb"' in one_click
     assert '[[ "$installed_version" == "$PACKAGE_VERSION" ]]' in one_click
     assert 'chown -R "$CURRENT_USER' not in one_click
@@ -528,7 +538,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     acceptance = (ROOT / "packaging" / "uos" / "target-acceptance.sh").read_text(
         encoding="utf-8"
     )
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.8}"' in acceptance
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.9}"' in acceptance
     assert 'test "$INSTALLED_VERSION" = "$PACKAGE_VERSION"' in acceptance
     assert "LD_LIBRARY_PATH=/opt/partyops/ocr/lib" in acceptance
 
@@ -547,9 +557,13 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     )
     assert "mktemp -d /run/partyops-package-selftest." in selftest
     assert "mktemp -d /var/lib/partyops/" not in selftest
-    assert selftest.count("runuser -u partyops -- env") == 2
+    assert selftest.count("runuser -u partyops -- env") == 3
     assert "tail -n 120" in selftest
     assert "SYSTEMD_VERIFY_LOG" in selftest
+    assert "partyops-file.desktop" in selftest
+    assert "partyops-desktop-file-validate.log" in selftest
+    assert "--desktop-server-self-test" in selftest
+    assert "PACKAGE_WIZARD_SERVER_INVALID" in selftest
     assert "systemd 服务定义与当前麒麟/UOS版本不兼容" in selftest
 
     host_unit = (ROOT / "packaging" / "uos" / "partyops.service").read_text(
@@ -751,6 +765,9 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "UPGRADE_SERVICE_STOP_FAILED" in installer
     assert "请先卸载损坏的旧版本" not in installer
     assert "function QueryOwnedServiceExecutable" in installer
+    assert "GetShortName" in installer
+    assert "WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall" in installer
+    assert "ExtractServiceExecutablePath(ImagePath, ServiceExecutable)" in installer
     assert "function StopOwnedServiceThroughScm" in installer
     assert "LEGACY_SERVICE_CONFLICT" in installer
     assert "LEGACY_SERVICE_STOP_FAILED" in installer
@@ -789,7 +806,7 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "INSTALL_DIR_TREE_ACL_VERIFY_FAILED" in installer
     assert "INSTALL_DIR_INTEGRITY_DENIED" in installer
     assert " /setintegritylevel (OI)(CI)H /T /C /Q" in installer
-    assert "VersionInfoVersion=1.4.3.7" in installer
+    assert "VersionInfoVersion=1.4.3.9" in installer
     assert "MinVersion=10.0" in installer
     assert "MinVersion=6.1sp1" in installer
     assert "此安装包仅支持 Windows 10/11" in installer
@@ -933,7 +950,7 @@ def test_linux_bundle_only_includes_current_user_documents() -> None:
     )
 
     assert 'cp -a "$ROOT/docs" "$RUNTIME/"' not in script
-    assert '"release-notes-v1.4.3-rc.8.md"' in script
+    assert '"release-notes-v1.4.3-rc.9.md"' in script
     for document in (
         "user-guide.md",
         "deployment.md",

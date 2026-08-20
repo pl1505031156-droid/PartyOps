@@ -27,6 +27,7 @@ from ..models import (
 )
 from ..problems import ProblemException
 from ..schemas import (
+    AttachmentRollbackRequest,
     CommentCreate,
     CommentOut,
     DashboardOut,
@@ -46,7 +47,7 @@ from ..schemas import (
     serialize_api_datetime,
 )
 from ..security import get_current_user
-from ..storage import resolve_blob_path, save_attachment
+from ..storage import resolve_blob_path, rollback_attachment_version, save_attachment
 from ..work_journal import record_system_entry
 from ..task_service import (
     apply_task_action,
@@ -755,6 +756,38 @@ async def upload_material_version(
         note,
         client_ip(request),
         parse_if_match(if_match) if if_match is not None else None,
+    )
+    return task_to_out(db, task)
+
+
+@router.post(
+    "/tasks/{task_id}/materials/{material_id}/versions/{version_id}/rollback",
+    response_model=TaskOut,
+)
+def rollback_material_version(
+    task_id: str,
+    material_id: str,
+    version_id: str,
+    payload: AttachmentRollbackRequest,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> TaskOut:
+    task = get_task_or_404(db, task_id, user)
+    material = db.get(MaterialItem, material_id)
+    target = db.get(AttachmentVersion, version_id)
+    if not material or material.task_id != task.id or not target or target.material_item_id != material.id:
+        raise ProblemException(404, "ATTACHMENT_NOT_FOUND", "材料版本不存在", "请刷新材料目录后重试。")
+    rollback_attachment_version(
+        db,
+        task,
+        material,
+        target,
+        user,
+        payload.reason,
+        ip=client_ip(request),
+        expected_task_version=parse_if_match(if_match),
     )
     return task_to_out(db, task)
 

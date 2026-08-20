@@ -18,7 +18,7 @@ from .database import db_runtime
 from .enums import MaterialStage, Sensitivity, TaskStatus
 from .models import AttachmentVersion, FileBlob, MaterialItem, Task, User
 from .problems import ProblemException
-from .task_service import can_edit_task
+from .task_service import can_edit_task, can_manage_task
 from .work_journal import record_system_entry
 
 
@@ -224,3 +224,138 @@ async def save_attachment(
     finally:
         if temporary_name and os.path.exists(temporary_name):
             os.unlink(temporary_name)
+
+
+def rollback_attachment_version(
+    db: Session,
+    task: Task,
+    material: MaterialItem,
+    target: AttachmentVersion,
+    actor: User,
+    reason: str,
+    *,
+    ip: str = "",
+    expected_task_version: int,
+) -> AttachmentVersion:
+    """引用旧 Blob 创建新终稿；保留全部历史，不复制、不覆盖原文件。"""
+
+    normalized_reason = reason.strip()
+    if len(normalized_reason) < 2:
+        raise ProblemException(422, "ROLLBACK_REASON_REQUIRED", "需要填写回退原因", "请至少填写两个字。")
+    if not can_manage_task(db, task, actor):
+        raise ProblemException(403, "MATERIAL_ROLLBACK_DENIED", "无权回退材料", "仅事项主办人、创建人或管理员可以回退。")
+    if task.version != expected_task_version:
+        raise ProblemException(
+            409,
+            "VERSION_CONFLICT",
+            "事项已被他人更新",
+            "请刷新材料目录后重新确认回退版本。",
+            extra={"current_version": task.version, "submitted_version": expected_task_version},
+        )
+    if task.status == TaskStatus.ARCHIVED:
+        raise ProblemException(
+            409,
+            "TASK_ARCHIVED_IMMUTABLE",
+            "归档事项不能回退材料",
+            "请先说明原因并重新打开事项，再执行版本回退。",
+        )
+    if target.material_item_id != material.id:
+        raise ProblemException(404, "ATTACHMENT_NOT_FOUND", "材料版本不存在", "所选版本不属于当前材料项。")
+    blob = db.get(FileBlob, target.blob_sha256)
+    if not blob or not resolve_blob_path(blob.relative_path).is_file():
+        raise ProblemException(410, "ATTACHMENT_MISSING", "旧版附件文件缺失", "请先从备份恢复该版本，再执行回退。")
+
+    with db_runtime.write_lock:
+        db.refresh(task)
+        db.refresh(target)
+        if task.version != expected_task_version:
+            raise ProblemException(
+                409,
+                "VERSION_CONFLICT",
+                "事项已被他人更新",
+                "请刷新材料目录后重新确认回退版本。",
+                extra={"current_version": task.version, "submitted_version": expected_task_version},
+            )
+        if task.status == TaskStatus.ARCHIVED:
+            raise ProblemException(
+                409,
+                "TASK_ARCHIVED_IMMUTABLE",
+                "归档事项不能回退材料",
+                "请先说明原因并重新打开事项，再执行版本回退。",
+            )
+        current_final = db.scalar(
+            select(AttachmentVersion)
+            .where(
+                AttachmentVersion.material_item_id == material.id,
+                AttachmentVersion.is_final.is_(True),
+            )
+            .limit(1)
+        )
+        if current_final and current_final.id == target.id:
+            raise ProblemException(409, "ATTACHMENT_ALREADY_FINAL", "所选版本已是最终版", "请选择更早的版本。")
+        latest = db.scalar(
+            select(func.max(AttachmentVersion.version_no)).where(
+                AttachmentVersion.material_item_id == material.id
+            )
+        ) or 0
+        if current_final:
+            current_final.is_final = False
+            db.flush()
+        restored = AttachmentVersion(
+            material_item_id=material.id,
+            blob_sha256=target.blob_sha256,
+            version_no=latest + 1,
+            stage=MaterialStage.SUBMITTED,
+            is_final=True,
+            uploaded_by=actor.id,
+            note=f"回退至 v{target.version_no}：{normalized_reason}",
+            display_name=target.display_name or blob.original_name,
+        )
+        db.add(restored)
+        material.version += 1
+        task.version += 1
+        task.updated_by = actor.id
+        db.flush()
+        write_audit(
+            db,
+            actor,
+            "attachment.rollback",
+            "attachment",
+            restored.id,
+            {
+                "task_id": task.id,
+                "material_id": material.id,
+                "target_version_id": target.id,
+                "target_version_no": target.version_no,
+                "previous_final_id": current_final.id if current_final else None,
+                "new_version_no": restored.version_no,
+                "reason": normalized_reason,
+            },
+            ip,
+        )
+        record_system_entry(
+            db,
+            actor,
+            f"回退材料：{material.name}",
+            f"引用 v{target.version_no} 形成新终稿 v{restored.version_no}；原因：{normalized_reason}",
+            task_id=task.id,
+            event_code="material.rolled_back",
+            event_data={
+                "material_id": material.id,
+                "target_version_no": target.version_no,
+                "new_version_no": restored.version_no,
+            },
+        )
+        emit_event(
+            db,
+            "attachment.rolled_back",
+            task.id,
+            {
+                "material_id": material.id,
+                "target_version_id": target.id,
+                "new_version_id": restored.id,
+            },
+        )
+        db.commit()
+        db.refresh(restored)
+        return restored

@@ -25,6 +25,126 @@ from app.setup_wizard import (
 
 WIZARD_WAIT_SECONDS = 180.0
 WIZARD_POLL_SECONDS = 0.5
+PARTYOPS_APP_ID = "{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}"
+
+
+def _append_launcher_diagnostic(log_path: Path, message: str) -> None:
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as stream:
+            stream.write(message.rstrip() + "\n")
+    except OSError:
+        return
+
+
+def ensure_user_protocols(runtime: Path, log_path: Path, registry=None) -> list[str]:
+    """在原始桌面账号的 HKCU 注册协议；失败只降级功能，不回滚整套软件。"""
+
+    if registry is None:
+        if sys.platform != "win32":
+            return []
+        import winreg as registry  # type: ignore[no-redef]
+
+    definitions = {
+        "partyops-file": (
+            "URL:PartyOps File Protocol",
+            f'"{runtime / "PartyOpsFileOpen.exe"}" "%1"',
+        ),
+        "partyops-client": (
+            "URL:PartyOps Client Protocol",
+            f'"{runtime / "PartyOpsWizard.exe"}" --manage-shared-roots --action-uri "%1"',
+        ),
+    }
+    warnings: list[str] = []
+    for protocol, (display_name, command) in definitions.items():
+        base = rf"Software\Classes\{protocol}"
+        command_key = base + r"\shell\open\command"
+        specs = (
+            (base, "", display_name),
+            (base, "URL Protocol", ""),
+            (base, "PartyOps.AppId", PARTYOPS_APP_ID),
+            (base, "PartyOps.InstallPath", str(runtime)),
+            (command_key, "", command),
+        )
+        snapshots: dict[tuple[str, str], tuple[bool, str, int]] = {}
+        base_existed = False
+        try:
+            with registry.OpenKey(registry.HKEY_CURRENT_USER, base) as key:
+                base_existed = True
+                try:
+                    existing_owner = str(registry.QueryValueEx(key, "PartyOps.AppId")[0])
+                except OSError:
+                    existing_owner = ""
+                try:
+                    with registry.OpenKey(registry.HKEY_CURRENT_USER, command_key) as command_handle:
+                        existing_command = str(registry.QueryValueEx(command_handle, "")[0])
+                except OSError:
+                    existing_command = ""
+                owner_conflicts = existing_owner not in {"", PARTYOPS_APP_ID}
+                command_conflicts = bool(existing_command) and existing_command != command
+                if owner_conflicts or command_conflicts:
+                    warning = (
+                        f"[PROTOCOL_USER_REGISTRY_CONFLICT] {protocol} 已由其他程序注册；"
+                        "PartyOps 未覆盖该用户协议，主功能仍可使用。"
+                    )
+                    warnings.append(warning)
+                    _append_launcher_diagnostic(log_path, warning)
+                    continue
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            warning = f"[PROTOCOL_USER_REGISTRY_READ_FAILED] {protocol} 无法读取：{exc}"
+            warnings.append(warning)
+            _append_launcher_diagnostic(log_path, warning)
+            continue
+
+        try:
+            for subkey, value_name, _value in specs:
+                try:
+                    with registry.OpenKey(registry.HKEY_CURRENT_USER, subkey) as key:
+                        old_value, old_type = registry.QueryValueEx(key, value_name)
+                    snapshots[(subkey, value_name)] = (True, str(old_value), old_type)
+                except OSError:
+                    snapshots[(subkey, value_name)] = (False, "", registry.REG_SZ)
+            for subkey, value_name, value in specs:
+                with registry.CreateKey(registry.HKEY_CURRENT_USER, subkey) as key:
+                    registry.SetValueEx(key, value_name, 0, registry.REG_SZ, value)
+            for subkey, value_name, value in specs:
+                with registry.OpenKey(registry.HKEY_CURRENT_USER, subkey) as key:
+                    verified = str(registry.QueryValueEx(key, value_name)[0])
+                if verified != value:
+                    raise OSError(f"{subkey}\\{value_name} 回读不一致")
+        except OSError as exc:
+            # 仅恢复本函数接触的值；已存在键中的其他第三方值不删除。
+            for (subkey, value_name), (existed, old_value, old_type) in reversed(
+                tuple(snapshots.items())
+            ):
+                try:
+                    with registry.CreateKey(registry.HKEY_CURRENT_USER, subkey) as key:
+                        if existed:
+                            registry.SetValueEx(key, value_name, 0, old_type, old_value)
+                        else:
+                            registry.DeleteValue(key, value_name)
+                except OSError:
+                    pass
+            if not base_existed:
+                for subkey in (
+                    command_key,
+                    base + r"\shell\open",
+                    base + r"\shell",
+                    base,
+                ):
+                    try:
+                        registry.DeleteKey(registry.HKEY_CURRENT_USER, subkey)
+                    except OSError:
+                        pass
+            warning = (
+                f"[PROTOCOL_USER_REGISTRY_DENIED] {protocol} 无法写入当前用户注册表：{exc}；"
+                "安装和主功能未回滚。"
+            )
+            warnings.append(warning)
+            _append_launcher_diagnostic(log_path, warning)
+    return warnings
 
 
 def detached(command: list[str]) -> None:
@@ -311,6 +431,7 @@ def main() -> int:
     local = (
         Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "PartyOps"
     )
+    ensure_user_protocols(runtime, local / "launcher.log")
     pending_switch = (
         Path(os.getenv("PROGRAMDATA", "C:/ProgramData"))
         / "PartyOps"

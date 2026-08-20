@@ -7,8 +7,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const apiMocks = vi.hoisted(() => ({
   get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn(),
 }));
+const saveBlobDownload = vi.hoisted(() => vi.fn());
 
-vi.mock("../api", () => ({ api: apiMocks }));
+vi.mock("../api", () => ({ api: apiMocks, saveBlobDownload }));
 
 import MemoView from "./MemoView.vue";
 import PartyDevelopmentView from "./PartyDevelopmentView.vue";
@@ -151,6 +152,7 @@ describe("1.4.3 新增页面", () => {
     expect(localStorage.length).toBe(1);
     await vm.exportWord();
     expect(apiMocks.post).toHaveBeenCalledWith("/party-development/export.docx", expect.any(Object));
+    expect(saveBlobDownload).toHaveBeenCalledWith(expect.any(Blob), "张三-党员发展时间节点.docx");
     vm.clearDraft();
     expect(vm.form.name).toBe("");
     wrapper.unmount();

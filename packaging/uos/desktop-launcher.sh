@@ -275,7 +275,7 @@ wait_and_open_local_host() {
 }
 
 launch_browser_tool() {
-  local marker_name="wizard.url" marker url pid attempt first_argument="${1:-}"
+  local marker_name="wizard.url" marker url pid attempt wizard_executable first_argument="${1:-}"
   local lock_file
   if [[ "$first_argument" == "--manage-shared-roots" ]]; then
     marker_name="shared-root-manager.url"
@@ -288,14 +288,32 @@ launch_browser_tool() {
     return 2
   }
   exec 9>"$lock_file"
-  if ! flock -w 190 9; then
-    show_launch_failure "[LAUNCH_LOCK_TIMEOUT] 配置工具启动事务被占用，请稍后重试。"
+  if ! flock -n 9; then
+    exec 9>&-
+    # 另一次双击已经负责启动。当前进程只观察对方发布的受控回环地址，
+    # 不再排队持有 190 秒锁，也不会叠加第二个向导进程。
+    attempt=0
+    while ((attempt < 90)); do
+      if url="$(read_local_tool_url "$marker" 2>/dev/null)" &&
+        curl -fsS --connect-timeout 1 --max-time 2 "$url" >/dev/null 2>&1; then
+        if open_local_tool_url "$url"; then
+          return 0
+        fi
+        show_launch_failure "[BROWSER_OPEN_FAILED] 配置工具正在运行，但系统默认浏览器未能打开。请复制地址 $url 到浏览器。"
+        return 3
+      fi
+      attempt=$((attempt + 1))
+      sleep 0.5
+    done
+    show_launch_failure "[LAUNCH_IN_PROGRESS] 另一个配置工具仍在启动。系统没有重复创建进程；请查看 $LAUNCH_LOG。"
     return 2
   fi
 
   # 重复双击优先复用仍在运行的本地工具，不再叠加多个冻结进程。
   if url="$(read_local_tool_url "$marker" 2>/dev/null)" &&
     curl -fsS --connect-timeout 1 --max-time 2 "$url" >/dev/null 2>&1; then
+    flock -u 9
+    exec 9>&-
     if open_local_tool_url "$url"; then
       return 0
     fi
@@ -323,6 +341,8 @@ launch_browser_tool() {
   while ((attempt < 360)); do
     if url="$(read_local_tool_url "$marker" 2>/dev/null)" &&
       curl -fsS --connect-timeout 1 --max-time 2 "$url" >/dev/null 2>&1; then
+      flock -u 9
+      exec 9>&-
       if open_local_tool_url "$url"; then
         printf '%s 配置页面已打开：%s\n' \
           "$(date -Iseconds 2>/dev/null || date)" "$url" >>"$LAUNCH_LOG"
@@ -333,13 +353,29 @@ launch_browser_tool() {
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
       wait "$pid" 2>/dev/null || true
+      flock -u 9
+      exec 9>&-
       show_launch_failure "配置工具启动失败。请打开日志查看中文诊断后重试。"
       return 2
     fi
     attempt=$((attempt + 1))
     sleep 0.5
   done
-  show_launch_failure "配置工具在 180 秒内未能显示页面，进程已保留用于诊断。"
+  # PID 来自本函数刚启动的固定随包入口。超时后只终止这个已核验子进程，
+  # 防止僵死向导永久占住后续启动事务；日志在终止前已经完整落盘。
+  wizard_executable="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+  if [[ "$wizard_executable" == "$APP_ROOT/partyops-wizard" ]]; then
+    kill -TERM "$pid" 2>/dev/null || true
+    for _ in {1..20}; do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.25
+    done
+    kill -KILL "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  fi
+  flock -u 9
+  exec 9>&-
+  show_launch_failure "[WIZARD_PAGE_TIMEOUT] 配置工具在 180 秒内未能显示页面，已结束本次受控进程并保留日志用于诊断。"
   return 2
 }
 

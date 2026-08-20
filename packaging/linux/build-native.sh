@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FORMAT="${1:-}"
 ARCH="${PARTYOPS_BUILD_ARCH:-}"
-DEB_VERSION="1.4.3~rc.8"
+DEB_VERSION="1.4.3~rc.9"
 RPM_VERSION="1.4.3"
-RPM_RELEASE="0.rc.8.1"
+RPM_RELEASE="0.rc.9.1"
 ARTIFACTS="$ROOT/artifacts"
 
 if [[ -z "${PYTHON_BIN:-}" && -f "$ROOT/.partyops-build.env" ]]; then
@@ -22,7 +22,7 @@ if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
 fi
 
 "$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py" \
-  --root "$ROOT" --expected "1.4.3-rc.8"
+  --root "$ROOT" --expected "1.4.3-rc.9"
 
 [[ "$FORMAT" == "deb" || "$FORMAT" == "rpm" ]] || {
   echo "用法：build-native.sh deb|rpm（通过 PARTYOPS_BUILD_ARCH 指定 amd64/arm64）" >&2
@@ -163,8 +163,16 @@ file "$PKG/opt/partyops/partyops" | grep -q "$EXPECTED_PAYLOAD_PATTERN" || {
   echo "便携载荷缺少更新信任公钥，拒绝生成无法应用内升级的正式包。" >&2
   exit 2
 }
-cp "$ROOT/packaging/uos/partyops.desktop" "$ROOT/packaging/uos/partyops-file.desktop" \
-  "$ROOT/packaging/uos/partyops-client.desktop" "$PKG/usr/share/applications/"
+for desktop_entry in partyops.desktop partyops-file.desktop partyops-client.desktop; do
+  # Windows/DrvFS 检出可能带 CRLF。desktop-file-validate 在部分 UOS 版本会
+  # 把节名末尾的 CR 当成格式错误，因此封包边界必须强制规范为 UTF-8/LF。
+  sed 's/\r$//' "$ROOT/packaging/uos/$desktop_entry" \
+    >"$PKG/usr/share/applications/$desktop_entry"
+  if LC_ALL=C grep -q "$(printf '\r')" "$PKG/usr/share/applications/$desktop_entry"; then
+    echo "桌面入口换行规范化失败：$desktop_entry" >&2
+    exit 2
+  fi
+done
 cp "$ROOT/packaging/uos/partyops.svg" "$PKG/usr/share/icons/hicolor/scalable/apps/partyops.svg"
 cp "$ROOT/packaging/uos/partyops.service" "$ROOT/packaging/uos/partyops-updater.service" \
   "$PKG/lib/systemd/system/"
@@ -244,7 +252,7 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 echo "PartyOps 业务数据保留在 /var/lib/partyops，卸载不会自动删除。" >&2
 EOF
   chmod 0755 "$PKG/DEBIAN/preinst" "$PKG/DEBIAN/postinst" "$PKG/DEBIAN/prerm" "$PKG/DEBIAN/postrm"
-  OUTPUT="$ARTIFACTS/PartyOps_1.4.3-rc.8_linux_${ARCH}.deb"
+  OUTPUT="$ARTIFACTS/PartyOps_1.4.3-rc.9_linux_${ARCH}.deb"
   if dpkg-deb --help 2>&1 | grep -q -- '--root-owner-group'; then
     dpkg-deb --root-owner-group --build "$PKG" "$OUTPUT"
   else
@@ -350,7 +358,7 @@ EOF
     --define "partyops_release $RPM_RELEASE" \
     --define "with_rollback_cache 1" \
     -bb "$BUILD/rpmbuild/SPECS/partyops.spec"
-  OUTPUT="$ARTIFACTS/PartyOps-1.4.3-0.rc.8.1.${RPM_ARCH}.rpm"
+  OUTPUT="$ARTIFACTS/PartyOps-1.4.3-0.rc.9.1.${RPM_ARCH}.rpm"
   cp "$BUILD/rpmbuild/RPMS/$RPM_ARCH/partyops-$RPM_VERSION-$RPM_RELEASE.$RPM_ARCH.rpm" "$OUTPUT"
 fi
 if [[ "$FORMAT" == deb ]]; then

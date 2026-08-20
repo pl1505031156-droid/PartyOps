@@ -190,6 +190,68 @@ def test_final_material_and_archived_task_are_immutable(
     assert after_archive.json()["code"] == "TASK_ARCHIVED_IMMUTABLE"
 
 
+def test_material_rollback_creates_audited_new_final_without_deleting_history(
+    client: TestClient,
+    admin: dict,
+) -> None:
+    """回退必须引用旧 Blob 新建版本，原终稿与全部过程版本继续可下载。"""
+
+    login_as(client, "admin")
+    task = create_task(client, admin["id"], title="材料回退检查")
+    material_id = task["materials"][0]["id"]
+    draft = client.post(
+        f"/api/v1/tasks/{task['id']}/materials/{material_id}/versions",
+        headers={"If-Match": str(task["version"])},
+        data={"stage": "draft", "is_final": "false", "note": "首版"},
+        files={"file": ("首版.txt", io.BytesIO(b"version-one"), "text/plain")},
+    )
+    assert draft.status_code == 201, draft.text
+    task = draft.json()
+    target = task["materials"][0]["versions"][0]
+    final = client.post(
+        f"/api/v1/tasks/{task['id']}/materials/{material_id}/versions",
+        headers={"If-Match": str(task["version"])},
+        data={"stage": "submitted", "is_final": "true", "note": "正式终稿"},
+        files={"file": ("终稿.txt", io.BytesIO(b"version-two"), "text/plain")},
+    )
+    assert final.status_code == 201, final.text
+    task = final.json()
+
+    missing_reason = client.post(
+        f"/api/v1/tasks/{task['id']}/materials/{material_id}/versions/{target['id']}/rollback",
+        headers={"If-Match": str(task["version"])},
+        json={"reason": ""},
+    )
+    assert missing_reason.status_code == 422
+    stale = client.post(
+        f"/api/v1/tasks/{task['id']}/materials/{material_id}/versions/{target['id']}/rollback",
+        headers={"If-Match": str(task["version"] - 1)},
+        json={"reason": "终稿内容有误，恢复首版"},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["code"] == "VERSION_CONFLICT"
+
+    rolled_back = client.post(
+        f"/api/v1/tasks/{task['id']}/materials/{material_id}/versions/{target['id']}/rollback",
+        headers={"If-Match": str(task["version"])},
+        json={"reason": "终稿内容有误，恢复首版"},
+    )
+    assert rolled_back.status_code == 200, rolled_back.text
+    versions = rolled_back.json()["materials"][0]["versions"]
+    assert [version["version_no"] for version in versions] == [3, 2, 1]
+    assert [version["is_final"] for version in versions] == [True, False, False]
+    assert versions[0]["note"] == "回退至 v1：终稿内容有误，恢复首版"
+    assert client.get(f"/api/v1/attachments/{versions[0]['id']}/download").content == b"version-one"
+    assert client.get(f"/api/v1/attachments/{versions[1]['id']}/download").content == b"version-two"
+    already_final = client.post(
+        f"/api/v1/tasks/{task['id']}/materials/{material_id}/versions/{versions[0]['id']}/rollback",
+        headers={"If-Match": str(rolled_back.json()["version"])},
+        json={"reason": "重复选择当前终稿"},
+    )
+    assert already_final.status_code == 409
+    assert already_final.json()["code"] == "ATTACHMENT_ALREADY_FINAL"
+
+
 def _completed_inbox_transfer(admin_id: str, content: bytes, name: str) -> Transfer:
     transfer = Transfer(
         direction="device_to_host",

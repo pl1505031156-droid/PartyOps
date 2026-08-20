@@ -22,11 +22,29 @@ migrate_legacy_host_config() {
     configured_port=18765
   fi
   agent_port=$((configured_port + 1))
+  configured_host="$(
+    sed -n 's/^PARTYOPS_HOST=//p' "$config" |
+      tail -n 1 |
+      tr -d "'\"[:space:]"
+  )"
+  [ -n "$configured_host" ] || configured_host=127.0.0.1
+  case "$configured_host" in
+    127.*|localhost|::1) bind_host=127.0.0.1 ;;
+    *) bind_host=0.0.0.0 ;;
+  esac
   temporary="${config}.migration.$$"
   cp -p -- "$config" "$temporary"
   changed=0
   if ! grep -q '^PARTYOPS_AGENT_PORT=' "$temporary"; then
     printf 'PARTYOPS_AGENT_PORT=%s\n' "$agent_port" >>"$temporary"
+    changed=1
+  fi
+  if ! grep -q '^PARTYOPS_BIND_HOST=' "$temporary"; then
+    printf 'PARTYOPS_BIND_HOST=%s\n' "$bind_host" >>"$temporary"
+    changed=1
+  fi
+  if ! grep -q '^PARTYOPS_ADVERTISE_HOST=' "$temporary"; then
+    printf 'PARTYOPS_ADVERTISE_HOST=%s\n' "$configured_host" >>"$temporary"
     changed=1
   fi
   if ! grep -qx 'PARTYOPS_TLS_ENABLED=true' "$temporary"; then
@@ -58,7 +76,7 @@ if [ -f /opt/partyops/update-public-key.txt ]; then
     /etc/partyops/update-public-key
 fi
 if [ -r /etc/partyops/partyops.env ]; then
-  awk -F= '/^(PARTYOPS_HOST|PARTYOPS_PORT|PARTYOPS_TLS_ENABLED)=/ {print}' \
+  awk -F= '/^(PARTYOPS_HOST|PARTYOPS_BIND_HOST|PARTYOPS_ADVERTISE_HOST|PARTYOPS_PORT|PARTYOPS_TLS_ENABLED)=/ {print}' \
     /etc/partyops/partyops.env >/etc/partyops/desktop.env
   chown root:root /etc/partyops/desktop.env
   chmod 0644 /etc/partyops/desktop.env

@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "python": "3.8",
-  "release": "1.4.3-rc.8",
+  "release": "1.4.3-rc.9",
   "policy": "没有上游补丁证据、漏洞复现用例、修复后通过记录和双架构轮子时阻断 Win7 制品",
   "components": {
     "cryptography": {

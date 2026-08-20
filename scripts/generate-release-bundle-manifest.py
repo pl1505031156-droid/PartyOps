@@ -12,15 +12,15 @@ from pathlib import Path
 
 
 INSTALLERS = {
-    "PartyOps_1.4.3-rc.8_windows_amd64.exe": "windows/amd64",
-    "PartyOps_1.4.3-rc.8_windows7_amd64.exe": "windows7/amd64",
-    "PartyOps_1.4.3-rc.8_windows7_x86.exe": "windows7/x86",
-    "PartyOps_1.4.3-rc.8_linux_amd64.deb": "linux-deb/amd64",
-    "PartyOps_1.4.3-rc.8_linux_arm64.deb": "linux-deb/arm64",
-    "PartyOps-1.4.3-0.rc.8.1.x86_64.rpm": "linux-rpm/amd64",
-    "PartyOps-1.4.3-0.rc.8.1.aarch64.rpm": "linux-rpm/arm64",
-    "PartyOps_1.4.3-rc.8_macos_x86_64.pkg": "macos/amd64",
-    "PartyOps_1.4.3-rc.8_macos_arm64.pkg": "macos/arm64",
+    "PartyOps_1.4.3-rc.9_windows_amd64.exe": "windows/amd64",
+    "PartyOps_1.4.3-rc.9_windows7_amd64.exe": "windows7/amd64",
+    "PartyOps_1.4.3-rc.9_windows7_x86.exe": "windows7/x86",
+    "PartyOps_1.4.3-rc.9_linux_amd64.deb": "linux-deb/amd64",
+    "PartyOps_1.4.3-rc.9_linux_arm64.deb": "linux-deb/arm64",
+    "PartyOps-1.4.3-0.rc.9.1.x86_64.rpm": "linux-rpm/amd64",
+    "PartyOps-1.4.3-0.rc.9.1.aarch64.rpm": "linux-rpm/arm64",
+    "PartyOps_1.4.3-rc.9_macos_x86_64.pkg": "macos/amd64",
+    "PartyOps_1.4.3-rc.9_macos_arm64.pkg": "macos/arm64",
 }
 
 
@@ -66,8 +66,8 @@ def build_manifest(
     return {
         "schema_version": 4,
         "product": "PartyOps",
-        "version": "1.4.3-rc.8",
-        "release_tag": "v1.4.3-rc.8",
+        "version": "1.4.3-rc.9",
+        "release_tag": "v1.4.3-rc.9",
         "source_commit": source_commit,
         "release_tooling_commit": tooling_commit,
         "generated_at": generated_at,

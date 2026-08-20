@@ -22,6 +22,56 @@ def load_launcher():
     return launcher
 
 
+class _MemoryRegistry:
+    HKEY_CURRENT_USER = "HKCU"
+    REG_SZ = 1
+
+    class Key:
+        def __init__(self, owner, path: str) -> None:
+            self.owner = owner
+            self.path = path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> bool:
+            return False
+
+    def __init__(self, *, deny_value: str = "") -> None:
+        self.keys: set[str] = set()
+        self.values: dict[tuple[str, str], tuple[str, int]] = {}
+        self.deny_value = deny_value
+
+    def OpenKey(self, _root, path: str):
+        if path not in self.keys:
+            raise FileNotFoundError(path)
+        return self.Key(self, path)
+
+    def CreateKey(self, _root, path: str):
+        self.keys.add(path)
+        return self.Key(self, path)
+
+    def QueryValueEx(self, key, name: str):
+        if (key.path, name) not in self.values:
+            raise FileNotFoundError(name)
+        return self.values[(key.path, name)]
+
+    def SetValueEx(self, key, name: str, _reserved, value_type: int, value: str) -> None:
+        if self.deny_value and name == self.deny_value:
+            raise PermissionError(name)
+        self.values[(key.path, name)] = (value, value_type)
+
+    def DeleteValue(self, key, name: str) -> None:
+        if (key.path, name) not in self.values:
+            raise FileNotFoundError(name)
+        del self.values[(key.path, name)]
+
+    def DeleteKey(self, _root, path: str) -> None:
+        if path not in self.keys:
+            raise FileNotFoundError(path)
+        self.keys.remove(path)
+
+
 def test_browser_shell_failure_is_visible_and_contains_copyable_url(monkeypatch) -> None:
     launcher = load_launcher()
     shown: list[str] = []
@@ -37,6 +87,49 @@ def test_browser_shell_failure_is_visible_and_contains_copyable_url(monkeypatch)
     assert launcher.open_browser_or_explain("http://127.0.0.1:18765") is False
     assert shown and "系统默认浏览器未能打开" in shown[0]
     assert "http://127.0.0.1:18765" in shown[0]
+
+
+def test_user_protocols_use_hkcu_and_registry_denial_does_not_abort_install(
+    tmp_path: Path,
+) -> None:
+    launcher = load_launcher()
+    runtime = tmp_path / "PartyOps"
+    runtime.mkdir()
+    log = tmp_path / "launcher.log"
+    registry = _MemoryRegistry()
+
+    assert launcher.ensure_user_protocols(runtime, log, registry) == []
+    for protocol in ("partyops-file", "partyops-client"):
+        base = rf"Software\Classes\{protocol}"
+        assert registry.values[(base, "PartyOps.AppId")][0] == launcher.PARTYOPS_APP_ID
+        assert registry.values[(base, "PartyOps.InstallPath")][0] == str(runtime)
+
+    denied = _MemoryRegistry(deny_value="PartyOps.InstallPath")
+    warnings = launcher.ensure_user_protocols(runtime, log, denied)
+    assert len(warnings) == 2
+    assert all("PROTOCOL_USER_REGISTRY_DENIED" in warning for warning in warnings)
+    assert all("主功能未回滚" in warning for warning in warnings)
+    assert not denied.keys
+    assert "PROTOCOL_USER_REGISTRY_DENIED" in log.read_text(encoding="utf-8")
+
+
+def test_user_protocols_never_overwrite_unowned_existing_command(tmp_path: Path) -> None:
+    launcher = load_launcher()
+    runtime = tmp_path / "PartyOps"
+    runtime.mkdir()
+    log = tmp_path / "launcher.log"
+    registry = _MemoryRegistry()
+    base = r"Software\Classes\partyops-file"
+    command_key = base + r"\shell\open\command"
+    registry.keys.update({base, command_key})
+    registry.values[(command_key, "")] = ('"C:\\OtherApp\\open.exe" "%1"', registry.REG_SZ)
+
+    warnings = launcher.ensure_user_protocols(runtime, log, registry)
+
+    assert len(warnings) == 1
+    assert "PROTOCOL_USER_REGISTRY_CONFLICT" in warnings[0]
+    assert registry.values[(command_key, "")][0] == '"C:\\OtherApp\\open.exe" "%1"'
+    assert (base, "PartyOps.AppId") not in registry.values
 
 
 def test_client_desktop_launch_waits_for_page_marker(monkeypatch, tmp_path: Path) -> None:

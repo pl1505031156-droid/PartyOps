@@ -16,8 +16,8 @@ mkdir -p "$ROOT/artifacts"
     *) echo "不支持的处理器架构：$(uname -m)" >&2; exit 2 ;;
   esac
   echo "architecture=$ARCH"
-  VERSION="${PARTYOPS_VERSION:-1.4.3-rc.8}"
-  PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.8}"
+  VERSION="${PARTYOPS_VERSION:-1.4.3-rc.9}"
+  PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.3~rc.9}"
   INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' partyops)"
   INSTALLED_ARCH="$(dpkg-query -W -f='${Architecture}' partyops)"
   echo "installed_version=$INSTALLED_VERSION"
@@ -33,7 +33,7 @@ mkdir -p "$ROOT/artifacts"
   LD_LIBRARY_PATH=/opt/partyops /opt/partyops/llama-server --version >/dev/null
   grep -q '^Exec=/opt/partyops/desktop-launcher.sh$' \
     /usr/share/applications/partyops.desktop
-  DEB="$ROOT/artifacts/PartyOps_1.4.3-rc.8_linux_${ARCH}.deb"
+  DEB="$ROOT/artifacts/PartyOps_1.4.3-rc.9_linux_${ARCH}.deb"
   if [[ -f "$DEB" ]]; then
     test "$(dpkg-deb -f "$DEB" Architecture)" = "$ARCH"
     test "$(dpkg-deb -f "$DEB" Version)" = "$PACKAGE_VERSION"
