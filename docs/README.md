@@ -34,6 +34,8 @@
 
 ## 发布门禁与证据
 
+- [国内下载与官网发布工作流](domestic-release-workflow.md)
+- [历史下载包上传与 EdgeOne 部署记录](cloud-studio-edgeone-deployment.md)
 - [1.4.2 发布就绪判定](release-readiness-1.4.2.md)
 - [1.4.2 候选验收记录](acceptance-1.4.2.md)
 - [1.4.2 制品清单](artifact-manifest-1.4.2.md)
