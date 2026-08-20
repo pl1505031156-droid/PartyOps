@@ -224,14 +224,22 @@ for size in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET" -o "$ICON"
 
-export PARTYOPS_MACOS_OCR_RUNTIME="$OCR_RUNTIME"
-export PARTYOPS_MACOS_LLAMA_RUNTIME="$LLAMA_RUNTIME"
 export PARTYOPS_MACOS_ICON="$ICON"
 export PARTYOPS_MACOS_TARGET_ARCH="$TARGET_ARCH"
 "$VENV/bin/python" -m PyInstaller --noconfirm --clean \
   --distpath "$BUILD_ROOT/dist" --workpath "$BUILD_ROOT/work" \
   "$SCRIPT_DIR/partyops.spec"
 APP="$BUILD_ROOT/dist/PartyOps.app"
+# OCR 与本地 LLM 的查找契约同样是冻结可执行文件同级。它们不能作为
+# PyInstaller datas 交给 BUNDLE 重排，否则应用能安装，却会在用户电脑上
+# 报运行时缺失。这里显式复制并保留可执行位，随后由 validate-bundle
+# 对架构、外部依赖和实际启动能力逐项复核。
+/usr/bin/ditto "$OCR_RUNTIME" "$APP/Contents/MacOS/ocr"
+/usr/bin/install -m 0755 \
+  "$LLAMA_RUNTIME/llama-server" "$APP/Contents/MacOS/llama-server"
+/bin/mkdir -p "$APP/Contents/Resources/licenses"
+/usr/bin/install -m 0644 "$LLAMA_RUNTIME/licenses/llama.cpp-LICENSE" \
+  "$APP/Contents/Resources/licenses/llama.cpp-LICENSE"
 # 生产更新器只信任与冻结可执行文件同级、随 PKG 安装且由 root 保护的
 # 公钥。PyInstaller 会把普通 datas 重排到 Frameworks/_internal，不能依赖
 # 其内部布局；在应用封装完成后显式安装并回读，确保运行时与校验器一致。
@@ -243,10 +251,13 @@ if [[ ! -f "$UPDATE_PUBLIC_KEY_SOURCE" ]] ||
   exit 2
 fi
 /usr/bin/install -m 0644 "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET"
-cmp -s "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET" || {
+/usr/bin/cmp -s "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET" || {
   printf '%s\n' '[MACOS_UPDATE_TRUST_ROOT_COPY_FAILED] 应用内更新根公钥回读不一致。' >&2
   exit 2
 }
+TESSDATA_PREFIX="$APP/Contents/MacOS/ocr/tessdata" \
+  "$APP/Contents/MacOS/ocr/bin/tesseract" --list-langs | /usr/bin/grep -qx 'chi_sim'
+"$APP/Contents/MacOS/llama-server" --version >/dev/null
 "$SCRIPT_DIR/validate-bundle.sh" "$APP" "$TARGET_ARCH"
 
 if [[ "$MODE" == 'release' ]]; then

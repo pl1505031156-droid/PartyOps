@@ -9,8 +9,6 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_dyn
 root = Path(SPECPATH).parents[1]
 backend = root / "backend"
 frontend = root / "frontend" / "dist" / "client"
-ocr_runtime = Path(os.environ["PARTYOPS_MACOS_OCR_RUNTIME"]).resolve()
-llama_runtime = Path(os.environ["PARTYOPS_MACOS_LLAMA_RUNTIME"]).resolve()
 icon_path = Path(os.environ["PARTYOPS_MACOS_ICON"]).resolve()
 target_arch = os.environ["PARTYOPS_MACOS_TARGET_ARCH"]
 
@@ -47,8 +45,6 @@ host_analysis = Analysis(
         (str(frontend), "frontend"),
         (str(backend / "alembic"), "alembic"),
         (str(backend / "alembic.ini"), "."),
-        (str(ocr_runtime), "ocr"),
-        (str(llama_runtime), "."),
         *ai_datas,
     ],
     hiddenimports=[*common_hidden, *ai_hidden],

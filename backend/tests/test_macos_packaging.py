@@ -70,7 +70,13 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "update-public-key.txt" not in spec
     assert 'UPDATE_PUBLIC_KEY_TARGET="$APP/Contents/MacOS/update-public-key.txt"' in build
     assert '/usr/bin/install -m 0644 "$UPDATE_PUBLIC_KEY_SOURCE"' in build
-    assert 'cmp -s "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET"' in build
+    assert '/usr/bin/cmp -s "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET"' in build
+    assert '/usr/bin/ditto "$OCR_RUNTIME" "$APP/Contents/MacOS/ocr"' in build
+    assert '"$LLAMA_RUNTIME/llama-server" "$APP/Contents/MacOS/llama-server"' in build
+    assert "PARTYOPS_MACOS_OCR_RUNTIME" not in spec
+    assert "PARTYOPS_MACOS_LLAMA_RUNTIME" not in spec
+    assert '(str(ocr_runtime), "ocr")' not in spec
+    assert '(str(llama_runtime), ".")' not in spec
     update_key = ROOT / "packaging" / "uos" / "update-public-key.txt"
     assert update_key.is_file()
     assert update_key.read_text(encoding="ascii").strip() == (
