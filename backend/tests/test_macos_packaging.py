@@ -92,6 +92,9 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "MACOS_RUNTIME_SOURCE_HASH_MISMATCH" in runtimes
     assert "assert_thin_architecture" in runtimes
     assert "assert_system_dependencies_only" in runtimes
+    # libpng 在 Apple 平台默认生成 framework；必须显式关闭，避免 OCR
+    # 运行时在用户电脑上依赖构建机路径中的 png.framework。
+    assert "-DPNG_FRAMEWORK=OFF" in runtimes
     assert "chi_sim.traineddata" in runtimes
     assert "llama-server" in runtimes
 

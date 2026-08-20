@@ -171,7 +171,7 @@ cmake --install "$OCR_BUILD/zlib-build"
 
 cmake -S "$OCR_BUILD/libpng-${LIBPNG_VERSION}" -B "$OCR_BUILD/libpng-build" \
   "${COMMON_FLAGS[@]}" -DZLIB_ROOT="$PREFIX" -DPNG_SHARED=OFF \
-  -DPNG_STATIC=ON -DPNG_TESTS=OFF -DPNG_TOOLS=OFF
+  -DPNG_STATIC=ON -DPNG_FRAMEWORK=OFF -DPNG_TESTS=OFF -DPNG_TOOLS=OFF
 cmake --build "$OCR_BUILD/libpng-build" -j "$JOBS"
 cmake --install "$OCR_BUILD/libpng-build"
 
