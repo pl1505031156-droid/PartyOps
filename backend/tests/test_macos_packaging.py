@@ -95,6 +95,15 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert '/usr/bin/cmp -s "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET"' in build
     assert 'macho-candidates-adhoc.bin' in build
     assert 'done <"$MACHO_CANDIDATE_LIST"' in build
+    assert 'BUNDLE_EXECUTABLE="$APP/Contents/MacOS/partyops-desktop"' in build
+    assert 'find "$APP/Contents" -type f ! -path "$BUNDLE_EXECUTABLE" -print0' in build
+    assert build.count('"$BUNDLE_EXECUTABLE"') == 4
+    assert build.index('done <"$MACHO_CANDIDATE_LIST"') < build.index(
+        'codesign --force --timestamp --options runtime \\\n    --sign "$PARTYOPS_MACOS_APPLICATION_IDENTITY" "$BUNDLE_EXECUTABLE"'
+    )
+    assert build.rindex('done <"$MACHO_CANDIDATE_LIST"') < build.index(
+        'codesign --force --options runtime --sign - "$BUNDLE_EXECUTABLE"'
+    )
     assert 'PAYLOAD_ROOT="$BUILD_ROOT/pkg-root"' in build
     assert 'PAYLOAD_ARCHIVE="$PAYLOAD_INSTALLER_DIR/PartyOps.app.zip"' in build
     assert '/usr/bin/ditto -c -k --sequesterRsrc --keepParent' in build

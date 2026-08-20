@@ -313,13 +313,20 @@ stage_pkg_payload() {
 }
 
 if [[ "$MODE" == 'release' ]]; then
+  BUNDLE_EXECUTABLE="$APP/Contents/MacOS/partyops-desktop"
   MACHO_CANDIDATE_LIST="$BUILD_ROOT/macho-candidates-release.bin"
-  /usr/bin/find "$APP/Contents" -type f -print0 >"$MACHO_CANDIDATE_LIST"
+  # CFBundleExecutable 是整个 App 的主签名边界。必须先签完新加入的
+  # tesseract、llama-server 等嵌套 Mach-O，再签主入口；否则没有预存
+  # 签名的全新运行时会令 codesign 在主入口阶段提前失败。
+  /usr/bin/find "$APP/Contents" -type f ! -path "$BUNDLE_EXECUTABLE" -print0 \
+    >"$MACHO_CANDIDATE_LIST"
   while IFS= read -r -d '' candidate; do
     [[ "$(file -b "$candidate" 2>/dev/null || true)" == *Mach-O* ]] || continue
     codesign --force --timestamp --options runtime \
       --sign "$PARTYOPS_MACOS_APPLICATION_IDENTITY" "$candidate"
   done <"$MACHO_CANDIDATE_LIST"
+  codesign --force --timestamp --options runtime \
+    --sign "$PARTYOPS_MACOS_APPLICATION_IDENTITY" "$BUNDLE_EXECUTABLE"
   codesign --force --timestamp --options runtime \
     --entitlements "$SCRIPT_DIR/entitlements.plist" \
     --sign "$PARTYOPS_MACOS_APPLICATION_IDENTITY" "$APP"
@@ -351,12 +358,15 @@ if [[ "$MODE" == 'release' ]]; then
   xcrun stapler validate "$OUTPUT"
   spctl --assess --type install --verbose=2 "$OUTPUT"
 elif [[ "$MODE" == 'unsigned-candidate' ]]; then
+  BUNDLE_EXECUTABLE="$APP/Contents/MacOS/partyops-desktop"
   MACHO_CANDIDATE_LIST="$BUILD_ROOT/macho-candidates-adhoc.bin"
-  /usr/bin/find "$APP/Contents" -type f -print0 >"$MACHO_CANDIDATE_LIST"
+  /usr/bin/find "$APP/Contents" -type f ! -path "$BUNDLE_EXECUTABLE" -print0 \
+    >"$MACHO_CANDIDATE_LIST"
   while IFS= read -r -d '' candidate; do
     [[ "$(file -b "$candidate" 2>/dev/null || true)" == *Mach-O* ]] || continue
     codesign --force --options runtime --sign - "$candidate"
   done <"$MACHO_CANDIDATE_LIST"
+  codesign --force --options runtime --sign - "$BUNDLE_EXECUTABLE"
   codesign --force --options runtime \
     --entitlements "$SCRIPT_DIR/entitlements.plist" --sign - "$APP"
   codesign --verify --deep --strict --verbose=2 "$APP"
