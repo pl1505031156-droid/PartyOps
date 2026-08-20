@@ -80,6 +80,8 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert 'PAYLOAD_ARCHIVE="$PAYLOAD_INSTALLER_DIR/PartyOps.app.zip"' in build
     assert '/usr/bin/ditto -c -k --sequesterRsrc --keepParent' in build
     assert '/usr/bin/ditto -x -k "$PAYLOAD_ARCHIVE" "$roundtrip"' in build
+    assert '/bin/chmod -R a+rX,go-w "$APP"' in build
+    assert "MACOS_APP_PERMISSIONS_PRIVATE" in build
     assert 'pkgbuild --root "$PAYLOAD_ROOT"' in build
     assert "--component-plist" not in build
     assert 'pkgbuild --component "$APP"' not in build
@@ -94,6 +96,8 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "MACOS_STAGED_APP_INVALID" in postinstall
     assert 'BACKUP_APP="$BACKUP_ROOT/PartyOps.app"' in postinstall
     assert '/usr/bin/ditto -x -k "$ARCHIVE" "$STAGE_ROOT"' in postinstall
+    assert '/usr/sbin/chown -R root:wheel "$STAGED_APP"' in postinstall
+    assert '/bin/chmod -R a+rX,go-w "$STAGED_APP"' in postinstall
     assert '/usr/bin/codesign --verify --deep --strict "$candidate"' in postinstall
     assert "Application Support/PartyOps/Installer" in postinstall
     assert '"$OCR_RUNTIME/bin/tesseract" "$APP/Contents/MacOS/tesseract"' in build

@@ -290,6 +290,15 @@ stage_pkg_payload() {
     }
   done
 
+  # codesign 会在 umask 077 的构建目录中生成 _CodeSignature/CodeResources。
+  # 若不在归档前显式放开读取/遍历权限，root 安装后普通桌面用户无法启动 App。
+  /bin/chmod -R a+rX,go-w "$APP"
+  if /usr/bin/find "$APP" -type d ! -perm -0001 -print -quit | /usr/bin/grep -q . ||
+    /usr/bin/find "$APP" -type f ! -perm -0004 -print -quit | /usr/bin/grep -q .; then
+    printf '%s\n' '[MACOS_APP_PERMISSIONS_PRIVATE] App 含普通用户不可读取或遍历的文件。' >&2
+    exit 2
+  fi
+
   # 打包前执行一次 ZIP 往返校验，确保权限、符号链接、签名资源和主程序
   # 均能按 postinstall 的真实解包方式恢复。
   local roundtrip="$BUILD_ROOT/payload-roundtrip"

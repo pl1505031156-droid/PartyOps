@@ -109,6 +109,10 @@ fi
 remove_private_tree "$STAGE_ROOT"
 /bin/mkdir -p "$STAGE_ROOT"
 /usr/bin/ditto -x -k "$ARCHIVE" "$STAGE_ROOT"
+# /Applications 下的 App 由 root 管理，但所有登录用户都必须能够读取签名
+# 资源和遍历目录；写权限只保留给 root。大写 X 只保留原有可执行文件及目录。
+/usr/sbin/chown -R root:wheel "$STAGED_APP"
+/bin/chmod -R a+rX,go-w "$STAGED_APP"
 validate_app "$STAGED_APP" || {
   printf '%s\n' '[MACOS_STAGED_APP_INVALID] 解包后的 PartyOps App 结构、权限或签名无效。' >&2
   exit 2
