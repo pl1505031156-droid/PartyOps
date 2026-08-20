@@ -1637,6 +1637,7 @@ def write_host_config(
         ),
     }
     public_key_candidates = (
+        runtime_root().parent / "Resources" / "update-public-key.txt",
         runtime_root() / "update-public-key.txt",
         runtime_root() / "packaging" / "uos" / "update-public-key.txt",
     )
@@ -1760,6 +1761,7 @@ def write_personal_config(data_dir: Path, port: int = 18775) -> Path:
             ),
         }
         public_key_candidates = (
+            runtime_root().parent / "Resources" / "update-public-key.txt",
             runtime_root() / "update-public-key.txt",
             runtime_root() / "packaging" / "uos" / "update-public-key.txt",
         )

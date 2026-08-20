@@ -23,8 +23,9 @@ for name in "${required[@]}"; do
 done
 
 RUNTIME="$APP_PATH/Contents/MacOS"
-if [[ ! -f "$RUNTIME/update-public-key.txt" ]] ||
-  [[ "$(wc -c <"$RUNTIME/update-public-key.txt" | tr -d ' ')" -gt 4096 ]]; then
+UPDATE_PUBLIC_KEY="$APP_PATH/Contents/Resources/update-public-key.txt"
+if [[ ! -f "$UPDATE_PUBLIC_KEY" ]] ||
+  [[ "$(wc -c <"$UPDATE_PUBLIC_KEY" | tr -d ' ')" -gt 4096 ]]; then
   printf '%s\n' '[MACOS_UPDATE_TRUST_ROOT_MISSING] 应用包缺少受控更新根公钥。' >&2
   exit 2
 fi

@@ -66,11 +66,16 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "target_arch=target_arch" in spec
     assert 'name="partyops-updater"' in spec
     # PyInstaller 对 datas 的重排位置不是运行时安全契约；根公钥必须在
-    # BUNDLE 完成后显式安装到所有冻结可执行文件同级目录。
+    # BUNDLE 完成后显式安装到 Apple 约定的 Resources 目录。
     assert "update-public-key.txt" not in spec
-    assert 'UPDATE_PUBLIC_KEY_TARGET="$APP/Contents/MacOS/update-public-key.txt"' in build
+    assert (
+        'UPDATE_PUBLIC_KEY_TARGET="$APP/Contents/Resources/update-public-key.txt"'
+        in build
+    )
     assert '/usr/bin/install -m 0644 "$UPDATE_PUBLIC_KEY_SOURCE"' in build
     assert '/usr/bin/cmp -s "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET"' in build
+    assert 'macho-candidates-adhoc.bin' in build
+    assert 'done <"$MACHO_CANDIDATE_LIST"' in build
     assert '"$OCR_RUNTIME/bin/tesseract" "$APP/Contents/MacOS/tesseract"' in build
     assert '"$OCR_RUNTIME/tessdata" "$APP/Contents/Resources/ocr/tessdata"' in build
     assert 'Contents/Resources/ocr/tessdata/chi_sim.traineddata' in validation
@@ -218,7 +223,9 @@ def test_macos_production_trust_root_is_loaded_only_from_app(
 ) -> None:
     runtime = tmp_path / "PartyOps.app" / "Contents" / "MacOS"
     runtime.mkdir(parents=True)
-    public_key = runtime / "update-public-key.txt"
+    resources = runtime.parent / "Resources"
+    resources.mkdir()
+    public_key = resources / "update-public-key.txt"
     public_key.write_text("A" * 44, encoding="utf-8")
     public_key.chmod(0o600)
     monkeypatch.setattr(update_executor.sys, "platform", "darwin")

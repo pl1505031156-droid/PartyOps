@@ -243,11 +243,12 @@ APP="$BUILD_ROOT/dist/PartyOps.app"
 /bin/mkdir -p "$APP/Contents/Resources/licenses"
 /usr/bin/install -m 0644 "$LLAMA_RUNTIME/licenses/llama.cpp-LICENSE" \
   "$APP/Contents/Resources/licenses/llama.cpp-LICENSE"
-# 生产更新器只信任与冻结可执行文件同级、随 PKG 安装且由 root 保护的
-# 公钥。PyInstaller 会把普通 datas 重排到 Frameworks/_internal，不能依赖
-# 其内部布局；在应用封装完成后显式安装并回读，确保运行时与校验器一致。
+# 生产更新器只信任随 PKG 安装且由 root 保护的应用资源。公钥不是可执行
+# 代码，必须放入 Apple 约定的 Resources；放在 MacOS 会被 codesign 当成
+# 未签名嵌套代码。PyInstaller 对 datas 的重排位置也不是运行时契约，因此
+# 在应用封装完成后显式安装并回读。
 UPDATE_PUBLIC_KEY_SOURCE="$ROOT/packaging/uos/update-public-key.txt"
-UPDATE_PUBLIC_KEY_TARGET="$APP/Contents/MacOS/update-public-key.txt"
+UPDATE_PUBLIC_KEY_TARGET="$APP/Contents/Resources/update-public-key.txt"
 if [[ ! -f "$UPDATE_PUBLIC_KEY_SOURCE" ]] ||
   [[ "$(wc -c <"$UPDATE_PUBLIC_KEY_SOURCE" | tr -d ' ')" -gt 4096 ]]; then
   printf '%s\n' '[MACOS_UPDATE_TRUST_ROOT_INVALID] 更新根公钥缺失或尺寸异常。' >&2
@@ -264,11 +265,13 @@ TESSDATA_PREFIX="$APP/Contents/Resources/ocr/tessdata" \
 "$SCRIPT_DIR/validate-bundle.sh" "$APP" "$TARGET_ARCH"
 
 if [[ "$MODE" == 'release' ]]; then
+  MACHO_CANDIDATE_LIST="$BUILD_ROOT/macho-candidates-release.bin"
+  /usr/bin/find "$APP/Contents" -type f -print0 >"$MACHO_CANDIDATE_LIST"
   while IFS= read -r -d '' candidate; do
     [[ "$(file -b "$candidate" 2>/dev/null || true)" == *Mach-O* ]] || continue
     codesign --force --timestamp --options runtime \
       --sign "$PARTYOPS_MACOS_APPLICATION_IDENTITY" "$candidate"
-  done < <(find "$APP/Contents" -type f -print0)
+  done <"$MACHO_CANDIDATE_LIST"
   codesign --force --timestamp --options runtime \
     --entitlements "$SCRIPT_DIR/entitlements.plist" \
     --sign "$PARTYOPS_MACOS_APPLICATION_IDENTITY" "$APP"
@@ -298,10 +301,12 @@ if [[ "$MODE" == 'release' ]]; then
   xcrun stapler validate "$OUTPUT"
   spctl --assess --type install --verbose=2 "$OUTPUT"
 elif [[ "$MODE" == 'unsigned-candidate' ]]; then
+  MACHO_CANDIDATE_LIST="$BUILD_ROOT/macho-candidates-adhoc.bin"
+  /usr/bin/find "$APP/Contents" -type f -print0 >"$MACHO_CANDIDATE_LIST"
   while IFS= read -r -d '' candidate; do
     [[ "$(file -b "$candidate" 2>/dev/null || true)" == *Mach-O* ]] || continue
     codesign --force --options runtime --sign - "$candidate"
-  done < <(find "$APP/Contents" -type f -print0)
+  done <"$MACHO_CANDIDATE_LIST"
   codesign --force --options runtime \
     --entitlements "$SCRIPT_DIR/entitlements.plist" --sign - "$APP"
   codesign --verify --deep --strict --verbose=2 "$APP"

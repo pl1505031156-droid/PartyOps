@@ -567,13 +567,17 @@ def _trusted_public_key() -> str:
     if runtime_environment in {"test", "development"} and settings.update_public_key:
         return settings.update_public_key.strip()
     candidates = [Path("/etc/partyops/update-public-key")]
-    if os.name == "nt":
+    if sys.platform == "darwin":
+        # PKG 把根公钥放在 root 所有的 PartyOps.app/Contents/Resources。
+        # 公钥不是嵌套代码，不能放进 MacOS；也不从用户 Application
+        # Support 或环境变量回退。
+        executable_parent = Path(sys.executable).resolve().parent
+        candidates = [
+            executable_parent.parent / "Resources" / "update-public-key.txt"
+        ]
+    elif os.name == "nt":
         # SYSTEM 更新器只信任与冻结程序同目录、由安装器写入 Program Files
         # 的公钥；不再从业务数据目录回退，避免自定义目录 ACL 被误配后替换根信任。
-        candidates = [Path(sys.executable).resolve().parent / "update-public-key.txt"]
-    elif sys.platform == "darwin":
-        # PKG 把根公钥与冻结 helper 一起安装到 root 所有的
-        # PartyOps.app。不从用户 Application Support 或环境变量回退。
         candidates = [Path(sys.executable).resolve().parent / "update-public-key.txt"]
     for path in candidates:
         try:
