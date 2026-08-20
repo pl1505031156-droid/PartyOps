@@ -76,6 +76,10 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert '/usr/bin/cmp -s "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET"' in build
     assert 'macho-candidates-adhoc.bin' in build
     assert 'done <"$MACHO_CANDIDATE_LIST"' in build
+    assert 'PAYLOAD_ROOT="$BUILD_ROOT/pkg-root"' in build
+    assert '"$PAYLOAD_ROOT/Applications/PartyOps.app"' in build
+    assert 'pkgbuild --root "$PAYLOAD_ROOT" --install-location /' in build
+    assert 'pkgbuild --component "$APP"' not in build
     assert '"$OCR_RUNTIME/bin/tesseract" "$APP/Contents/MacOS/tesseract"' in build
     assert '"$OCR_RUNTIME/tessdata" "$APP/Contents/Resources/ocr/tessdata"' in build
     assert 'Contents/Resources/ocr/tessdata/chi_sim.traineddata' in validation

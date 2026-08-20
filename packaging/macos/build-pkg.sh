@@ -264,6 +264,22 @@ TESSDATA_PREFIX="$APP/Contents/Resources/ocr/tessdata" \
 "$APP/Contents/MacOS/llama-server" --version >/dev/null
 "$SCRIPT_DIR/validate-bundle.sh" "$APP" "$TARGET_ARCH"
 
+# 使用显式根载荷而不是 pkgbuild --component。前者把已验证的 App 原样
+# 放入 /Applications，避免组件分析/重定位在不同 macOS 版本上重写 Bundle
+# 布局。BUILD_ROOT 为本轮 mktemp 新目录；若 staging 意外存在则拒绝覆盖。
+PAYLOAD_ROOT="$BUILD_ROOT/pkg-root"
+PAYLOAD_APP="$PAYLOAD_ROOT/Applications/PartyOps.app"
+stage_pkg_payload() {
+  if [[ -e "$PAYLOAD_ROOT" ]]; then
+    printf '%s\n' '[MACOS_PAYLOAD_DIR_DIRTY] PKG 临时载荷目录不是全新目录。' >&2
+    exit 2
+  fi
+  /bin/mkdir -p "$PAYLOAD_ROOT/Applications"
+  /usr/bin/ditto "$APP" "$PAYLOAD_APP"
+  "$SCRIPT_DIR/validate-bundle.sh" "$PAYLOAD_APP" "$TARGET_ARCH"
+  codesign --verify --deep --strict --verbose=2 "$PAYLOAD_APP"
+}
+
 if [[ "$MODE" == 'release' ]]; then
   MACHO_CANDIDATE_LIST="$BUILD_ROOT/macho-candidates-release.bin"
   /usr/bin/find "$APP/Contents" -type f -print0 >"$MACHO_CANDIDATE_LIST"
@@ -287,7 +303,8 @@ if [[ "$MODE" == 'release' ]]; then
   xcrun stapler staple "$APP"
   xcrun stapler validate "$APP"
   spctl --assess --type execute --verbose=2 "$APP"
-  pkgbuild --component "$APP" --install-location /Applications --ownership recommended \
+  stage_pkg_payload
+  pkgbuild --root "$PAYLOAD_ROOT" --install-location / --ownership recommended \
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" \
     --sign "$PARTYOPS_MACOS_INSTALLER_IDENTITY" "$OUTPUT"
   pkgutil --check-signature "$OUTPUT"
@@ -310,7 +327,8 @@ elif [[ "$MODE" == 'unsigned-candidate' ]]; then
   codesign --force --options runtime \
     --entitlements "$SCRIPT_DIR/entitlements.plist" --sign - "$APP"
   codesign --verify --deep --strict --verbose=2 "$APP"
-  pkgbuild --component "$APP" --install-location /Applications --ownership recommended \
+  stage_pkg_payload
+  pkgbuild --root "$PAYLOAD_ROOT" --install-location / --ownership recommended \
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" "$OUTPUT"
   SOURCE_COMMIT="${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD)}"
   GENERATED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -345,7 +363,8 @@ Path(path).write_text(
 )
 PY
 else
-  pkgbuild --component "$APP" --install-location /Applications --ownership recommended \
+  stage_pkg_payload
+  pkgbuild --root "$PAYLOAD_ROOT" --install-location / --ownership recommended \
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" "$OUTPUT"
 fi
 
