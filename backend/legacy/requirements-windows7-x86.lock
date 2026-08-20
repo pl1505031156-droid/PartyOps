@@ -295,7 +295,7 @@ charset-normalizer==3.5.1 \
     --hash=sha256:fdb8a068947befafba9952162645dc2fecaeb400e64584829ed5e9b2fbe21a7f
     # via requests
 click==8.3.3+partyops.1 \
-    --hash=sha256:9431543e56d9855d89e816f549d882b91aa87dcb5ef2d81a59d72699a53d0e3f
+    --hash=sha256:8c39f95eff65b539954ae3fca2523311c14c81132a92c3772ec775c349481aae
     # via
     #   -r backend/legacy/requirements-windows7-common.in
     #   uvicorn
@@ -304,7 +304,7 @@ colorama==0.4.6 \
     --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
     # via click
 cryptography==50.0.0+partyops.1 \
-    --hash=sha256:6457999b140918469d337e2b291e623add88af3b1fb860d849b65ff871988afb
+    --hash=sha256:ac450f1492dd06b59c1b2d1710345e19a4f524d41f1c05e16bd1384703efa7fc
     # via -r backend/legacy/requirements-windows7-common.in
 defusedxml==0.7.1 \
     --hash=sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69 \
@@ -323,7 +323,7 @@ exceptiongroup==1.3.1 \
     --hash=sha256:a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598
     # via anyio
 fastapi==0.115.14+partyops.1 \
-    --hash=sha256:01d3c2f6cc18f41434e7f202d1b2c97067e0d14a11a115bcffcbe3cf1ffd6f2c
+    --hash=sha256:30cf77c53e0868cc8c72372ec97a9ec6dd1a1fe7a9c28675908b412731aef8ca
     # via -r backend/legacy/requirements-windows7-common.in
 greenlet==3.1.1 \
     --hash=sha256:0153404a4bb921f0ff1abeb5ce8a5131da56b953eda6e14b88dc6bbc04d2049e \
@@ -644,7 +644,7 @@ packaging==25.0 \
     #   -r backend/legacy/requirements-windows7-common.in
     #   pytesseract
 pillow==12.3.0+partyops.1 \
-    --hash=sha256:7530f5ed2d4c48b1c68e006d4082a4edc154f8300956392e9d04c06b29fd2044
+    --hash=sha256:902995edcb4cfb01bd8fc4f786e2e4cbdfa6ab54fe1be73a595270958838c31d
     # via
     #   -r backend/legacy/requirements-windows7-common.in
     #   pytesseract
@@ -783,15 +783,15 @@ python-docx==1.1.2 \
     --hash=sha256:0cf1f22e95b9002addca7948e16f2cd7acdfd498047f1941ca5d293db7762efd
     # via -r backend/legacy/requirements-windows7-common.in
 python-dotenv==1.2.2+partyops.1 \
-    --hash=sha256:e15956f289b6652d5a1028b15c098f12afd2330b95a4ea0581d7965b61b3866f
+    --hash=sha256:1a12c59bfe1f4eb20a3837b01bd1f3176a90762d2d4d9e07e27e1dd213f15cc0
     # via
     #   -r backend/legacy/requirements-windows7-common.in
     #   pydantic-settings
 python-multipart==0.0.31+partyops.1 \
-    --hash=sha256:b68a37c2b9498f136be82a8f8d709360b3ce4f5b9ba3383283c0e1797ac68f27
+    --hash=sha256:ce9c341ba90cda63cae10b58fc434b7db012dfd12df9168d6dc6510aacb39444
     # via -r backend/legacy/requirements-windows7-common.in
 requests==2.33.0+partyops.1 \
-    --hash=sha256:b27a9ee5c1d546350d37a3f11b5ec125df30899c1cabe42748ec15940a718dd9
+    --hash=sha256:5c34d6f021e1e31ba07745d2b21c775fa3e042aa86a77c74255f057c54354fe9
     # via -r backend/legacy/requirements-windows7-common.in
 sniffio==1.3.1 \
     --hash=sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2 \
@@ -860,7 +860,7 @@ sse-starlette==2.1.3 \
     --hash=sha256:9cd27eb35319e1414e3d2558ee7414487f9529ce3b3cf9b21434fd110e017169
     # via -r backend/legacy/requirements-windows7-common.in
 starlette==1.3.1+partyops.1 \
-    --hash=sha256:87c2e1760a52c6813cccf0a05623198233791e156cb9596e9be272ec603f38fd
+    --hash=sha256:4d11c1e414c8ee9f83977e102866f3e0b15aa4bc6edd9be906fa0eefd475d1d6
     # via
     #   -r backend/legacy/requirements-windows7-common.in
     #   fastapi
@@ -882,7 +882,7 @@ typing-extensions==4.13.2 \
     #   starlette
     #   uvicorn
 urllib3==2.7.0+partyops.1 \
-    --hash=sha256:3043c2297c596734a21b74b624fc792f01d9dd30026917b9c945d0030b14b531
+    --hash=sha256:efbd0e840df614841806631555bdfeaa0da4d069f876ef4cf7b1eb22adfc0465
     # via
     #   -r backend/legacy/requirements-windows7-common.in
     #   requests

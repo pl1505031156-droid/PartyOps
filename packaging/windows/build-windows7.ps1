@@ -37,6 +37,10 @@ $requiredLock = Join-Path $repoRoot "backend\legacy\requirements-windows7-$Archi
   --find-links $wheelhousePath `
   -r $requiredLock
 if ($LASTEXITCODE -ne 0) { throw "Win7 离线依赖安装失败。" }
+& $pythonPath (Join-Path $repoRoot "scripts\validate-win7-cryptography-runtime.py")
+if ($LASTEXITCODE -ne 0) {
+  throw "Win7 cryptography 安全回移运行时门禁失败，拒绝继续冻结安装包。"
+}
 & $pythonPath -m pip install --no-index --only-binary=:all: `
   --find-links $wheelhousePath `
   -r (Join-Path $PSScriptRoot "requirements-build.txt")

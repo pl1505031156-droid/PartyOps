@@ -14,11 +14,11 @@
     "windows_api_floor": "_WIN32_WINNT=0x0601",
     "openssl": "3.0.21 static",
     "patch": "../patches/cryptography-50.0.0-partyops-win7.patch",
-    "patch_sha256": "3d7188e0d060f1539fe865f900e27d92d19b72a378468e01bd092ca73d1e0b81"
+    "patch_sha256": "dd12813eb095e4d7aeba7668696647ce2db625c68a159bffc4968daf7c182760"
   },
   "wheel_sha256": {
-    "win_amd64": "364f8c65b5e8d97f452f19c0e5127023f1e2c88eec8dbdb13158f4cf3b2d608d",
-    "win32": "6457999b140918469d337e2b291e623add88af3b1fb860d849b65ff871988afb"
+    "win_amd64": "16193aa10502f380fb3e19b4db420ba3ef4e9daf298df66d53c9ce2a767e8970",
+    "win32": "ac450f1492dd06b59c1b2d1710345e19a4f524d41f1c05e16bd1384703efa7fc"
   },
   "sbom": "cryptography.sbom.cdx.json",
   "vex": "cryptography.vex.cdx.json",

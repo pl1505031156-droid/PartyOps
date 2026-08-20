@@ -17,8 +17,8 @@
     "patch_sha256": "90f3b31536dbdb96e4731ae231746f1e1cc0090be7a2e81de512b7763d6039de"
   },
   "wheel_sha256": {
-    "win_amd64": "6d16c56281f6a81415ca9243e35f3fa3aea45c2f3c3f75b0c205c3ee569b4372",
-    "win32": "7530f5ed2d4c48b1c68e006d4082a4edc154f8300956392e9d04c06b29fd2044"
+    "win_amd64": "72e62846231965cbcde00f04e2f5e0c635566d062f518ee54d9133a77c9e51fc",
+    "win32": "902995edcb4cfb01bd8fc4f786e2e4cbdfa6ab54fe1be73a595270958838c31d"
   },
   "sbom": "pillow.sbom.cdx.json",
   "vex": "pillow.vex.cdx.json",

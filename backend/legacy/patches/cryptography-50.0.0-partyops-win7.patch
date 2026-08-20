@@ -79,17 +79,30 @@ diff --git a/src/cryptography/hazmat/primitives/asymmetric/rsa.py b/src/cryptogr
 index d730ceb..d70516c 100644
 --- a/src/cryptography/hazmat/primitives/asymmetric/rsa.py
 +++ b/src/cryptography/hazmat/primitives/asymmetric/rsa.py
-@@ -7,8 +7,9 @@ from __future__ import annotations
+@@ -7,7 +7,13 @@ from __future__ import annotations
  import abc
  import random
  import typing
 -from math import gcd, lcm
 +from math import gcd
  
-+from cryptography._legacy_compat import lcm
++
++def _lcm(a: int, b: int) -> int:
++    # CPython 3.8 尚未提供 math.lcm；RSA 私钥恢复这里只需要双参数最小公倍数。
++    return abs(a * b) // gcd(a, b)
++
++
  from cryptography.hazmat.bindings._rust import openssl as rust_openssl
  from cryptography.hazmat.primitives import _serialization, hashes
- from cryptography.hazmat.primitives._asymmetric import AsymmetricPadding
+@@ -239,7 +245,7 @@ def rsa_recover_private_exponent(e: int, p: int, q: int) -> int:
+     # than necessary. (lambda_n always divides phi_n)
+     if e <= 1 or p <= 1 or q <= 1:
+         raise ValueError("Values can't be <= 1")
+-    return _modinv(e, lcm(p - 1, q - 1))
++    return _modinv(e, _lcm(p - 1, q - 1))
+ 
+ 
+ # Controls the number of iterations rsa_recover_prime_factors will perform
 diff --git a/src/rust/cryptography-cffi/build.rs b/src/rust/cryptography-cffi/build.rs
 index 0d34248..a4139db 100644
 --- a/src/rust/cryptography-cffi/build.rs
