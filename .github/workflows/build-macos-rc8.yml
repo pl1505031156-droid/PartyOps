@@ -66,13 +66,35 @@ jobs:
             packaging/macos/validate-bundle.sh
           df -h /
 
+      - name: 恢复已验证的原生运行时缓存
+        id: native-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ runner.temp }}/partyops-runtimes
+          key: partyops-macos-runtime-${{ matrix.architecture }}-${{ hashFiles('packaging/macos/build-native-runtimes.sh') }}
+
       - name: 构建锁定的 OCR 与本地 LLM 运行时
+        if: steps.native-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
           packaging/macos/build-native-runtimes.sh \
             --architecture '${{ matrix.architecture }}' \
             --output-root "$RUNNER_TEMP/partyops-runtimes"
+
+      - name: 校验原生运行时缓存或新构建结果
+        shell: bash
+        run: |
+          set -euo pipefail
+          ocr="$RUNNER_TEMP/partyops-runtimes/ocr-${{ matrix.architecture }}/bin/tesseract"
+          llama="$RUNNER_TEMP/partyops-runtimes/llama-${{ matrix.architecture }}/llama-server"
+          test -x "$ocr"
+          test -x "$llama"
+          test -s "$RUNNER_TEMP/partyops-runtimes/ocr-${{ matrix.architecture }}/tessdata/chi_sim.traineddata"
+          test "$(lipo -archs "$ocr")" = '${{ matrix.architecture }}'
+          test "$(lipo -archs "$llama")" = '${{ matrix.architecture }}'
+          ! otool -L "$ocr" | awk 'NR > 1 {print $1}' | grep -Ev '^(/usr/lib/|/System/Library/)'
+          ! otool -L "$llama" | awk 'NR > 1 {print $1}' | grep -Ev '^(/usr/lib/|/System/Library/)'
 
       - name: 冻结应用并生成未公证候选 PKG
         shell: bash
@@ -96,14 +118,24 @@ jobs:
           shasum -a 256 -c "$package.sha256"
           sudo /usr/sbin/installer -pkg "$package" -target /
           app='/Applications/PartyOps.app'
-          test -d "$app"
-          test -f "$app/Contents/Info.plist"
-          test -x "$app/Contents/MacOS/PartyOps"
-          plutil -lint "$app/Contents/Info.plist"
-          test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = 'cn.partyops.desktop'
-          test "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = 'PartyOps'
-          codesign --verify --deep --strict --verbose=2 "$app"
-          packaging/macos/validate-bundle.sh "$app" '${{ matrix.architecture }}'
+          verify_installed_app() {
+            if [[ ! -d "$app" ]]; then
+              printf '%s\n' '[MACOS_INSTALLED_APP_MISSING] PKG 成功返回后目标 App 不存在。' >&2
+              pkgutil --files cn.partyops.desktop >&2 || true
+              sudo find /Applications -maxdepth 3 -name '*PartyOps*.app' -print >&2 || true
+              return 2
+            fi
+            test -f "$app/Contents/Info.plist"
+            test -x "$app/Contents/MacOS/PartyOps"
+            plutil -lint "$app/Contents/Info.plist"
+            test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = 'cn.partyops.desktop'
+            test "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = 'PartyOps'
+            codesign --verify --deep --strict --verbose=2 "$app"
+            packaging/macos/validate-bundle.sh "$app" '${{ matrix.architecture }}'
+          }
+          verify_installed_app
+          sudo /usr/sbin/installer -pkg "$package" -target /
+          verify_installed_app
           "$app/Contents/MacOS/PartyOps" --self-test
           "$app/Contents/MacOS/partyops-launch-agent" --mode personal --self-test
           "$app/Contents/MacOS/partyops" --package-self-test

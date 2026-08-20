@@ -82,15 +82,13 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert 'pkgbuild --root "$PAYLOAD_ROOT" --component-plist "$COMPONENT_PLIST"' in build
     assert '--component-plist "$COMPONENT_PLIST"' in build
     assert 'pkgbuild --component "$APP"' not in build
-    assert component == [
-        {
-            "RootRelativeBundlePath": "Applications/PartyOps.app",
-            "BundleIsRelocatable": False,
-            "BundleIsVersionChecked": False,
-            "BundleHasStrictIdentifier": True,
-            "BundleOverwriteAction": "upgrade",
-        }
-    ]
+    assert component == []
+    assert '--scripts "$PKG_SCRIPTS"' in build
+    preinstall = (MACOS / "pkg-scripts" / "preinstall").read_text(encoding="utf-8")
+    assert "MACOS_EXISTING_APP_UNSAFE" in preinstall
+    assert "MACOS_EXISTING_APP_CONFLICT" in preinstall
+    assert "/usr/bin/find \"$APP\" -depth -delete" in preinstall
+    assert "Application Support" not in preinstall
     assert '"$OCR_RUNTIME/bin/tesseract" "$APP/Contents/MacOS/tesseract"' in build
     assert '"$OCR_RUNTIME/tessdata" "$APP/Contents/Resources/ocr/tessdata"' in build
     assert 'Contents/Resources/ocr/tessdata/chi_sim.traineddata' in validation
@@ -152,6 +150,9 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "macos-15-intel" in workflow and "macos-15" in workflow
     assert "BUILD-UNSIGNED-RC8" in workflow
     assert "sudo /usr/sbin/installer" in workflow
+    assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 2
+    assert "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830" in workflow
+    assert "MACOS_INSTALLED_APP_MISSING" in workflow
     assert 'plutil -extract CFBundleIdentifier raw' in workflow
     assert 'plutil -extract CFBundleExecutable raw' in workflow
     assert "gh release" not in workflow
