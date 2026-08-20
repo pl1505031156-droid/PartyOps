@@ -13,7 +13,6 @@ ocr_runtime = Path(os.environ["PARTYOPS_MACOS_OCR_RUNTIME"]).resolve()
 llama_runtime = Path(os.environ["PARTYOPS_MACOS_LLAMA_RUNTIME"]).resolve()
 icon_path = Path(os.environ["PARTYOPS_MACOS_ICON"]).resolve()
 target_arch = os.environ["PARTYOPS_MACOS_TARGET_ARCH"]
-update_public_key = root / "packaging" / "uos" / "update-public-key.txt"
 
 common_hidden = [
     "pysqlite3",
@@ -48,7 +47,6 @@ host_analysis = Analysis(
         (str(frontend), "frontend"),
         (str(backend / "alembic"), "alembic"),
         (str(backend / "alembic.ini"), "."),
-        (str(update_public_key), "."),
         (str(ocr_runtime), "ocr"),
         (str(llama_runtime), "."),
         *ai_datas,
@@ -159,7 +157,6 @@ updater_analysis = Analysis(
     datas=[
         (str(backend / "alembic"), "alembic"),
         (str(backend / "alembic.ini"), "."),
-        (str(update_public_key), "."),
         *ai_datas,
     ],
     hiddenimports=[*common_hidden, *ai_hidden],

@@ -65,7 +65,12 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert '"LSMinimumSystemVersion": "11.0"' in spec
     assert "target_arch=target_arch" in spec
     assert 'name="partyops-updater"' in spec
-    assert "update-public-key.txt" in spec
+    # PyInstaller 对 datas 的重排位置不是运行时安全契约；根公钥必须在
+    # BUNDLE 完成后显式安装到所有冻结可执行文件同级目录。
+    assert "update-public-key.txt" not in spec
+    assert 'UPDATE_PUBLIC_KEY_TARGET="$APP/Contents/MacOS/update-public-key.txt"' in build
+    assert '/usr/bin/install -m 0644 "$UPDATE_PUBLIC_KEY_SOURCE"' in build
+    assert 'cmp -s "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET"' in build
     update_key = ROOT / "packaging" / "uos" / "update-public-key.txt"
     assert update_key.is_file()
     assert update_key.read_text(encoding="ascii").strip() == (

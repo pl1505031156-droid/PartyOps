@@ -232,6 +232,21 @@ export PARTYOPS_MACOS_TARGET_ARCH="$TARGET_ARCH"
   --distpath "$BUILD_ROOT/dist" --workpath "$BUILD_ROOT/work" \
   "$SCRIPT_DIR/partyops.spec"
 APP="$BUILD_ROOT/dist/PartyOps.app"
+# 生产更新器只信任与冻结可执行文件同级、随 PKG 安装且由 root 保护的
+# 公钥。PyInstaller 会把普通 datas 重排到 Frameworks/_internal，不能依赖
+# 其内部布局；在应用封装完成后显式安装并回读，确保运行时与校验器一致。
+UPDATE_PUBLIC_KEY_SOURCE="$ROOT/packaging/uos/update-public-key.txt"
+UPDATE_PUBLIC_KEY_TARGET="$APP/Contents/MacOS/update-public-key.txt"
+if [[ ! -f "$UPDATE_PUBLIC_KEY_SOURCE" ]] ||
+  [[ "$(wc -c <"$UPDATE_PUBLIC_KEY_SOURCE" | tr -d ' ')" -gt 4096 ]]; then
+  printf '%s\n' '[MACOS_UPDATE_TRUST_ROOT_INVALID] 更新根公钥缺失或尺寸异常。' >&2
+  exit 2
+fi
+/usr/bin/install -m 0644 "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET"
+cmp -s "$UPDATE_PUBLIC_KEY_SOURCE" "$UPDATE_PUBLIC_KEY_TARGET" || {
+  printf '%s\n' '[MACOS_UPDATE_TRUST_ROOT_COPY_FAILED] 应用内更新根公钥回读不一致。' >&2
+  exit 2
+}
 "$SCRIPT_DIR/validate-bundle.sh" "$APP" "$TARGET_ARCH"
 
 if [[ "$MODE" == 'release' ]]; then
