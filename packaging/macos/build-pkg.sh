@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 VERSION='1.4.3-rc.9'
-PACKAGE_VERSION='1.4.3.8'
+PACKAGE_VERSION='1.4.3.9'
 MODE='release'
 TARGET_ARCH=''
 while (($#)); do
@@ -230,6 +230,22 @@ export PARTYOPS_MACOS_TARGET_ARCH="$TARGET_ARCH"
   --distpath "$BUILD_ROOT/dist" --workpath "$BUILD_ROOT/work" \
   "$SCRIPT_DIR/partyops.spec"
 APP="$BUILD_ROOT/dist/PartyOps.app"
+# Finder/LaunchServices 先进入一个独立、极小的原生 Mach-O，再 exec 冻结的
+# Python 桌面启动器。原生入口会在 Python 引导前写 launch-probe.log，避免
+# bootloader 或签名加载失败时继续出现“无窗口、无日志、无证据”。
+PYTHON_DESKTOP="$APP/Contents/MacOS/partyops-desktop-bin"
+/bin/mv "$APP/Contents/MacOS/partyops-desktop" "$PYTHON_DESKTOP"
+xcrun clang -arch "$TARGET_ARCH" -mmacosx-version-min=11.0 -std=c11 \
+  -O2 -Wall -Wextra -Werror "$SCRIPT_DIR/launcher-wrapper.c" \
+  -o "$APP/Contents/MacOS/partyops-desktop"
+for desktop_entry in "$APP/Contents/MacOS/partyops-desktop" "$PYTHON_DESKTOP"; do
+  description="$(file -b "$desktop_entry")"
+  if [[ "$description" != *Mach-O* ]] || [[ "$description" != *"$TARGET_ARCH"* ]]; then
+    printf '[MACOS_DESKTOP_ENTRY_ARCH_MISMATCH] %s 不是 %s Mach-O。\n' \
+      "$desktop_entry" "$TARGET_ARCH" >&2
+    exit 2
+  fi
+done
 # OCR 与本地 LLM 不能作为 PyInstaller datas 交给 BUNDLE 重排。Mach-O
 # 可执行文件放入 MacOS，词库和许可证放入 Resources；把 traineddata 放进
 # MacOS 会被 codesign 误判成嵌套代码，导致“能自检但无法形成可信 App”。

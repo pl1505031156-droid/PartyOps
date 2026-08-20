@@ -51,7 +51,8 @@ PKG 不把 `.app` 目录直接交给 `pkgbuild` 组件分析。PyInstaller 内�
 2. 双击 PKG 安装，再从 Finder 打开“党建智办 PartyOps”；未配置时必须显示中文向导，不得静默退出。
 3. 分别验证个人、主机、协同三种模式，含中文/空格数据路径、登录恢复、TLS、OCR、语义重排和本地 LLM。
 4. 从上一个候选版执行系统内更新，故障注入覆盖授权取消、PKG 损坏、版本回读不一致、新版不健康与快照被替换；原应用和数据均必须恢复。
-5. 确认 `~/Library/Logs/PartyOps/launcher.log` 和 `runtime-launch.log` 可用且有界轮转，所有用户可见失败为中文。
-6. 验证卸载的“仅删程序”与“同时删除本机数据”两条路径，并把结果作为从公开测试候选升级为稳定版的必要条件。
+5. 确认 Finder 经 LaunchServices 打开 App 后，原生 Mach-O 入口先写入 `~/Library/Logs/PartyOps/launch-probe.log`，随后 Python 桌面启动器写入 `launcher.log`；CI 必须同时观察到两层探针，禁止只运行二进制 `--self-test`。
+6. 确认 `launcher.log` 和 `runtime-launch.log` 可用且有界轮转，所有用户可见失败为中文。
+7. 验证卸载的“仅删程序”与“同时删除本机数据”两条路径，并把结果作为从公开测试候选升级为稳定版的必要条件。
 
 当前 Windows 开发机只能验证源码、事务编排和构建脚本的静态契约；GitHub 原生 runner 的安装后自检也不能代替 Finder、系统设置与真实业务流程的用户交互证据。

@@ -13,7 +13,7 @@ if [[ ! -d "$APP_PATH/Contents/MacOS" ]] ||
   exit 2
 fi
 
-required=(partyops-desktop partyops partyops-client partyops-wizard partyops-launch-agent partyops-updater)
+required=(partyops-desktop partyops-desktop-bin partyops partyops-client partyops-wizard partyops-launch-agent partyops-updater)
 casefold_names='|'
 for name in "${required[@]}"; do
   folded="$(printf '%s' "$name" | /usr/bin/tr '[:upper:]' '[:lower:]')"

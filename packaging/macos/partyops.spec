@@ -244,7 +244,7 @@ app = BUNDLE(
         "CFBundleExecutable": "partyops-desktop",
         "CFBundleDisplayName": "党建智办 PartyOps",
         "CFBundleShortVersionString": "1.4.3-rc.9",
-        "CFBundleVersion": "1.4.3.8",
+        "CFBundleVersion": "1.4.3.9",
         "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
         "NSHumanReadableCopyright": "Copyright © 2026 PartyOps Contributors",

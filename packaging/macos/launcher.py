@@ -250,6 +250,9 @@ def _launch(*, background: bool = False) -> None:
 
 
 def main() -> int:
+    if sys.argv[1:] == ["--launch-services-self-test"]:
+        _append_log(f"LaunchServices 已进入 PartyOps {VERSION} Python 桌面启动器")
+        return 0
     if sys.argv[1:] == ["--self-test"]:
         required = (
             _runtime_root() / "partyops",

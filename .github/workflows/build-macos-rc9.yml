@@ -149,6 +149,24 @@ jobs:
           "$app/Contents/MacOS/partyops-desktop" --self-test
           "$app/Contents/MacOS/partyops-launch-agent" --mode personal --self-test
           "$app/Contents/MacOS/partyops" --package-self-test
+          probe="$HOME/Library/Logs/PartyOps/launch-probe.log"
+          launcher_log="$HOME/Library/Logs/PartyOps/launcher.log"
+          /bin/rm -f "$probe" "$launcher_log"
+          /usr/bin/open -na "$app" --args --launch-services-self-test
+          launchservices_ok=0
+          for _ in {1..60}; do
+            if /usr/bin/grep -q 'status=launchservices-entered target=partyops-desktop-bin' "$probe" 2>/dev/null &&
+              /usr/bin/grep -q 'LaunchServices 已进入 PartyOps 1.4.3-rc.9 Python 桌面启动器' "$launcher_log" 2>/dev/null; then
+              launchservices_ok=1
+              break
+            fi
+            /bin/sleep 1
+          done
+          if [[ "$launchservices_ok" != '1' ]]; then
+            printf '%s\n' '[MACOS_LAUNCHSERVICES_SELFTEST_FAILED] Finder 启动链没有完整进入原生入口和 Python 桌面启动器。' >&2
+            /usr/bin/tail -n 80 "$probe" "$launcher_log" >&2 2>/dev/null || true
+            exit 2
+          fi
           sudo /usr/bin/find "$app" -depth -delete
 
       - name: 上传待人工审核制品
