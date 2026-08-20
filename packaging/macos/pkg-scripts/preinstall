@@ -1,22 +1,20 @@
 #!/bin/bash
 set -euo pipefail
 
-# 根载荷必须原样落盘，不能让 Installer 把 PyInstaller 内嵌的
-# Python.framework 当作第二个可重定位组件。升级前只清理能够由固定路径、
-# 非链接属性和 Bundle ID 三重证明属于 PartyOps 的旧 App；用户数据不在这里。
+# postinstall 会事务式替换 App；preinstall 只核验固定目标并停止受控进程，
+# 不提前删除旧版本。这样后续解包或签名检查失败时仍可恢复原 App。
 APP='/Applications/PartyOps.app'
-if [[ ! -e "$APP" ]]; then
-  exit 0
-fi
-if [[ -L "$APP" ]] || [[ ! -d "$APP" ]]; then
-  printf '%s\n' '[MACOS_EXISTING_APP_UNSAFE] /Applications/PartyOps.app 不是安全的应用目录。' >&2
-  exit 2
-fi
-INFO="$APP/Contents/Info.plist"
-IDENTIFIER="$(/usr/bin/plutil -extract CFBundleIdentifier raw "$INFO" 2>/dev/null || true)"
-if [[ "$IDENTIFIER" != 'cn.partyops.desktop' ]]; then
-  printf '%s\n' '[MACOS_EXISTING_APP_CONFLICT] 目标位置存在非 PartyOps 应用，拒绝覆盖。' >&2
-  exit 2
+if [[ -e "$APP" ]]; then
+  if [[ -L "$APP" ]] || [[ ! -d "$APP" ]]; then
+    printf '%s\n' '[MACOS_EXISTING_APP_UNSAFE] /Applications/PartyOps.app 不是安全的应用目录。' >&2
+    exit 2
+  fi
+  INFO="$APP/Contents/Info.plist"
+  IDENTIFIER="$(/usr/bin/plutil -extract CFBundleIdentifier raw "$INFO" 2>/dev/null || true)"
+  if [[ "$IDENTIFIER" != 'cn.partyops.desktop' ]]; then
+    printf '%s\n' '[MACOS_EXISTING_APP_CONFLICT] 目标位置存在非 PartyOps 应用，拒绝覆盖。' >&2
+    exit 2
+  fi
 fi
 
 for process in PartyOps partyops partyops-wizard partyops-launch-agent partyops-updater; do
@@ -26,9 +24,3 @@ done
 for process in PartyOps partyops partyops-wizard partyops-launch-agent partyops-updater; do
   /usr/bin/pkill -KILL -x "$process" 2>/dev/null || true
 done
-
-/usr/bin/find "$APP" -depth -delete
-if [[ -e "$APP" ]]; then
-  printf '%s\n' '[MACOS_EXISTING_APP_REMOVE_FAILED] 无法原子替换旧 PartyOps 应用。' >&2
-  exit 2
-fi

@@ -264,28 +264,43 @@ TESSDATA_PREFIX="$APP/Contents/Resources/ocr/tessdata" \
 "$APP/Contents/MacOS/llama-server" --version >/dev/null
 "$SCRIPT_DIR/validate-bundle.sh" "$APP" "$TARGET_ARCH"
 
-# 使用显式根载荷而不是 pkgbuild --component。前者把已验证的 App 原样
-# 放入 /Applications，避免组件分析/重定位在不同 macOS 版本上重写 Bundle
-# 布局。BUILD_ROOT 为本轮 mktemp 新目录；若 staging 意外存在则拒绝覆盖。
+# PKG 载荷只携带 App 的不透明 ZIP，不直接携带 .app 目录。pkgbuild 会递归
+# 识别 PyInstaller 内嵌的 Python.framework，并在安装时按“可重定位组件”改写
+# Bundle；结果可能是 App 结构损坏，或只安装空目录。postinstall 会先完整
+# 解包并验证签名，再以事务方式替换 /Applications/PartyOps.app。
 PAYLOAD_ROOT="$BUILD_ROOT/pkg-root"
-PAYLOAD_APP="$PAYLOAD_ROOT/Applications/PartyOps.app"
-COMPONENT_PLIST="$SCRIPT_DIR/component.plist"
+PAYLOAD_INSTALLER_DIR="$PAYLOAD_ROOT/Library/Application Support/PartyOps/Installer"
+PAYLOAD_ARCHIVE="$PAYLOAD_INSTALLER_DIR/PartyOps.app.zip"
 PKG_SCRIPTS="$SCRIPT_DIR/pkg-scripts"
 stage_pkg_payload() {
   if [[ -e "$PAYLOAD_ROOT" ]]; then
     printf '%s\n' '[MACOS_PAYLOAD_DIR_DIRTY] PKG 临时载荷目录不是全新目录。' >&2
     exit 2
   fi
-  /bin/mkdir -p "$PAYLOAD_ROOT/Applications"
-  /usr/bin/ditto "$APP" "$PAYLOAD_APP"
-  /usr/bin/plutil -lint "$PAYLOAD_APP/Contents/Info.plist" >/dev/null
-  /usr/bin/plutil -lint "$COMPONENT_PLIST" >/dev/null
-  [[ -x "$PKG_SCRIPTS/preinstall" ]] || {
-    printf '%s\n' '[MACOS_PKG_PREINSTALL_INVALID] 升级前置脚本缺失或不可执行。' >&2
+  /bin/mkdir -p "$PAYLOAD_INSTALLER_DIR"
+  /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP" "$PAYLOAD_ARCHIVE"
+  [[ -s "$PAYLOAD_ARCHIVE" ]] || {
+    printf '%s\n' '[MACOS_PKG_PAYLOAD_ARCHIVE_EMPTY] App 安装载荷归档为空。' >&2
     exit 2
   }
-  "$SCRIPT_DIR/validate-bundle.sh" "$PAYLOAD_APP" "$TARGET_ARCH"
-  codesign --verify --deep --strict --verbose=2 "$PAYLOAD_APP"
+  for script in preinstall postinstall; do
+    [[ -x "$PKG_SCRIPTS/$script" ]] || {
+      printf '[MACOS_PKG_SCRIPT_INVALID] 安装脚本缺失或不可执行：%s。\n' "$script" >&2
+      exit 2
+    }
+  done
+
+  # 打包前执行一次 ZIP 往返校验，确保权限、符号链接、签名资源和主程序
+  # 均能按 postinstall 的真实解包方式恢复。
+  local roundtrip="$BUILD_ROOT/payload-roundtrip"
+  /bin/mkdir -p "$roundtrip"
+  /usr/bin/ditto -x -k "$PAYLOAD_ARCHIVE" "$roundtrip"
+  [[ ! -L "$roundtrip/PartyOps.app" ]] || {
+    printf '%s\n' '[MACOS_PKG_PAYLOAD_APP_LINKED] 解包后的 App 不能是符号链接。' >&2
+    exit 2
+  }
+  "$SCRIPT_DIR/validate-bundle.sh" "$roundtrip/PartyOps.app" "$TARGET_ARCH"
+  codesign --verify --deep --strict --verbose=2 "$roundtrip/PartyOps.app"
 }
 
 if [[ "$MODE" == 'release' ]]; then
@@ -312,7 +327,7 @@ if [[ "$MODE" == 'release' ]]; then
   xcrun stapler validate "$APP"
   spctl --assess --type execute --verbose=2 "$APP"
   stage_pkg_payload
-  pkgbuild --root "$PAYLOAD_ROOT" --component-plist "$COMPONENT_PLIST" \
+  pkgbuild --root "$PAYLOAD_ROOT" \
     --scripts "$PKG_SCRIPTS" --install-location / --ownership recommended \
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" \
     --sign "$PARTYOPS_MACOS_INSTALLER_IDENTITY" "$OUTPUT"
@@ -337,7 +352,7 @@ elif [[ "$MODE" == 'unsigned-candidate' ]]; then
     --entitlements "$SCRIPT_DIR/entitlements.plist" --sign - "$APP"
   codesign --verify --deep --strict --verbose=2 "$APP"
   stage_pkg_payload
-  pkgbuild --root "$PAYLOAD_ROOT" --component-plist "$COMPONENT_PLIST" \
+  pkgbuild --root "$PAYLOAD_ROOT" \
     --scripts "$PKG_SCRIPTS" --install-location / --ownership recommended \
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" "$OUTPUT"
   SOURCE_COMMIT="${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD)}"
@@ -374,7 +389,7 @@ Path(path).write_text(
 PY
 else
   stage_pkg_payload
-  pkgbuild --root "$PAYLOAD_ROOT" --component-plist "$COMPONENT_PLIST" \
+  pkgbuild --root "$PAYLOAD_ROOT" \
     --scripts "$PKG_SCRIPTS" --install-location / --ownership recommended \
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" "$OUTPUT"
 fi

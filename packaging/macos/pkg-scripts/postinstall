@@ -1,0 +1,143 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+# 安装器仅支持当前启动卷。所有写入目标均为固定绝对路径；业务数据位于
+# 用户的 Library/Application Support，不会被安装或覆盖升级事务触碰。
+TARGET_VOLUME="${3:-/}"
+if [[ "$TARGET_VOLUME" != '/' ]]; then
+  printf '%s\n' '[MACOS_TARGET_VOLUME_UNSUPPORTED] PartyOps 只能安装到当前启动磁盘。' >&2
+  exit 2
+fi
+
+APP='/Applications/PartyOps.app'
+INSTALLER_DIR='/Library/Application Support/PartyOps/Installer'
+ARCHIVE="$INSTALLER_DIR/PartyOps.app.zip"
+STAGE_ROOT="$INSTALLER_DIR/stage"
+STAGED_APP="$STAGE_ROOT/PartyOps.app"
+BACKUP_ROOT="$INSTALLER_DIR/rollback"
+BACKUP_APP="$BACKUP_ROOT/PartyOps.app"
+OLD_MOVED=0
+NEW_INSTALLED=0
+
+remove_owned_app() {
+  local candidate="$1"
+  [[ -e "$candidate" ]] || return 0
+  if [[ -L "$candidate" ]] || [[ ! -d "$candidate" ]]; then
+    printf '[MACOS_APP_CLEANUP_UNSAFE] 拒绝清理非目录或链接：%s。\n' "$candidate" >&2
+    return 2
+  fi
+  local identifier
+  identifier="$(/usr/bin/plutil -extract CFBundleIdentifier raw \
+    "$candidate/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ "$identifier" != 'cn.partyops.desktop' ]]; then
+    printf '[MACOS_APP_CLEANUP_CONFLICT] 拒绝清理非 PartyOps 应用：%s。\n' "$candidate" >&2
+    return 2
+  fi
+  /usr/bin/find "$candidate" -depth -delete
+}
+
+remove_private_tree() {
+  local candidate="$1"
+  [[ -e "$candidate" ]] || return 0
+  case "$candidate" in
+    "$INSTALLER_DIR/stage"|"$INSTALLER_DIR/rollback") ;;
+    *)
+      printf '[MACOS_INSTALLER_CLEANUP_UNSAFE] 拒绝清理非安装器私有目录：%s。\n' \
+        "$candidate" >&2
+      return 2
+      ;;
+  esac
+  [[ ! -L "$candidate" ]] || {
+    printf '[MACOS_INSTALLER_CLEANUP_LINKED] 安装器私有目录不能是链接：%s。\n' \
+      "$candidate" >&2
+    return 2
+  }
+  /usr/bin/find "$candidate" -depth -delete
+}
+
+validate_app() {
+  local candidate="$1"
+  [[ -d "$candidate" ]] && [[ ! -L "$candidate" ]] || return 2
+  [[ -f "$candidate/Contents/Info.plist" ]] || return 2
+  [[ -x "$candidate/Contents/MacOS/PartyOps" ]] || return 2
+  [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw \
+    "$candidate/Contents/Info.plist" 2>/dev/null || true)" == 'cn.partyops.desktop' ]] || return 2
+  [[ "$(/usr/bin/plutil -extract CFBundleExecutable raw \
+    "$candidate/Contents/Info.plist" 2>/dev/null || true)" == 'PartyOps' ]] || return 2
+  /usr/bin/codesign --verify --deep --strict "$candidate"
+}
+
+rollback_on_error() {
+  local status=$?
+  set +e
+  if ((status != 0)); then
+    if ((NEW_INSTALLED == 1)) && [[ -e "$APP" ]]; then
+      remove_owned_app "$APP" >/dev/null 2>&1 || true
+    fi
+    if ((OLD_MOVED == 1)) && [[ -d "$BACKUP_APP" ]] && [[ ! -e "$APP" ]]; then
+      /bin/mv "$BACKUP_APP" "$APP" >/dev/null 2>&1 || true
+    fi
+  fi
+  remove_private_tree "$STAGE_ROOT" >/dev/null 2>&1 || true
+  if ((status != 0)); then
+    printf '%s\n' '[MACOS_INSTALL_TRANSACTION_FAILED] 新版本未能完整安装，已尝试恢复旧应用；用户数据未修改。' >&2
+  fi
+  exit "$status"
+}
+trap rollback_on_error EXIT
+
+[[ -f "$ARCHIVE" ]] && [[ ! -L "$ARCHIVE" ]] || {
+  printf '%s\n' '[MACOS_PKG_PAYLOAD_MISSING] 安装包中的 App 载荷缺失。' >&2
+  exit 2
+}
+
+# 上次安装若在“旧 App 已备份、新 App 尚未落位”之间中断，先恢复旧 App。
+if [[ -e "$BACKUP_APP" ]]; then
+  validate_app "$BACKUP_APP" || {
+    printf '%s\n' '[MACOS_ROLLBACK_APP_INVALID] 遗留的回滚 App 无法验证。' >&2
+    exit 2
+  }
+  if [[ ! -e "$APP" ]]; then
+    /bin/mv "$BACKUP_APP" "$APP"
+  else
+    remove_owned_app "$BACKUP_APP"
+  fi
+  remove_private_tree "$BACKUP_ROOT"
+fi
+
+remove_private_tree "$STAGE_ROOT"
+/bin/mkdir -p "$STAGE_ROOT"
+/usr/bin/ditto -x -k "$ARCHIVE" "$STAGE_ROOT"
+validate_app "$STAGED_APP" || {
+  printf '%s\n' '[MACOS_STAGED_APP_INVALID] 解包后的 PartyOps App 结构、权限或签名无效。' >&2
+  exit 2
+}
+
+if [[ -e "$APP" ]]; then
+  validate_app "$APP" || {
+    printf '%s\n' '[MACOS_EXISTING_APP_INVALID] 旧 PartyOps App 无法安全备份。' >&2
+    exit 2
+  }
+  /bin/mkdir -p "$BACKUP_ROOT"
+  /bin/mv "$APP" "$BACKUP_APP"
+  OLD_MOVED=1
+fi
+
+/bin/mv "$STAGED_APP" "$APP"
+NEW_INSTALLED=1
+validate_app "$APP" || {
+  printf '%s\n' '[MACOS_INSTALLED_APP_INVALID] 最终 PartyOps App 校验失败。' >&2
+  exit 2
+}
+
+if ((OLD_MOVED == 1)); then
+  remove_owned_app "$BACKUP_APP"
+  remove_private_tree "$BACKUP_ROOT"
+  OLD_MOVED=0
+fi
+remove_private_tree "$STAGE_ROOT"
+/bin/rm -f "$ARCHIVE"
+NEW_INSTALLED=0
+trap - EXIT
+exit 0

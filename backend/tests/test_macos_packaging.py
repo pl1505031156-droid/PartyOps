@@ -49,7 +49,6 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     validation = (MACOS / "validate-bundle.sh").read_text(encoding="utf-8")
     spec = (MACOS / "partyops.spec").read_text(encoding="utf-8")
     runbook = (MACOS / "README.md").read_text(encoding="utf-8")
-    component = plistlib.loads((MACOS / "component.plist").read_bytes())
     assert "MACOS_NATIVE_BUILD_REQUIRED" in build
     assert "MACOS_BUILD_ARCH_MISMATCH" in build
     assert "UNSIGNED-DO-NOT-PUBLISH" in build
@@ -78,17 +77,25 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert 'macho-candidates-adhoc.bin' in build
     assert 'done <"$MACHO_CANDIDATE_LIST"' in build
     assert 'PAYLOAD_ROOT="$BUILD_ROOT/pkg-root"' in build
-    assert '"$PAYLOAD_ROOT/Applications/PartyOps.app"' in build
-    assert 'pkgbuild --root "$PAYLOAD_ROOT" --component-plist "$COMPONENT_PLIST"' in build
-    assert '--component-plist "$COMPONENT_PLIST"' in build
+    assert 'PAYLOAD_ARCHIVE="$PAYLOAD_INSTALLER_DIR/PartyOps.app.zip"' in build
+    assert '/usr/bin/ditto -c -k --sequesterRsrc --keepParent' in build
+    assert '/usr/bin/ditto -x -k "$PAYLOAD_ARCHIVE" "$roundtrip"' in build
+    assert 'pkgbuild --root "$PAYLOAD_ROOT"' in build
+    assert "--component-plist" not in build
     assert 'pkgbuild --component "$APP"' not in build
-    assert component == []
     assert '--scripts "$PKG_SCRIPTS"' in build
     preinstall = (MACOS / "pkg-scripts" / "preinstall").read_text(encoding="utf-8")
+    postinstall = (MACOS / "pkg-scripts" / "postinstall").read_text(encoding="utf-8")
     assert "MACOS_EXISTING_APP_UNSAFE" in preinstall
     assert "MACOS_EXISTING_APP_CONFLICT" in preinstall
-    assert "/usr/bin/find \"$APP\" -depth -delete" in preinstall
+    assert "/usr/bin/find \"$APP\" -depth -delete" not in preinstall
     assert "Application Support" not in preinstall
+    assert "MACOS_INSTALL_TRANSACTION_FAILED" in postinstall
+    assert "MACOS_STAGED_APP_INVALID" in postinstall
+    assert 'BACKUP_APP="$BACKUP_ROOT/PartyOps.app"' in postinstall
+    assert '/usr/bin/ditto -x -k "$ARCHIVE" "$STAGE_ROOT"' in postinstall
+    assert '/usr/bin/codesign --verify --deep --strict "$candidate"' in postinstall
+    assert "Application Support/PartyOps/Installer" in postinstall
     assert '"$OCR_RUNTIME/bin/tesseract" "$APP/Contents/MacOS/tesseract"' in build
     assert '"$OCR_RUNTIME/tessdata" "$APP/Contents/Resources/ocr/tessdata"' in build
     assert 'Contents/Resources/ocr/tessdata/chi_sim.traineddata' in validation
@@ -110,7 +117,7 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "--ownership recommended" in build
     assert "不使用 Docker" in runbook
     assert "UNSIGNED-DO-NOT-PUBLISH" in runbook
-    assert "两条路径实现并通过前" in runbook
+    assert "公开测试候选升级为稳定版的必要条件" in runbook
 
 
 def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> None:
