@@ -82,6 +82,7 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert 'name="PartyOps",\n    target_arch=target_arch' not in spec
     assert "required=(partyops-desktop partyops " in validation
     assert "MACOS_CASEFOLD_NAME_COLLISION" in validation
+    assert "MACOS_BUNDLE_EXECUTABLE_INVALID" in validation
     # PyInstaller 对 datas 的重排位置不是运行时安全契约；根公钥必须在
     # BUNDLE 完成后显式安装到 Apple 约定的 Resources 目录。
     assert "update-public-key.txt" not in spec
@@ -111,6 +112,8 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "Application Support" not in preinstall
     assert "MACOS_INSTALL_TRANSACTION_FAILED" in postinstall
     assert "MACOS_STAGED_APP_INVALID" in postinstall
+    assert "MACOS_APP_EXECUTABLE_INVALID" in postinstall
+    assert "MACOS_APP_SIGNATURE_INVALID" in postinstall
     assert 'BACKUP_APP="$BACKUP_ROOT/PartyOps.app"' in postinstall
     assert '/usr/bin/ditto -x -k "$ARCHIVE" "$STAGE_ROOT"' in postinstall
     assert '/usr/sbin/chown -R root:wheel "$STAGED_APP"' in postinstall
@@ -186,7 +189,9 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "macos-15-intel" in workflow and "macos-15" in workflow
     assert "BUILD-UNSIGNED-RC8" in workflow
     assert "sudo /usr/sbin/installer" in workflow
-    assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 2
+    assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1
+    assert workflow.count("install_package") == 3
+    assert "/var/log/install.log" in workflow
     assert 'cd "$(dirname "$package")"' in workflow
     assert '"$(basename "$package").sha256"' in workflow
     assert "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830" in workflow

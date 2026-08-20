@@ -58,14 +58,35 @@ remove_private_tree() {
 
 validate_app() {
   local candidate="$1"
-  [[ -d "$candidate" ]] && [[ ! -L "$candidate" ]] || return 2
-  [[ -f "$candidate/Contents/Info.plist" ]] || return 2
-  [[ -x "$candidate/Contents/MacOS/partyops-desktop" ]] || return 2
-  [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw \
-    "$candidate/Contents/Info.plist" 2>/dev/null || true)" == 'cn.partyops.desktop' ]] || return 2
-  [[ "$(/usr/bin/plutil -extract CFBundleExecutable raw \
-    "$candidate/Contents/Info.plist" 2>/dev/null || true)" == 'partyops-desktop' ]] || return 2
-  /usr/bin/codesign --verify --deep --strict "$candidate"
+  if [[ ! -d "$candidate" ]] || [[ -L "$candidate" ]]; then
+    printf '[MACOS_APP_STRUCTURE_INVALID] App 不是受控实体目录：%s。\n' "$candidate" >&2
+    return 2
+  fi
+  if [[ ! -f "$candidate/Contents/Info.plist" ]]; then
+    printf '[MACOS_APP_PLIST_MISSING] App 缺少 Info.plist：%s。\n' "$candidate" >&2
+    return 2
+  fi
+  if [[ ! -x "$candidate/Contents/MacOS/partyops-desktop" ]]; then
+    printf '[MACOS_APP_ENTRY_MISSING] App 缺少可执行桌面入口：%s。\n' "$candidate" >&2
+    return 2
+  fi
+  local identifier executable
+  identifier="$(/usr/bin/plutil -extract CFBundleIdentifier raw \
+    "$candidate/Contents/Info.plist" 2>/dev/null || true)"
+  executable="$(/usr/bin/plutil -extract CFBundleExecutable raw \
+    "$candidate/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ "$identifier" != 'cn.partyops.desktop' ]]; then
+    printf '[MACOS_APP_IDENTIFIER_INVALID] App Bundle ID 无效：%s。\n' "$identifier" >&2
+    return 2
+  fi
+  if [[ "$executable" != 'partyops-desktop' ]]; then
+    printf '[MACOS_APP_EXECUTABLE_INVALID] App 主入口无效：%s。\n' "$executable" >&2
+    return 2
+  fi
+  if ! /usr/bin/codesign --verify --deep --strict "$candidate"; then
+    printf '[MACOS_APP_SIGNATURE_INVALID] App 临时签名校验失败：%s。\n' "$candidate" >&2
+    return 2
+  fi
 }
 
 rollback_on_error() {

@@ -119,7 +119,14 @@ jobs:
             cd "$(dirname "$package")"
             shasum -a 256 -c "$(basename "$package").sha256"
           )
-          sudo /usr/sbin/installer -pkg "$package" -target /
+          install_package() {
+            if ! sudo /usr/sbin/installer -pkg "$package" -target /; then
+              printf '%s\n' '[MACOS_INSTALL_FAILED] 安装失败，输出系统安装日志末尾。' >&2
+              sudo /usr/bin/tail -n 240 /var/log/install.log >&2 || true
+              return 1
+            fi
+          }
+          install_package
           app='/Applications/PartyOps.app'
           verify_installed_app() {
             if [[ ! -d "$app" ]]; then
@@ -137,7 +144,7 @@ jobs:
             packaging/macos/validate-bundle.sh "$app" '${{ matrix.architecture }}'
           }
           verify_installed_app
-          sudo /usr/sbin/installer -pkg "$package" -target /
+          install_package
           verify_installed_app
           "$app/Contents/MacOS/partyops-desktop" --self-test
           "$app/Contents/MacOS/partyops-launch-agent" --mode personal --self-test

@@ -33,6 +33,18 @@ done
 
 RUNTIME="$APP_PATH/Contents/MacOS"
 UPDATE_PUBLIC_KEY="$APP_PATH/Contents/Resources/update-public-key.txt"
+bundle_identifier="$(/usr/bin/plutil -extract CFBundleIdentifier raw \
+  "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+bundle_executable="$(/usr/bin/plutil -extract CFBundleExecutable raw \
+  "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+if [[ "$bundle_identifier" != 'cn.partyops.desktop' ]]; then
+  printf '[MACOS_BUNDLE_IDENTIFIER_INVALID] Bundle ID 无效：%s\n' "$bundle_identifier" >&2
+  exit 2
+fi
+if [[ "$bundle_executable" != 'partyops-desktop' ]]; then
+  printf '[MACOS_BUNDLE_EXECUTABLE_INVALID] 主入口无效：%s\n' "$bundle_executable" >&2
+  exit 2
+fi
 if [[ ! -f "$UPDATE_PUBLIC_KEY" ]] ||
   [[ "$(wc -c <"$UPDATE_PUBLIC_KEY" | tr -d ' ')" -gt 4096 ]]; then
   printf '%s\n' '[MACOS_UPDATE_TRUST_ROOT_MISSING] 应用包缺少受控更新根公钥。' >&2
