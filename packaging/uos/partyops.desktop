@@ -4,8 +4,8 @@ Version=1.0
 Name=党建智办
 GenericName=基层党建工作闭环协同系统
 Comment=基层党建工作闭环协同系统
-Exec=/opt/partyops/desktop-launcher.sh
-TryExec=/opt/partyops/desktop-launcher.sh
+Exec=/bin/bash /opt/partyops/desktop-launcher.sh
+TryExec=/bin/bash
 Icon=partyops
 Terminal=false
 StartupNotify=true
@@ -15,8 +15,8 @@ Actions=Configure;ManageFolders;
 
 [Desktop Action Configure]
 Name=重新配置主机或协同终端
-Exec=/opt/partyops/desktop-launcher.sh --configure
+Exec=/bin/bash /opt/partyops/desktop-launcher.sh --configure
 
 [Desktop Action ManageFolders]
 Name=管理本机共享文件夹
-Exec=/opt/partyops/desktop-launcher.sh --manage-shared-roots
+Exec=/bin/bash /opt/partyops/desktop-launcher.sh --manage-shared-roots

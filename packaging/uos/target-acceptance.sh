@@ -31,7 +31,7 @@ mkdir -p "$ROOT/artifacts"
   test -f /usr/share/applications/partyops-client.desktop
   test -x /opt/partyops/llama-server
   LD_LIBRARY_PATH=/opt/partyops /opt/partyops/llama-server --version >/dev/null
-  grep -q '^Exec=/opt/partyops/desktop-launcher.sh$' \
+  grep -q '^Exec=/bin/bash /opt/partyops/desktop-launcher.sh$' \
     /usr/share/applications/partyops.desktop
   DEB="$ROOT/artifacts/PartyOps_1.4.3-rc.9_linux_${ARCH}.deb"
   if [[ -f "$DEB" ]]; then

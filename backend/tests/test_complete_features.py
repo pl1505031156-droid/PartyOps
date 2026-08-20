@@ -1027,7 +1027,7 @@ def test_linux_desktop_launcher_covers_every_configured_mode_and_visible_failure
     assert "[CHILD_EXITED]" in start
     assert "bash -n" in selftest
     assert "PACKAGE_DESKTOP_ENTRY_INVALID" in selftest
-    assert "Exec=/opt/partyops/desktop-launcher.sh" in main_entry
+    assert "Exec=/bin/bash /opt/partyops/desktop-launcher.sh" in main_entry
     assert "--manage-shared-roots" in client_entry
 
 

@@ -61,8 +61,9 @@ for argument in "$@"; do
 done
 printf '%s\n' "$$" >>"$TEST_ROOT/wizard-starts.log"
 sleep "${FAKE_WIZARD_MARKER_DELAY:-0}"
-printf 'http://127.0.0.1:%s\n' "$TEST_PORT" >"$HOME/.config/partyops/$marker"
-chmod 0600 "$HOME/.config/partyops/$marker"
+config_root="${XDG_CONFIG_HOME:-$HOME/.config}/partyops"
+printf 'http://127.0.0.1:%s\n' "$TEST_PORT" >"$config_root/$marker"
+chmod 0600 "$config_root/$marker"
 sleep 120
 EOF
 cat >"$RUNTIME/partyops-client" <<'EOF'
@@ -298,5 +299,24 @@ set -e
 [[ "$failure_status" -eq 3 ]]
 grep -q '党建智办启动失败' "$NOTIFY_LOG"
 grep -q '系统默认浏览器未能打开' "$CONFIG_ROOT/desktop-launch.log"
+
+# 麒麟桌面会话可能只传入极简环境。启动器必须自行恢复 PATH 与 HOME，
+# 并在首次业务动作前创建日志，不能因 `set -u` 静默退出。
+MINIMAL_CONFIG="$TEST_ROOT/minimal-config"
+mkdir -p "$MINIMAL_CONFIG"
+set +e
+env -i \
+  XDG_CONFIG_HOME="$MINIMAL_CONFIG" \
+  XDG_STATE_HOME="$TEST_ROOT/minimal-state" \
+  PATH="$BIN_DIR:/usr/bin:/bin" \
+  FAKE_XDG_FAIL=1 \
+  TEST_ROOT="$TEST_ROOT" TEST_PORT="$TEST_PORT" OPEN_LOG="$OPEN_LOG" \
+  NOTIFY_LOG="$NOTIFY_LOG" HEALTH_BODY_FILE="$HEALTH_BODY_FILE" \
+  /bin/bash "$RUNTIME/desktop-launcher.sh"
+minimal_status=$?
+set -e
+[[ "$minimal_status" -eq 3 ]]
+[[ -s "$MINIMAL_CONFIG/partyops/desktop-launch.log" ]]
+grep -q '桌面启动开始' "$MINIMAL_CONFIG/partyops/desktop-launch.log"
 
 printf 'Linux 桌面启动回归通过：首次配置、个人、主机、协同及浏览器失败诊断均正常。\n'

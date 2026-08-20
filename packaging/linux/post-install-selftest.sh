@@ -84,7 +84,7 @@ for desktop_entry in \
         fail PACKAGE_DESKTOP_ENTRY_INVALID "文件桌面入口未绑定受控打开器：$desktop_entry"
       ;;
     *)
-      grep -q '^TryExec=/opt/partyops/desktop-launcher.sh$' "$desktop_entry" ||
+      grep -q '^TryExec=/bin/bash$' "$desktop_entry" ||
         fail PACKAGE_DESKTOP_ENTRY_INVALID "桌面入口未绑定受控启动器：$desktop_entry"
       ;;
   esac

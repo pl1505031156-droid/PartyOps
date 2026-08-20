@@ -2,6 +2,24 @@
 set -euo pipefail
 umask 077
 
+# 麒麟/UKUI 从桌面文件启动程序时，环境变量可能比终端会话更精简。
+# 在任何路径计算和日志写入前恢复固定 PATH 与当前账号的真实 HOME，避免
+# `set -u` 因 HOME 缺失而在零日志状态下直接退出。
+if [[ -z "${PATH:-}" ]]; then
+  export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+fi
+CURRENT_UID="$(id -u)"
+if [[ -z "${HOME:-}" || ! -d "$HOME" ]]; then
+  RESOLVED_HOME="$(getent passwd "$CURRENT_UID" 2>/dev/null | awk -F: 'NR == 1 {print $6}')"
+  if [[ -n "$RESOLVED_HOME" && -d "$RESOLVED_HOME" ]]; then
+    export HOME="$RESOLVED_HOME"
+  else
+    printf '%s\n' \
+      "[HOME_UNAVAILABLE] 无法确定当前桌面用户(uid=$CURRENT_UID)的主目录。" >&2
+    exit 2
+  fi
+fi
+
 APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}/partyops"
 CLIENT_CONFIG="$CONFIG_ROOT/client.json"
