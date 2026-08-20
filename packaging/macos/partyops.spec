@@ -197,7 +197,11 @@ launcher_exe = EXE(
     launcher_analysis.scripts,
     [],
     exclude_binaries=True,
-    name="PartyOps",
+    # macOS 默认 APFS 通常不区分文件名大小写。桌面入口若名为
+    # ``PartyOps``，会与核心主程序 ``partyops`` 互相覆盖，形成“安装
+    # 成功但双击无响应”的确定性故障。Bundle 仍叫 PartyOps.app，内部
+    # 可执行入口使用不发生大小写碰撞的稳定名称。
+    name="partyops-desktop",
     target_arch=target_arch,
     debug=False,
     strip=False,

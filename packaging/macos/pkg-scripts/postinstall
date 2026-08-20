@@ -60,11 +60,11 @@ validate_app() {
   local candidate="$1"
   [[ -d "$candidate" ]] && [[ ! -L "$candidate" ]] || return 2
   [[ -f "$candidate/Contents/Info.plist" ]] || return 2
-  [[ -x "$candidate/Contents/MacOS/PartyOps" ]] || return 2
+  [[ -x "$candidate/Contents/MacOS/partyops-desktop" ]] || return 2
   [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw \
     "$candidate/Contents/Info.plist" 2>/dev/null || true)" == 'cn.partyops.desktop' ]] || return 2
   [[ "$(/usr/bin/plutil -extract CFBundleExecutable raw \
-    "$candidate/Contents/Info.plist" 2>/dev/null || true)" == 'PartyOps' ]] || return 2
+    "$candidate/Contents/Info.plist" 2>/dev/null || true)" == 'partyops-desktop' ]] || return 2
   /usr/bin/codesign --verify --deep --strict "$candidate"
 }
 

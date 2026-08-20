@@ -65,6 +65,12 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert '"LSMinimumSystemVersion": "11.0"' in spec
     assert "target_arch=target_arch" in spec
     assert 'name="partyops-updater"' in spec
+    assert 'name="partyops-desktop"' in spec
+    # 桌面入口与核心主程序不能只靠大小写区分；普通 APFS 默认不区分
+    # 大小写，会把 PartyOps 与 partyops 当成同一文件。
+    assert 'name="PartyOps",\n    target_arch=target_arch' not in spec
+    assert "required=(partyops-desktop partyops " in validation
+    assert "MACOS_CASEFOLD_NAME_COLLISION" in validation
     # PyInstaller 对 datas 的重排位置不是运行时安全契约；根公钥必须在
     # BUNDLE 完成后显式安装到 Apple 约定的 Resources 目录。
     assert "update-public-key.txt" not in spec
@@ -166,6 +172,8 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "MACOS_INSTALLED_APP_MISSING" in workflow
     assert 'plutil -extract CFBundleIdentifier raw' in workflow
     assert 'plutil -extract CFBundleExecutable raw' in workflow
+    assert "= 'partyops-desktop'" in workflow
+    assert 'Contents/MacOS/PartyOps' not in workflow
     assert "gh release" not in workflow
     action_lines = [
         line.strip() for line in workflow.splitlines() if line.strip().startswith("uses:")

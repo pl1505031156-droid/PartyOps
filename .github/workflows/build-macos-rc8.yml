@@ -126,17 +126,17 @@ jobs:
               return 2
             fi
             test -f "$app/Contents/Info.plist"
-            test -x "$app/Contents/MacOS/PartyOps"
+            test -x "$app/Contents/MacOS/partyops-desktop"
             plutil -lint "$app/Contents/Info.plist"
             test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = 'cn.partyops.desktop'
-            test "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = 'PartyOps'
+            test "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = 'partyops-desktop'
             codesign --verify --deep --strict --verbose=2 "$app"
             packaging/macos/validate-bundle.sh "$app" '${{ matrix.architecture }}'
           }
           verify_installed_app
           sudo /usr/sbin/installer -pkg "$package" -target /
           verify_installed_app
-          "$app/Contents/MacOS/PartyOps" --self-test
+          "$app/Contents/MacOS/partyops-desktop" --self-test
           "$app/Contents/MacOS/partyops-launch-agent" --mode personal --self-test
           "$app/Contents/MacOS/partyops" --package-self-test
           sudo /usr/bin/find "$app" -depth -delete

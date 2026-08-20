@@ -13,8 +13,17 @@ if [[ ! -d "$APP_PATH/Contents/MacOS" ]] ||
   exit 2
 fi
 
-required=(PartyOps partyops partyops-client partyops-wizard partyops-launch-agent partyops-updater)
+required=(partyops-desktop partyops partyops-client partyops-wizard partyops-launch-agent partyops-updater)
+casefold_names='|'
 for name in "${required[@]}"; do
+  folded="$(printf '%s' "$name" | /usr/bin/tr '[:upper:]' '[:lower:]')"
+  case "$casefold_names" in
+    *"|$folded|"*)
+      printf '[MACOS_CASEFOLD_NAME_COLLISION] 可执行入口仅大小写不同：%s\n' "$name" >&2
+      exit 2
+      ;;
+  esac
+  casefold_names="${casefold_names}${folded}|"
   candidate="$APP_PATH/Contents/MacOS/$name"
   if [[ ! -f "$candidate" ]] || [[ ! -x "$candidate" ]]; then
     printf '[MACOS_BUNDLE_INCOMPLETE] 缺少可执行入口：%s\n' "$name" >&2
@@ -62,7 +71,7 @@ if [[ -n "$bad_dependency" ]]; then
   exit 2
 fi
 
-"$APP_PATH/Contents/MacOS/PartyOps" --self-test
+"$APP_PATH/Contents/MacOS/partyops-desktop" --self-test
 "$APP_PATH/Contents/MacOS/partyops-launch-agent" --mode personal --self-test
 "$APP_PATH/Contents/MacOS/partyops-wizard" --self-test
 "$APP_PATH/Contents/MacOS/partyops" --package-self-test

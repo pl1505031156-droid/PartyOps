@@ -17,10 +17,10 @@ if [[ -e "$APP" ]]; then
   fi
 fi
 
-for process in PartyOps partyops partyops-wizard partyops-launch-agent partyops-updater; do
+for process in partyops-desktop partyops partyops-wizard partyops-launch-agent partyops-updater; do
   /usr/bin/pkill -TERM -x "$process" 2>/dev/null || true
 done
 /bin/sleep 1
-for process in PartyOps partyops partyops-wizard partyops-launch-agent partyops-updater; do
+for process in partyops-desktop partyops partyops-wizard partyops-launch-agent partyops-updater; do
   /usr/bin/pkill -KILL -x "$process" 2>/dev/null || true
 done
