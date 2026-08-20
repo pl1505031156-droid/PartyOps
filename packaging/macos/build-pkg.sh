@@ -269,6 +269,7 @@ TESSDATA_PREFIX="$APP/Contents/Resources/ocr/tessdata" \
 # 布局。BUILD_ROOT 为本轮 mktemp 新目录；若 staging 意外存在则拒绝覆盖。
 PAYLOAD_ROOT="$BUILD_ROOT/pkg-root"
 PAYLOAD_APP="$PAYLOAD_ROOT/Applications/PartyOps.app"
+COMPONENT_PLIST="$SCRIPT_DIR/component.plist"
 stage_pkg_payload() {
   if [[ -e "$PAYLOAD_ROOT" ]]; then
     printf '%s\n' '[MACOS_PAYLOAD_DIR_DIRTY] PKG 临时载荷目录不是全新目录。' >&2
@@ -276,6 +277,8 @@ stage_pkg_payload() {
   fi
   /bin/mkdir -p "$PAYLOAD_ROOT/Applications"
   /usr/bin/ditto "$APP" "$PAYLOAD_APP"
+  /usr/bin/plutil -lint "$PAYLOAD_APP/Contents/Info.plist" >/dev/null
+  /usr/bin/plutil -lint "$COMPONENT_PLIST" >/dev/null
   "$SCRIPT_DIR/validate-bundle.sh" "$PAYLOAD_APP" "$TARGET_ARCH"
   codesign --verify --deep --strict --verbose=2 "$PAYLOAD_APP"
 }
@@ -304,7 +307,8 @@ if [[ "$MODE" == 'release' ]]; then
   xcrun stapler validate "$APP"
   spctl --assess --type execute --verbose=2 "$APP"
   stage_pkg_payload
-  pkgbuild --root "$PAYLOAD_ROOT" --install-location / --ownership recommended \
+  pkgbuild --root "$PAYLOAD_ROOT" --component-plist "$COMPONENT_PLIST" \
+    --install-location / --ownership recommended \
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" \
     --sign "$PARTYOPS_MACOS_INSTALLER_IDENTITY" "$OUTPUT"
   pkgutil --check-signature "$OUTPUT"
@@ -328,7 +332,8 @@ elif [[ "$MODE" == 'unsigned-candidate' ]]; then
     --entitlements "$SCRIPT_DIR/entitlements.plist" --sign - "$APP"
   codesign --verify --deep --strict --verbose=2 "$APP"
   stage_pkg_payload
-  pkgbuild --root "$PAYLOAD_ROOT" --install-location / --ownership recommended \
+  pkgbuild --root "$PAYLOAD_ROOT" --component-plist "$COMPONENT_PLIST" \
+    --install-location / --ownership recommended \
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" "$OUTPUT"
   SOURCE_COMMIT="${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD)}"
   GENERATED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -364,7 +369,8 @@ Path(path).write_text(
 PY
 else
   stage_pkg_payload
-  pkgbuild --root "$PAYLOAD_ROOT" --install-location / --ownership recommended \
+  pkgbuild --root "$PAYLOAD_ROOT" --component-plist "$COMPONENT_PLIST" \
+    --install-location / --ownership recommended \
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" "$OUTPUT"
 fi
 

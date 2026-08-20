@@ -97,6 +97,11 @@ jobs:
           sudo /usr/sbin/installer -pkg "$package" -target /
           app='/Applications/PartyOps.app'
           test -d "$app"
+          test -f "$app/Contents/Info.plist"
+          test -x "$app/Contents/MacOS/PartyOps"
+          plutil -lint "$app/Contents/Info.plist"
+          test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = 'cn.partyops.desktop'
+          test "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = 'PartyOps'
           codesign --verify --deep --strict --verbose=2 "$app"
           packaging/macos/validate-bundle.sh "$app" '${{ matrix.architecture }}'
           "$app/Contents/MacOS/PartyOps" --self-test

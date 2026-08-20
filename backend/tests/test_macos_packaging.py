@@ -49,6 +49,7 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     validation = (MACOS / "validate-bundle.sh").read_text(encoding="utf-8")
     spec = (MACOS / "partyops.spec").read_text(encoding="utf-8")
     runbook = (MACOS / "README.md").read_text(encoding="utf-8")
+    component = plistlib.loads((MACOS / "component.plist").read_bytes())
     assert "MACOS_NATIVE_BUILD_REQUIRED" in build
     assert "MACOS_BUILD_ARCH_MISMATCH" in build
     assert "UNSIGNED-DO-NOT-PUBLISH" in build
@@ -78,8 +79,18 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert 'done <"$MACHO_CANDIDATE_LIST"' in build
     assert 'PAYLOAD_ROOT="$BUILD_ROOT/pkg-root"' in build
     assert '"$PAYLOAD_ROOT/Applications/PartyOps.app"' in build
-    assert 'pkgbuild --root "$PAYLOAD_ROOT" --install-location /' in build
+    assert 'pkgbuild --root "$PAYLOAD_ROOT" --component-plist "$COMPONENT_PLIST"' in build
+    assert '--component-plist "$COMPONENT_PLIST"' in build
     assert 'pkgbuild --component "$APP"' not in build
+    assert component == [
+        {
+            "RootRelativeBundlePath": "Applications/PartyOps.app",
+            "BundleIsRelocatable": False,
+            "BundleIsVersionChecked": False,
+            "BundleHasStrictIdentifier": True,
+            "BundleOverwriteAction": "upgrade",
+        }
+    ]
     assert '"$OCR_RUNTIME/bin/tesseract" "$APP/Contents/MacOS/tesseract"' in build
     assert '"$OCR_RUNTIME/tessdata" "$APP/Contents/Resources/ocr/tessdata"' in build
     assert 'Contents/Resources/ocr/tessdata/chi_sim.traineddata' in validation
@@ -141,6 +152,8 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "macos-15-intel" in workflow and "macos-15" in workflow
     assert "BUILD-UNSIGNED-RC8" in workflow
     assert "sudo /usr/sbin/installer" in workflow
+    assert 'plutil -extract CFBundleIdentifier raw' in workflow
+    assert 'plutil -extract CFBundleExecutable raw' in workflow
     assert "gh release" not in workflow
     action_lines = [
         line.strip() for line in workflow.splitlines() if line.strip().startswith("uses:")
