@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
-$releaseVersion = "1.4.3-rc.9"
-$releaseTag = "v1.4.3-rc.9"
+$releaseVersion = "1.4.4"
+$releaseTag = "v1.4.4"
 & $Python (Join-Path $repoRoot "scripts\verify-version-consistency.py") `
   --root $repoRoot --expected $releaseVersion
 if ($LASTEXITCODE -ne 0) { throw "版本一致性门禁失败，拒绝冻结 Windows 制品。" }
@@ -73,8 +73,8 @@ if (-not (Test-Path -LiteralPath $windowsPowerShell51)) {
   throw "构建机缺少 Windows PowerShell 5.1，无法验证安装目录脚本的真实兼容性。"
 }
 $validatorProbeId = [guid]::NewGuid().ToString("N")
-$validatorProbePath = Join-Path $env:TEMP "PartyOps-rc9-安装路径-$validatorProbeId\中文 空格"
-$validatorProbeDiagnostic = Join-Path $env:TEMP "PartyOps-rc9-validator-$validatorProbeId.txt"
+$validatorProbePath = Join-Path $env:TEMP "PartyOps-144-安装路径-$validatorProbeId\中文 空格"
+$validatorProbeDiagnostic = Join-Path $env:TEMP "PartyOps-144-validator-$validatorProbeId.txt"
 try {
   & $windowsPowerShell51 -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
     -File $installPathValidator -Path $validatorProbePath `
@@ -390,7 +390,7 @@ try {
 }
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
-$installerBase = if ($isLegacy) { "PartyOps_1.4.3-rc.9_windows7_$targetArchitecture" } else { "PartyOps_1.4.3-rc.9_windows_amd64" }
+$installerBase = if ($isLegacy) { "PartyOps_1.4.4_windows7_$targetArchitecture" } else { "PartyOps_1.4.4_windows_amd64" }
 $installer = Join-Path $outputRoot "$installerBase.exe"
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"

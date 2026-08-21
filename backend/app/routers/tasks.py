@@ -13,7 +13,7 @@ from ..audit import emit_event, write_audit
 from ..database import db_runtime, get_session
 from ..enums import MaterialStage, ParticipantRole, TaskStatus
 from ..material_categories import DEFAULT_MATERIAL_CATEGORIES
-from ..notifications import add_notification
+from ..notifications import add_notification, reconcile_task_deadline_notifications
 from ..models import (
     AttachmentVersion,
     ConflictDraft,
@@ -180,6 +180,17 @@ def patch_task(
     task = update_task(
         db, task, payload, parse_if_match(if_match), user, client_ip(request)
     )
+    if payload.model_fields_set & {
+        "formal_due_at",
+        "internal_due_at",
+        "planned_start_at",
+        "planned_end_at",
+        "owner_id",
+        "reviewer_id",
+        "status",
+    }:
+        reconcile_task_deadline_notifications(db, task)
+        db.commit()
     return task_to_out(db, task)
 
 

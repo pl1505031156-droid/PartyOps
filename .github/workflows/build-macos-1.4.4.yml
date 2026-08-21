@@ -1,10 +1,10 @@
-name: 手动构建 macOS rc.9 候选
+name: 手动构建 macOS 1.4.4 候选
 
 on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 输入 BUILD-UNSIGNED-RC9，确认只生成未公证测试候选
+        description: 输入 BUILD-UNSIGNED-144，确认只生成未公证测试候选
         required: true
         type: string
 
@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: partyops-macos-rc9-manual
+  group: partyops-macos-144-manual
   cancel-in-progress: false
 
 jobs:
   build:
-    if: github.event.inputs.confirmation == 'BUILD-UNSIGNED-RC9'
+    if: github.event.inputs.confirmation == 'BUILD-UNSIGNED-144'
     name: ${{ matrix.architecture }} 原生构建
     timeout-minutes: 120
     strategy:
@@ -111,7 +111,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          package="artifacts/release-1.4.3-rc.9-final/PartyOps_1.4.3-rc.9_macos_${{ matrix.architecture }}.pkg"
+          package="artifacts/release-1.4.4-final/PartyOps_1.4.4_macos_${{ matrix.architecture }}.pkg"
           test -f "$package"
           test -f "$package.sha256"
           test -f "$package.attestation.json"
@@ -151,12 +151,15 @@ jobs:
           "$app/Contents/MacOS/partyops" --package-self-test
           probe="$HOME/Library/Logs/PartyOps/launch-probe.log"
           launcher_log="$HOME/Library/Logs/PartyOps/launcher.log"
-          /bin/rm -f "$probe" "$launcher_log"
+          launcher_stderr="$HOME/Library/Logs/PartyOps/launch-stderr.log"
+          /bin/rm -f "$probe" "$launcher_log" "$launcher_stderr"
           /usr/bin/open -na "$app" --args --launch-services-self-test
           launchservices_ok=0
           for _ in {1..60}; do
-            if /usr/bin/grep -q 'status=launchservices-entered target=partyops-desktop-bin' "$probe" 2>/dev/null &&
-              /usr/bin/grep -q 'LaunchServices 已进入 PartyOps 1.4.3-rc.9 Python 桌面启动器' "$launcher_log" 2>/dev/null; then
+            if /usr/bin/grep -q 'status=launchservices-entered architecture=.* target=partyops-desktop-bin' "$probe" 2>/dev/null &&
+              /usr/bin/grep -q 'status=desktop-child-started child_pid=' "$probe" 2>/dev/null &&
+              /usr/bin/grep -q 'status=desktop-child-exited child_pid=.* exit_code=0' "$probe" 2>/dev/null &&
+              /usr/bin/grep -q 'LaunchServices 已进入 PartyOps 1.4.4 Python 桌面启动器' "$launcher_log" 2>/dev/null; then
               launchservices_ok=1
               break
             fi
@@ -164,7 +167,7 @@ jobs:
           done
           if [[ "$launchservices_ok" != '1' ]]; then
             printf '%s\n' '[MACOS_LAUNCHSERVICES_SELFTEST_FAILED] Finder 启动链没有完整进入原生入口和 Python 桌面启动器。' >&2
-            /usr/bin/tail -n 80 "$probe" "$launcher_log" >&2 2>/dev/null || true
+            /usr/bin/tail -n 80 "$probe" "$launcher_log" "$launcher_stderr" >&2 2>/dev/null || true
             exit 2
           fi
           sudo /usr/bin/find "$app" -depth -delete
@@ -172,10 +175,10 @@ jobs:
       - name: 上传待人工审核制品
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: partyops-macos-${{ matrix.architecture }}-rc9
+          name: partyops-macos-${{ matrix.architecture }}-144
           path: |
-            artifacts/release-1.4.3-rc.9-final/PartyOps_1.4.3-rc.9_macos_${{ matrix.architecture }}.pkg
-            artifacts/release-1.4.3-rc.9-final/PartyOps_1.4.3-rc.9_macos_${{ matrix.architecture }}.pkg.sha256
-            artifacts/release-1.4.3-rc.9-final/PartyOps_1.4.3-rc.9_macos_${{ matrix.architecture }}.pkg.attestation.json
+            artifacts/release-1.4.4-final/PartyOps_1.4.4_macos_${{ matrix.architecture }}.pkg
+            artifacts/release-1.4.4-final/PartyOps_1.4.4_macos_${{ matrix.architecture }}.pkg.sha256
+            artifacts/release-1.4.4-final/PartyOps_1.4.4_macos_${{ matrix.architecture }}.pkg.attestation.json
           if-no-files-found: error
           retention-days: 7

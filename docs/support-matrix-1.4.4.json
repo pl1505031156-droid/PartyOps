@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "product_version": "1.4.4",
+  "release_tag": "v1.4.4",
+  "generated_at": "2026-08-21T19:05:00+08:00",
+  "levels": {
+    "stable": "已完成对应原生构建、安装启动门禁和目标系统验证",
+    "preview": "已完成原生构建与自动门禁，但仍缺少指定真机或商业签名条件",
+    "unavailable": "尚未完成对应原生构建和目标系统验证，不提供安装包"
+  },
+  "targets": [
+    {"id": "windows-x64", "os": "Windows 10/11", "arch": "x86_64", "level": "preview", "artifact": "PartyOps_1.4.4_windows_amd64.exe", "reason": "等待最终制品构建、目标机门禁和公开回读"},
+    {"id": "windows7-x64", "os": "Windows 7 SP1", "arch": "x86_64", "level": "preview", "artifact": "PartyOps_1.4.4_windows7_amd64.exe", "reason": "专用 Legacy 运行时；等待最终制品与 Win7 真机复核"},
+    {"id": "windows7-x86", "os": "Windows 7 SP1", "arch": "x86", "level": "preview", "artifact": "PartyOps_1.4.4_windows7_x86.exe", "reason": "专用 Legacy 运行时；等待最终制品与 Win7 真机复核"},
+    {"id": "linux-deb-amd64", "os": "麒麟/UOS/deepin", "arch": "x86_64", "level": "preview", "artifact": "PartyOps_1.4.4_linux_amd64.deb", "reason": "等待最终原生闭包和目标系统复核"},
+    {"id": "linux-deb-arm64", "os": "麒麟/UOS/deepin", "arch": "aarch64", "level": "preview", "artifact": "PartyOps_1.4.4_linux_arm64.deb", "reason": "等待最终原生闭包和目标系统复核"},
+    {"id": "linux-rpm-amd64", "os": "openEuler", "arch": "x86_64", "level": "preview", "artifact": "PartyOps-1.4.4-1.x86_64.rpm", "reason": "等待最终原生闭包和目标系统复核"},
+    {"id": "linux-rpm-arm64", "os": "openEuler", "arch": "aarch64", "level": "preview", "artifact": "PartyOps-1.4.4-1.aarch64.rpm", "reason": "等待最终原生闭包和目标系统复核"},
+    {"id": "macos-arm64", "os": "macOS 11+", "arch": "arm64", "level": "preview", "artifact": "PartyOps_1.4.4_macos_arm64.pkg", "reason": "必须在 macos-15 原生构建；未使用 Developer ID 且未公证"},
+    {"id": "macos-x86_64", "os": "macOS 11+", "arch": "x86_64", "level": "preview", "artifact": "PartyOps_1.4.4_macos_x86_64.pkg", "reason": "必须在 macos-15-intel 原生构建；未使用 Developer ID 且未公证"},
+    {"id": "windows-arm64", "os": "Windows 11", "arch": "arm64", "level": "unavailable", "artifact": null, "reason": "尚无 Windows ARM64 原生托管构建和真机验收"},
+    {"id": "linux-i686", "os": "国产 Linux", "arch": "i686", "level": "unavailable", "artifact": null, "reason": "尚无对应原生依赖闭包和真机验收"},
+    {"id": "linux-armv7", "os": "国产 Linux", "arch": "armv7", "level": "unavailable", "artifact": null, "reason": "尚无对应原生依赖闭包和真机验收"},
+    {"id": "linux-loongarch64", "os": "国产 Linux", "arch": "loongarch64", "level": "unavailable", "artifact": null, "reason": "尚无 LoongArch64 原生构建、依赖闭包和真机验收"},
+    {"id": "linux-riscv64", "os": "国产 Linux", "arch": "riscv64", "level": "unavailable", "artifact": null, "reason": "尚无 RISC-V64 原生构建、依赖闭包和真机验收"}
+  ]
+}

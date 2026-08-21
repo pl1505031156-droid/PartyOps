@@ -9,7 +9,15 @@ from sqlalchemy.orm import Session
 
 from .audit import emit_event
 from .enums import TaskStatus
-from .models import Notification, ReminderPreference, Task, User, utcnow
+from .models import (
+    Notification,
+    PartyDevelopmentCase,
+    PartyDevelopmentMilestone,
+    ReminderPreference,
+    Task,
+    User,
+    utcnow,
+)
 from .task_service import required_materials_missing, visible_tasks
 
 
@@ -110,6 +118,141 @@ def _add_once(
     )
 
 
+def _upsert_task_notice(
+    db: Session,
+    user: User,
+    task: Task,
+    notification_type: str,
+    title: str,
+    body: str,
+    dedupe_key: str,
+    now: datetime,
+) -> bool:
+    """更新当前提醒，不让事项改期后残留旧时间通知。"""
+
+    existing = db.scalar(
+        select(Notification).where(Notification.dedupe_key == dedupe_key)
+    )
+    if existing and existing.revoked_at is None and existing.read_at is None:
+        changed = existing.title != title or existing.body != body
+        existing.title = title
+        existing.body = body
+        existing.created_at = now
+        existing.updated_at = now
+        if changed:
+            emit_event(
+                db,
+                "notification.updated",
+                existing.id,
+                {"user_id": user.id, "entity_type": "task", "entity_id": task.id},
+            )
+        return changed
+    if existing:
+        # 唯一键继续代表“当前通知”。历史行改名后仍保留已读审计。
+        existing.revoked_at = existing.revoked_at or now
+        existing.dedupe_key = f"{dedupe_key}:history:{existing.id}"
+    return _add_once(
+        db,
+        user,
+        task,
+        notification_type,
+        title,
+        body,
+        dedupe_key,
+    )
+
+
+def _revoke_stale_task_notices(
+    db: Session,
+    user: User,
+    task: Task,
+    desired_keys: set[str],
+    now: datetime,
+) -> int:
+    revoked = 0
+    rows = db.scalars(
+        select(Notification).where(
+            Notification.user_id == user.id,
+            Notification.entity_type == "task",
+            Notification.entity_id == task.id,
+            Notification.notification_type.in_(["deadline", "overdue"]),
+            Notification.revoked_at.is_(None),
+        )
+    ).all()
+    for row in rows:
+        if row.dedupe_key in desired_keys:
+            continue
+        row.revoked_at = now
+        row.updated_at = now
+        revoked += 1
+        emit_event(
+            db,
+            "notification.revoked",
+            row.id,
+            {"user_id": user.id, "entity_type": "task", "entity_id": task.id},
+        )
+    return revoked
+
+
+def reconcile_task_deadline_notifications(
+    db: Session,
+    task: Task,
+    *,
+    now: datetime | None = None,
+) -> int:
+    """在事项更新事务后立即把截止通知收敛到当前期望状态。"""
+
+    current = now or utcnow()
+    today = current.astimezone(LOCAL_TIMEZONE).date()
+    changed = 0
+    users = db.scalars(select(User).where(User.active.is_(True))).all()
+    for user in users:
+        if all(visible.id != task.id for visible in visible_tasks(db, user)):
+            continue
+        preference = db.get(ReminderPreference, user.id)
+        desired: set[str] = set()
+        due = task.internal_due_at or task.formal_due_at
+        if due and task.status not in {TaskStatus.COMPLETED, TaskStatus.ARCHIVED}:
+            aware_due = due if due.tzinfo else due.replace(tzinfo=timezone.utc)
+            due_local = aware_due.astimezone(LOCAL_TIMEZONE)
+            remaining = (due_local.date() - today).days
+            days = (
+                preference.reminder_days
+                if preference and preference.reminder_days
+                else [preference.advance_days if preference else 3, 0]
+            )
+            if not preference or preference.enabled:
+                if remaining in days:
+                    key = f"{user.id}:{task.id}:deadline:{remaining}"
+                    desired.add(key)
+                    label = "今天截止" if remaining == 0 else f"{remaining}天后截止"
+                    changed += _upsert_task_notice(
+                        db,
+                        user,
+                        task,
+                        "deadline",
+                        f"{label}：{task.title}",
+                        f"内部节点：{due_local:%Y-%m-%d %H:%M}",
+                        key,
+                        current,
+                    )
+                elif remaining < 0 and (not preference or preference.remind_overdue):
+                    key = f"{user.id}:{task.id}:overdue"
+                    desired.add(key)
+                    changed += _upsert_task_notice(
+                        db,
+                        user,
+                        task,
+                        "overdue",
+                        f"事项已逾期：{task.title}",
+                        f"已逾期 {-remaining} 天，请更新状态或计划。",
+                        key,
+                        current,
+                    )
+        changed += _revoke_stale_task_notices(db, user, task, desired, current)
+    return changed
+
+
 def _refresh_daily(
     db: Session,
     user: User,
@@ -162,55 +305,19 @@ def refresh_notifications(db: Session) -> int:
     """生成到期、逾期、审核、反馈和材料缺项提醒，使用去重键避免刷屏。"""
 
     now = utcnow()
-    today = now.astimezone(LOCAL_TIMEZONE).date()
     created = 0
+    # 调度器只承担漏算修复；正常的事项改期由 PATCH 接口立即重算。这里仍按
+    # 全量期望状态收敛，保证进程在接口提交与提醒提交之间退出后不会永久漏算。
+    for task in db.scalars(select(Task)).all():
+        created += reconcile_task_deadline_notifications(db, task, now=now)
     users = db.scalars(select(User).where(User.active.is_(True))).all()
     for user in users:
         preference = db.get(ReminderPreference, user.id)
         if preference and not preference.enabled:
             continue
-        days = (
-            preference.reminder_days
-            if preference and preference.reminder_days
-            else [preference.advance_days if preference else 3, 0]
-        )
         for task in visible_tasks(db, user):
             if task.status == TaskStatus.ARCHIVED:
                 continue
-            due = task.internal_due_at or task.formal_due_at
-            if due:
-                aware_due = due if due.tzinfo else due.replace(tzinfo=timezone.utc)
-                due_local = aware_due.astimezone(LOCAL_TIMEZONE)
-                remaining = (due_local.date() - today).days
-                if (
-                    remaining in days
-                    and task.status not in {TaskStatus.COMPLETED, TaskStatus.ARCHIVED}
-                ):
-                    label = "今天截止" if remaining == 0 else f"{remaining}天后截止"
-                    created += _add_once(
-                        db,
-                        user,
-                        task,
-                        "deadline",
-                        f"{label}：{task.title}",
-                        f"内部节点：{due_local:%Y-%m-%d %H:%M}",
-                        f"{user.id}:{task.id}:deadline:{remaining}:{due_local.date()}",
-                    )
-                elif (
-                    remaining < 0
-                    and (not preference or preference.remind_overdue)
-                    and task.status not in {TaskStatus.COMPLETED, TaskStatus.ARCHIVED}
-                ):
-                    created += _refresh_daily(
-                        db,
-                        user,
-                        task,
-                        "overdue",
-                        f"事项已逾期：{task.title}",
-                        f"已逾期 {-remaining} 天，请更新状态或计划。",
-                        f"{user.id}:{task.id}:overdue",
-                        now,
-                    )
             if (
                 task.status == TaskStatus.PENDING_REVIEW
                 and task.reviewer_id == user.id
@@ -253,4 +360,80 @@ def refresh_notifications(db: Session) -> int:
                     "事项已完成，但归档前仍需补齐必备材料或说明不适用原因。",
                     f"{user.id}:{task.id}:materials:{task.version}",
                 )
+    created += refresh_party_development_notifications(db, now=now)
     return created
+
+
+def refresh_party_development_notifications(
+    db: Session,
+    *,
+    now: datetime | None = None,
+) -> int:
+    """按持久化节点生成到期提醒；人工调整日期会更新当前未读提醒。"""
+
+    current = now or utcnow()
+    today = current.astimezone(LOCAL_TIMEZONE).date()
+    changed = 0
+    recipients = db.scalars(select(User).where(User.active.is_(True))).all()
+    cases = {
+        item.id: item
+        for item in db.scalars(
+            select(PartyDevelopmentCase).where(PartyDevelopmentCase.status == "active")
+        ).all()
+    }
+    if not cases:
+        return 0
+    for milestone in db.scalars(
+        select(PartyDevelopmentMilestone).where(
+            PartyDevelopmentMilestone.case_id.in_(cases),
+            PartyDevelopmentMilestone.actual_at.is_(None),
+        )
+    ).all():
+        target = milestone.adjusted_at or milestone.planned_at or milestone.legal_deadline_at
+        if not target:
+            continue
+        aware_target = target if target.tzinfo else target.replace(tzinfo=timezone.utc)
+        remaining = (aware_target.astimezone(LOCAL_TIMEZONE).date() - today).days
+        window = "overdue" if remaining < 0 else str(remaining)
+        should_notify = remaining < 0 or remaining in (milestone.reminder_days or [60, 30, 14, 7, 1, 0])
+        case = cases[milestone.case_id]
+        for user in recipients:
+            prefix = f"{user.id}:party-development:{case.id}:{milestone.id}:"
+            desired = f"{prefix}{window}" if should_notify else ""
+            for old in db.scalars(
+                select(Notification).where(
+                    Notification.user_id == user.id,
+                    Notification.entity_type == "party_development_case",
+                    Notification.entity_id == case.id,
+                    Notification.dedupe_key.like(f"{prefix}%"),
+                    Notification.revoked_at.is_(None),
+                )
+            ).all():
+                if old.dedupe_key != desired:
+                    old.revoked_at = current
+                    old.updated_at = current
+                    changed += 1
+            if not should_notify:
+                continue
+            label = f"已逾期 {-remaining} 天" if remaining < 0 else ("今天到期" if remaining == 0 else f"还有 {remaining} 天")
+            title = f"党员发展节点{label}：{case.name}"
+            body = f"{milestone.milestone_type}，计划日期 {aware_target.astimezone(LOCAL_TIMEZONE):%Y-%m-%d}。请按组织程序核对材料和会议安排。"
+            existing = db.scalar(select(Notification).where(Notification.dedupe_key == desired))
+            if existing and existing.revoked_at is None and existing.read_at is None:
+                if existing.title != title or existing.body != body:
+                    existing.title = title
+                    existing.body = body
+                    existing.updated_at = current
+                    changed += 1
+            elif not existing:
+                changed += add_notification(
+                    db,
+                    user_id=user.id,
+                    notification_type="party_development",
+                    title=title,
+                    body=body,
+                    entity_type="party_development_case",
+                    entity_id=case.id,
+                    dedupe_key=desired,
+                )
+    return changed

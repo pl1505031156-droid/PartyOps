@@ -14,7 +14,15 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidateSet('exe', 'deb', 'rpm', 'pkg')]
-    [string]$PackageType
+    [string]$PackageType,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ExpectedFileName,
+
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:[-.][0-9A-Za-z.]+)?$')]
+    [string]$ExpectedVersion
 )
 
 Set-StrictMode -Version Latest
@@ -32,6 +40,24 @@ $handler.AllowAutoRedirect = $true
 $client = [System.Net.Http.HttpClient]::new($handler)
 $client.Timeout = [TimeSpan]::FromMinutes(30)
 $client.DefaultRequestHeaders.UserAgent.ParseAdd('PartyOps-Release-Verification/1.0')
+
+function Assert-ControlledDownloadUri {
+    param(
+        [Parameter(Mandatory = $true)]
+        [Uri]$Uri
+    )
+
+    $decodedPath = [Uri]::UnescapeDataString($Uri.AbsolutePath)
+    $expectedPath = "/downloads/$ExpectedFileName"
+    if (-not $decodedPath.Equals($expectedPath, [StringComparison]::Ordinal)) {
+        throw "下载地址不在受控路径或文件名不一致：期望 $expectedPath，实际 $decodedPath。"
+    }
+    if ($ExpectedFileName.IndexOf($ExpectedVersion, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "冻结文件名未包含期望版本 $ExpectedVersion：$ExpectedFileName。"
+    }
+}
+
+Assert-ControlledDownloadUri -Uri ([Uri]$Url)
 
 function Assert-PackageResponse {
     param(
@@ -88,6 +114,7 @@ try {
     ).GetAwaiter().GetResult()
     try {
         Assert-PackageResponse -Response $rangeResponse
+        Assert-ControlledDownloadUri -Uri $rangeResponse.RequestMessage.RequestUri
         $rangeStatus = [int]$rangeResponse.StatusCode
         $rangeSupported = $rangeStatus -eq 206
         $rangeLength = $rangeResponse.Content.Headers.ContentLength
@@ -153,6 +180,7 @@ try {
                 }
 
                 Assert-PackageResponse -Response $response
+                Assert-ControlledDownloadUri -Uri $response.RequestMessage.RequestUri
                 if (
                     $null -ne $response.Content.Headers.ContentLength -and
                     $response.Content.Headers.ContentLength -ne $ExpectedBytes
@@ -209,6 +237,8 @@ try {
                     range_status = $rangeStatus
                     range_supported = $rangeSupported
                     range_magic = $rangeMagic
+                    filename = $ExpectedFileName
+                    expected_version = $ExpectedVersion
                     verified_at = "$([DateTimeOffset]::Now.ToOffset([TimeSpan]::FromHours(8)).ToString('yyyy-MM-dd HH:mm:ss'))（北京时间，UTC+8）"
                     verified = $true
                 }

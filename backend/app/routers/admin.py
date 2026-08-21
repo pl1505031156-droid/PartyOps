@@ -29,7 +29,7 @@ from ..backups import (
     sha256_file,
     verify_backup,
 )
-from ..config import get_settings
+from ..config import get_settings, write_network_override
 from ..database import db_runtime, get_session
 from ..models import (
     AttachmentVersion,
@@ -42,19 +42,28 @@ from ..models import (
     BackupRun,
     ClientPairing,
     Device,
+    DeviceGrant,
     FileBlob,
     LoginSession,
     Notification,
     ProjectionCheckpoint,
     ReminderPreference,
+    SystemSetting,
     Task,
+    TaskParticipant,
+    TaskStep,
     UpgradeRecord,
     User,
     WorkspaceFile,
     WorkspaceRoot,
     utcnow,
 )
-from ..networking import discover_lan_addresses, service_url
+from ..networking import (
+    discover_lan_addresses,
+    service_url,
+    validate_bind_host,
+    validate_transport_security,
+)
 from ..local_ai import local_runtime_status
 from ..notifications import desktop_notifications_allowed
 from ..pairings import authenticate_backup_pairing, pairing_expires_at
@@ -172,10 +181,24 @@ def update_user(
         raise ProblemException(409, "VERSION_CONFLICT", "用户信息已更新", "请刷新后重试。")
     if target.id == admin.id and payload.active is False:
         raise ProblemException(409, "SELF_DISABLE_DENIED", "不能停用自己", "请由另一位管理员操作。")
+    removes_admin = target.role.value == "admin" and (
+        payload.active is False
+        or (payload.role is not None and payload.role.value != "admin")
+    )
+    if removes_admin:
+        remaining_admins = db.scalar(
+            select(func.count()).select_from(User).where(
+                User.role == "admin",
+                User.active.is_(True),
+                User.id != target.id,
+            )
+        ) or 0
+        if remaining_admins == 0:
+            raise ProblemException(409, "LAST_ADMIN_DENIED", "不能移除最后一名管理员", "请先创建或提升另一名管理员。")
     for field in payload.model_fields_set:
         setattr(target, field, getattr(payload, field))
     target.version += 1
-    if payload.active is False:
+    if payload.active is False or "role" in payload.model_fields_set:
         for session in db.scalars(
             select(LoginSession).where(
                 LoginSession.user_id == target.id,
@@ -192,6 +215,126 @@ def update_user(
         {"fields": sorted(payload.model_fields_set), "version": target.version},
         client_ip(request),
     )
+    db.commit()
+    db.refresh(target)
+    return target
+
+
+def user_deletion_impact(db: Session, target: User) -> dict[str, typing.Any]:
+    """列出需要移交的当前责任；历史审计和业务记录不会物理删除。"""
+
+    counts = {
+        "owned_tasks": db.scalar(select(func.count()).select_from(Task).where(Task.owner_id == target.id, Task.deleted_at.is_(None))) or 0,
+        "review_tasks": db.scalar(select(func.count()).select_from(Task).where(Task.reviewer_id == target.id, Task.deleted_at.is_(None))) or 0,
+        "assigned_steps": db.scalar(select(func.count()).select_from(TaskStep).where(TaskStep.assignee_id == target.id)) or 0,
+        "participations": db.scalar(select(func.count()).select_from(TaskParticipant).where(TaskParticipant.user_id == target.id)) or 0,
+        "device_grants": db.scalar(select(func.count()).select_from(DeviceGrant).where(DeviceGrant.user_id == target.id, DeviceGrant.active.is_(True))) or 0,
+    }
+    return {
+        "user_id": target.id,
+        "active": target.active,
+        "counts": counts,
+        "requires_transfer": any(counts[key] for key in ("owned_tasks", "review_tasks", "assigned_steps")),
+        "history_preserved": True,
+    }
+
+
+@router.get("/users/{user_id}/deletion-impact", response_model=dict)
+@router.get("/admin/users/{user_id}/deletion-impact", response_model=dict)
+def get_user_deletion_impact(
+    user_id: str,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    target = db.get(User, user_id)
+    if not target:
+        raise ProblemException(404, "USER_NOT_FOUND", "用户不存在", "未找到该用户。")
+    return user_deletion_impact(db, target)
+
+
+@router.delete("/users/{user_id}", response_model=dict)
+@router.delete("/admin/users/{user_id}", response_model=dict)
+def archive_user(
+    user_id: str,
+    request: Request,
+    transfer_to: str | None = Query(default=None),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    target = db.get(User, user_id)
+    if not target:
+        raise ProblemException(404, "USER_NOT_FOUND", "用户不存在", "未找到该用户。")
+    if target.id == admin.id:
+        raise ProblemException(409, "SELF_DELETE_DENIED", "不能删除当前用户", "请由另一名管理员操作。")
+    if target.archived_at is not None:
+        return {"deleted": True, "user_id": target.id, "history_preserved": True}
+    if target.role.value == "admin":
+        remaining_admins = db.scalar(
+            select(func.count()).select_from(User).where(
+                User.role == "admin", User.active.is_(True), User.id != target.id
+            )
+        ) or 0
+        if remaining_admins == 0:
+            raise ProblemException(409, "LAST_ADMIN_DENIED", "不能删除最后一名管理员", "请先创建或提升另一名管理员。")
+    impact = user_deletion_impact(db, target)
+    receiver = db.get(User, transfer_to) if transfer_to else None
+    if impact["requires_transfer"] and (not receiver or not receiver.active or receiver.id == target.id):
+        raise ProblemException(
+            409,
+            "USER_TRANSFER_REQUIRED",
+            "删除前必须移交责任",
+            "请选择一名启用用户接收事项负责人、审核人与步骤负责人责任。",
+            extra={"impact": impact},
+        )
+    if receiver:
+        for task in db.scalars(select(Task).where(Task.owner_id == target.id)).all():
+            task.owner_id = receiver.id
+            task.version += 1
+        for task in db.scalars(select(Task).where(Task.reviewer_id == target.id)).all():
+            task.reviewer_id = receiver.id
+            task.version += 1
+        for step in db.scalars(select(TaskStep).where(TaskStep.assignee_id == target.id)).all():
+            step.assignee_id = receiver.id
+            step.version += 1
+    now = utcnow()
+    target.active = False
+    target.archived_at = now
+    target.archived_by = admin.id
+    target.version += 1
+    for session in db.scalars(select(LoginSession).where(LoginSession.user_id == target.id, LoginSession.revoked_at.is_(None))).all():
+        session.revoked_at = now
+    for grant in db.scalars(select(DeviceGrant).where(DeviceGrant.user_id == target.id, DeviceGrant.active.is_(True))).all():
+        grant.active = False
+        grant.version += 1
+    write_audit(
+        db,
+        admin,
+        "user.archive",
+        "user",
+        target.id,
+        {"transfer_to": receiver.id if receiver else None, "impact": impact["counts"]},
+        client_ip(request),
+    )
+    db.commit()
+    return {"deleted": True, "user_id": target.id, "transferred_to": receiver.id if receiver else None, "history_preserved": True}
+
+
+@router.post("/users/{user_id}/restore", response_model=UserOut)
+@router.post("/admin/users/{user_id}/restore", response_model=UserOut)
+def restore_user(
+    user_id: str,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> User:
+    target = db.get(User, user_id)
+    if not target:
+        raise ProblemException(404, "USER_NOT_FOUND", "用户不存在", "未找到该用户。")
+    target.active = True
+    target.archived_at = None
+    target.archived_by = None
+    target.version += 1
+    write_audit(db, admin, "user.restore", "user", target.id, {}, client_ip(request))
     db.commit()
     db.refresh(target)
     return target
@@ -378,6 +521,7 @@ def paired_notification_summary(
     unread_filter = (
         Notification.user_id.in_(eligible_user_ids),
         Notification.read_at.is_(None),
+        Notification.revoked_at.is_(None),
     )
     count = db.scalar(
         select(func.count()).select_from(Notification).where(*unread_filter)
@@ -604,6 +748,134 @@ def diagnostics(
             "实时状态中断：页面会自动切换为 10 秒轮询，不会产生第二份数据库。",
             "附件缺失：先停止写入，再校验并恢复最近完整备份。",
         ],
+    }
+
+
+def validate_network_payload(payload: dict[str, object]) -> dict[str, object]:
+    settings = get_settings()
+    bind_host = str(payload.get("bind_host", settings.network_bind_host)).strip()
+    advertise_host = str(payload.get("advertise_host", settings.network_advertise_host)).strip()
+    try:
+        port = int(payload.get("port", settings.port))
+    except (TypeError, ValueError) as exc:
+        raise ProblemException(422, "NETWORK_PORT_INVALID", "端口无效", "端口必须是 1024 到 65535 的整数。") from exc
+    if not bind_host or not advertise_host or "://" in bind_host or "://" in advertise_host:
+        raise ProblemException(422, "NETWORK_HOST_INVALID", "主机地址无效", "请只填写 IP 或主机名，不要包含协议和路径。")
+    if not 1024 <= port <= 65535:
+        raise ProblemException(422, "NETWORK_PORT_INVALID", "端口无效", "端口必须在 1024 到 65535 之间。")
+    try:
+        validate_bind_host(
+            bind_host,
+            settings.environment == "production",
+            advertised_host=advertise_host,
+        )
+        validate_transport_security(
+            host=advertise_host,
+            production=settings.environment == "production",
+            tls_enabled=settings.tls_enabled,
+        )
+    except RuntimeError as exc:
+        raise ProblemException(422, "NETWORK_POLICY_DENIED", "网络配置不符合安全边界", str(exc)) from exc
+    return {
+        "bind_host": bind_host,
+        "advertise_host": advertise_host,
+        "port": port,
+    }
+
+
+@router.get("/system/network", response_model=dict)
+def get_network_configuration(
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    settings = get_settings()
+    pending = db.get(SystemSetting, "network.pending")
+    return {
+        "automatic_addresses": discover_lan_addresses(),
+        "bind_host": settings.network_bind_host,
+        "advertise_host": settings.network_advertise_host,
+        "port": settings.port,
+        "tls_enabled": settings.tls_enabled,
+        "service_url": service_url(settings.network_advertise_host, settings.port, tls_enabled=settings.tls_enabled),
+        "pending": pending.value if pending else None,
+    }
+
+
+@router.post("/system/network/validate", response_model=dict)
+def validate_network_configuration(
+    payload: dict[str, object],
+    _admin: User = Depends(require_admin),
+) -> dict[str, object]:
+    value = validate_network_payload(payload)
+    return {
+        **value,
+        "valid": True,
+        "certificate_rotation_required": value["advertise_host"] != get_settings().network_advertise_host,
+        "restart_required": value["bind_host"] != get_settings().network_bind_host or value["port"] != get_settings().port,
+    }
+
+
+@router.patch("/system/network", response_model=dict)
+def patch_network_configuration(
+    payload: dict[str, object],
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    """保存、更新证书 SAN 并留下旧地址宽限/失败回滚所需快照。"""
+
+    settings = get_settings()
+    new_value = validate_network_payload(payload)
+    old_value = {
+        "bind_host": settings.network_bind_host,
+        "advertise_host": settings.network_advertise_host,
+        "port": settings.port,
+    }
+    if new_value == old_value:
+        return {**new_value, "changed": False, "restart_required": False}
+    try:
+        write_network_override(new_value)
+        if new_value["advertise_host"] != old_value["advertise_host"] and settings.tls_enabled:
+            from ..pki import ensure_tls_material
+
+            candidate = settings.model_copy(
+                update={
+                    "bind_host": new_value["bind_host"],
+                    "advertise_host": new_value["advertise_host"],
+                    "port": new_value["port"],
+                }
+            )
+            ensure_tls_material(candidate)
+    except Exception as exc:
+        write_network_override(old_value)
+        raise ProblemException(
+            500,
+            "NETWORK_UPDATE_ROLLED_BACK",
+            "网络配置更新失败并已回滚",
+            "原监听地址和证书配置已经保留，请查看服务日志。",
+        ) from exc
+    pending_value = {
+        "previous": old_value,
+        "requested": new_value,
+        "requested_at": utcnow().isoformat(),
+        "requested_by": admin.id,
+        "migration_grace_hours": max(1, min(168, int(payload.get("migration_grace_hours", 24)))),
+        "state": "restart_required",
+    }
+    pending = db.get(SystemSetting, "network.pending")
+    if pending:
+        pending.value = pending_value
+    else:
+        db.add(SystemSetting(key="network.pending", value=pending_value))
+    write_audit(db, admin, "system.network_update", "system_setting", "network.pending", {"previous": old_value, "requested": new_value}, client_ip(request))
+    db.commit()
+    return {
+        **new_value,
+        "changed": True,
+        "restart_required": True,
+        "certificate_rotated": bool(settings.tls_enabled and new_value["advertise_host"] != old_value["advertise_host"]),
+        "migration_grace_hours": pending_value["migration_grace_hours"],
+        "rollback": old_value,
     }
 
 

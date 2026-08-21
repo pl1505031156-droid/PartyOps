@@ -559,13 +559,13 @@ def test_privileged_update_lock_is_outside_custom_data_dir(
 def test_update_artifact_hash_failure_preserves_previous_cache(
     monkeypatch, tmp_path: Path
 ) -> None:
-    artifact_name = "PartyOps_1.4.3-rc.9_windows_amd64.exe"
+    artifact_name = "PartyOps_1.4.5_windows_amd64.exe"
     package = tmp_path / "release.partyops-update"
     payload = b"new-installer"
     with zipfile.ZipFile(package, "w") as archive:
         archive.writestr(artifact_name, payload)
     manifest = {
-        "version": "1.4.3-rc.9",
+        "version": "1.4.5",
         "artifacts": {
             artifact_name: {
                 "size": len(payload),

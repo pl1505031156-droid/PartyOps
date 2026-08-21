@@ -12,15 +12,15 @@ from pathlib import Path
 
 
 INSTALLERS = {
-    "PartyOps_1.4.3-rc.9_windows_amd64.exe": "windows/amd64",
-    "PartyOps_1.4.3-rc.9_windows7_amd64.exe": "windows7/amd64",
-    "PartyOps_1.4.3-rc.9_windows7_x86.exe": "windows7/x86",
-    "PartyOps_1.4.3-rc.9_linux_amd64.deb": "linux-deb/amd64",
-    "PartyOps_1.4.3-rc.9_linux_arm64.deb": "linux-deb/arm64",
-    "PartyOps-1.4.3-0.rc.9.1.x86_64.rpm": "linux-rpm/amd64",
-    "PartyOps-1.4.3-0.rc.9.1.aarch64.rpm": "linux-rpm/arm64",
-    "PartyOps_1.4.3-rc.9_macos_x86_64.pkg": "macos/amd64",
-    "PartyOps_1.4.3-rc.9_macos_arm64.pkg": "macos/arm64",
+    "PartyOps_1.4.4_windows_amd64.exe": "windows/amd64",
+    "PartyOps_1.4.4_windows7_amd64.exe": "windows7/amd64",
+    "PartyOps_1.4.4_windows7_x86.exe": "windows7/x86",
+    "PartyOps_1.4.4_linux_amd64.deb": "linux-deb/amd64",
+    "PartyOps_1.4.4_linux_arm64.deb": "linux-deb/arm64",
+    "PartyOps-1.4.4-1.x86_64.rpm": "linux-rpm/amd64",
+    "PartyOps-1.4.4-1.aarch64.rpm": "linux-rpm/arm64",
+    "PartyOps_1.4.4_macos_x86_64.pkg": "macos/amd64",
+    "PartyOps_1.4.4_macos_arm64.pkg": "macos/arm64",
 }
 
 
@@ -66,8 +66,8 @@ def build_manifest(
     return {
         "schema_version": 4,
         "product": "PartyOps",
-        "version": "1.4.3-rc.9",
-        "release_tag": "v1.4.3-rc.9",
+        "version": "1.4.4",
+        "release_tag": "v1.4.4",
         "source_commit": source_commit,
         "release_tooling_commit": tooling_commit,
         "generated_at": generated_at,
@@ -84,7 +84,7 @@ def build_manifest(
             "Windows 7 与国产 Linux 尚未在对应真机运行验收",
             "Windows 安装器尚无商业代码签名",
             "官网与 CloudStudio 只挂载当前版本安装包",
-            "macOS 制品必须在对应架构真机完成签名、公证与安装运行验收后才能进入正式清单",
+            "macOS 制品在对应原生架构完成构建和自动安装启动门禁后可作为未签名、未公证的 preview，不能标记为 stable",
         ],
         "assets": assets,
     }

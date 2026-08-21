@@ -100,6 +100,7 @@ class UserOut(ORMModel):
     display_name: str
     role: UserRole
     active: bool
+    archived_at: datetime | None = None
     version: int
     created_at: datetime
 
@@ -1375,6 +1376,9 @@ class DeviceOut(ORMModel):
     kernel: str
     app_version: str
     agent_version: str
+    protocol_version: int = 1
+    credential_state: str = "active"
+    credential_rotated_at: datetime | None = None
     local_username: str
     ip_address: str
     certificate_fingerprint: str
@@ -1491,6 +1495,7 @@ class DeviceHeartbeat(BaseModel):
     kernel: str = Field(default="", max_length=120)
     app_version: str = Field(default="", max_length=32)
     agent_version: str = Field(default="", max_length=32)
+    protocol_version: int = Field(default=1, ge=1, le=100)
     local_username: str = Field(default="", max_length=120)
     ip_address: str = Field(default="", max_length=64)
     disk_free_bytes: int = Field(default=0, ge=0)
@@ -1849,6 +1854,47 @@ class PartyDevelopmentResultOut(BaseModel):
     nodes: list[PartyDevelopmentNodeOut]
     warnings: list[dict[str, str]] = Field(default_factory=list)
     manual_confirmation_items: list[str] = Field(default_factory=list)
+
+
+class PartyDevelopmentCaseCreate(BaseModel):
+    party_committee: str = Field(min_length=1, max_length=160)
+    party_branch: str = Field(min_length=1, max_length=160)
+    name: str = Field(min_length=1, max_length=80)
+    gender: str = Field(default="", max_length=16)
+    ethnicity: str = Field(default="", max_length=40)
+    birth_date: dt_date | None = None
+    education: str = Field(default="", max_length=80)
+    application_date: dt_date
+    activist_date: dt_date | None = None
+    training_contacts: list[str] = Field(default_factory=list, max_length=10)
+    introducers: list[str] = Field(default_factory=list, max_length=10)
+    development_object_date: dt_date | None = None
+    probationary_date: dt_date | None = None
+    converted_date: dt_date | None = None
+
+
+class PartyDevelopmentCasePatch(BaseModel):
+    party_committee: str | None = Field(default=None, min_length=1, max_length=160)
+    party_branch: str | None = Field(default=None, min_length=1, max_length=160)
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    gender: str | None = Field(default=None, max_length=16)
+    ethnicity: str | None = Field(default=None, max_length=40)
+    birth_date: dt_date | None = None
+    education: str | None = Field(default=None, max_length=80)
+    activist_date: dt_date | None = None
+    training_contacts: list[str] | None = Field(default=None, max_length=10)
+    introducers: list[str] | None = Field(default=None, max_length=10)
+    development_object_date: dt_date | None = None
+    probationary_date: dt_date | None = None
+    converted_date: dt_date | None = None
+    stage: str | None = Field(default=None, max_length=48)
+    status: str | None = Field(default=None, pattern=r"^(active|completed|archived|void)$")
+
+
+class PartyDevelopmentMilestonePatch(BaseModel):
+    actual_date: dt_date | None = None
+    adjusted_date: dt_date | None = None
+    reminder_days: list[int] | None = Field(default=None, max_length=20)
 
 
 class PartyDevelopmentMaterialInput(BaseModel):

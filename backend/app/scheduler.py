@@ -39,6 +39,7 @@ from .projections import process_report_projection
 from .recommendations import index_semantic_batch, refresh_rule_recommendations
 from .recurrence import run_due_rules
 from .local_ai import llm_runtime
+from .routers.business import generate_due_recurring_meetings
 
 
 def cleanup_transfer_storage(db, settings) -> int:
@@ -389,6 +390,7 @@ def _run_scheduler_cycle(settings, now: datetime, last_backup_day: str | None) -
             )
         )
         if admin:
+            generate_due_recurring_meetings(db, admin, now)
             run_due_rules(db, admin)
             run_automation_rules(db, admin)
             process_report_projection(db, admin)

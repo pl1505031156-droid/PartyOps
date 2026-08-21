@@ -237,14 +237,14 @@ app = BUNDLE(
     name="PartyOps.app",
     icon=str(icon_path),
     bundle_identifier="cn.partyops.desktop",
-    version="1.4.3-rc.9",
+    version="1.4.4",
     info_plist={
         # 多 EXE 的 COLLECT 不能依赖 PyInstaller 自动选择 Finder 主入口；
         # 自动推断曾选中后台核心 partyops，导致双击 App 绕过桌面启动器。
         "CFBundleExecutable": "partyops-desktop",
         "CFBundleDisplayName": "党建智办 PartyOps",
-        "CFBundleShortVersionString": "1.4.3-rc.9",
-        "CFBundleVersion": "1.4.3.9",
+        "CFBundleShortVersionString": "1.4.4",
+        "CFBundleVersion": "1.4.4.0",
         "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
         "NSHumanReadableCopyright": "Copyright © 2026 PartyOps Contributors",

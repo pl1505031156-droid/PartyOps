@@ -82,6 +82,8 @@ class User(Base):
         Enum(UserRole, **enum_kwargs), default=UserRole.STAFF
     )
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    archived_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -164,6 +166,9 @@ class Device(Base):
     kernel: Mapped[str] = mapped_column(String(120), default="")
     app_version: Mapped[str] = mapped_column(String(32), default="")
     agent_version: Mapped[str] = mapped_column(String(32), default="")
+    protocol_version: Mapped[int] = mapped_column(Integer, default=1)
+    credential_state: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    credential_rotated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     local_username: Mapped[str] = mapped_column(String(120), default="")
     ip_address: Mapped[str] = mapped_column(String(64), default="")
     certificate_fingerprint: Mapped[str] = mapped_column(String(128), default="")
@@ -1124,7 +1129,11 @@ class Notification(Base):
     entity_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
     dedupe_key: Mapped[str] = mapped_column(String(255), unique=True)
     read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class BackgroundJob(Base):
@@ -1751,3 +1760,216 @@ class OnboardingProgress(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+
+
+class ClientDeviceCredential(Base):
+    """协同终端设备令牌版本；数据库只保存哈希，明文仅在签发响应中出现一次。"""
+
+    __tablename__ = "client_device_credentials"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    device_id: Mapped[str] = mapped_column(
+        ForeignKey("devices.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    protocol_version: Mapped[int] = mapped_column(Integer, default=2)
+    state: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    replaced_by_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class FileOpenGrant(Base):
+    """文件打开的一次性授权；服务重启不会丢失已用、吊销或过期状态。"""
+
+    __tablename__ = "file_open_grants"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    file_id: Mapped[str] = mapped_column(
+        ForeignKey("workspace_files.id", ondelete="CASCADE"), index=True
+    )
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    open_method: Mapped[str] = mapped_column(String(24), default="local_helper")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class WorkflowTemplate(Base):
+    """可复用的业务流程模板；步骤定义包含负责人角色、计划偏移与交付物。"""
+
+    __tablename__ = "workflow_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    name: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    business_type: Mapped[str] = mapped_column(String(48), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    steps: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    recurrence: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class BusinessMeeting(Base):
+    __tablename__ = "business_meetings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    meeting_type: Mapped[str] = mapped_column(String(48), index=True)
+    organization: Mapped[str] = mapped_column(String(160), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    status: Mapped[str] = mapped_column(String(24), default="planned", index=True)
+    workflow_template_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("workflow_templates.id"), nullable=True, index=True
+    )
+    task_id: Mapped[Optional[str]] = mapped_column(ForeignKey("tasks.id"), nullable=True, index=True)
+    recurrence_key: Mapped[str] = mapped_column(String(120), default="", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_business_meetings_recurrence_key",
+            "recurrence_key",
+            unique=True,
+            sqlite_where=text("recurrence_key <> ''"),
+        ),
+    )
+
+
+class MeetingTopic(Base):
+    __tablename__ = "meeting_topics"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    meeting_id: Mapped[str] = mapped_column(
+        ForeignKey("business_meetings.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(240))
+    review_result: Mapped[str] = mapped_column(Text, default="")
+    amount_cents: Mapped[int] = mapped_column(BigInteger, default=0)
+    reviewed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    amount_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class BusinessDocument(Base):
+    __tablename__ = "business_documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    meeting_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("business_meetings.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    task_step_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("task_steps.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    document_type: Mapped[str] = mapped_column(String(48), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    content: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class BusinessDocumentRevision(Base):
+    __tablename__ = "business_document_revisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("business_documents.id", ondelete="CASCADE"), index=True
+    )
+    revision_no: Mapped[int] = mapped_column(Integer)
+    content: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    change_note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (UniqueConstraint("document_id", "revision_no"),)
+
+
+class PartyDevelopmentCase(Base):
+    """党员发展档案；计算计划与实际发生日期严格分栏。"""
+
+    __tablename__ = "party_development_cases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    party_committee: Mapped[str] = mapped_column(String(160), index=True)
+    party_branch: Mapped[str] = mapped_column(String(160), index=True)
+    name: Mapped[str] = mapped_column(String(80), index=True)
+    gender: Mapped[str] = mapped_column(String(16), default="")
+    ethnicity: Mapped[str] = mapped_column(String(40), default="")
+    birth_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    education: Mapped[str] = mapped_column(String(80), default="")
+    application_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    activist_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    training_contacts: Mapped[List[str]] = mapped_column(JSON, default=list)
+    introducers: Mapped[List[str]] = mapped_column(JSON, default=list)
+    development_object_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    probationary_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    converted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    stage: Mapped[str] = mapped_column(String(48), default="application", index=True)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    rule_version: Mapped[str] = mapped_column(String(32), default="2026.05")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class PartyDevelopmentMilestone(Base):
+    __tablename__ = "party_development_milestones"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("party_development_cases.id", ondelete="CASCADE"), index=True
+    )
+    milestone_type: Mapped[str] = mapped_column(String(48), index=True)
+    actual_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    legal_earliest_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    legal_deadline_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    planned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    adjusted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    rule_version: Mapped[str] = mapped_column(String(32), default="2026.05")
+    legal_basis: Mapped[str] = mapped_column(Text, default="")
+    plan_kind: Mapped[str] = mapped_column(String(24), default="reference")
+    reminder_days: Mapped[List[int]] = mapped_column(JSON, default=lambda: [60, 30, 14, 7, 1, 0])
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (UniqueConstraint("case_id", "milestone_type"),)
+
+
+class NotificationSource(Base):
+    """提醒与业务规则的稳定关联，供更新、撤销和审计使用。"""
+
+    __tablename__ = "notification_sources"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    notification_id: Mapped[str] = mapped_column(
+        ForeignKey("notifications.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    source_type: Mapped[str] = mapped_column(String(40), index=True)
+    source_id: Mapped[str] = mapped_column(String(64), index=True)
+    rule_type: Mapped[str] = mapped_column(String(48), index=True)
+    window_key: Mapped[str] = mapped_column(String(48), default="")
+    source_version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

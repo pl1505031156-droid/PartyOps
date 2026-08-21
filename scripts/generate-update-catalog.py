@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
-VERSION = "1.4.3-rc.9"
+VERSION = "1.4.4"
 TARGETS = (
     ("windows", "amd64"),
     ("windows7", "amd64"),

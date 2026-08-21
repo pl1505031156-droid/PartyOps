@@ -45,6 +45,8 @@ export const navigationDomains: NavigationDomain[] = [
       { path: "/notifications", label: "通知中心", icon: "inbox" },
       { path: "/calendar", label: "工作日历", icon: "calendar" },
       { path: "/party-development", label: "党员发展计算", icon: "calendar" },
+      { path: "/party-development-cases", label: "党员发展档案", icon: "calendar" },
+      { path: "/business-meetings", label: "党建会议与筹备", icon: "task" },
       { path: "/inbox", label: "快速收件箱", icon: "inbox" },
       { path: "/reports", label: "周期汇总", icon: "report" },
       { path: "/journal", label: "工作日志", icon: "journal" },
@@ -62,6 +64,7 @@ export const navigationDomains: NavigationDomain[] = [
       { path: "/inspection", label: "迎检与归档", icon: "archive" },
       { path: "/knowledge", label: "知识与联系人", icon: "book" },
       { path: "/document-comparisons", label: "文档比较与查重", icon: "compare" },
+      { path: "/business-documents", label: "在线业务文档", icon: "book" },
     ],
   },
   {

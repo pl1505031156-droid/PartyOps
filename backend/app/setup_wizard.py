@@ -1984,21 +1984,67 @@ def clear_windows_client_autostart() -> None:
         return
 
 
-def install_windows_personal_autostart() -> None:
-    """个人模式随当前账号登录启动，但后台恢复时不擅自打开浏览器。"""
+def _windows_personal_startup_file() -> Path:
+    """返回当前用户 Startup 中只归 PartyOps 管理的降级启动脚本。"""
+
+    appdata = Path(
+        os.getenv("APPDATA")
+        or (Path.home() / "AppData" / "Roaming")
+    )
+    return appdata / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "PartyOpsPersonal.cmd"
+
+
+def _record_windows_autostart_warning(message: str) -> None:
+    try:
+        path = config_root() / "autostart-warning.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(f"{datetime.now(timezone.utc).isoformat()} {message}\n")
+    except OSError:
+        pass
+
+
+def install_windows_personal_autostart() -> str | None:
+    """安装个人模式用户级自启动；策略拒绝注册表时降级到 Startup。"""
 
     if os.name != "nt" or os.getenv("PARTYOPS_ENVIRONMENT") == "test":
-        return
+        return None
     import winreg
 
     command = f'"{_executable("PartyOpsLauncher")}" --background'
-    with winreg.CreateKeyEx(
-        winreg.HKEY_CURRENT_USER,
-        r"Software\Microsoft\Windows\CurrentVersion\Run",
-        0,
-        winreg.KEY_SET_VALUE,
-    ) as key:
-        winreg.SetValueEx(key, "PartyOpsPersonal", 0, winreg.REG_SZ, command)
+    fallback = _windows_personal_startup_file()
+    try:
+        with winreg.CreateKeyEx(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_SET_VALUE,
+        ) as key:
+            winreg.SetValueEx(key, "PartyOpsPersonal", 0, winreg.REG_SZ, command)
+        fallback.unlink(missing_ok=True)
+        return None
+    except OSError as registry_error:
+        try:
+            fallback.parent.mkdir(parents=True, exist_ok=True)
+            temporary = fallback.with_suffix(".cmd.tmp")
+            temporary.write_text(
+                f'@echo off\r\nstart "" /b {command}\r\n',
+                encoding="utf-8",
+            )
+            os.replace(temporary, fallback)
+        except OSError as startup_error:
+            warning = (
+                "[AUTOSTART_UNAVAILABLE] 个人模式已配置成功，但 Windows 同时拒绝 "
+                f"HKCU Run 与用户 Startup：注册表={registry_error}；Startup={startup_error}"
+            )
+            _record_windows_autostart_warning(warning)
+            return warning
+        warning = (
+            "[AUTOSTART_REGISTRY_DENIED] Windows 拒绝 HKCU Run，已改用当前用户 "
+            f"Startup：{fallback}；原因：{registry_error}"
+        )
+        _record_windows_autostart_warning(warning)
+        return warning
 
 
 def clear_windows_personal_autostart() -> None:
@@ -2006,6 +2052,7 @@ def clear_windows_personal_autostart() -> None:
         return
     import winreg
 
+    registry_error: OSError | None = None
     try:
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
@@ -2015,7 +2062,19 @@ def clear_windows_personal_autostart() -> None:
         ) as key:
             winreg.DeleteValue(key, "PartyOpsPersonal")
     except FileNotFoundError:
-        return
+        pass
+    except OSError as exc:
+        registry_error = exc
+    try:
+        _windows_personal_startup_file().unlink(missing_ok=True)
+    except OSError as exc:
+        _record_windows_autostart_warning(
+            f"[AUTOSTART_CLEANUP_DEFERRED] 用户 Startup 清理失败：{exc}"
+        )
+    if registry_error is not None:
+        _record_windows_autostart_warning(
+            f"[AUTOSTART_REGISTRY_CLEANUP_DEFERRED] HKCU Run 清理失败：{registry_error}"
+        )
 
 
 def _enable_windows_host_service_autostart() -> None:

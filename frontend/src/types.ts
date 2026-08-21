@@ -16,6 +16,7 @@ export interface User {
   display_name: string;
   role: UserRole;
   active: boolean;
+  archived_at?: string | null;
   version: number;
   created_at: string;
 }

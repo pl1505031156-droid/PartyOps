@@ -1,10 +1,10 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.3-rc.9"
+#define MyAppVersion "1.4.4"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
 #ifndef PartyOpsOutputBase
-  #define PartyOpsOutputBase "PartyOps_1.4.3-rc.9_windows_amd64"
+  #define PartyOpsOutputBase "PartyOps_1.4.4_windows_amd64"
 #endif
 
 [Setup]
@@ -12,7 +12,7 @@ AppId={{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
-VersionInfoVersion=1.4.3.9
+VersionInfoVersion=1.4.4.0
 AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://www.partyops.cn/
 AppSupportURL=https://www.partyops.cn/guide
@@ -54,7 +54,7 @@ WizardSmallImageFile={#BuildRoot}\partyops-1024.png
 Name: "chinesesimp"; MessagesFile: "{#SourcePath}\languages\ChineseSimplified.isl"
 
 [Messages]
-BeveledLabel=PartyOps 1.4.3-rc.9 · 未签名候选版
+BeveledLabel=PartyOps 1.4.4 · 未签名正式版
 #ifdef PartyOpsLegacy
 WinVersionTooLowError=此 Windows 7 专用安装包要求 Windows 7 SP1 或更高版本。请先安装 SP1 后重试。
 #else
@@ -613,7 +613,7 @@ begin
   InAppServiceUpdate := CompareText(
     ExpandConstant('{param:INAPPUPDATE|0}'), '1'
   ) = 0;
-  WizardForm.Caption := '党建智办 PartyOps 1.4.3-rc.9 安装向导';
+  WizardForm.Caption := '党建智办 PartyOps 1.4.4 安装向导';
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     '选择 PartyOps 业务数据目录',

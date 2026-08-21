@@ -42,7 +42,9 @@ from .platform_info import detect_platform_info
 from .schemas import serialize_api_datetime
 
 
-AGENT_VERSION = "1.4.3-rc.9"
+AGENT_VERSION = "1.4.4"
+AGENT_PROTOCOL_VERSION = 2
+AUTHENTICATION_EXIT_CODE = 4
 _ACTIVE_SSL_CONTEXT = None
 HEARTBEAT_INTERVAL_SECONDS = 15
 MAX_UPDATE_PACKAGE_BYTES = 4 * 1024**3
@@ -87,19 +89,44 @@ def _record_agent_failure(
     config: dict[str, object],
     operation: str,
     exc: BaseException,
-) -> None:
+) -> bool:
     """持久化可诊断状态；鉴权失效时明确要求重新入网。"""
 
     status = getattr(exc, "code", None)
     logger.warning("operation_failed operation=%s type=%s status=%s", operation, type(exc).__name__, status or "")
     config["last_agent_error"] = operation
     config["last_agent_error_at"] = datetime.now(timezone.utc).isoformat()
-    if isinstance(exc, urllib.error.HTTPError) and exc.code in {401, 403}:
+    authentication_failed = (
+        isinstance(exc, urllib.error.HTTPError) and exc.code in {401, 403}
+    )
+    if authentication_failed:
         config["authentication_state"] = "reauth_required"
     try:
         _save_config(config_path, config)
     except OSError:
         logger.exception("agent_state_persist_failed operation=%s", operation)
+    return authentication_failed
+
+
+def _migrate_agent_config(config_path: Path, config: dict[str, object]) -> None:
+    """把 rc.8/rc.9 协同配置原地升级为可诊断的 v2 配置。"""
+
+    changed = False
+    current_values: dict[str, object] = {
+        "format_version": 2,
+        "protocol_version": AGENT_PROTOCOL_VERSION,
+        "runtime_version": AGENT_VERSION,
+        "architecture": str(detect_platform_info().get("architecture", "unknown")),
+    }
+    for key, value in current_values.items():
+        if config.get(key) != value:
+            config[key] = value
+            changed = True
+    if "authentication_state" not in config:
+        config["authentication_state"] = "ready"
+        changed = True
+    if changed:
+        _save_config(config_path, config)
 
 
 class AgentCommandError(RuntimeError):
@@ -2150,11 +2177,22 @@ def _heartbeat_loop(
     host_url: str,
     token: str,
     config: dict[str, object],
+    config_path: Path | None = None,
 ) -> None:
     """独立维持设备在线状态，避免扫描、传输或更新阻塞心跳。"""
 
     while not stop_event.wait(HEARTBEAT_INTERVAL_SECONDS):
-        send_device_heartbeat(host_url, token, config)
+        try:
+            send_device_heartbeat(host_url, token, config)
+        except (OSError, ValueError, urllib.error.HTTPError, urllib.error.URLError) as exc:
+            authentication_failed = (
+                _record_agent_failure(config_path, config, "heartbeat", exc)
+                if config_path is not None
+                else isinstance(exc, urllib.error.HTTPError) and exc.code in {401, 403}
+            )
+            if authentication_failed:
+                stop_event.set()
+                return
 
 
 def run(
@@ -2168,6 +2206,7 @@ def run(
         return 2
     configure_agent_logging(config_path)
     config = json.loads(config_path.read_text(encoding="utf-8"))
+    _migrate_agent_config(config_path, config)
     configure_ssl_context(config)
     try:
         host_url, token, destination = validate_config(config)
@@ -2188,6 +2227,9 @@ def run(
             except (OSError, ValueError) as exc:
                 print(f"无法准备协同页面：{exc}", file=sys.stderr)
                 return 2
+            # 桌面双击的职责只有准备并打开页面。灾备、心跳和文件索引由已
+            # 启动的常驻代理独立执行，旧凭据失效不能再让桌面入口失败。
+            return 0
         if should_open_browser:
             webbrowser.open(browser_url)
     backup_interval = int(config.get("interval_seconds", 600))
@@ -2204,11 +2246,18 @@ def run(
     heartbeat_thread: threading.Thread | None = None
     if device_auth:
         # 第一次心跳同步发送，确保刚入网的设备立即出现在主机设备中心。
-        send_device_heartbeat(agent_host_url, token, config)
+        try:
+            send_device_heartbeat(agent_host_url, token, config)
+            config["authentication_state"] = "ready"
+            _save_config(config_path, config)
+        except (OSError, ValueError, urllib.error.HTTPError, urllib.error.URLError) as exc:
+            _record_agent_failure(config_path, config, "heartbeat", exc)
+            print("协同凭据已失效，请由主机管理员重新授权。", file=sys.stderr)
+            return AUTHENTICATION_EXIT_CODE
         if not once:
             heartbeat_thread = threading.Thread(
                 target=_heartbeat_loop,
-                args=(heartbeat_stop, agent_host_url, token, config),
+                args=(heartbeat_stop, agent_host_url, token, config, config_path),
                 name="partyops-heartbeat",
                 daemon=True,
             )
@@ -2251,6 +2300,9 @@ def run(
                     zipfile.BadZipFile,
                 ) as exc:
                     print(f"灾备拉取失败：{exc}", file=sys.stderr)
+                    if _record_agent_failure(config_path, config, "backup_pull", exc):
+                        print("协同凭据已失效，灾备重试已停止。", file=sys.stderr)
+                        return AUTHENTICATION_EXIT_CODE
                     if once:
                         return 1
                 next_backup_at = time.monotonic() + backup_interval

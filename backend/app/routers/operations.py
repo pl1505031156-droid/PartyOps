@@ -725,7 +725,10 @@ def list_notifications(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[Notification]:
-    statement = select(Notification).where(Notification.user_id == user.id)
+    statement = select(Notification).where(
+        Notification.user_id == user.id,
+        Notification.revoked_at.is_(None),
+    )
     if unread_only:
         statement = statement.where(Notification.read_at.is_(None))
     if notification_type:
@@ -757,7 +760,9 @@ def read_all_notifications(
 ) -> dict:
     items = db.scalars(
         select(Notification).where(
-            Notification.user_id == user.id, Notification.read_at.is_(None)
+            Notification.user_id == user.id,
+            Notification.read_at.is_(None),
+            Notification.revoked_at.is_(None),
         )
     ).all()
     now = utcnow()

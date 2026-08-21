@@ -124,11 +124,11 @@ chroot "$ROOTFS" /bin/bash -lc "
     rpm) bash packaging/linux/build-native.sh rpm ;;
     test-deb)
       bash scripts/test-native-package-runtime.sh \
-        artifacts/PartyOps_1.4.3-rc.9_linux_arm64.deb arm64
+        artifacts/PartyOps_1.4.4_linux_arm64.deb arm64
       ;;
     test-rpm)
       bash scripts/test-native-package-runtime.sh \
-        artifacts/PartyOps-1.4.3-0.rc.9.1.aarch64.rpm arm64
+        artifacts/PartyOps-1.4.4-1.aarch64.rpm arm64
       ;;
   esac
 "

@@ -74,7 +74,7 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "MACOS_ARCH_MISMATCH" in validation
     assert 'bundle_identifier="cn.partyops.desktop"' in spec
     assert '"CFBundleExecutable": "partyops-desktop"' in spec
-    assert '"CFBundleVersion": "1.4.3.9"' in spec
+    assert '"CFBundleVersion": "1.4.4.0"' in spec
     assert '"LSMinimumSystemVersion": "11.0"' in spec
     assert "target_arch=target_arch" in spec
     assert 'name="partyops-updater"' in spec
@@ -102,6 +102,11 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     wrapper = (MACOS / "launcher-wrapper.c").read_text(encoding="utf-8")
     assert "status=launchservices-entered" in wrapper
     assert 'execv(target, child_argv)' in wrapper
+    assert 'partyops_log_path("launch-stderr.log"' in wrapper
+    assert "status=desktop-child-started" in wrapper
+    assert "status=desktop-child-exited" in wrapper
+    assert "status=desktop-child-signaled" in wrapper
+    assert "waitpid(child, &child_status, 0)" in wrapper
     assert 'find "$APP/Contents" -type f ! -path "$BUNDLE_EXECUTABLE" -print0' in build
     assert build.count('"$BUNDLE_EXECUTABLE"') == 4
     assert build.index('done <"$MACHO_CANDIDATE_LIST"') < build.index(
@@ -170,7 +175,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     build = (MACOS / "build-pkg.sh").read_text(encoding="utf-8")
     runtimes = (MACOS / "build-native-runtimes.sh").read_text(encoding="utf-8")
     workflow = (
-        ROOT / ".github" / "workflows" / "build-macos-rc9.yml"
+        ROOT / ".github" / "workflows" / "build-macos-1.4.4.yml"
     ).read_text(encoding="utf-8")
 
     assert "--unsigned-candidate" in build
@@ -203,7 +208,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "push:" not in workflow and "pull_request:" not in workflow
     assert "contents: read" in workflow
     assert "macos-15-intel" in workflow and "macos-15" in workflow
-    assert "BUILD-UNSIGNED-RC9" in workflow
+    assert "BUILD-UNSIGNED-144" in workflow
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1
     assert workflow.count("install_package") == 3
@@ -217,6 +222,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "= 'partyops-desktop'" in workflow
     assert 'Contents/MacOS/PartyOps' not in workflow
     assert '/usr/bin/open -na "$app" --args --launch-services-self-test' in workflow
+    assert "status=desktop-child-exited child_pid=.* exit_code=0" in workflow
     assert "MACOS_LAUNCHSERVICES_SELFTEST_FAILED" in workflow
     assert "gh release" not in workflow
     action_lines = [

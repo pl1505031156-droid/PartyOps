@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
-$python = if ($env:PARTYOPS_PYTHON) { $env:PARTYOPS_PYTHON } else { Join-Path $root ".venv\Scripts\python.exe" }
+$python = if ($env:PARTYOPS_PYTHON) { $env:PARTYOPS_PYTHON } else { Join-Path $root "backend\.venv\Scripts\python.exe" }
 $backend = Join-Path $root "backend"
 $frontend = Join-Path $root "frontend"
 $website = Join-Path $root "website"

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS="$ROOT/artifacts"
-VERSION="1.4.3-rc.9"
+VERSION="1.4.4"
 OUT="$ARTIFACTS/partyops_${VERSION}.partyops-update"
 WORK="$(mktemp -d "$ROOT/.build-uos/update.XXXXXX")"
 cleanup() {
@@ -20,13 +20,13 @@ trap cleanup EXIT
 }
 
 FILES=(
-  "PartyOps_1.4.3-rc.9_windows_amd64.exe"
-  "PartyOps_1.4.3-rc.9_windows7_amd64.exe"
-  "PartyOps_1.4.3-rc.9_windows7_x86.exe"
-  "PartyOps_1.4.3-rc.9_linux_amd64.deb"
-  "PartyOps_1.4.3-rc.9_linux_arm64.deb"
-  "PartyOps-1.4.3-0.rc.9.1.x86_64.rpm"
-  "PartyOps-1.4.3-0.rc.9.1.aarch64.rpm"
+  "PartyOps_1.4.4_windows_amd64.exe"
+  "PartyOps_1.4.4_windows7_amd64.exe"
+  "PartyOps_1.4.4_windows7_x86.exe"
+  "PartyOps_1.4.4_linux_amd64.deb"
+  "PartyOps_1.4.4_linux_arm64.deb"
+  "PartyOps-1.4.4-1.x86_64.rpm"
+  "PartyOps-1.4.4-1.aarch64.rpm"
 )
 for filename in "${FILES[@]}"; do
   [[ -f "$ARTIFACTS/$filename" ]] || {
@@ -54,30 +54,33 @@ manifest = {
     "format": "partyops-update",
     "format_version": 3,
     "version": version,
-    "min_version": "1.4.3-rc.3",
-    "schema_revision": "0019",
+    "min_version": "1.4.3-rc.9",
+    "schema_revision": "0020",
     "release_title": "多系统适配与专业级应用内升级",
     "platform_artifacts": {
-        "windows": {"amd64": "PartyOps_1.4.3-rc.9_windows_amd64.exe"},
+        "windows": {"amd64": "PartyOps_1.4.4_windows_amd64.exe"},
         "windows7": {
-            "amd64": "PartyOps_1.4.3-rc.9_windows7_amd64.exe",
-            "x86": "PartyOps_1.4.3-rc.9_windows7_x86.exe",
+            "amd64": "PartyOps_1.4.4_windows7_amd64.exe",
+            "x86": "PartyOps_1.4.4_windows7_x86.exe",
         },
         "linux-deb": {
-            "amd64": "PartyOps_1.4.3-rc.9_linux_amd64.deb",
-            "arm64": "PartyOps_1.4.3-rc.9_linux_arm64.deb",
+            "amd64": "PartyOps_1.4.4_linux_amd64.deb",
+            "arm64": "PartyOps_1.4.4_linux_arm64.deb",
         },
         "linux-rpm": {
-            "amd64": "PartyOps-1.4.3-0.rc.9.1.x86_64.rpm",
-            "arm64": "PartyOps-1.4.3-0.rc.9.1.aarch64.rpm",
+            "amd64": "PartyOps-1.4.4-1.x86_64.rpm",
+            "arm64": "PartyOps-1.4.4-1.aarch64.rpm",
         },
     },
     "artifacts": artifacts,
     "release_notes": [
         "新增系统内检查、后台下载和一键原位升级，失败自动回滚且不丢失业务数据",
         "在线更新按当前系统与架构精确下载，不再下载其他平台安装器",
-        "修复 PartyOps 协议注册表拒绝访问并提供事务回滚诊断",
-        "修复数据库启动异常导致 CHILD_EXITED、乱码与管理员创建 10061",
+        "旧协同凭据 401/403 停止灾备重试，页面启动与同步彻底解耦并支持管理员重新授权",
+        "修复 Windows CHILD_EXITED、Win7 自启动拒绝访问以及 macOS/Linux 双击无响应诊断",
+        "新增一次性文件打开授权、PDF 同源预览和 WPS 本机打开降级",
+        "新增用户归档恢复、网络与协同设置、会议六步流程、在线结构化文档和发展党员档案",
+        "任务改期后立即更新或撤销未读通知，已读历史继续保留审计",
         "新增 Win7 SP1 x64/x86 独立 Legacy 运行时与安全回移门禁",
         "新增麒麟、UOS、deepin 的 DEB 与 openEuler RPM 双架构原生包",
         "安装后自动核对文件、前端、SQLite/FTS5、OCR、智能运行时与健康端点",
@@ -89,7 +92,7 @@ manifest = {
     encoding="utf-8",
 )
 (root / "RELEASE-NOTES.txt").write_text(
-    "党建智办 PartyOps 1.4.3-rc.9 原位更新包\n"
+    "党建智办 PartyOps 1.4.4 原位更新包\n"
     "由签名清单按系统、包格式和架构精确选包；更新失败自动保留数据并回滚程序。\n",
     encoding="utf-8",
 )

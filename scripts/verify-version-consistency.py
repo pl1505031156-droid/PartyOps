@@ -113,7 +113,7 @@ def verify(root: Path, expected: str) -> None:
         ("scripts/generate-release-bundle-manifest.py", "安装包发布矩阵"),
     ):
         text = (root / relative).read_text(encoding="utf-8")
-        versions = set(re.findall(r"PartyOps[_-](1\.4\.3-rc\.\d+)", text))
+        versions = set(re.findall(r"PartyOps[_-](\d+\.\d+\.\d+(?:-rc\.\d+)?)", text))
         if versions != {expected}:
             actual = ", ".join(sorted(versions)) or "<missing>"
             raise ValueError(f"{label}版本不一致：期望 {expected}，实际 {actual}")

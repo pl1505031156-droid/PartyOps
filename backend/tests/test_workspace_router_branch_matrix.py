@@ -23,9 +23,10 @@ class Rows:
 
 
 class Db:
-    def __init__(self, objects=None, rows=None) -> None:
+    def __init__(self, objects=None, rows=None, scalar_values=None) -> None:
         self.objects = objects or {}
         self.rows = rows or []
+        self.scalar_values = list(scalar_values or [])
         self.deleted = []
 
     def get(self, model, identity):
@@ -33,6 +34,9 @@ class Db:
 
     def scalars(self, _query):
         return Rows(self.rows)
+
+    def scalar(self, _query):
+        return self.scalar_values.pop(0) if self.scalar_values else None
 
     def delete(self, value) -> None:
         self.deleted.append(value)
@@ -203,14 +207,13 @@ def test_open_token_and_link_target_guards(monkeypatch) -> None:
         with pytest.raises(ProblemException) as invalid:
             workspace.resolve_local_open_token(token, request, db)
         assert invalid.value.code == "OPEN_TOKEN_INVALID"
-    monkeypatch.setattr(workspace, "consume_local_open_token", lambda _token: None)
     with pytest.raises(ProblemException) as expired:
         workspace.resolve_local_open_token("valid", request, db)
-    assert expired.value.code == "OPEN_TOKEN_EXPIRED"
-    monkeypatch.setattr(workspace, "consume_local_open_token", lambda _token: "file-1")
+    assert expired.value.code == "OPEN_GRANT_INVALID"
+    grant = SimpleNamespace(revoked_at=None, used_at=None, expires_at=workspace.utcnow(), file_id="file-1")
     with pytest.raises(ProblemException) as unavailable:
-        workspace.resolve_local_open_token("valid", request, db)
-    assert unavailable.value.code == "WORKSPACE_FILE_UNAVAILABLE"
+        workspace.resolve_local_open_token("valid", request, Db(scalar_values=[grant]))
+    assert unavailable.value.code == "OPEN_GRANT_EXPIRED"
 
     user = SimpleNamespace(id="user-1")
     monkeypatch.setattr(workspace, "can_view_task", lambda *_a: False)

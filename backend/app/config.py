@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -36,7 +37,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "党建智办"
-    app_version: str = "1.4.3-rc.9"
+    app_version: str = "1.4.4"
     mode: Literal["host", "personal", "client"] = "host"
     # 未显式配置时按生产边界运行。开发脚本和自动化测试会主动设置
     # development/test，避免开源用户直接启动时意外开启调试与弱校验。
@@ -184,8 +185,35 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
+    override_path = settings.data_dir / "network-settings.json"
+    if override_path.is_file():
+        try:
+            override = json.loads(override_path.read_text(encoding="utf-8"))
+            for key in ("bind_host", "advertise_host", "port"):
+                if key in override:
+                    setattr(settings, key, override[key])
+        except (OSError, ValueError, TypeError):
+            # 启动校验会继续使用最后一组环境配置；损坏文件由诊断页明确报告，
+            # 不能因为管理端写入中断而让主机完全无法启动。
+            pass
     settings.ensure_directories()
     return settings
+
+
+def write_network_override(value: dict[str, object]) -> Path:
+    """原子保存可回滚网络配置；监督服务重启后由 get_settings 统一加载。"""
+
+    settings = get_settings()
+    target = settings.data_dir / "network-settings.json"
+    temporary = target.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    if os.name != "nt":
+        temporary.chmod(0o600)
+    temporary.replace(target)
+    return target
 
 
 def reset_settings_cache() -> None:

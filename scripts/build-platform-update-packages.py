@@ -27,17 +27,17 @@ _VALIDATOR_SPEC.loader.exec_module(_VALIDATOR)
 validate_package = _VALIDATOR.validate_package
 
 
-VERSION = "1.4.3-rc.9"
+VERSION = "1.4.4"
 PLATFORMS = {
-    ("windows", "amd64"): "PartyOps_1.4.3-rc.9_windows_amd64.exe",
-    ("windows7", "amd64"): "PartyOps_1.4.3-rc.9_windows7_amd64.exe",
-    ("windows7", "x86"): "PartyOps_1.4.3-rc.9_windows7_x86.exe",
-    ("linux-deb", "amd64"): "PartyOps_1.4.3-rc.9_linux_amd64.deb",
-    ("linux-deb", "arm64"): "PartyOps_1.4.3-rc.9_linux_arm64.deb",
-    ("linux-rpm", "amd64"): "PartyOps-1.4.3-0.rc.9.1.x86_64.rpm",
-    ("linux-rpm", "arm64"): "PartyOps-1.4.3-0.rc.9.1.aarch64.rpm",
-    ("macos", "amd64"): "PartyOps_1.4.3-rc.9_macos_x86_64.pkg",
-    ("macos", "arm64"): "PartyOps_1.4.3-rc.9_macos_arm64.pkg",
+    ("windows", "amd64"): "PartyOps_1.4.4_windows_amd64.exe",
+    ("windows7", "amd64"): "PartyOps_1.4.4_windows7_amd64.exe",
+    ("windows7", "x86"): "PartyOps_1.4.4_windows7_x86.exe",
+    ("linux-deb", "amd64"): "PartyOps_1.4.4_linux_amd64.deb",
+    ("linux-deb", "arm64"): "PartyOps_1.4.4_linux_arm64.deb",
+    ("linux-rpm", "amd64"): "PartyOps-1.4.4-1.x86_64.rpm",
+    ("linux-rpm", "arm64"): "PartyOps-1.4.4-1.aarch64.rpm",
+    ("macos", "amd64"): "PartyOps_1.4.4_macos_x86_64.pkg",
+    ("macos", "arm64"): "PartyOps_1.4.4_macos_arm64.pkg",
 }
 RELEASE_NOTES = [
     "新增系统内检查、后台下载和一键原位升级，失败自动回滚且不丢失业务数据",

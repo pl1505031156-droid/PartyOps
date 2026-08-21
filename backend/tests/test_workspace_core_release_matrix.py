@@ -22,17 +22,10 @@ class _Rows:
         return list(self.values)
 
 
-def test_open_tokens_are_one_time_and_expired_tokens_are_pruned(monkeypatch) -> None:
-    workspace._open_tokens.clear()
-    workspace._open_tokens["expired"] = ("expired-file", workspace.time.monotonic() - 1)
-    current = workspace.issue_local_open_token("current-file")
-    assert "expired" not in workspace._open_tokens
-    assert workspace.consume_local_open_token(current) == "current-file"
-    assert workspace.consume_local_open_token(current) is None
-
-    token = workspace.issue_local_open_token("file-1")
-    assert workspace.consume_local_open_token(token) == "file-1"
-    assert workspace.consume_local_open_token(token) is None
+def test_open_tokens_no_longer_depend_on_process_memory() -> None:
+    assert not hasattr(workspace, "_open_tokens")
+    assert not hasattr(workspace, "issue_local_open_token")
+    assert not hasattr(workspace, "consume_local_open_token")
 
 
 def test_validate_root_path_rejects_relative_missing_file_reserved_and_denied(monkeypatch, tmp_path) -> None:

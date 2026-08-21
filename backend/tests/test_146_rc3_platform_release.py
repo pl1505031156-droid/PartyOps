@@ -142,6 +142,8 @@ def _v3_manifest() -> dict:
 
 def test_v3_manifest_and_candidate_version_order(monkeypatch) -> None:
     monkeypatch.setattr(updates, "__version__", "1.4.3-rc.2")
+    # 本用例验证历史 v3 清单契约，不应被当前 1.4.4 的数据库防降级门禁遮蔽。
+    monkeypatch.setattr(updates, "SCHEMA_VERSION", "0019")
     updates._validate_manifest_contract(_v3_manifest())
     assert parse_release_version("1.4.3-rc.2") < parse_release_version("1.4.3-rc.3")
     assert parse_release_version("1.4.3-rc.3") < parse_release_version("1.4.3")

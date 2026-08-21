@@ -38,6 +38,7 @@ vi.mock("../api", () => ({
 import DashboardView from "./DashboardView.vue";
 import ArchivesView from "./ArchivesView.vue";
 import AssistantView from "./AssistantView.vue";
+import BusinessMeetingsView from "./BusinessMeetingsView.vue";
 import CalendarView from "./CalendarView.vue";
 import EfficiencyView from "./EfficiencyView.vue";
 import FleetView from "./FleetView.vue";
@@ -291,6 +292,64 @@ beforeEach(() => {
 });
 
 describe("核心页面真实挂载", () => {
+  it("会议筹备页覆盖空表单与未选择会议的安全返回", async () => {
+    const wrapper = await mountView(BusinessMeetingsView, "/business-meetings", true);
+    const state = setupState(wrapper);
+    await runAction(state, "createMeeting");
+    await runAction(state, "toggleStep", { id: "step-1", version: 1 }, true);
+    await runAction(state, "addTopic");
+    expect(apiMocks.post).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("会议筹备页完成加载、新建、步骤和议题的成功与失败闭环", async () => {
+    const meeting = {
+      id: "meeting-1", meeting_type: "party_committee", meeting_type_label: "党委会",
+      organization: "测试党委", title: "月度党委会", scheduled_at: now, status: "planned",
+      task_id: "task-1", version: 1, progress: { done: 0, total: 1, percent: 0 },
+      steps: [{ id: "step-1", title: "起草议程", assignee_id: "user-1", due_at: now, done: false, version: 1 }],
+      topics: [],
+    };
+    const workflow = { id: "workflow-1", name: "党委会六步", business_type: "party_committee", steps: [{ title: "起草议程", responsible_role: "承办人" }] };
+    const user = { id: "user-1", username: "admin", display_name: "测试管理员", role: "admin", active: true, version: 1, created_at: now };
+    apiMocks.get.mockImplementation(async (path) => {
+      if (path === "/business-meetings") return [meeting];
+      if (path === "/workflow-templates") return [workflow];
+      if (path === "/users") return [user];
+      if (path.startsWith("/business-meetings/statistics/annual")) return { completed_meetings: 0, reviewed_topics: 0, confirmed_amount: "0.00" };
+      return responseFor(path);
+    });
+    apiMocks.post.mockImplementation(async (path) => path === "/business-meetings" ? meeting : {});
+    const wrapper = await mountView(BusinessMeetingsView, "/business-meetings", true);
+    const state = setupState(wrapper);
+    Object.assign(state.form as object, {
+      meeting_type: "party_committee", organization: "测试党委", title: "新增党委会",
+      scheduled_at: "", workflow_template_id: "workflow-1", owner_id: "user-1",
+    });
+    Object.assign(state.assignees as object, { 承办人: "user-1" });
+    await runAction(state, "createMeeting");
+    expect(apiMocks.post).toHaveBeenCalledWith("/business-meetings", expect.objectContaining({ assignees: expect.any(Object) }));
+    Object.assign(state.form as object, { organization: "测试党委", title: "失败会议" });
+    apiMocks.post.mockRejectedValueOnce(new Error("会议创建失败"));
+    await runAction(state, "createMeeting");
+
+    await runAction(state, "toggleStep", meeting.steps[0], true);
+    apiMocks.patch.mockRejectedValueOnce(new Error("步骤更新失败"));
+    await runAction(state, "toggleStep", meeting.steps[0], false);
+
+    Object.assign(state.topicForm as object, { title: "第一议题", review_result: "通过", amount: "10", reviewed: true, amount_confirmed: true });
+    await runAction(state, "addTopic");
+    Object.assign(state.topicForm as object, { title: "第二议题" });
+    apiMocks.post.mockRejectedValueOnce(new Error("议题保存失败"));
+    await runAction(state, "addTopic");
+
+    apiMocks.get.mockRejectedValueOnce(new Error("会议读取失败"));
+    await runAction(state, "load");
+    apiMocks.get.mockRejectedValueOnce("非标准会议读取错误");
+    await runAction(state, "load");
+    wrapper.unmount();
+  });
+
   it.each([
     ["今日工作台", TodayView, "/"],
     ["周工作总览", DashboardView, "/dashboard"],

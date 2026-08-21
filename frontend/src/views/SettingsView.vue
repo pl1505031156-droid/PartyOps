@@ -93,6 +93,23 @@ interface SystemStatus {
   executable_frozen: boolean;
 }
 
+interface NetworkConfiguration {
+  automatic_addresses: string[];
+  bind_host: string;
+  advertise_host: string;
+  port: number;
+  tls_enabled: boolean;
+  service_url: string;
+  pending: Record<string, unknown> | null;
+}
+
+interface UserDeletionImpact {
+  user_id: string;
+  counts: Record<string, number>;
+  requires_transfer: boolean;
+  history_preserved: boolean;
+}
+
 const props = withDefaults(defineProps<{ initialTab?: string }>(), {
   initialTab: "diagnostics",
 });
@@ -106,6 +123,7 @@ const audits = ref<Audit[]>([]);
 const pairings = ref<Pairing[]>([]);
 const diagnostics = ref<Diagnostics | null>(null);
 const systemStatus = ref<SystemStatus | null>(null);
+const network = ref<NetworkConfiguration | null>(null);
 const aiProvider = ref<AIProvider | null>(null);
 const aiPolicies = ref<AIPolicy[]>([]);
 const workspaceRoots = ref<WorkspaceRoot[]>([]);
@@ -114,6 +132,10 @@ const logs = ref("");
 const loadingBackup = ref(false);
 const userVisible = ref(false);
 const userEditVisible = ref(false);
+const userDeleteVisible = ref(false);
+const deletingUser = ref<User | null>(null);
+const deletionImpact = ref<UserDeletionImpact | null>(null);
+const transferToUserId = ref("");
 const pairingVisible = ref(false);
 const pairingToken = ref("");
 const pairingConfig = ref<Record<string, unknown> | null>(null);
@@ -191,6 +213,7 @@ const MAX_MISSING_POLLS = 8;
 const userForm = reactive({ username: "", display_name: "", password: "", role: "staff" });
 const editingUser = ref<User | null>(null);
 const editUserForm = reactive({ display_name: "", role: "staff", active: true, password: "" });
+const networkForm = reactive({ bind_host: "", advertise_host: "", port: 18765, migration_grace_hours: 24 });
 const pairingForm = reactive({ name: "协同终端" });
 const importInput = ref<HTMLInputElement | null>(null);
 const modelPackInput = ref<HTMLInputElement | null>(null);
@@ -289,6 +312,7 @@ async function load() {
       api.get<ReleaseHistory[]>("/admin/update-history"),
       api.get<AIModelPack[]>("/admin/ai/model-packs"),
       api.get<LocalAIRuntime>("/ai/runtime/status"),
+      api.get<NetworkConfiguration>("/system/network"),
     ]);
     const valueOr = <T, F>(result: PromiseSettledResult<T>, fallback: F, label: string): T | F => {
       if (result.status === "fulfilled") return result.value;
@@ -310,6 +334,12 @@ async function load() {
     releaseHistory.value = valueOr(results[12], releaseHistory.value, "版本更新历史");
     modelPacks.value = valueOr(results[13], modelPacks.value, "本地模型包");
     localAIRuntime.value = valueOr(results[14], localAIRuntime.value, "本地智能状态");
+    network.value = valueOr(results[15], network.value, "网络与协同");
+    if (network.value) Object.assign(networkForm, {
+      bind_host: network.value.bind_host,
+      advertise_host: network.value.advertise_host,
+      port: network.value.port,
+    });
     try {
       await appearance.loadAdmin();
     } catch {
@@ -819,6 +849,55 @@ async function saveUserEdit() {
   }
 }
 
+async function openUserDelete(user: User) {
+  try {
+    deletingUser.value = user;
+    deletionImpact.value = await api.get<UserDeletionImpact>(`/admin/users/${user.id}/deletion-impact`);
+    transferToUserId.value = users.value.find((item) => item.active && item.id !== user.id)?.id || "";
+    userDeleteVisible.value = true;
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "无法读取删除影响");
+  }
+}
+
+async function archiveUser() {
+  if (!deletingUser.value || !deletionImpact.value) return;
+  if (deletionImpact.value.requires_transfer && !transferToUserId.value) {
+    Message.warning("请先选择责任接收人");
+    return;
+  }
+  try {
+    const query = transferToUserId.value ? `?transfer_to=${encodeURIComponent(transferToUserId.value)}` : "";
+    await api.delete(`/admin/users/${deletingUser.value.id}${query}`);
+    userDeleteVisible.value = false;
+    Message.success("用户已归档，责任已移交，历史记录保留");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "用户归档失败");
+  }
+}
+
+async function restoreUser(user: User) {
+  try {
+    await api.post(`/admin/users/${user.id}/restore`);
+    Message.success("用户已恢复；设备授权需由管理员按需重新授予");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "用户恢复失败");
+  }
+}
+
+async function saveNetwork() {
+  try {
+    await api.post("/system/network/validate", networkForm);
+    const result = await api.patch<{ restart_required: boolean }>("/system/network", networkForm);
+    Message.success(result.restart_required ? "网络配置和证书已准备，请从受控按钮重启服务后完成健康检查" : "网络配置未变化");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "网络配置更新失败");
+  }
+}
+
 async function createPairing() {
   try {
     const result = await api.post<{ token: string; config: Record<string, unknown> }>("/admin/pairings", { name: pairingForm.name });
@@ -989,6 +1068,29 @@ onBeforeUnmount(() => {
             <pre>{{ logs || "展开后点击刷新日志。" }}</pre>
           </a-collapse-item>
         </a-collapse>
+      </a-tab-pane>
+
+      <a-tab-pane v-if="session.user?.role === 'admin'" key="network" title="网络与协同">
+        <div class="tab-toolbar">
+          <p>自动探测、监听地址和协同机实际访问地址分开管理；变更前先校验，失败会恢复旧配置。</p>
+          <a-tag :color="network?.tls_enabled ? 'green' : 'orange'">{{ network?.tls_enabled ? "HTTPS 已启用" : "仅本机可使用 HTTP" }}</a-tag>
+        </div>
+        <a-alert v-if="network?.pending" type="warning" class="update-note">
+          新地址已写入并保留旧地址回滚快照，需重启服务并完成健康检查后生效。协同机绑定和业务数据均已保留。
+        </a-alert>
+        <a-form :model="networkForm" layout="vertical" class="network-form">
+          <a-form-item label="自动探测地址">
+            <a-radio-group v-model="networkForm.advertise_host">
+              <a-radio v-for="address in network?.automatic_addresses || []" :key="address" :value="address">{{ address }}</a-radio>
+            </a-radio-group>
+            <p class="muted">没有合适地址时可在下方手工填写固定私网 IP 或主机名。</p>
+          </a-form-item>
+          <a-form-item label="监听地址"><a-input v-model="networkForm.bind_host" placeholder="例如 0.0.0.0 或 192.168.1.10" /></a-form-item>
+          <a-form-item label="对外公布地址"><a-input v-model="networkForm.advertise_host" placeholder="协同机实际能够访问的地址" /></a-form-item>
+          <a-form-item label="业务端口"><a-input-number v-model="networkForm.port" :min="1024" :max="65535" /></a-form-item>
+          <a-form-item label="旧地址迁移宽限（小时）"><a-input-number v-model="networkForm.migration_grace_hours" :min="1" :max="168" /></a-form-item>
+          <a-button type="primary" @click="saveNetwork">验证并保存网络配置</a-button>
+        </a-form>
       </a-tab-pane>
 
       <a-tab-pane key="appearance" title="外观与东方主题">
@@ -1196,6 +1298,13 @@ onBeforeUnmount(() => {
               </a-form-item>
               <a-form-item label="请求超时（秒）"><a-input-number v-model="aiForm.timeout_seconds" :min="5" :max="300" /></a-form-item>
               <a-form-item label="接口属于单位可信内网"><a-switch v-model="aiForm.trusted_intranet" /></a-form-item>
+              <a-alert
+                v-if="aiForm.base_url.trim().toLowerCase().startsWith('http://')"
+                :type="aiForm.trusted_intranet ? 'warning' : 'error'"
+                show-icon
+              >
+                HTTP 接口仅限本机或单位内网地址；请确认网络边界可信并开启“单位可信内网”。公网模型仍必须使用 HTTPS。
+              </a-alert>
               <a-form-item label="启用 AI"><a-switch v-model="aiForm.enabled" /></a-form-item>
               <a-space>
                 <a-button type="primary" @click="saveAISettings">加密保存</a-button>
@@ -1269,8 +1378,8 @@ onBeforeUnmount(() => {
             <a-table-column title="姓名" data-index="display_name" />
             <a-table-column title="用户名" data-index="username" />
             <a-table-column title="角色"><template #cell="{ record }">{{ record.role === "admin" ? "管理员" : "协同人员" }}</template></a-table-column>
-            <a-table-column title="状态"><template #cell="{ record }">{{ record.active ? "启用" : "停用" }}</template></a-table-column>
-            <a-table-column title="操作"><template #cell="{ record }"><a-button size="mini" type="text" @click="openUserEdit(record)">权限与密码</a-button></template></a-table-column>
+            <a-table-column title="状态"><template #cell="{ record }">{{ record.archived_at ? "已归档" : record.active ? "启用" : "停用" }}</template></a-table-column>
+            <a-table-column title="操作" :width="260"><template #cell="{ record }"><a-space><a-button v-if="!record.archived_at" size="mini" type="text" @click="openUserEdit(record)">编辑角色与权限</a-button><a-button v-if="record.archived_at" size="mini" type="text" @click="restoreUser(record)">恢复</a-button><a-button v-else-if="record.id !== session.user?.id" size="mini" type="text" status="danger" @click="openUserDelete(record)">删除/归档</a-button></a-space></template></a-table-column>
           </template>
         </a-table>
       </a-tab-pane>
@@ -1352,6 +1461,18 @@ onBeforeUnmount(() => {
           <a-input-password v-model="editUserForm.password" autocomplete="new-password" />
         </a-form-item>
       </a-form>
+    </a-modal>
+
+    <a-modal v-model:visible="userDeleteVisible" title="归档用户并移交责任" @ok="archiveUser">
+      <a-alert type="warning">不会物理删除审计、会议或业务记录；会撤销登录会话和个人设备授权。</a-alert>
+      <div v-if="deletingUser && deletionImpact" class="deletion-impact">
+        <p><strong>{{ deletingUser.display_name }}</strong> 当前责任：事项负责人 {{ deletionImpact.counts.owned_tasks || 0 }}、审核 {{ deletionImpact.counts.review_tasks || 0 }}、步骤 {{ deletionImpact.counts.assigned_steps || 0 }}、参与记录 {{ deletionImpact.counts.participations || 0 }}。</p>
+        <a-form-item v-if="deletionImpact.requires_transfer" label="责任接收人">
+          <a-select v-model="transferToUserId">
+            <a-option v-for="item in users.filter((candidate) => candidate.active && candidate.id !== deletingUser?.id)" :key="item.id" :value="item.id">{{ item.display_name }}</a-option>
+          </a-select>
+        </a-form-item>
+      </div>
     </a-modal>
 
     <a-modal v-model:visible="pairingVisible" title="协同终端配对" :footer="false">

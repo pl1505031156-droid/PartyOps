@@ -7,6 +7,7 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <libgen.h>
 #include <limits.h>
 #include <mach-o/dyld.h>
@@ -18,6 +19,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/utsname.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -44,25 +47,31 @@ static bool ensure_directory(const char *path, mode_t mode) {
     return mkdir(path, mode) == 0;
 }
 
-static void append_probe(const char *format, ...) {
+static bool partyops_log_path(const char *name, char *output, size_t output_size) {
     const char *home = resolve_home();
     if (home == NULL) {
-        return;
+        return false;
     }
 
     char library[PATH_MAX];
     char logs[PATH_MAX];
     char partyops[PATH_MAX];
-    char log_path[PATH_MAX];
     if (snprintf(library, sizeof(library), "%s/Library", home) >= (int)sizeof(library) ||
         snprintf(logs, sizeof(logs), "%s/Logs", library) >= (int)sizeof(logs) ||
         snprintf(partyops, sizeof(partyops), "%s/PartyOps", logs) >= (int)sizeof(partyops) ||
-        snprintf(log_path, sizeof(log_path), "%s/launch-probe.log", partyops) >=
-            (int)sizeof(log_path)) {
-        return;
+        snprintf(output, output_size, "%s/%s", partyops, name) >= (int)output_size) {
+        return false;
     }
     if (!ensure_directory(library, 0700) || !ensure_directory(logs, 0700) ||
         !ensure_directory(partyops, 0700)) {
+        return false;
+    }
+    return true;
+}
+
+static void append_probe(const char *format, ...) {
+    char log_path[PATH_MAX];
+    if (!partyops_log_path("launch-probe.log", log_path, sizeof(log_path))) {
         return;
     }
 
@@ -120,6 +129,27 @@ int main(int argc, char *argv[]) {
         return 126;
     }
 
+    struct stat target_metadata;
+    if (lstat(target, &target_metadata) != 0 || !S_ISREG(target_metadata.st_mode) ||
+        access(target, X_OK) != 0) {
+        append_probe("status=desktop-resource-invalid target=partyops-desktop-bin errno=%d", errno);
+        show_fatal_alert();
+        return 126;
+    }
+
+    struct utsname system_info;
+    const char *architecture = "unknown";
+    if (uname(&system_info) == 0) {
+        architecture = system_info.machine;
+    }
+    append_probe(
+        "status=launchservices-entered architecture=%s target=partyops-desktop-bin "
+        "target_size=%lld argc=%d",
+        architecture,
+        (long long)target_metadata.st_size,
+        argc
+    );
+
     char **child_argv = calloc((size_t)argc + 1U, sizeof(char *));
     if (child_argv == NULL) {
         append_probe("status=argument-allocation-failed errno=%d", errno);
@@ -132,11 +162,58 @@ int main(int argc, char *argv[]) {
     }
     child_argv[argc] = NULL;
 
-    append_probe("status=launchservices-entered target=partyops-desktop-bin argc=%d", argc);
-    execv(target, child_argv);
-    const int failure = errno;
-    append_probe("status=desktop-exec-failed errno=%d", failure);
+    const pid_t child = fork();
+    if (child < 0) {
+        append_probe("status=desktop-fork-failed errno=%d", errno);
+        free(child_argv);
+        show_fatal_alert();
+        return 126;
+    }
+    if (child == 0) {
+        char stderr_path[PATH_MAX];
+        if (partyops_log_path("launch-stderr.log", stderr_path, sizeof(stderr_path))) {
+            const int stderr_fd = open(stderr_path, O_WRONLY | O_CREAT | O_APPEND, 0600);
+            if (stderr_fd >= 0) {
+                (void)fchmod(stderr_fd, 0600);
+                (void)dup2(stderr_fd, STDERR_FILENO);
+                (void)dup2(stderr_fd, STDOUT_FILENO);
+                if (stderr_fd > STDERR_FILENO) {
+                    (void)close(stderr_fd);
+                }
+            }
+        }
+        execv(target, child_argv);
+        (void)dprintf(STDERR_FILENO, "[MACOS_DESKTOP_EXEC_FAILED] errno=%d\n", errno);
+        _exit(126);
+    }
+
+    append_probe("status=desktop-child-started child_pid=%ld", (long)child);
+    int child_status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(child, &child_status, 0);
+    } while (waited < 0 && errno == EINTR);
     free(child_argv);
+    if (waited < 0) {
+        append_probe("status=desktop-wait-failed child_pid=%ld errno=%d", (long)child, errno);
+        show_fatal_alert();
+        return 126;
+    }
+    if (WIFEXITED(child_status)) {
+        const int exit_code = WEXITSTATUS(child_status);
+        append_probe("status=desktop-child-exited child_pid=%ld exit_code=%d", (long)child, exit_code);
+        if (exit_code != 0) {
+            show_fatal_alert();
+        }
+        return exit_code;
+    }
+    if (WIFSIGNALED(child_status)) {
+        const int signal_number = WTERMSIG(child_status);
+        append_probe("status=desktop-child-signaled child_pid=%ld signal=%d", (long)child, signal_number);
+        show_fatal_alert();
+        return 128 + signal_number;
+    }
+    append_probe("status=desktop-child-unknown child_pid=%ld raw_status=%d", (long)child, child_status);
     show_fatal_alert();
     return 126;
 }

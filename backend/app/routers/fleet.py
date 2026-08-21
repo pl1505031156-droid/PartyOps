@@ -44,6 +44,7 @@ from ..models import (
     ArchiveAttachment,
     ArchiveRecord,
     AttachmentVersion,
+    ClientDeviceCredential,
     Device,
     DeviceCommand,
     DeviceEnrollment,
@@ -288,12 +289,55 @@ def authenticated_device(
 ) -> Device:
     if not token:
         raise ProblemException(401, "DEVICE_TOKEN_REQUIRED", "缺少设备令牌", "请使用已批准的 PartyOps Agent。")
-    device = db.scalar(select(Device).where(Device.agent_token_hash == hash_token(token)))
+    token_digest = hash_token(token)
+    credential = db.scalar(
+        select(ClientDeviceCredential).where(
+            ClientDeviceCredential.token_hash == token_digest,
+            ClientDeviceCredential.state == "active",
+            ClientDeviceCredential.revoked_at.is_(None),
+        )
+    )
+    device = db.get(Device, credential.device_id) if isinstance(credential, ClientDeviceCredential) else db.scalar(
+        select(Device).where(Device.agent_token_hash == token_digest)
+    )
     if not device or not device_token(device, token):
         raise ProblemException(401, "DEVICE_TOKEN_INVALID", "设备令牌无效", "请重新入网或联系管理员。")
     if device.status in {"revoked", "quarantined"}:
         raise ProblemException(403, "DEVICE_BLOCKED", "设备已被阻断", "请联系主机管理员恢复设备。")
+    if isinstance(credential, ClientDeviceCredential):
+        credential.last_used_at = utcnow()
     return device
+
+
+def issue_v2_device_credential(db: Session, device: Device) -> str:
+    """吊销旧凭据并签发只返回一次的 v2 令牌。"""
+
+    now = utcnow()
+    token = secrets.token_urlsafe(32)
+    replacement = ClientDeviceCredential(
+        device_id=device.id,
+        token_hash=hash_token(token),
+        protocol_version=2,
+        state="active",
+    )
+    db.add(replacement)
+    db.flush()
+    for existing in db.scalars(
+        select(ClientDeviceCredential).where(
+            ClientDeviceCredential.device_id == device.id,
+            ClientDeviceCredential.id != replacement.id,
+            ClientDeviceCredential.state == "active",
+        )
+    ).all():
+        existing.state = "replaced"
+        existing.revoked_at = now
+        existing.replaced_by_id = replacement.id
+    device.agent_token_hash = replacement.token_hash
+    device.protocol_version = 2
+    device.credential_state = "active"
+    device.credential_rotated_at = now
+    device.version += 1
+    return token
 
 
 def transfer_permission_still_valid(
@@ -738,6 +782,9 @@ def enroll_device(
             kernel=payload.kernel,
             app_version=payload.app_version,
             agent_version=payload.agent_version,
+            protocol_version=max(2, payload.protocol_version),
+            credential_state="active",
+            credential_rotated_at=utcnow(),
             local_username=payload.local_username,
             ip_address=payload.ip_address or client_ip(request),
             agent_token_hash=hash_token(token),
@@ -753,6 +800,13 @@ def enroll_device(
         )
         db.add(device)
         db.flush()
+        db.add(
+            ClientDeviceCredential(
+                device_id=device.id,
+                token_hash=device.agent_token_hash,
+                protocol_version=device.protocol_version,
+            )
+        )
         certificate_bundle = issue_device_certificate(
             get_settings(),
             device.id,
@@ -926,12 +980,73 @@ def rotate_device_token(
     device = db.get(Device, device_id)
     if not device or device_is_deleted(device):
         raise ProblemException(404, "DEVICE_NOT_FOUND", "设备不存在", "未找到该协同设备。")
-    token = secrets.token_urlsafe(32)
-    device.agent_token_hash = hash_token(token)
-    device.version += 1
+    token = issue_v2_device_credential(db, device)
     write_audit(db, admin, "device.token_rotate", "device", device.id, {}, client_ip(request))
     db.commit()
-    return {"device_id": device.id, "device_token": token}
+    return {"device_id": device.id, "device_token": token, "protocol_version": 2}
+
+
+@router.post("/client-agents/credential/upgrade", response_model=dict)
+def upgrade_client_agent_credential(
+    request: Request,
+    token: str | None = Header(default=None, alias="X-PartyOps-Device-Token"),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    """有效旧令牌原地换发 v2；无效令牌必须由主机管理员重新授权。"""
+
+    device = authenticated_device(token, db)
+    previous_protocol = device.protocol_version
+    new_token = issue_v2_device_credential(db, device)
+    write_audit(
+        db,
+        db.get(User, device.created_by),
+        "device.credential_upgrade",
+        "device",
+        device.id,
+        {"from_protocol": max(1, previous_protocol), "to_protocol": 2},
+        client_ip(request),
+    )
+    db.commit()
+    return {
+        "device_id": device.id,
+        "device_token": new_token,
+        "protocol_version": 2,
+        "credential_state": "active",
+    }
+
+
+@router.post("/client-agents/credential/reauthorize", response_model=dict)
+def reauthorize_client_agent(
+    request: Request,
+    device_id: str = Query(min_length=1),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    """管理员一次确认恢复旧绑定；不删除设备、共享目录或本地业务数据。"""
+
+    device = db.get(Device, device_id)
+    if not device or device_is_deleted(device):
+        raise ProblemException(404, "DEVICE_NOT_FOUND", "设备不存在", "未找到需要重新授权的协同设备。")
+    if not device.active:
+        raise ProblemException(409, "DEVICE_DISABLED", "设备已停用", "请先恢复设备，再重新授权。")
+    token = issue_v2_device_credential(db, device)
+    device.status = "offline"
+    write_audit(
+        db,
+        admin,
+        "device.reauthorize",
+        "device",
+        device.id,
+        {"binding_preserved": True, "protocol_version": 2},
+        client_ip(request),
+    )
+    db.commit()
+    return {
+        "device_id": device.id,
+        "device_token": token,
+        "protocol_version": 2,
+        "binding_preserved": True,
+    }
 
 
 @router.post("/admin/devices/{device_id}/rotate-certificate", response_model=dict)
@@ -1355,6 +1470,8 @@ def heartbeat(
     device = authenticated_device(token, db)
     device.status = "online"
     device.last_seen_at = utcnow()
+    device.protocol_version = max(device.protocol_version, payload.protocol_version)
+    device.credential_state = "active"
     for field in (
         "architecture",
         "kernel",

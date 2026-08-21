@@ -1198,6 +1198,42 @@ def test_windows_admin_probe_and_owned_user_autostarts(
     setup_wizard.clear_windows_personal_autostart()
 
 
+def test_windows_personal_autostart_falls_back_without_rolling_back_mode(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Win7 策略拒绝 HKCU 时应降级到 Startup，而不是破坏核心配置。"""
+
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.setattr(setup_wizard, "config_root", lambda: tmp_path / "config")
+    launcher = tmp_path / "PartyOpsLauncher.exe"
+    monkeypatch.setattr(setup_wizard, "_executable", lambda _name: launcher)
+
+    monkeypatch.setattr(
+        winreg,
+        "CreateKeyEx",
+        lambda *_a, **_k: (_ for _ in ()).throw(PermissionError(5, "拒绝访问")),
+    )
+    warning = setup_wizard.install_windows_personal_autostart()
+    startup = (
+        tmp_path
+        / "Roaming"
+        / "Microsoft"
+        / "Windows"
+        / "Start Menu"
+        / "Programs"
+        / "Startup"
+        / "PartyOpsPersonal.cmd"
+    )
+    assert warning and "AUTOSTART_REGISTRY_DENIED" in warning
+    assert startup.is_file()
+    assert f'"{launcher}" --background' in startup.read_text(encoding="utf-8")
+    assert "AUTOSTART_REGISTRY_DENIED" in (
+        tmp_path / "config" / "autostart-warning.log"
+    ).read_text(encoding="utf-8")
+
+
 def test_windows_data_directory_permission_space_and_system_guards(
     monkeypatch, tmp_path: Path
 ) -> None:

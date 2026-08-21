@@ -8,12 +8,12 @@ import ipaddress
 import os
 import secrets
 import socket
-from datetime import timedelta
+from datetime import timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..audit import emit_event, write_audit
@@ -25,6 +25,7 @@ from ..enums import TransferStatus
 from ..models import (
     BackgroundJob,
     Device,
+    FileOpenGrant,
     LocalShareAction,
     PeriodReport,
     SemanticIndexCheckpoint,
@@ -66,8 +67,6 @@ from ..workspace_access import workspace_root_permissions
 from ..workspace import (
     file_to_out,
     freeze_workspace_file,
-    consume_local_open_token,
-    issue_local_open_token,
     resolve_workspace_path,
     run_scan_job,
     scan_root,
@@ -961,6 +960,7 @@ def preview_workspace_file(
     return PlainTextResponse(text_value or "该文件不在系统内读取正文，请使用主机默认程序打开。")
 
 
+@router.post("/files/{file_id}/open-grants", response_model=dict, status_code=201)
 @router.post("/workspace/files/{file_id}/open-local", response_model=dict)
 def create_local_open_link(
     file_id: str,
@@ -983,7 +983,17 @@ def create_local_open_link(
         )
     # 签发前再次确认文件存在且仍位于已授权根目录内。
     resolve_workspace_path(root, item.relative_path)
-    token = issue_local_open_token(item.id)
+    token = secrets.token_urlsafe(32)
+    expires_at = utcnow() + timedelta(minutes=5)
+    db.add(
+        FileOpenGrant(
+            token_hash=hash_token(token),
+            file_id=item.id,
+            created_by=user.id,
+            open_method="local_helper",
+            expires_at=expires_at,
+        )
+    )
     write_audit(
         db,
         user,
@@ -994,7 +1004,12 @@ def create_local_open_link(
         client_ip(request),
     )
     db.commit()
-    return {"open_uri": f"partyops-file://open/{token}", "expires_in_seconds": "45"}
+    return {
+        "open_uri": f"partyops-file://open/{token}",
+        "expires_at": expires_at.isoformat(),
+        "expires_in_seconds": 300,
+        "open_method": "local_helper",
+    }
 
 
 @router.get("/workspace/open-tokens/{token}", response_class=PlainTextResponse)
@@ -1003,22 +1018,54 @@ def resolve_local_open_token(
     request: Request,
     db: Session = Depends(get_session),
 ) -> PlainTextResponse:
-    """仅供主机本地 URI 助手调用；令牌一次性且 45 秒过期。"""
+    """仅供主机本地 URI 助手调用；授权持久化、一次性且五分钟过期。"""
 
     if not is_host_local_request(request):
         raise ProblemException(403, "LOCAL_OPEN_HOST_ONLY", "拒绝远程打开", "该链接只能由主机本地桌面助手使用。")
     if len(token) > 128 or not token.replace("-", "").replace("_", "").isalnum():
         raise ProblemException(400, "OPEN_TOKEN_INVALID", "打开链接无效", "请回到原始文件中心重新点击打开。")
-    file_id = consume_local_open_token(token)
-    if not file_id:
-        raise ProblemException(410, "OPEN_TOKEN_EXPIRED", "打开链接已失效", "请回到原始文件中心重新点击打开。")
-    item = db.get(WorkspaceFile, file_id)
+    grant = db.scalar(select(FileOpenGrant).where(FileOpenGrant.token_hash == hash_token(token)))
+    if not grant:
+        raise ProblemException(404, "OPEN_GRANT_INVALID", "文件打开授权不存在", "请回到原始文件中心重新点击打开。")
+    if grant.revoked_at is not None:
+        raise ProblemException(410, "OPEN_GRANT_REVOKED", "文件打开授权已撤销", "文件权限可能已变化，请重新发起打开。")
+    if grant.used_at is not None:
+        raise ProblemException(410, "OPEN_GRANT_ALREADY_USED", "文件打开授权已使用", "一次性打开链接不能重复使用，请重新点击打开。")
+    expires_at = grant.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= utcnow():
+        raise ProblemException(410, "OPEN_GRANT_EXPIRED", "文件打开授权已过期", "请回到原始文件中心重新点击打开。")
+    item = db.get(WorkspaceFile, grant.file_id)
     root = db.get(WorkspaceRoot, item.root_id) if item else None
     if not item or not root or not root.enabled or not item.in_scope:
         raise ProblemException(410, "WORKSPACE_FILE_UNAVAILABLE", "文件已不可用", "请回到原始文件中心重新选择。")
     if item.is_directory or root.source.value != "host":
         raise ProblemException(403, "LOCAL_OPEN_DENIED", "文件不能直接打开", "请使用系统内提供的可用操作。")
     path = resolve_workspace_path(root, item.relative_path)
+    consumed_at = utcnow()
+    # 使用条件更新完成真正的一次性兑换，避免两个本机助手并发读取后都成功打开。
+    consumed = db.execute(
+        update(FileOpenGrant)
+        .where(
+            FileOpenGrant.id == grant.id,
+            FileOpenGrant.used_at.is_(None),
+            FileOpenGrant.revoked_at.is_(None),
+            FileOpenGrant.expires_at > consumed_at,
+        )
+        .values(used_at=consumed_at)
+        .execution_options(synchronize_session=False)
+    )
+    if consumed.rowcount != 1:
+        db.rollback()
+        db.expire_all()
+        current = db.get(FileOpenGrant, grant.id)
+        if current and current.revoked_at is not None:
+            raise ProblemException(410, "OPEN_GRANT_REVOKED", "文件打开授权已撤销", "文件权限可能已变化，请重新发起打开。")
+        if current and current.used_at is not None:
+            raise ProblemException(410, "OPEN_GRANT_ALREADY_USED", "文件打开授权已使用", "一次性打开链接不能重复使用，请重新点击打开。")
+        raise ProblemException(410, "OPEN_GRANT_EXPIRED", "文件打开授权已过期", "请回到原始文件中心重新点击打开。")
+    db.commit()
     return PlainTextResponse(str(path), media_type="text/plain; charset=utf-8")
 
 

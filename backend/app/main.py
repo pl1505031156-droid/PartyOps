@@ -36,7 +36,7 @@ from .device_versions import (
     verify_device_context_token,
 )
 from .problems import install_problem_handlers
-from .routers import admin, ai, archives, auth, bootstrap, events, fleet, integration, operations, party_development, productivity, support, tasks, updates, workspace
+from .routers import admin, ai, archives, auth, bootstrap, business, events, fleet, integration, operations, party_development, productivity, support, tasks, updates, workspace
 from .scheduler import scheduler_loop
 from .seed import seed_templates
 from .models import User, utcnow
@@ -501,6 +501,7 @@ app.include_router(ai.router, prefix=api_prefix)
 app.include_router(fleet.router, prefix=api_prefix)
 app.include_router(productivity.router, prefix=api_prefix)
 app.include_router(party_development.router, prefix=api_prefix)
+app.include_router(business.router, prefix=api_prefix)
 app.include_router(updates.router, prefix=api_prefix)
 app.include_router(bootstrap.router, prefix=api_prefix)
 app.include_router(integration.router, prefix=api_prefix)

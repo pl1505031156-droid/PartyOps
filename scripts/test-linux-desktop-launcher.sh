@@ -24,7 +24,7 @@ trap cleanup EXIT INT TERM
 
 mkdir -p "$RUNTIME" "$HOME_DIR/.config/partyops" "$BIN_DIR"
 cp "$ROOT/packaging/uos/desktop-launcher.sh" "$RUNTIME/"
-printf '1.4.3-rc.9\n' >"$RUNTIME/VERSION"
+printf '1.4.4\n' >"$RUNTIME/VERSION"
 chmod 0755 "$RUNTIME/desktop-launcher.sh"
 
 cat >"$RUNTIME/install-desktop-shortcut.sh" <<'EOF'
@@ -96,7 +96,7 @@ exit 0
 EOF
 chmod 0755 "$RUNTIME"/* "$BIN_DIR"/*
 
-printf '{"status":"ok","app_version":"1.4.3-rc.9"}\n' >"$HEALTH_BODY_FILE"
+printf '{"status":"ok","app_version":"1.4.4"}\n' >"$HEALTH_BODY_FILE"
 export TEST_ROOT TEST_PORT=$((25000 + $$ % 10000)) OPEN_LOG NOTIFY_LOG HEALTH_BODY_FILE
 export HOME="$HOME_DIR" XDG_CONFIG_HOME="$HOME_DIR/.config"
 export PATH="$BIN_DIR:$PATH"
@@ -190,7 +190,7 @@ set -e
 [[ "$version_mismatch_status" -eq 2 ]]
 grep -q '\[RUNTIME_VERSION_MISMATCH\]' "$CONFIG_ROOT/startup-diagnostic.txt"
 [[ ! -e "$OPEN_LOG" ]]
-printf '{"status":"ok","app_version":"1.4.3-rc.9"}\n' >"$HEALTH_BODY_FILE"
+printf '{"status":"ok","app_version":"1.4.4"}\n' >"$HEALTH_BODY_FILE"
 rm -f "$CONFIG_ROOT/personal.env"
 
 # 协同模式：页面令牌通过 0600 文件交接，不依赖隐藏进程内部打开浏览器。

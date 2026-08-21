@@ -1806,10 +1806,10 @@ def test_workspace_create_duplicate_list_and_local_open_directory(
         in_scope=True,
     )
     monkeypatch.setattr(workspace_router, "is_host_local_request", lambda _request: True)
-    monkeypatch.setattr(workspace_router, "consume_local_open_token", lambda _token: "file")
+    grant = SimpleNamespace(revoked_at=None, used_at=None, expires_at=datetime.now(timezone.utc) + timedelta(minutes=1), file_id="file")
     with pytest.raises(ProblemException) as denied:
         workspace_router.resolve_local_open_token(
-            "valid_token", _request(), _Db(objects={"file": item, "root": root})
+            "valid_token", _request(), _Db(objects={"file": item, "root": root}, scalar_values=[grant])
         )
     assert denied.value.code == "LOCAL_OPEN_DENIED"
 

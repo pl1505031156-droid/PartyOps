@@ -40,6 +40,14 @@ const router = createRouter({
       component: () => import("./views/PartyDevelopmentView.vue"),
     },
     {
+      path: "/party-development-cases",
+      component: () => import("./views/PartyDevelopmentCasesView.vue"),
+    },
+    {
+      path: "/business-meetings",
+      component: () => import("./views/BusinessMeetingsView.vue"),
+    },
+    {
       path: "/reports",
       component: () => import("./views/ReportsView.vue"),
     },
@@ -50,6 +58,10 @@ const router = createRouter({
     {
       path: "/archives",
       component: () => import("./views/ArchivesView.vue"),
+    },
+    {
+      path: "/business-documents",
+      component: () => import("./views/BusinessDocumentsView.vue"),
     },
     {
       path: "/journal",

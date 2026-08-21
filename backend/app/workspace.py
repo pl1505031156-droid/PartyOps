@@ -7,10 +7,8 @@ import logging
 import mimetypes
 import os
 import re
-import secrets
 import shutil
 import threading
-import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,10 +36,7 @@ from .schemas import WorkspaceFileOut, WorkspaceScanOut
 
 
 logger = logging.getLogger("partyops.workspace")
-_OPEN_TOKEN_TTL_SECONDS = 45
 _SCAN_COMMIT_BATCH_SIZE = 500
-_open_tokens: dict[str, tuple[str, float]] = {}
-_open_tokens_lock = threading.Lock()
 _scan_locks: dict[str, threading.Lock] = {}
 _scan_locks_guard = threading.Lock()
 
@@ -55,30 +50,6 @@ def _scan_lock(root_id: str) -> threading.Lock:
 
     with _scan_locks_guard:
         return _scan_locks.setdefault(root_id, threading.Lock())
-
-
-def issue_local_open_token(file_id: str) -> str:
-    """签发一次性短期令牌，避免把服务器绝对路径返回给浏览器。"""
-
-    token = secrets.token_urlsafe(32)
-    now = time.monotonic()
-    with _open_tokens_lock:
-        expired = [key for key, (_file_id, deadline) in _open_tokens.items() if deadline <= now]
-        for key in expired:
-            _open_tokens.pop(key, None)
-        _open_tokens[token] = (file_id, now + _OPEN_TOKEN_TTL_SECONDS)
-    return token
-
-
-def consume_local_open_token(token: str) -> str | None:
-    """原子消费令牌；同一个打开链接不能被重放。"""
-
-    now = time.monotonic()
-    with _open_tokens_lock:
-        value = _open_tokens.pop(token, None)
-    if not value or value[1] <= now:
-        return None
-    return value[0]
 
 
 def validate_root_path(value: str) -> Path:

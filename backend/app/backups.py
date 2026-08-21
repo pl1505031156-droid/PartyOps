@@ -23,7 +23,7 @@ from .problems import ProblemException
 
 
 FORMAT_VERSION = 1
-SCHEMA_VERSION = "0019"
+SCHEMA_VERSION = "0020"
 MAX_BACKUP_MANIFEST_BYTES = 1024 * 1024
 _WINDOWS_RESERVED_NAMES = {
     "con",
