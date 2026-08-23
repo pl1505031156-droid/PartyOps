@@ -19,6 +19,11 @@ INSTALLERS = {
     "PartyOps_1.4.5-rc.1_linux_arm64.deb": "linux-deb/arm64",
     "PartyOps-1.4.5-0.rc.1.1.x86_64.rpm": "linux-rpm/amd64",
     "PartyOps-1.4.5-0.rc.1.1.aarch64.rpm": "linux-rpm/arm64",
+}
+
+# macOS 只能在对应原生 macOS 架构上生成并执行 LaunchServices 门禁。
+# 当前发布机是 Windows/WSL，禁止复用旧 PKG 或把非 macOS 载荷改名后补齐数量。
+UNAVAILABLE_INSTALLERS = {
     "PartyOps_1.4.5-rc.1_macos_x86_64.pkg": "macos/amd64",
     "PartyOps_1.4.5-rc.1_macos_arm64.pkg": "macos/arm64",
 }
@@ -77,14 +82,16 @@ def build_manifest(
         "make_latest": False,
         "signed": False,
         "packaged_platforms": list(INSTALLERS.values()),
+        "unavailable_platforms": list(UNAVAILABLE_INSTALLERS.values()),
         "verified_platforms": [],
         "native_verified_platforms": [],
+        "emulated_verified_platforms": ["linux-deb/arm64", "linux-rpm/arm64"],
         "native_machine_validation": False,
         "limitations": [
             "Windows 7 与国产 Linux 尚未在对应真机运行验收",
             "Windows 安装器尚无商业代码签名",
-            "官网与 CloudStudio 只挂载当前版本安装包",
-            "macOS 制品在对应原生架构完成构建和自动安装启动门禁后可作为未签名、未公证的 preview，不能标记为 stable",
+            "ARM64 Linux 成品已通过 QEMU 动态门禁，但桌面 PID 归属仍需真实 ARM 内核复核",
+            "macOS 两个目标缺少对应原生构建环境，本次不发布 PKG，也不复用历史制品",
         ],
         "assets": assets,
     }
