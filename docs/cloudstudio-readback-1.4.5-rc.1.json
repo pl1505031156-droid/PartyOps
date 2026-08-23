@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "product": "PartyOps",
+  "version": "1.4.5-rc.1",
+  "source_commit": "6c1168f88617396ab518f9261c6d7d1668a3a263",
+  "release_tooling_commit": "8de78123670e53f2379b8b274d30739d726061fc",
+  "verified_at": "2026-08-24 03:01:44（北京时间，UTC+8）",
+  "provider": "Cloud Studio / WorkBuddy 后台发布程序",
+  "range_supported": false,
+  "assets": [
+    {
+      "filename": "PartyOps_1.4.5-rc.1_windows_amd64.exe",
+      "url": "https://1854489063094210ac54f76cdeda02fb.app.workbuddy.link/downloads/PartyOps_1.4.5-rc.1_windows_amd64.exe",
+      "bytes": 131738163,
+      "sha256": "e3033fb334131aadf1b7e05f03793055f8c47f6d4cd94b2f48140b2915bc6365",
+      "magic": "4D5A500002000000",
+      "http_status": 200,
+      "verified": true
+    },
+    {
+      "filename": "PartyOps_1.4.5-rc.1_windows7_amd64.exe",
+      "url": "https://14b06b94d31c48718b3e0e1a72599d81.app.workbuddy.link/downloads/PartyOps_1.4.5-rc.1_windows7_amd64.exe",
+      "bytes": 111178955,
+      "sha256": "9de3bc5dd2066505006188452beb3d0cb1e9f3fb3c96535aab473ddf211c6376",
+      "magic": "4D5A500002000000",
+      "http_status": 200,
+      "verified": true
+    },
+    {
+      "filename": "PartyOps_1.4.5-rc.1_windows7_x86.exe",
+      "url": "https://26ba90720ed44d8196111ecbf91eb2b7.app.workbuddy.link/downloads/PartyOps_1.4.5-rc.1_windows7_x86.exe",
+      "bytes": 63360925,
+      "sha256": "9baba23bdb7f4f0e0d4c2f3186fdfad7658077ba6ec1e883f38a6043f131c565",
+      "magic": "4D5A500002000000",
+      "http_status": 200,
+      "verified": true
+    },
+    {
+      "filename": "PartyOps_1.4.5-rc.1_linux_amd64.deb",
+      "url": "https://63148fe1cea5498e9758881d30da47a1.app.workbuddy.link/downloads/PartyOps_1.4.5-rc.1_linux_amd64.deb",
+      "bytes": 163420352,
+      "sha256": "a0dc7e7442f872f12d728e0c8cb8c7116bd95c453c8d49368a2afea039be9191",
+      "magic": "213C617263683E0A",
+      "http_status": 200,
+      "verified": true
+    },
+    {
+      "filename": "PartyOps_1.4.5-rc.1_linux_arm64.deb",
+      "url": "https://c01b0a4a4dbe481fa5260c7601409885.app.workbuddy.link/downloads/PartyOps_1.4.5-rc.1_linux_arm64.deb",
+      "bytes": 152688768,
+      "sha256": "cf7d14376aa501de5025ffa71c6c93754e0280e64287d7b922231391fe9ea5fe",
+      "magic": "213C617263683E0A",
+      "http_status": 200,
+      "verified": true
+    },
+    {
+      "filename": "PartyOps-1.4.5-0.rc.1.1.x86_64.rpm",
+      "url": "https://5cf32549b41a4a719b92b69c3db4a4d3.app.workbuddy.link/downloads/PartyOps-1.4.5-0.rc.1.1.x86_64.rpm",
+      "bytes": 347428872,
+      "sha256": "011c684c4098b17eed4be001ae38ab399d71200824cbde79474d6a2bb8cc7c9b",
+      "magic": "EDABEEDB03000000",
+      "http_status": 200,
+      "verified": true
+    },
+    {
+      "filename": "PartyOps-1.4.5-0.rc.1.1.aarch64.rpm",
+      "url": "https://d12c110eb5f34abcb9b48b2730ef6137.app.workbuddy.link/downloads/PartyOps-1.4.5-0.rc.1.1.aarch64.rpm",
+      "bytes": 326437064,
+      "sha256": "7708caac01017f8efeac176c9f8d81e441dd87e57ec9f2e2f609abb5da2d053a",
+      "magic": "EDABEEDB03000000",
+      "http_status": 200,
+      "verified": true
+    }
+  ]
+}
