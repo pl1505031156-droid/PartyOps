@@ -45,6 +45,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm", type=Path, help="Qwen GGUF 模型")
     parser.add_argument("--embedding", type=Path, help="BGE ONNX 模型")
     parser.add_argument("--tokenizer", type=Path, help="BGE tokenizer.json（向量包必填）")
+    parser.add_argument("--intent-runtime", type=Path, help="已验证的 Needle 原生运行器")
+    parser.add_argument("--intent-model", type=Path, help="Needle 模型文件")
     parser.add_argument("--license", type=Path, action="append", required=True, help="模型许可文件，可重复")
     parser.add_argument("--private-key", type=Path, required=True, help="Ed25519 发布私钥")
     parser.add_argument("--architecture", choices=["universal", "amd64", "arm64"], default="universal")
@@ -53,6 +55,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", default="PartyOps 中文本地智能模型")
     parser.add_argument("--min-runtime-version", default="1.4.1")
     parser.add_argument("--estimated-memory-mb", type=int, default=0)
+    parser.add_argument("--platform", action="append", choices=["windows", "linux", "macos"], help="支持平台，可重复")
+    parser.add_argument("--runtime", default="partyops-native", help="运行时标识")
+    parser.add_argument("--min-memory-mb", type=int, default=2048)
+    parser.add_argument("--recommended-memory-mb", type=int, default=4096)
+    parser.add_argument("--disk-mb", type=int, default=0, help="安装后磁盘需求；0 表示按输入自动计算")
+    parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument("--context-tokens", type=int, default=2048)
+    parser.add_argument("--measured-peak-memory-mb", type=int, default=0)
     parser.add_argument("--model-source", required=True, help="官方模型来源 URL 或离线来源说明")
     parser.add_argument("--license-name", required=True, help="例如 MIT 或 Apache-2.0")
     parser.add_argument("--pooling", choices=["cls", "mean"], default="cls")
@@ -65,19 +75,26 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if not args.llm and not args.embedding:
-        raise SystemExit("必须至少提供 --embedding 或 --llm")
+    if not args.llm and not args.embedding and not (args.intent_runtime and args.intent_model):
+        raise SystemExit("必须至少提供 --embedding、--llm 或完整的 Needle 意图组件")
     if args.embedding and not args.tokenizer:
         raise SystemExit("中文向量包必须同时提供 --tokenizer")
     if args.tokenizer and not args.embedding:
         raise SystemExit("--tokenizer 只能与 --embedding 一起使用")
+    if bool(args.intent_runtime) != bool(args.intent_model):
+        raise SystemExit("Needle 意图包必须同时提供 --intent-runtime 与 --intent-model")
     if args.estimated_memory_mb < 0:
         raise SystemExit("--estimated-memory-mb 不能为负数")
     if not 8 <= args.max_length <= 512 or args.dimension <= 0:
         raise SystemExit("向量最大长度必须为 8—512，维度必须大于 0")
+    if args.min_memory_mb < 256 or args.recommended_memory_mb < args.min_memory_mb:
+        raise SystemExit("推荐内存必须不低于最低内存，且最低内存不少于 256MB")
+    if args.threads < 1 or args.context_tokens < 1 or args.measured_peak_memory_mb < 0:
+        raise SystemExit("线程、上下文或实测峰值参数无效")
     inputs = [
         *([args.llm] if args.llm else []),
         *([args.embedding, args.tokenizer] if args.embedding else []),
+        *([args.intent_runtime, args.intent_model] if args.intent_runtime else []),
         *args.license,
         args.private_key,
     ]
@@ -106,6 +123,16 @@ def main() -> None:
             "max_length": args.max_length,
             "dimension": args.dimension,
         }
+    if args.intent_runtime and args.intent_model:
+        runtime_name = f"models/intent/{safe_basename(args.intent_runtime)}"
+        intent_model_name = f"models/intent/{safe_basename(args.intent_model)}"
+        entries.extend([(args.intent_runtime, runtime_name), (args.intent_model, intent_model_name)])
+        components["intent_router"] = {
+            "runtime_file": runtime_name,
+            "model_file": intent_model_name,
+            "confidence_threshold": 0.82,
+            "write_requires_confirmation": True,
+        }
     used_names: set[str] = {item[1] for item in entries}
     license_names: list[str] = []
     for index, path in enumerate(args.license, start=1):
@@ -120,13 +147,26 @@ def main() -> None:
         name: {"sha256": sha256_file(path), "size": path.stat().st_size}
         for path, name in entries
     }
+    payload_size_mb = max(1, int(sum(path.stat().st_size for path, _name in entries) / 1024**2) + 1)
     manifest = {
         "format": "partyops-modelpack",
-        "format_version": 1,
+        "format_version": 2,
         "name": args.name,
         "version": args.version,
         "model_id": args.model_id,
         "architecture": args.architecture,
+        "architectures": [args.architecture],
+        "platforms": args.platform or ["windows", "linux", "macos"],
+        "runtime": args.runtime,
+        "resource_profile": {
+            "min_memory_mb": args.min_memory_mb,
+            "recommended_memory_mb": args.recommended_memory_mb,
+            "disk_mb": args.disk_mb or max(payload_size_mb, int(payload_size_mb * 1.25)),
+            "gpu_memory_mb": 0,
+            "threads": args.threads,
+            "context_tokens": args.context_tokens,
+            "measured_peak_memory_mb": args.measured_peak_memory_mb,
+        },
         "min_runtime_version": args.min_runtime_version,
         "estimated_memory_mb": args.estimated_memory_mb,
         "model_source": args.model_source,

@@ -56,6 +56,10 @@ export interface MaterialVersion {
   size_bytes: number;
   mime_type: string;
   uploaded_by: string;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  delete_reason: string;
+  purge_after: string | null;
   created_at: string;
 }
 
@@ -68,6 +72,7 @@ export interface Material {
   not_applicable_reason: string;
   version: number;
   versions: MaterialVersion[];
+  deleted_versions: MaterialVersion[];
   complete: boolean;
 }
 
@@ -420,6 +425,10 @@ export interface ArchiveAttachment {
   status: "pending_ocr" | "indexed" | "ocr_error" | "voided";
   ocr_text: string;
   uploaded_by: string;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  delete_reason: string;
+  purge_after: string | null;
   size_bytes: number;
   mime_type: string;
   created_at: string;
@@ -455,6 +464,7 @@ export interface ArchiveRecord {
   indexed_attachment_count: number;
   duplicate_warnings: string[];
   attachments: ArchiveAttachment[];
+  deleted_attachments: ArchiveAttachment[];
   links: WorkspaceLink[];
   permissions: Record<string, boolean>;
 }
@@ -814,6 +824,18 @@ export interface TodayData {
       route: string;
     }>;
   };
+  party_work: {
+    quarter: number;
+    party_life_expected: number;
+    party_life_recorded: number;
+    party_life_remaining: number;
+    study_center_expected: number;
+    study_center_recorded: number;
+    study_center_remaining: number;
+    pending_archives: number;
+    overdue_actions: number;
+    development_reminders: number;
+  };
 }
 
 export interface ObjectLink {
@@ -892,8 +914,8 @@ export interface AIModelPack {
   filename: string;
   sha256: string;
   size_bytes: number;
-  capabilities: Array<"embedding" | "llm">;
-  active_capabilities: Array<"embedding" | "llm">;
+  capabilities: Array<"embedding" | "llm" | "intent_router">;
+  active_capabilities: Array<"embedding" | "llm" | "intent_router">;
   min_runtime_version: string;
   estimated_memory_mb: number;
   model_source: string;
@@ -902,6 +924,59 @@ export interface AIModelPack {
   status: ModelPackStatus;
   created_at: string;
   activated_at: string | null;
+}
+
+export interface HardwareProfile {
+  platform: string;
+  platform_version: string;
+  architecture: string;
+  cpu_name: string;
+  cpu_cores: number;
+  cpu_flags: string[];
+  total_memory_mb: number;
+  available_memory_mb: number;
+  reserved_memory_mb: number;
+  model_disk_free_mb: number;
+  gpu_backends: string[];
+  gpu_memory_mb: number | null;
+  gpu_names: string[];
+  runtime_backends: string[];
+  partyops_rss_mb: number;
+  detected_at: string;
+  privacy_notice: string;
+}
+
+export interface HardwareBenchmark {
+  available: boolean;
+  score: number;
+  duration_ms: number;
+  message: string;
+}
+
+export interface ModelRecommendation {
+  id: string;
+  name: string;
+  kind: "embedding" | "llm" | "intent_router";
+  tier: string;
+  summary: string;
+  official_url: string;
+  source_url: string;
+  license: string;
+  min_memory_mb: number;
+  recommended_memory_mb: number;
+  disk_mb: number;
+  context_tokens: number;
+  recommended_threads: number;
+  recommended_vram_mb: number;
+  quantization: string;
+  delivery: "partyops_pack" | "official";
+  hosted_url: string;
+  platforms: string[];
+  architectures: string[];
+  status: "流畅" | "可用" | "不建议";
+  reason: string;
+  effective_threads: number;
+  effective_context_tokens: number;
 }
 
 export interface LocalAIRuntime {

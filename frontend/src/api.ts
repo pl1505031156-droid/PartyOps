@@ -18,10 +18,86 @@ export class ApiError extends Error {
   }
 }
 
+function cookieValue(name: string): string {
+  if (typeof document === "undefined") return "";
+  const prefix = `${encodeURIComponent(name)}=`;
+  const entry = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+  return entry ? decodeURIComponent(entry.slice(prefix.length)) : "";
+}
+
+export interface UploadProgressOptions {
+  headers?: HeadersInit;
+  signal?: AbortSignal;
+  onProgress?: (percent: number) => void;
+}
+
+/**
+ * 使用浏览器原生上传事件报告真实进度。业务附件按文件独立调用，
+ * 因此单文件失败不会影响同一批次中已经成功的其他文件。
+ */
+export function uploadFormWithProgress<T>(
+  path: string,
+  formData: FormData,
+  options: UploadProgressOptions = {},
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/v1${path}`);
+    xhr.withCredentials = true;
+    const headers = new Headers(options.headers);
+    const csrfToken = cookieValue("partyops_csrf");
+    if (csrfToken && !headers.has("Authorization")) {
+      headers.set("X-PartyOps-CSRF", csrfToken);
+    }
+    headers.forEach((value, key) => xhr.setRequestHeader(key, value));
+    xhr.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable) return;
+      options.onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+    });
+    xhr.addEventListener("load", () => {
+      let payload: unknown = undefined;
+      if (xhr.responseText) {
+        try {
+          payload = JSON.parse(xhr.responseText);
+        } catch {
+          payload = xhr.responseText;
+        }
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        options.onProgress?.(100);
+        resolve(payload as T);
+        return;
+      }
+      const problem = payload && typeof payload === "object"
+        ? payload as Record<string, unknown>
+        : { detail: `上传失败（${xhr.status || "网络中断"}）` };
+      reject(new ApiError(xhr.status || 0, problem));
+    });
+    xhr.addEventListener("error", () => reject(new ApiError(0, { code: "UPLOAD_NETWORK_ERROR", detail: "网络连接中断，请检查连接后重试。" })));
+    xhr.addEventListener("abort", () => reject(new DOMException("上传已取消", "AbortError")));
+    const abort = () => xhr.abort();
+    if (options.signal?.aborted) {
+      abort();
+      return;
+    }
+    options.signal?.addEventListener("abort", abort, { once: true });
+    xhr.addEventListener("loadend", () => options.signal?.removeEventListener("abort", abort));
+    xhr.send(formData);
+  });
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
+  }
+  const method = (init.method || "GET").toUpperCase();
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && !headers.has("Authorization")) {
+    const csrfToken = cookieValue("partyops_csrf");
+    if (csrfToken) headers.set("X-PartyOps-CSRF", csrfToken);
   }
   const response = await fetch(`/api/v1${path}`, {
     ...init,

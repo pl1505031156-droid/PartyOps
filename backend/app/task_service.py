@@ -108,11 +108,18 @@ def get_task_or_404(db: Session, task_id: str, user: User) -> Task:
     return task
 
 
-def _material_versions(db: Session, material_id: str) -> list[MaterialVersionOut]:
+def _material_versions(
+    db: Session, material_id: str, *, deleted: bool = False
+) -> list[MaterialVersionOut]:
     rows = db.execute(
         select(AttachmentVersion, FileBlob)
         .join(FileBlob, FileBlob.sha256 == AttachmentVersion.blob_sha256)
-        .where(AttachmentVersion.material_item_id == material_id)
+        .where(
+            AttachmentVersion.material_item_id == material_id,
+            AttachmentVersion.deleted_at.is_not(None)
+            if deleted
+            else AttachmentVersion.deleted_at.is_(None),
+        )
         .order_by(AttachmentVersion.version_no.desc())
     ).all()
     return [
@@ -127,6 +134,10 @@ def _material_versions(db: Session, material_id: str) -> list[MaterialVersionOut
             mime_type=blob.mime_type,
             uploaded_by=version.uploaded_by,
             created_at=version.created_at,
+            deleted_at=version.deleted_at,
+            deleted_by=version.deleted_by,
+            delete_reason=version.delete_reason,
+            purge_after=version.purge_after,
         )
         for version, blob in rows
     ]
@@ -161,6 +172,7 @@ def task_to_out(db: Session, task: Task, include_detail: bool = True) -> TaskOut
             .order_by(MaterialItem.created_at)
         ).all():
             versions = _material_versions(db, item.id)
+            deleted_versions = _material_versions(db, item.id, deleted=True)
             complete = item.not_applicable or any(version.is_final for version in versions)
             materials.append(
                 MaterialOut(
@@ -172,6 +184,7 @@ def task_to_out(db: Session, task: Task, include_detail: bool = True) -> TaskOut
                     not_applicable_reason=item.not_applicable_reason,
                     version=item.version,
                     versions=versions,
+                    deleted_versions=deleted_versions,
                     complete=complete,
                 )
             )

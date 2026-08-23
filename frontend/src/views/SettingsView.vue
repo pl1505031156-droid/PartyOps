@@ -9,7 +9,10 @@ import type {
   AIModelPack,
   AIPolicy,
   AIProvider,
+  HardwareBenchmark,
+  HardwareProfile,
   LocalAIRuntime,
+  ModelRecommendation,
   Backup,
   Device,
   Pairing,
@@ -221,6 +224,11 @@ const modelPacks = ref<AIModelPack[]>([]);
 const localAIRuntime = ref<LocalAIRuntime | null>(null);
 const loadWarning = ref("");
 const modelPackUploading = ref(false);
+const hardwareProfile = ref<HardwareProfile | null>(null);
+const modelRecommendations = ref<ModelRecommendation[]>([]);
+const hardwareChecking = ref(false);
+const benchmarkRunning = ref(false);
+const hardwareBenchmark = ref<HardwareBenchmark | null>(null);
 const appearanceForm = reactive({
   art_level: "standard" as "standard" | "reduced",
   reduce_motion: false,
@@ -267,6 +275,41 @@ const diskUsage = computed(() => {
   const total = diagnostics.value.disk.total_bytes / 1024 / 1024 / 1024;
   return `${free.toFixed(1)} GB 可用 / ${total.toFixed(1)} GB`;
 });
+const runtimeModeLabel = computed(() => {
+  if (health.value.mode === "host") return "主机模式";
+  if (health.value.mode === "personal") return "个人模式";
+  if (health.value.mode === "client") return "协同机模式";
+  return "待确认";
+});
+
+function openRoleConfigurationWizard() {
+  Modal.confirm({
+    title: "重新配置这台电脑的运行角色",
+    content:
+      "配置向导会在独立的本机页面中打开。请先保存正在编辑的内容；切换失败时系统会恢复当前角色，且不会删除原业务数据。主机模式可能需要一次系统管理员授权。",
+    okText: "打开配置向导",
+    cancelText: "暂不切换",
+    onOk: async () => {
+      let deepLink = "partyops-client://reconfigure";
+      if (session.user?.role === "admin") {
+        try {
+          const prepared = await api.post<{ deep_link: string }>("/system/reconfigure-request");
+          if (prepared.deep_link) deepLink = prepared.deep_link;
+        } catch {
+          Message.warning("当前页面无法写入本机启动标记，将直接唤起这台电脑上的配置向导");
+        }
+      }
+      const launcher = document.createElement("a");
+      launcher.href = deepLink;
+      launcher.setAttribute("aria-hidden", "true");
+      launcher.style.display = "none";
+      document.body.appendChild(launcher);
+      launcher.click();
+      launcher.remove();
+      Message.info("正在打开 PartyOps 配置向导；若系统询问是否打开，请选择允许");
+    },
+  });
+}
 
 async function load() {
   const failures: string[] = [];
@@ -413,20 +456,59 @@ async function uploadModelPack(file: File | null) {
   }
 }
 
-async function activateModelPack(pack: AIModelPack, capability: "embedding" | "llm") {
+async function detectLocalHardware() {
+  hardwareChecking.value = true;
+  try {
+    const [profile, recommendations] = await Promise.all([
+      api.get<HardwareProfile>("/ai/hardware-profile"),
+      api.get<ModelRecommendation[]>("/ai/model-recommendations"),
+    ]);
+    hardwareProfile.value = profile;
+    modelRecommendations.value = recommendations;
+    Message.success("本机能力检测完成，硬件信息未离开这台电脑");
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "本机能力检测失败");
+  } finally {
+    hardwareChecking.value = false;
+  }
+}
+
+async function runHardwareBenchmark() {
+  benchmarkRunning.value = true;
+  try {
+    hardwareBenchmark.value = await api.post<HardwareBenchmark>("/ai/hardware-profile/benchmark");
+    Message.info(hardwareBenchmark.value.message);
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "性能测试未完成");
+  } finally {
+    benchmarkRunning.value = false;
+  }
+}
+
+function memoryText(megabytes: number) {
+  return megabytes >= 1024
+    ? `${(megabytes / 1024).toFixed(megabytes >= 10240 ? 0 : 1)} GB`
+    : `${megabytes} MB`;
+}
+
+function recommendationColor(status: ModelRecommendation["status"]) {
+  return status === "流畅" ? "green" : status === "可用" ? "orange" : "red";
+}
+
+async function activateModelPack(pack: AIModelPack, capability: "embedding" | "llm" | "intent_router") {
   try {
     await api.post<AIModelPack>(`/admin/ai/model-packs/${pack.id}/activate?capability=${capability}`);
-    Message.success(capability === "embedding" ? "中文向量模型已启用" : "本地 LLM 已启用；只生成带来源草稿");
+    Message.success(capability === "embedding" ? "中文向量模型已启用" : capability === "intent_router" ? "受控意图助手已启用；写操作仍需确认" : "本地 LLM 已启用；只生成带来源草稿");
     await load();
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "模型包启用失败");
   }
 }
 
-async function deactivateModelCapability(capability: "embedding" | "llm") {
+async function deactivateModelCapability(capability: "embedding" | "llm" | "intent_router") {
   try {
     await api.delete(`/admin/ai/model-activations/${capability}`);
-    Message.success(capability === "embedding" ? "中文向量能力已停用" : "本地 LLM 已停用并卸载");
+    Message.success(capability === "embedding" ? "中文向量能力已停用" : capability === "intent_router" ? "受控意图助手已停用" : "本地 LLM 已停用并卸载");
     await load();
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "模型能力停用失败");
@@ -1020,7 +1102,7 @@ onBeforeUnmount(() => {
           </article>
           <article>
             <IconCloudDownload />
-            <div><span>运行模式</span><strong>{{ health.mode === "host" ? "主机模式" : "协同终端" }}</strong></div>
+            <div><span>运行模式</span><strong>{{ runtimeModeLabel }}</strong></div>
           </article>
           <article>
             <IconSafe />
@@ -1059,6 +1141,15 @@ onBeforeUnmount(() => {
         <a-alert v-if="(health.sqlite as any)?.safe_version === false" type="warning">
           当前为开发环境 SQLite；UOS 生产包会静态链接已修复版本并强制校验。
         </a-alert>
+        <section class="role-reconfigure-panel">
+          <div>
+            <strong>需要把这台电脑改为其他角色？</strong>
+            <p>可在这台电脑上重新选择个人模式、主机模式或协同机模式。向导会先保存回滚快照，验证新角色可用后才提交切换。</p>
+          </div>
+          <a-button type="outline" status="warning" @click="openRoleConfigurationWizard">
+            重新配置运行角色
+          </a-button>
+        </section>
         <a-collapse v-if="diagnostics" class="fault-tips">
           <a-collapse-item key="fault" header="常见故障排查">
             <p v-for="tip in diagnostics.fault_tips" :key="tip">{{ tip }}</p>
@@ -1349,6 +1440,33 @@ onBeforeUnmount(() => {
               </a-button>
               <input ref="modelPackInput" type="file" accept=".partyops-modelpack" hidden @change="uploadModelPack(($event.target as HTMLInputElement).files?.[0] || null)" />
             </div>
+            <div class="hardware-detector">
+              <div class="detector-heading">
+                <div><strong>先检测这台主机适合什么模型</strong><p>仅读取本机处理器、内存、显存和模型目录空间，不上传任何硬件或业务信息。</p></div>
+                <a-space><a-button :loading="hardwareChecking" @click="detectLocalHardware"><template #icon><IconRefresh /></template>{{ hardwareProfile ? "重新检测" : "开始检测" }}</a-button><a-button v-if="hardwareProfile" :loading="benchmarkRunning" @click="runHardwareBenchmark">可选性能测试</a-button></a-space>
+              </div>
+              <template v-if="hardwareProfile">
+                <div class="hardware-summary">
+                  <div><span>处理器</span><strong>{{ hardwareProfile.cpu_name }}</strong><small>{{ hardwareProfile.cpu_cores }} 核 · {{ hardwareProfile.architecture }}</small></div>
+                  <div><span>内存余量</span><strong>{{ memoryText(hardwareProfile.available_memory_mb) }}</strong><small>为系统保留 {{ memoryText(hardwareProfile.reserved_memory_mb) }}</small></div>
+                  <div><span>模型空间</span><strong>{{ memoryText(hardwareProfile.model_disk_free_mb) }}</strong><small>含 25% 安全余量后再推荐</small></div>
+                  <div><span>加速后端</span><strong>{{ hardwareProfile.gpu_backends.join('、') || 'CPU' }}</strong><small>{{ hardwareProfile.gpu_memory_mb ? `显存 ${memoryText(hardwareProfile.gpu_memory_mb)}` : '未要求必须有独立显卡' }}</small></div>
+                </div>
+                <a-alert v-if="hardwareBenchmark" :type="hardwareBenchmark.available ? 'success' : 'info'">{{ hardwareBenchmark.message }}<template v-if="hardwareBenchmark.available"> · 本机分值 {{ hardwareBenchmark.score }}</template></a-alert>
+                <details class="model-recommendations">
+                  <summary>查看从基础到旗舰的 {{ modelRecommendations.length }} 个模型建议</summary>
+                  <div class="model-recommendation-list">
+                    <article v-for="model in modelRecommendations" :key="model.id">
+                      <header><div><span>{{ model.tier }} · {{ model.kind === 'embedding' ? '语义检索' : model.kind === 'intent_router' ? '意图助手' : '本地草稿' }}</span><h4>{{ model.name }}</h4></div><a-tag :color="recommendationColor(model.status)">{{ model.status }}</a-tag></header>
+                      <p>{{ model.summary }}</p>
+                      <small>{{ model.reason }}</small>
+                      <dl><div><dt>最低内存</dt><dd>{{ memoryText(model.min_memory_mb) }}</dd></div><div><dt>建议内存</dt><dd>{{ memoryText(model.recommended_memory_mb) }}</dd></div><div><dt>建议显存</dt><dd>{{ model.recommended_vram_mb ? memoryText(model.recommended_vram_mb) : '无需独显' }}</dd></div><div><dt>模型空间</dt><dd>{{ memoryText(model.disk_mb) }}</dd></div><div><dt>推荐量化</dt><dd>{{ model.quantization }}</dd></div><div><dt>建议配置</dt><dd>{{ model.effective_threads }} 线程 · {{ model.effective_context_tokens }} 上下文</dd></div></dl>
+                      <footer><a-button size="mini" type="text" :href="model.hosted_url || (model.delivery === 'partyops_pack' ? 'https://www.partyops.cn/models' : model.official_url)" target="_blank" rel="noopener noreferrer">{{ model.delivery === 'partyops_pack' && model.hosted_url ? '下载官网模型包' : model.delivery === 'partyops_pack' ? '查看官网导入说明' : '打开官方模型页' }}</a-button><span>{{ model.delivery === 'official' ? '大模型不由官网转存，通过本机 OpenAI 兼容服务接入' : model.hosted_url ? '签名模型包可直接导入' : '未冻结签名包前只使用官方来源' }}</span></footer>
+                    </article>
+                  </div>
+                </details>
+              </template>
+            </div>
             <a-alert :type="localAIRuntime?.ready ? 'success' : 'info'" class="update-note">
               {{ localAIRuntime?.message || "正在读取本地智能状态" }}
               <template v-if="localAIRuntime"> · 最多 {{ localAIRuntime.max_threads }} 线程 · 内存上限 {{ (localAIRuntime.memory_limit_mb / 1024).toFixed(1) }}GB</template>
@@ -1359,11 +1477,11 @@ onBeforeUnmount(() => {
             <a-table :data="modelPacks" row-key="id" :pagination="false">
               <template #columns>
                 <a-table-column title="模型包"><template #cell="{ record }"><strong>{{ record.name }}</strong><small class="update-content">{{ record.model_id }} · {{ record.version }} · {{ record.license_name || '许可待核对' }}</small><small class="update-content">{{ record.model_source || '未登记来源' }}</small></template></a-table-column>
-                <a-table-column title="组件"><template #cell="{ record }">{{ record.capabilities.map((item: string) => item === 'embedding' ? '中文向量' : '本地 LLM').join('、') }}</template></a-table-column>
+                <a-table-column title="组件"><template #cell="{ record }">{{ record.capabilities.map((item: string) => item === 'embedding' ? '中文向量' : item === 'intent_router' ? '受控意图' : '本地 LLM').join('、') }}</template></a-table-column>
                 <a-table-column title="架构" data-index="architecture" :width="100" />
                 <a-table-column title="签名" :width="100"><template #cell="{ record }">{{ record.signature_valid ? "已验证" : "开发包" }}</template></a-table-column>
                 <a-table-column title="资源" :width="120"><template #cell="{ record }">{{ record.estimated_memory_mb ? `${(record.estimated_memory_mb / 1024).toFixed(1)}GB` : '按运行时判断' }}</template></a-table-column>
-                <a-table-column title="操作" :width="240"><template #cell="{ record }"><a-space><a-button v-if="record.capabilities.includes('embedding')" size="mini" :type="record.active_capabilities.includes('embedding') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('embedding') ? deactivateModelCapability('embedding') : activateModelPack(record, 'embedding')">{{ record.active_capabilities.includes('embedding') ? '停用向量' : '启用向量' }}</a-button><a-button v-if="record.capabilities.includes('llm')" size="mini" :type="record.active_capabilities.includes('llm') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('llm') ? deactivateModelCapability('llm') : activateModelPack(record, 'llm')">{{ record.active_capabilities.includes('llm') ? '停用 LLM' : '启用 LLM' }}</a-button></a-space></template></a-table-column>
+                <a-table-column title="操作" :width="300"><template #cell="{ record }"><a-space wrap><a-button v-if="record.capabilities.includes('embedding')" size="mini" :type="record.active_capabilities.includes('embedding') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('embedding') ? deactivateModelCapability('embedding') : activateModelPack(record, 'embedding')">{{ record.active_capabilities.includes('embedding') ? '停用向量' : '启用向量' }}</a-button><a-button v-if="record.capabilities.includes('llm')" size="mini" :type="record.active_capabilities.includes('llm') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('llm') ? deactivateModelCapability('llm') : activateModelPack(record, 'llm')">{{ record.active_capabilities.includes('llm') ? '停用 LLM' : '启用 LLM' }}</a-button><a-button v-if="record.capabilities.includes('intent_router')" size="mini" :type="record.active_capabilities.includes('intent_router') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('intent_router') ? deactivateModelCapability('intent_router') : activateModelPack(record, 'intent_router')">{{ record.active_capabilities.includes('intent_router') ? '停用意图' : '启用意图' }}</a-button></a-space></template></a-table-column>
               </template>
             </a-table>
             <p v-if="!modelPacks.length" class="empty-state">尚未导入本地模型包。规则推荐不依赖模型，仍可正常工作。</p>
@@ -1620,6 +1738,38 @@ onBeforeUnmount(() => {
   margin-top: 18px;
 }
 
+.role-reconfigure-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 18px;
+  padding: 18px 20px;
+  border: 1px solid rgba(180, 35, 24, 0.26);
+  border-left: 4px solid var(--cinnabar);
+  background: rgba(251, 248, 241, 0.78);
+}
+
+.role-reconfigure-panel strong,
+.role-reconfigure-panel p {
+  display: block;
+  margin: 0;
+}
+
+.role-reconfigure-panel p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+@media (max-width: 720px) {
+  .role-reconfigure-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .fault-tips pre,
 .token-alert pre {
   max-height: 280px;
@@ -1767,6 +1917,51 @@ onBeforeUnmount(() => {
 .local-ai-heading h3 {
   margin-bottom: 6px;
   border-bottom: 0;
+}
+
+.hardware-detector {
+  margin: 18px 0;
+  padding: 18px;
+  background: rgba(238, 230, 217, 0.48);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cinnabar);
+}
+
+.detector-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.detector-heading p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.hardware-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 16px 0; background: var(--line); border: 1px solid var(--line); }
+.hardware-summary > div { min-width: 0; padding: 12px; background: #f7f1e8; }
+.hardware-summary span, .hardware-summary strong, .hardware-summary small { display: block; }
+.hardware-summary span, .hardware-summary small { color: var(--muted); font-size: 10px; }
+.hardware-summary strong { margin: 6px 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-recommendations { margin-top: 14px; }
+.model-recommendations > summary { padding: 12px 0 4px; color: var(--cinnabar); font-size: 12px; cursor: pointer; }
+.model-recommendation-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.model-recommendation-list article { padding: 14px; background: rgba(251, 248, 241, 0.82); border: 1px solid var(--line-light); }
+.model-recommendation-list header, .model-recommendation-list footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.model-recommendation-list h4 { margin: 4px 0 0; font-size: 14px; }
+.model-recommendation-list header span, .model-recommendation-list article > small, .model-recommendation-list footer span { color: var(--muted); font-size: 10px; }
+.model-recommendation-list article > p { min-height: 40px; margin: 10px 0 5px; color: var(--charcoal); font-size: 11px; line-height: 1.7; }
+.model-recommendation-list dl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; margin: 12px 0; padding: 9px 0; border-top: 1px solid var(--line-light); border-bottom: 1px solid var(--line-light); }
+.model-recommendation-list dl div { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; }
+.model-recommendation-list dt { color: var(--muted); }
+.model-recommendation-list dd { margin: 0; }
+.model-recommendation-list footer { align-items: center; }
+
+@media (max-width: 900px) {
+  .detector-heading { flex-direction: column; }
+  .hardware-summary, .model-recommendation-list { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 600px) {
+  .hardware-summary, .model-recommendation-list { grid-template-columns: 1fr; }
+  .model-recommendation-list article > p { min-height: 0; }
 }
 
 .ai-status {

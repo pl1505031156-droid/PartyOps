@@ -98,6 +98,50 @@ def test_archive_custom_year_crud_search_history_export_and_attachment(
         assert any(name.endswith("调动扫描件.txt") for name in names)
 
 
+def test_archive_attachment_recycle_and_restore(client: TestClient, admin: dict) -> None:
+    category = _category(client, "人事调动文件")
+    created = client.post(
+        "/api/v1/archives/records",
+        json={
+            "category_id": category["id"],
+            "archive_year": 2001,
+            "title": "扫描件回收恢复验证",
+        },
+    )
+    assert created.status_code == 201, created.text
+    record = created.json()
+    uploaded = client.post(
+        f"/api/v1/archives/records/{record['id']}/attachments",
+        data={"note": "待复核", "client_upload_id": "archive-upload-00000001"},
+        files={"file": ("回收验证.txt", b"archive-recycle", "text/plain")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    attachment = uploaded.json()
+    current = client.get(f"/api/v1/archives/records/{record['id']}").json()
+    deleted = client.delete(
+        f"/api/v1/archives/attachments/{attachment['id']}",
+        params={"reason": "扫描方向错误"},
+        headers={"If-Match": str(current["version"])},
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["delete_reason"] == "扫描方向错误"
+    assert client.get(f"/api/v1/archives/attachments/{attachment['id']}/download").status_code == 410
+    recycled = client.get(
+        f"/api/v1/archives/records/{record['id']}/attachments",
+        params={"include_deleted": "true"},
+    )
+    assert any(item["id"] == attachment["id"] for item in recycled.json())
+
+    current = client.get(f"/api/v1/archives/records/{record['id']}").json()
+    restored = client.post(
+        f"/api/v1/archives/attachments/{attachment['id']}/restore",
+        headers={"If-Match": str(current["version"])},
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["deleted_at"] is None
+    assert client.get(f"/api/v1/archives/attachments/{attachment['id']}/download").status_code == 200
+
+
 def test_workspace_root_creation_automatically_indexes_names_only(
     client: TestClient, admin: dict, tmp_path: Path
 ) -> None:

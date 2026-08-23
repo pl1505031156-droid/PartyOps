@@ -293,10 +293,19 @@ wait_and_open_local_host() {
 }
 
 launch_browser_tool() {
-  local marker_name="wizard.url" marker url pid attempt wizard_executable first_argument="${1:-}"
+  local marker_name="wizard.url" marker url pid attempt wizard_executable first_argument="${1:-}" argument
   local lock_file
   if [[ "$first_argument" == "--manage-shared-roots" ]]; then
     marker_name="shared-root-manager.url"
+    # partyops-client 协议同时承载共享目录操作和用户主动重新配置角色。
+    # 重新配置仍由完整向导发布 wizard.url，不能等待共享管理器标记。
+    for argument in "$@"; do
+      case "$argument" in
+        partyops-client://reconfigure|partyops-client://reconfigure/)
+          marker_name="wizard.url"
+          ;;
+      esac
+    done
   fi
   marker="$CONFIG_ROOT/$marker_name"
   lock_file="$CONFIG_ROOT/.${marker_name}.lock"

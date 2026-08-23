@@ -494,7 +494,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     assert "post-install-transaction.sh %s deb" in build
     assert "sed 's/\\r$//'" in build
     assert "桌面入口换行规范化失败" in build
-    assert 'DEB_VERSION="1.4.4"' in build
+    assert 'DEB_VERSION="1.4.5~rc.1"' in build
     assert "Version: $DEB_VERSION" in build
     assert "systemd, util-linux, coreutils, iproute2" in build
     assert "systemd, util-linux, coreutils, iproute" in build
@@ -529,8 +529,8 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     one_click = (ROOT / "packaging" / "uos" / "one-click-install.sh").read_text(
         encoding="utf-8"
     )
-    assert 'VERSION="${PARTYOPS_VERSION:-1.4.4}"' in one_click
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.4}"' in one_click
+    assert 'VERSION="${PARTYOPS_VERSION:-1.4.5-rc.1}"' in one_click
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.5~rc.1}"' in one_click
     assert 'DEB="$ARTIFACTS/PartyOps_${VERSION}_linux_${ARCH}.deb"' in one_click
     assert '[[ "$installed_version" == "$PACKAGE_VERSION" ]]' in one_click
     assert 'chown -R "$CURRENT_USER' not in one_click
@@ -538,7 +538,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     acceptance = (ROOT / "packaging" / "uos" / "target-acceptance.sh").read_text(
         encoding="utf-8"
     )
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.4}"' in acceptance
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.5~rc.1}"' in acceptance
     assert 'test "$INSTALLED_VERSION" = "$PACKAGE_VERSION"' in acceptance
     assert "LD_LIBRARY_PATH=/opt/partyops/ocr/lib" in acceptance
 
@@ -806,7 +806,7 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "INSTALL_DIR_TREE_ACL_VERIFY_FAILED" in installer
     assert "INSTALL_DIR_INTEGRITY_DENIED" in installer
     assert " /setintegritylevel (OI)(CI)H /T /C /Q" in installer
-    assert "VersionInfoVersion=1.4.4.0" in installer
+    assert "VersionInfoVersion=1.4.5.1" in installer
     assert "MinVersion=10.0" in installer
     assert "MinVersion=6.1sp1" in installer
     assert "此安装包仅支持 Windows 10/11" in installer
@@ -970,7 +970,7 @@ def test_linux_bundle_only_includes_current_user_documents() -> None:
     )
 
     assert 'cp -a "$ROOT/docs" "$RUNTIME/"' not in script
-    assert '"release-notes-v1.4.4.md"' in script
+    assert '"release-notes-v1.4.5-rc.1.md"' in script
     for document in (
         "user-guide.md",
         "deployment.md",
@@ -1038,9 +1038,8 @@ def test_linux_rpm_rollback_seed_keeps_current_release_generation() -> None:
         encoding="utf-8"
     )
 
-    assert 'RPM_RELEASE="1"' in script
-    assert 'SEED_RELEASE="0.1"' in script
-    assert 'SEED_RELEASE="0.rc.3.0"' not in script
+    assert 'RPM_RELEASE="0.rc.1.1"' in script
+    assert 'SEED_RELEASE="0.rc.1.0"' in script
 
 
 def test_linux_native_build_uses_a_posix_permission_build_root() -> None:

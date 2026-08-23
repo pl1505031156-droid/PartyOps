@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -11,6 +12,7 @@ from docx.oxml.ns import qn
 from fastapi.testclient import TestClient
 from alembic import command
 from alembic.config import Config
+from openpyxl import load_workbook
 from sqlalchemy import create_engine, inspect
 
 from app.database import Base
@@ -174,12 +176,121 @@ def test_public_calculation_and_word_export_do_not_require_admin(
     assert "制度来源：共产党员网《2026年新版细则全文》（点击查看）。" in text
     assert any(
         relationship.is_external
-        and relationship.target_ref == "https://www.12371.cn/2026/05/18/ARTI1779102179030620.shtml"
+            and relationship.target_ref == "https://djyj.12371.cn/2026/06/11/ARTI1781145352074190.shtml"
         for relationship in document.part.rels.values()
     )
     assert " PAGE " in document.sections[0].footer._element.xml
     assert client.get("/api/v1/admin/party-development/profiles").status_code == 403
     login(client, "admin")
+
+
+def test_case_reference_plan_is_generated_previewed_and_confirmed_explicitly(
+    client: TestClient,
+    admin: dict,
+) -> None:
+    """只填申请书日期即生成参考计划；实际日期变化不能静默覆盖旧计划。"""
+
+    created = client.post(
+        "/api/v1/party-development/cases",
+        json={
+            "party_committee": "测试党委",
+            "party_branch": "第一党支部",
+            "name": "参考计划测试人员",
+            "application_date": "2026-01-31",
+        },
+    )
+    assert created.status_code == 201, created.text
+    case = created.json()
+    assert len([item for item in case["milestones"] if item["plan_kind"] == "reference"]) == 14
+
+    plan = client.get(
+        f"/api/v1/party-development/cases/{case['id']}/reference-plan"
+    )
+    assert plan.status_code == 200, plan.text
+    nodes = {item["key"]: item for item in plan.json()["nodes"]}
+    assert nodes["activist_reference"]["reference_date"] == "2026-07-31"
+    assert "不替代组织研究" in plan.json()["disclaimer"]
+
+    missing_application = client.patch(
+        f"/api/v1/party-development/cases/{case['id']}",
+        json={"application_date": None},
+        headers={"If-Match": str(case["version"])},
+    )
+    assert missing_application.status_code == 422
+    assert missing_application.json()["code"] == "APPLICATION_DATE_REQUIRED"
+
+    updated = client.patch(
+        f"/api/v1/party-development/cases/{case['id']}",
+        json={"application_date": "2026-02-28", "activist_date": "2026-09-15"},
+        headers={"If-Match": str(case["version"])},
+    )
+    assert updated.status_code == 200, updated.text
+    preview = client.post(
+        f"/api/v1/party-development/cases/{case['id']}/reference-plan/recalculate-preview"
+    )
+    assert preview.status_code == 200, preview.text
+    preview_nodes = {item["key"]: item for item in preview.json()["nodes"]}
+    assert preview.json()["requires_confirmation"] is True
+    assert preview_nodes["activist_reference"]["reference_date"] == "2026-09-15"
+    assert preview_nodes["activist_reference"]["persisted_reference_date"] == "2026-07-31"
+
+    confirmed = client.put(
+        f"/api/v1/party-development/cases/{case['id']}/reference-plan",
+        json={"adjustments": {"archive_target": "2029-01-15"}},
+        headers={"If-Match": str(updated.json()["version"])},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    confirmed_nodes = {item["key"]: item for item in confirmed.json()["nodes"]}
+    assert confirmed_nodes["activist_reference"]["persisted_reference_date"] == "2026-09-15"
+    assert confirmed_nodes["archive_target"]["adjusted_date"] == "2029-01-15"
+    assert confirmed_nodes["archive_target"]["effective_date"] == "2029-01-15"
+
+    stale = client.put(
+        f"/api/v1/party-development/cases/{case['id']}/reference-plan",
+        json={"adjustments": {}},
+        headers={"If-Match": str(updated.json()["version"])},
+    )
+    assert stale.status_code == 409
+
+
+def test_case_export_blocks_formulas_disables_cache_and_audits_hash(
+    client: TestClient,
+    admin: dict,
+) -> None:
+    """敏感台账导出不得执行表格公式，并必须留下可核验的文件哈希。"""
+
+    login(client, "admin")
+    committee = "导出安全测试党委"
+    created = client.post(
+        "/api/v1/party-development/cases",
+        json={
+            "party_committee": committee,
+            "party_branch": "第一支部",
+            "name": '=HYPERLINK("https://example.invalid","危险姓名")',
+            "application_date": "2026-03-01",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    exported = client.get(
+        "/api/v1/party-development/cases/export.xlsx",
+        params={"party_committee": committee},
+    )
+    assert exported.status_code == 200, exported.text
+    assert exported.headers["cache-control"] == "no-store"
+    workbook = load_workbook(BytesIO(exported.content), read_only=True, data_only=False)
+    assert workbook["党员发展情况"]["C2"].value.startswith("'=")
+
+    audit = client.get(
+        "/api/v1/admin/audit",
+        params={"action": "party_development.cases_exported", "limit": 1},
+    )
+    assert audit.status_code == 200, audit.text
+    detail = audit.json()[0]["detail"]
+    assert detail["format"] == "xlsx"
+    assert detail["count"] == 1
+    assert detail["party_committee"] == committee
+    assert detail["sha256"] == hashlib.sha256(exported.content).hexdigest()
 
 
 def test_admin_profiles_are_versioned_audited_and_only_add_materials(

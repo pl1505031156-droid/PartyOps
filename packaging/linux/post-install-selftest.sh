@@ -3,7 +3,7 @@ set -eu
 
 RUNTIME=/opt/partyops
 EXPECTED_ARCH="${1:-}"
-EXPECTED_VERSION="1.4.4"
+EXPECTED_VERSION="1.4.5-rc.1"
 LOG=/var/log/partyops-package-selftest.log
 mkdir -p /var/log /var/lib/partyops
 : >"$LOG"

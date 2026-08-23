@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-VERSION='1.4.4'
-PACKAGE_VERSION='1.4.4.0'
+VERSION='1.4.5-rc.1'
+PACKAGE_VERSION='1.4.5.1'
 MODE='release'
 TARGET_ARCH=''
 while (($#)); do
@@ -44,6 +44,11 @@ if [[ "$(uname -m)" != "$TARGET_ARCH" ]]; then
     "$(uname -m)" "$TARGET_ARCH" >&2
   exit 2
 fi
+
+# 所有从源码构建的 Python 扩展和 PyInstaller bootloader 均必须继承相同
+# 的系统基线；只给最后一层 C 启动器传 -mmacosx-version-min 不足以保证
+# 用户电脑能装且能启动。
+export MACOSX_DEPLOYMENT_TARGET='11.0'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -403,7 +408,7 @@ Path(path).write_text(
         {
             "format_version": 1,
             "product": "PartyOps",
-            "version": "1.4.4",
+            "version": "1.4.5-rc.1",
             "architecture": architecture,
             "source_commit": source_commit,
             "generated_at_utc": generated_at,

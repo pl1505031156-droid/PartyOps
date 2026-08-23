@@ -452,7 +452,11 @@ def test_production_rejects_model_pack_with_invalid_signature(
     monkeypatch.setattr(settings, "update_public_key", "")
     response = client.post(
         "/api/v1/admin/ai/model-packs",
-        headers={"Host": "127.0.0.1", "Origin": "http://127.0.0.1"},
+        headers={
+            "Host": "127.0.0.1",
+            "Origin": "http://127.0.0.1",
+            "X-PartyOps-CSRF": client.cookies.get("partyops_csrf", ""),
+        },
         files={
             "file": (
                 "invalid-signature.partyops-modelpack",

@@ -148,7 +148,7 @@ def test_device_403_marks_reauthorization_and_stops_agent(
     assert saved["authentication_state"] == "reauth_required"
     assert saved["last_agent_error"] == "heartbeat"
     assert saved["protocol_version"] == 2
-    assert saved["runtime_version"] == "1.4.4"
+    assert saved["runtime_version"] == "1.4.5-rc.1"
 
 
 def test_legacy_pairing_403_stops_backup_retry_loop(

@@ -24,7 +24,7 @@ from docx.shared import Mm, Pt, Twips
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import PartyDevelopmentMaterial, PartyDevelopmentProfile, User, WorkCalendarEntry, utcnow
+from .models import PartyDevelopmentMaterial, PartyDevelopmentPlanProfile, PartyDevelopmentProfile, User, WorkCalendarEntry, utcnow
 from .schemas import (
     PartyDevelopmentCalculateRequest,
     PartyDevelopmentNodeOut,
@@ -34,9 +34,27 @@ from .compat import strict_zip
 
 
 RULE_VERSION = "2026.05"
-RULE_PUBLISHED_AT = date(2026, 5, 18)
+RULE_ISSUED_AT = date(2026, 5, 11)
+RULE_PUBLISHED_AT = date(2026, 6, 11)
 RULE_TITLE = "中国共产党发展党员工作细则（2026年5月修订）"
-RULE_SOURCE_URL = "https://www.12371.cn/2026/05/18/ARTI1779102179030620.shtml"
+RULE_SOURCE_URL = "https://djyj.12371.cn/2026/06/11/ARTI1781145352074190.shtml"
+REFERENCE_PLAN_SYSTEM_KEY = "party-development.reference-plan.2026-v1"
+REFERENCE_PLAN_ASSUMPTIONS: dict[str, Any] = {
+    "conversation_target_days": 15,
+    "activist_reference_months": 6,
+    "assessment_months_after_activist": 6,
+    "development_object_months_after_activist": 12,
+    "publicity_workdays": 5,
+    "review_target_days": 30,
+    "pre_review_target_days": 45,
+    "branch_meeting_target_days": 60,
+    "committee_approval_months": 2,
+    "oath_target_days": 15,
+    "probation_months": 12,
+    "transition_meeting_target_days": 30,
+    "transition_approval_months": 2,
+    "archive_target_days": 15,
+}
 
 PHASE_LABELS = {
     "application": "申请入党",
@@ -85,6 +103,7 @@ REFERENCE_MATERIALS = [
 def rule_metadata() -> dict[str, Any]:
     return {
         "version": RULE_VERSION,
+        "issued_at": RULE_ISSUED_AT,
         "published_at": RULE_PUBLISHED_AT,
         "title": RULE_TITLE,
         "source_url": RULE_SOURCE_URL,
@@ -95,6 +114,105 @@ def rule_metadata() -> dict[str, Any]:
             "计算结果是工作辅助，不代替组织程序和人工复核",
         ],
         "phase_labels": PHASE_LABELS,
+    }
+
+
+def ensure_reference_plan_profile(
+    db: Session, user: User | None = None
+) -> PartyDevelopmentPlanProfile:
+    """幂等建立系统参考计划；历史档案保存 assumptions 快照。"""
+
+    item = db.scalar(
+        select(PartyDevelopmentPlanProfile).where(
+            PartyDevelopmentPlanProfile.system_key == REFERENCE_PLAN_SYSTEM_KEY
+        )
+    )
+    if item:
+        return item
+    item = PartyDevelopmentPlanProfile(
+        system_key=REFERENCE_PLAN_SYSTEM_KEY,
+        name="发展党员全流程参考计划（2026 版）",
+        description=(
+            "从入党申请书日期生成内部工作参考目标；所有日期均可调整，"
+            "不替代党员推荐、支委会研究、政治审查、预审、表决和党委审批。"
+        ),
+        assumptions=dict(REFERENCE_PLAN_ASSUMPTIONS),
+        active=True,
+        built_in=True,
+        created_by=user.id if user else None,
+    )
+    db.add(item)
+    db.flush()
+    return item
+
+
+def calculate_reference_plan(
+    *,
+    application_date: date,
+    calendar_entries: Iterable[WorkCalendarEntry],
+    activist_date: date | None = None,
+    development_object_date: date | None = None,
+    branch_acceptance_date: date | None = None,
+    assumptions: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """计算可编辑参考计划，绝不把结果写入实际日期字段。"""
+
+    values = {**REFERENCE_PLAN_ASSUMPTIONS, **(assumptions or {})}
+    workdays = WorkdayCalendar(calendar_entries)
+    activist = activist_date or add_months(
+        application_date, int(values["activist_reference_months"])
+    )
+    development_object = development_object_date or add_months(
+        activist, int(values["development_object_months_after_activist"])
+    )
+    publicity_end, provisional = workdays.add_inclusive(
+        development_object, int(values["publicity_workdays"])
+    )
+    branch = branch_acceptance_date or development_object + timedelta(
+        days=int(values["branch_meeting_target_days"])
+    )
+    committee_approval = add_months(
+        branch, int(values["committee_approval_months"])
+    )
+    probation_end = add_months(branch, int(values["probation_months"])
+    )
+    transition_meeting = probation_end + timedelta(
+        days=int(values["transition_meeting_target_days"])
+    )
+    transition_approval = add_months(
+        transition_meeting, int(values["transition_approval_months"])
+    )
+    nodes = (
+        ("conversation_target", "谈话参考目标", application_date + timedelta(days=int(values["conversation_target_days"])), "内部参考目标；法定截止日另列为申请后一个月", False),
+        ("activist_reference", "拟研究确定入党积极分子", activist, "申请书提交后六个月的单位内部参考，不是法定期限", False),
+        ("first_half_year_assessment_reference", "首次半年培养考察", add_months(activist, int(values["assessment_months_after_activist"])), "积极分子参考日后六个月", False),
+        ("development_object_reference", "拟研究确定发展对象最早参考点", development_object, "积极分子参考日后十二个月，仍须组织研究决定", False),
+        ("publicity_reference_end", "公示不少于五个工作日参考结束", publicity_end, "从发展对象最早参考点开始暂算", provisional),
+        ("political_review_target", "政治审查和培训参考目标", development_object + timedelta(days=int(values["review_target_days"])), "发展对象参考点后第三十天", False),
+        ("pre_review_target", "预审参考目标", development_object + timedelta(days=int(values["pre_review_target_days"])), "发展对象参考点后第四十五天", False),
+        ("branch_acceptance_target", "支部大会参考目标", branch, "发展对象参考点后第六十天；不替代预审结论", False),
+        ("committee_approval_target", "党委审批参考目标", committee_approval, "支部大会参考日后两个月；法定最长边界另列", False),
+        ("oath_target", "入党宣誓参考目标", committee_approval + timedelta(days=int(values["oath_target_days"])), "党委审批参考日后十五天", False),
+        ("probation_end_reference", "预备期满", probation_end, "从支部大会通过接收之日起十二个月", False),
+        ("transition_branch_target", "转正支部大会参考目标", transition_meeting, "预备期满后三十天", False),
+        ("transition_approval_target", "转正审批参考目标", transition_approval, "转正支部大会参考日后两个月", False),
+        ("archive_target", "档案归档参考目标", transition_approval + timedelta(days=int(values["archive_target_days"])), "转正审批参考日后十五天", False),
+    )
+    return {
+        "profile_key": REFERENCE_PLAN_SYSTEM_KEY,
+        "assumptions": values,
+        "disclaimer": "系统推算仅用于内部工作参考，不替代组织研究、审查、表决或审批。",
+        "provisional": any(node[4] for node in nodes),
+        "nodes": [
+            {
+                "key": key,
+                "title": title,
+                "reference_date": target,
+                "planning_basis": basis,
+                "provisional": node_provisional,
+            }
+            for key, title, target, basis, node_provisional in nodes
+        ],
     }
 
 

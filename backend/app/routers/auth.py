@@ -28,6 +28,7 @@ from ..schemas import (
     UserOut,
 )
 from ..security import (
+    CSRF_COOKIE,
     SESSION_COOKIE,
     get_current_user,
     hash_password,
@@ -217,7 +218,7 @@ def login(
             )
         raise ProblemException(401, "LOGIN_FAILED", "登录失败", "用户名或密码不正确。")
     login_throttle.record_success(payload.username)
-    token, session = issue_session(db, user)
+    token, csrf_token, session = issue_session(db, user)
     write_audit(
         db,
         user,
@@ -234,6 +235,15 @@ def login(
         max_age=settings.session_hours * 3600,
         httponly=True,
         samesite="lax",
+        secure=settings.tls_enabled,
+        path="/",
+    )
+    response.set_cookie(
+        CSRF_COOKIE,
+        csrf_token,
+        max_age=settings.session_hours * 3600,
+        httponly=False,
+        samesite="strict",
         secure=settings.tls_enabled,
         path="/",
     )
@@ -259,6 +269,7 @@ def logout(
             )
             db.commit()
     response.delete_cookie(SESSION_COOKIE, path="/")
+    response.delete_cookie(CSRF_COOKIE, path="/")
     response.status_code = 204
     return response
 

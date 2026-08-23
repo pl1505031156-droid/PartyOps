@@ -262,6 +262,75 @@ def test_material_version_filename_search_and_final_rules(
     assert client.get("/api/v1/exports/tasks.docx?kind=交接清单").status_code == 200
 
 
+def test_quick_multi_file_upload_idempotency_and_recycle_restore(
+    client: TestClient, admin: dict
+) -> None:
+    task = create_task(
+        client,
+        admin["id"],
+        title="一事一档批量材料",
+        steps=[],
+        materials=[],
+    )
+    upload_id = "upload-quick-00000001"
+    uploaded = client.post(
+        f"/api/v1/tasks/{task['id']}/materials/quick-upload",
+        data={
+            "category": "过程材料",
+            "stage": "draft",
+            "is_final": "false",
+            "client_upload_id": upload_id,
+        },
+        files={"file": ("会议 记录（一）.docx", b"first-content", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    current = uploaded.json()
+    assert len(current["materials"]) == 1
+    material = current["materials"][0]
+    version = material["versions"][0]
+    assert material["name"] == "会议 记录（一）"
+
+    repeated = client.post(
+        f"/api/v1/tasks/{task['id']}/materials/quick-upload",
+        data={
+            "category": "过程材料",
+            "stage": "draft",
+            "is_final": "false",
+            "client_upload_id": upload_id,
+        },
+        files={"file": ("会议 记录（一）.docx", b"first-content", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    assert repeated.status_code == 201, repeated.text
+    assert len(repeated.json()["materials"]) == 1
+
+    deleted = client.delete(
+        f"/api/v1/tasks/{task['id']}/materials/{material['id']}/versions/{version['id']}",
+        params={"reason": "上传内容需要更正"},
+        headers={"If-Match": str(current["version"])},
+    )
+    assert deleted.status_code == 200, deleted.text
+    current = deleted.json()
+    recycled = current["materials"][0]["deleted_versions"]
+    assert recycled[0]["id"] == version["id"]
+    assert recycled[0]["delete_reason"] == "上传内容需要更正"
+    assert client.get(f"/api/v1/attachments/{version['id']}/download").status_code == 410
+
+    restored = client.post(
+        f"/api/v1/tasks/{task['id']}/materials/{material['id']}/versions/{version['id']}/restore",
+        headers={"If-Match": str(current["version"])},
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["materials"][0]["versions"][0]["id"] == version["id"]
+
+    blocked = client.post(
+        f"/api/v1/tasks/{task['id']}/materials/quick-upload",
+        data={"client_upload_id": "upload-quick-00000002"},
+        files={"file": ("危险脚本.ps1", b"Write-Host bad", "text/plain")},
+    )
+    assert blocked.status_code == 415
+    assert blocked.json()["code"] == "BUSINESS_FILE_TYPE_BLOCKED"
+
+
 def test_conflict_draft_reminders_and_user_directory(
     client: TestClient, admin: dict, staff: dict
 ) -> None:
@@ -452,6 +521,7 @@ def test_template_recurrence_knowledge_and_contacts_are_maintainable(
 def test_admin_user_backup_pairing_diagnostics_and_audit(
     client: TestClient, admin: dict
 ) -> None:
+    create_task(client, admin["id"], title="诊断统计独立回归事项")
     created_user = client.post(
         "/api/v1/admin/users",
         json={

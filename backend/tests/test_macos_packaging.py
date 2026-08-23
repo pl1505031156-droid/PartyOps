@@ -6,7 +6,9 @@ import ast
 import importlib.util
 import plistlib
 import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -40,6 +42,8 @@ def test_macos_python_entrypoints_parse_and_use_native_user_paths() -> None:
     assert "client-browser.url" in launcher
     assert "/api/v1/health" in launcher
     assert "app_version" in launcher and "payload.get(\"mode\")" in launcher
+    assert "_consume_reconfigure_request" in launcher
+    assert "partyops-client://reconfigure" in launcher
     assert "os.execve" in agent
     assert 'not key.startswith("PARTYOPS_")' in agent
     assert ".partyops-personal-process.json" in agent
@@ -74,7 +78,7 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "MACOS_ARCH_MISMATCH" in validation
     assert 'bundle_identifier="cn.partyops.desktop"' in spec
     assert '"CFBundleExecutable": "partyops-desktop"' in spec
-    assert '"CFBundleVersion": "1.4.4.0"' in spec
+    assert '"CFBundleVersion": "1.4.5.1"' in spec
     assert '"LSMinimumSystemVersion": "11.0"' in spec
     assert "target_arch=target_arch" in spec
     assert 'name="partyops-updater"' in spec
@@ -103,10 +107,17 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "status=launchservices-entered" in wrapper
     assert 'execv(target, child_argv)' in wrapper
     assert 'partyops_log_path("launch-stderr.log"' in wrapper
+    assert "sanitize_child_environment" in wrapper
+    assert "_PYI_PARENT_PROCESS_LEVEL" in wrapper
+    assert 'setenv("PYINSTALLER_RESET_ENVIRONMENT", "1", 1)' in wrapper
+    assert "DYLD_LIBRARY_PATH" in wrapper
+    assert "status=desktop-stderr-tail" in wrapper
+    assert "chdir(directory)" in wrapper
     assert "status=desktop-child-started" in wrapper
     assert "status=desktop-child-exited" in wrapper
     assert "status=desktop-child-signaled" in wrapper
     assert "waitpid(child, &child_status, 0)" in wrapper
+    assert '"CFBundleURLSchemes": ["partyops-client"]' in spec
     assert 'find "$APP/Contents" -type f ! -path "$BUNDLE_EXECUTABLE" -print0' in build
     assert build.count('"$BUNDLE_EXECUTABLE"') == 4
     assert build.index('done <"$MACHO_CANDIDATE_LIST"') < build.index(
@@ -116,6 +127,7 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
         'codesign --force --options runtime --sign - "$BUNDLE_EXECUTABLE"'
     )
     assert 'PAYLOAD_ROOT="$BUILD_ROOT/pkg-root"' in build
+    assert "export MACOSX_DEPLOYMENT_TARGET='11.0'" in build
     assert 'PAYLOAD_ARCHIVE="$PAYLOAD_INSTALLER_DIR/PartyOps.app.zip"' in build
     assert '/usr/bin/ditto -c -k --sequesterRsrc --keepParent' in build
     assert '/usr/bin/ditto -x -k "$PAYLOAD_ARCHIVE" "$roundtrip"' in build
@@ -171,11 +183,48 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "公开测试候选升级为稳定版的必要条件" in runbook
 
 
+def test_macos_reconfigure_marker_is_short_lived_and_single_use(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LaunchServices 不透传 URL 时，桌面入口仍只能消费一次有效短期请求。"""
+
+    module_spec = importlib.util.spec_from_file_location(
+        "partyops_macos_launcher_test",
+        MACOS / "launcher.py",
+    )
+    assert module_spec and module_spec.loader
+    monkeypatch.setitem(sys.modules, "fcntl", SimpleNamespace())
+    launcher = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(launcher)
+    config = tmp_path / "Config"
+    config.mkdir()
+    monkeypatch.setattr(launcher, "_config_root", lambda: config)
+    monkeypatch.setattr(launcher.time, "time", lambda: 1_700_000_000)
+    marker = config / "reconfigure-request.json"
+    marker.write_text(
+        '{"format_version":1,"requested_at":1700000000,"expires_at":1700000120}',
+        encoding="utf-8",
+    )
+
+    assert launcher._consume_reconfigure_request() is True
+    assert not marker.exists()
+    assert launcher._consume_reconfigure_request() is False
+
+    marker.write_text(
+        '{"format_version":1,"requested_at":1699999000,"expires_at":1699999120}',
+        encoding="utf-8",
+    )
+    assert launcher._consume_reconfigure_request() is False
+    assert not marker.exists()
+
+
 def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> None:
     build = (MACOS / "build-pkg.sh").read_text(encoding="utf-8")
     runtimes = (MACOS / "build-native-runtimes.sh").read_text(encoding="utf-8")
+    validation = (MACOS / "validate-bundle.sh").read_text(encoding="utf-8")
     workflow = (
-        ROOT / ".github" / "workflows" / "build-macos-1.4.4.yml"
+        ROOT / ".github" / "workflows" / "build-macos-1.4.5-rc.1.yml"
     ).read_text(encoding="utf-8")
 
     assert "--unsigned-candidate" in build
@@ -224,6 +273,10 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert '/usr/bin/open -na "$app" --args --launch-services-self-test' in workflow
     assert "status=desktop-child-exited child_pid=.* exit_code=0" in workflow
     assert "MACOS_LAUNCHSERVICES_SELFTEST_FAILED" in workflow
+    assert "_PYI_PARENT_PROCESS_LEVEL=9" in workflow
+    assert "PYTHONHOME='/tmp/forged-python-home'" in workflow
+    assert "MACOSX_DEPLOYMENT_TARGET: '11.0'" in workflow
+    assert "MACOS_DEPLOYMENT_TARGET_TOO_NEW" in validation
     assert "gh release" not in workflow
     action_lines = [
         line.strip() for line in workflow.splitlines() if line.strip().startswith("uses:")

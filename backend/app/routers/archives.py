@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import typing
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -48,9 +48,10 @@ from ..archive_service import (
     validate_record_mode,
 )
 from ..audit import emit_event, write_audit
+from ..config import get_settings
 from ..database import db_runtime, get_session
 from ..device_versions import request_device
-from ..enums import ArchiveAccessMode, ArchiveAttachmentStatus, ArchiveRecordMode, ArchiveRecordStatus
+from ..enums import ArchiveAccessMode, ArchiveAttachmentStatus, ArchiveRecordMode, ArchiveRecordStatus, UserRole
 from ..models import (
     ArchiveAccessGrant,
     ArchiveAttachment,
@@ -85,6 +86,7 @@ from ..schemas import (
     ArchiveRevisionOut,
 )
 from ..security import get_current_user, require_admin
+from ..storage import normalize_client_upload_id
 
 
 router = APIRouter(tags=["important-archives"])
@@ -179,6 +181,10 @@ def _attachment_out(db: Session, attachment: ArchiveAttachment) -> ArchiveAttach
         mime_type=blob.mime_type,
         created_at=attachment.created_at,
         updated_at=attachment.updated_at,
+        deleted_at=attachment.deleted_at,
+        deleted_by=attachment.deleted_by,
+        delete_reason=attachment.delete_reason,
+        purge_after=attachment.purge_after,
     )
 
 
@@ -210,13 +216,15 @@ def _record_out(
     device_id: str | None = None,
 ) -> ArchiveRecordOut:
     category = category_for_record(db, record)
-    attachments = list(
+    attachment_rows = list(
         db.scalars(
             select(ArchiveAttachment)
             .where(ArchiveAttachment.record_id == record.id)
             .order_by(ArchiveAttachment.version_no)
         ).all()
     )
+    attachments = [item for item in attachment_rows if item.deleted_at is None]
+    deleted_attachments = [item for item in attachment_rows if item.deleted_at is not None]
     links = [
         {
             "id": item.id,
@@ -260,6 +268,9 @@ def _record_out(
             item.status == ArchiveAttachmentStatus.INDEXED for item in attachments
         ),
         attachments=[_attachment_out(db, item) for item in attachments]
+        if include_attachments
+        else [],
+        deleted_attachments=[_attachment_out(db, item) for item in deleted_attachments]
         if include_attachments
         else [],
         duplicate_warnings=_duplicate_warnings(db, record, category),
@@ -841,6 +852,7 @@ async def upload_archive_attachment(
     background: BackgroundTasks,
     file: UploadFile = File(...),
     note: str = Form(""),
+    client_upload_id: str | None = Form(default=None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> ArchiveAttachmentOut:
@@ -851,14 +863,38 @@ async def upload_archive_attachment(
     device_id = _request_device_id(request, db)
     if not can_contribute_category(db, category, user, device_id):
         raise ProblemException(403, "ARCHIVE_UPLOAD_DENIED", "无权上传扫描件", "请联系管理员。")
-    with db_runtime.write_lock:
-        attachment = await save_archive_upload(db, record, file, user, note)
-        record.version += 1
-        record.updated_by = user.id
-        write_audit(db, user, "archive.attachment_upload", "archive_attachment", attachment.id, {"record_id": record.id, "sha256": attachment.blob_sha256, "name": attachment.display_name, "device_id": device_id}, client_ip(request))
-        emit_event(db, "archive.attachment_added", record.id, {"attachment_id": attachment.id})
-        db.commit()
-        db.refresh(attachment)
+    normalized_upload_id = normalize_client_upload_id(client_upload_id)
+    if normalized_upload_id:
+        existing = db.scalar(
+            select(ArchiveAttachment).where(
+                ArchiveAttachment.client_upload_id == normalized_upload_id
+            )
+        )
+        if existing:
+            if existing.record_id != record.id:
+                raise ProblemException(409, "UPLOAD_ID_CONFLICT", "上传请求已被使用", "请重新选择该文件后再试。")
+            return _attachment_out(db, existing)
+    try:
+        with db_runtime.write_lock:
+            attachment = await save_archive_upload(
+                db,
+                record,
+                file,
+                user,
+                note,
+                client_upload_id=normalized_upload_id,
+            )
+            record.version += 1
+            record.updated_by = user.id
+            write_audit(db, user, "archive.attachment_upload", "archive_attachment", attachment.id, {"record_id": record.id, "sha256": attachment.blob_sha256, "name": attachment.display_name, "device_id": device_id}, client_ip(request))
+            emit_event(db, "archive.attachment_added", record.id, {"attachment_id": attachment.id})
+            db.commit()
+            db.refresh(attachment)
+    except BaseException:
+        # 异步读取文件失败时在当前执行线程释放事务锁，避免依赖清理阶段
+        # 把可读的中文业务错误覆盖成 500。
+        db.rollback()
+        raise
     background.add_task(index_archive_attachment, attachment.id)
     return _attachment_out(db, attachment)
 
@@ -869,6 +905,7 @@ def list_archive_attachments(
     request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
+    include_deleted: bool = Query(default=False),
 ) -> list[ArchiveAttachmentOut]:
     record = db.get(ArchiveRecord, record_id)
     if not record:
@@ -877,12 +914,13 @@ def list_archive_attachments(
     category = _category(db, record.category_id, user, device_id=device_id)
     if not can_view_category(db, category, user, device_id):
         raise ProblemException(403, "ARCHIVE_ACCESS_DENIED", "无权查看扫描件", "请联系管理员。")
+    query = select(ArchiveAttachment).where(ArchiveAttachment.record_id == record.id)
+    if not include_deleted:
+        query = query.where(ArchiveAttachment.deleted_at.is_(None))
     return [
         _attachment_out(db, item)
         for item in db.scalars(
-            select(ArchiveAttachment)
-            .where(ArchiveAttachment.record_id == record.id)
-            .order_by(ArchiveAttachment.version_no)
+            query.order_by(ArchiveAttachment.version_no)
         ).all()
     ]
 
@@ -895,6 +933,8 @@ def download_archive_attachment(
     db: Session = Depends(get_session),
 ) -> FileResponse:
     attachment, blob, path = archive_attachment_path(db, attachment_id)
+    if getattr(attachment, "deleted_at", None) is not None:
+        raise ProblemException(410, "ARCHIVE_ATTACHMENT_IN_RECYCLE_BIN", "扫描件已移入回收站", "请先恢复扫描件再下载。")
     if attachment.status == ArchiveAttachmentStatus.VOIDED:
         raise ProblemException(410, "ARCHIVE_ATTACHMENT_VOIDED", "扫描件已作废", "请查看有效版本。")
     record = db.get(ArchiveRecord, attachment.record_id)
@@ -909,6 +949,114 @@ def download_archive_attachment(
     write_audit(db, user, "archive.attachment_download", "archive_attachment", attachment.id, {"record_id": record.id, "sha256": blob.sha256}, client_ip(request))
     db.commit()
     return FileResponse(path, media_type=blob.mime_type, filename=safe_archive_name(attachment.display_name, 255))
+
+
+def _can_recycle_archive_attachment(
+    db: Session,
+    category: ArchiveCategory,
+    attachment: ArchiveAttachment,
+    user: User,
+    device_id: str | None,
+) -> bool:
+    return user.role == UserRole.ADMIN or (
+        attachment.uploaded_by == user.id
+        and can_contribute_category(db, category, user, device_id)
+    )
+
+
+@router.delete("/archives/attachments/{attachment_id}", response_model=ArchiveAttachmentOut)
+def delete_archive_attachment(
+    attachment_id: str,
+    request: Request,
+    reason: str = Query(min_length=2, max_length=2_000),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> ArchiveAttachmentOut:
+    attachment, _blob, _path = archive_attachment_path(db, attachment_id)
+    record = db.get(ArchiveRecord, attachment.record_id)
+    if not record:
+        raise ProblemException(404, "ARCHIVE_RECORD_NOT_FOUND", "档案不存在", "未找到所属档案。")
+    device_id = _request_device_id(request, db)
+    category = _category(db, record.category_id, user, device_id=device_id)
+    if not _can_recycle_archive_attachment(db, category, attachment, user, device_id):
+        raise ProblemException(403, "ARCHIVE_ATTACHMENT_DELETE_DENIED", "无权删除扫描件", "上传人或管理员可以处理该文件。")
+    if record.status != ArchiveRecordStatus.ACTIVE and user.role != UserRole.ADMIN:
+        raise ProblemException(409, "ARCHIVE_RECORD_RESTORE_REQUIRED", "档案当前不能修改", "请先由管理员恢复档案。")
+    if record.version != parse_version(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "档案扫描件已更新", "请刷新后重试。")
+    if attachment.deleted_at is not None:
+        return _attachment_out(db, attachment)
+    attachment.deleted_at = utcnow()
+    attachment.deleted_by = user.id
+    attachment.delete_reason = reason.strip()
+    attachment.purge_after = attachment.deleted_at + timedelta(
+        days=get_settings().deleted_attachment_retention_days
+    )
+    record.version += 1
+    record.updated_by = user.id
+    refresh_search_index(db, record.id)
+    write_audit(
+        db,
+        user,
+        "archive.attachment_delete",
+        "archive_attachment",
+        attachment.id,
+        {
+            "record_id": record.id,
+            "reason": attachment.delete_reason,
+            "purge_after": attachment.purge_after.isoformat(),
+        },
+        client_ip(request),
+    )
+    emit_event(db, "archive.attachment_deleted", record.id, {"attachment_id": attachment.id})
+    db.commit()
+    db.refresh(attachment)
+    return _attachment_out(db, attachment)
+
+
+@router.post("/archives/attachments/{attachment_id}/restore", response_model=ArchiveAttachmentOut)
+def restore_archive_attachment(
+    attachment_id: str,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> ArchiveAttachmentOut:
+    attachment, _blob, _path = archive_attachment_path(db, attachment_id)
+    record = db.get(ArchiveRecord, attachment.record_id)
+    if not record:
+        raise ProblemException(404, "ARCHIVE_RECORD_NOT_FOUND", "档案不存在", "未找到所属档案。")
+    device_id = _request_device_id(request, db)
+    category = _category(db, record.category_id, user, device_id=device_id)
+    if not _can_recycle_archive_attachment(db, category, attachment, user, device_id):
+        raise ProblemException(403, "ARCHIVE_ATTACHMENT_RESTORE_DENIED", "无权恢复扫描件", "上传人或管理员可以恢复该文件。")
+    if record.status != ArchiveRecordStatus.ACTIVE and user.role != UserRole.ADMIN:
+        raise ProblemException(409, "ARCHIVE_RECORD_RESTORE_REQUIRED", "档案当前不能修改", "请先由管理员恢复档案。")
+    if record.version != parse_version(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "档案扫描件已更新", "请刷新后重试。")
+    if attachment.deleted_at is None:
+        return _attachment_out(db, attachment)
+    attachment.deleted_at = None
+    attachment.deleted_by = None
+    attachment.delete_reason = ""
+    attachment.purge_after = None
+    record.version += 1
+    record.updated_by = user.id
+    refresh_search_index(db, record.id)
+    write_audit(
+        db,
+        user,
+        "archive.attachment_restore",
+        "archive_attachment",
+        attachment.id,
+        {"record_id": record.id},
+        client_ip(request),
+    )
+    emit_event(db, "archive.attachment_restored", record.id, {"attachment_id": attachment.id})
+    db.commit()
+    db.refresh(attachment)
+    return _attachment_out(db, attachment)
 
 
 @router.post("/archives/attachments/{attachment_id}/void", response_model=ArchiveAttachmentOut)

@@ -40,6 +40,7 @@ from .recommendations import index_semantic_batch, refresh_rule_recommendations
 from .recurrence import run_due_rules
 from .local_ai import llm_runtime
 from .routers.business import generate_due_recurring_meetings
+from .storage import purge_expired_deleted_attachments
 
 
 def cleanup_transfer_storage(db, settings) -> int:
@@ -131,6 +132,9 @@ def cleanup_runtime_retention(db, settings, *, now: datetime | None = None) -> d
         "inbox_files": 0,
         "exports": 0,
         "upgrade_backups": 0,
+        "deleted_task_versions": 0,
+        "deleted_archive_attachments": 0,
+        "unreferenced_blobs": 0,
     }
 
     result = db.execute(
@@ -259,6 +263,10 @@ def cleanup_runtime_retention(db, settings, *, now: datetime | None = None) -> d
                     path.name,
                     exc_info=True,
                 )
+    deleted_counts = purge_expired_deleted_attachments(db, now=current)
+    counts["deleted_task_versions"] = deleted_counts["task_versions"]
+    counts["deleted_archive_attachments"] = deleted_counts["archive_attachments"]
+    counts["unreferenced_blobs"] = deleted_counts["blobs"]
     return counts
 
 

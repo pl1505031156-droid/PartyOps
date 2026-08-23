@@ -60,6 +60,9 @@ class _LookupDb:
     def get(self, model, identity):
         return self.objects.get((model, identity), self.objects.get(identity))
 
+    def scalar(self, _statement):
+        return None
+
     def add(self, value) -> None:
         self.added.append(value)
 

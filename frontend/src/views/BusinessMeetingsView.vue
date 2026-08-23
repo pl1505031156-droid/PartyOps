@@ -30,26 +30,25 @@ const topicForm = reactive({ title: "", review_result: "", amount: "0", reviewed
 const selected = computed(() => meetings.value.find((item) => item.id === selectedId.value) || null);
 const userNames = computed(() => Object.fromEntries(users.value.map((item) => [item.id, item.display_name])));
 const selectedTemplate = computed(() => templates.value.find((item) => item.id === form.workflow_template_id) || null);
+const otherTemplates = computed(() => templates.value.filter((item) => !["branch_members", "party_member_meeting", "party_group", "party_class", "study_group"].includes(item.business_type)));
 const responsibleRoles = computed(() => Array.from(new Set((selectedTemplate.value?.steps || []).map((step) => step.responsible_role).filter(Boolean))));
 const assignees = reactive<Record<string, string>>({});
 
 const meetingTypes = [
-  ["party_committee", "党委会"], ["branch_members", "支委会"], ["party_member_meeting", "党员大会"],
-  ["party_group", "党小组会"], ["party_class", "党课"], ["study_group", "理论学习中心组学习"],
-  ["theme_party_day", "主题党日"], ["organization_life", "组织生活会"],
+  ["party_committee", "党委会"], ["theme_party_day", "主题党日"], ["organization_life", "组织生活会"],
 ];
 
 async function load() {
   loading.value = true;
   try {
     [meetings.value, templates.value, users.value, stats.value] = await Promise.all([
-      api.get<Meeting[]>("/business-meetings"),
+      api.get<Meeting[]>("/business-meetings?scope=other"),
       api.get<WorkflowTemplate[]>("/workflow-templates"),
       api.get<User[]>("/users"),
       api.get<AnnualStats>(`/business-meetings/statistics/annual?year=${year.value}`),
     ]);
     if (!selectedId.value || !meetings.value.some((item) => item.id === selectedId.value)) selectedId.value = meetings.value[0]?.id || "";
-    form.workflow_template_id ||= templates.value[0]?.id || "";
+    form.workflow_template_id ||= otherTemplates.value[0]?.id || "";
     form.owner_id ||= users.value.find((item) => item.active)?.id || "";
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "会议工作流读取失败");
@@ -105,7 +104,7 @@ onMounted(load);
 <template>
   <div class="page meetings-page">
     <header class="page-header">
-      <div><p class="page-kicker">工作 · 会议制度化执行</p><h1 class="page-title">党建会议与筹备</h1><p class="page-description">把固定会务拆成可交付步骤，按负责人追踪，并以完成事实形成年度统计。</p></div>
+      <div><p class="page-kicker">党务 · 其他会议制度化执行</p><h1 class="page-title">其他党建会议</h1><p class="page-description">党委会、主题党日、组织生活会等其他会议在此筹备；三会一课与中心组学习使用各自专属模块。</p></div>
       <a-space><a-select v-model="year" :style="{ width: '120px' }" @change="load"><a-option v-for="value in [year - 1, year, year + 1]" :key="value" :value="value">{{ value }} 年</a-option></a-select><a-button type="primary" @click="createVisible = true"><template #icon><IconPlus /></template>新建会议</a-button></a-space>
     </header>
 
@@ -120,7 +119,7 @@ onMounted(load);
         <button v-for="item in meetings" :key="item.id" type="button" :class="{ active: selectedId === item.id }" @click="selectedId = item.id">
           <span>{{ item.meeting_type_label }}</span><h2>{{ item.title }}</h2><p><IconCalendar /> {{ formatServerTime(item.scheduled_at, "YYYY-MM-DD HH:mm", "待定") }} · {{ item.organization }}</p><div><i :style="{ width: `${item.progress.percent}%` }" /><small>{{ item.progress.done }}/{{ item.progress.total }}</small></div>
         </button>
-        <div v-if="!meetings.length" class="empty-state">尚无会议。新建后自动生成六步党委会筹备模板。</div>
+        <div v-if="!meetings.length" class="empty-state">尚无其他党建会议。新建后按所选流程生成筹备步骤。</div>
       </aside>
 
       <main v-if="selected" class="meeting-detail">
@@ -131,8 +130,8 @@ onMounted(load);
       <main v-else class="meeting-detail empty-state">选择一场会议查看进度。</main>
     </section>
 
-    <a-modal v-model:visible="createVisible" title="新建党建会议" @ok="createMeeting">
-      <a-form :model="form" layout="vertical"><a-form-item label="会议类型"><a-select v-model="form.meeting_type"><a-option v-for="item in meetingTypes" :key="item[0]" :value="item[0]">{{ item[1] }}</a-option></a-select></a-form-item><a-form-item label="所属组织"><a-input v-model="form.organization" placeholder="例如：中共XX委员会" /></a-form-item><a-form-item label="会议标题"><a-input v-model="form.title" /></a-form-item><a-form-item label="计划时间"><a-date-picker v-model="form.scheduled_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width:100%" /></a-form-item><a-form-item label="流程模板"><a-select v-model="form.workflow_template_id"><a-option v-for="item in templates" :key="item.id" :value="item.id">{{ item.name }}</a-option></a-select></a-form-item><a-form-item label="总负责人"><a-select v-model="form.owner_id"><a-option v-for="item in users.filter((user) => user.active)" :key="item.id" :value="item.id">{{ item.display_name }}</a-option></a-select></a-form-item><a-divider v-if="responsibleRoles.length" orientation="left">按角色指定步骤负责人</a-divider><a-form-item v-for="role in responsibleRoles" :key="role" :label="role"><a-select v-model="assignees[role]" allow-clear placeholder="未指定时使用总负责人"><a-option v-for="item in users.filter((user) => user.active)" :key="item.id" :value="item.id">{{ item.display_name }}</a-option></a-select></a-form-item></a-form>
+    <a-modal v-model:visible="createVisible" title="新建其他党建会议" @ok="createMeeting">
+      <a-form :model="form" layout="vertical"><a-form-item label="会议类型"><a-select v-model="form.meeting_type"><a-option v-for="item in meetingTypes" :key="item[0]" :value="item[0]">{{ item[1] }}</a-option></a-select></a-form-item><a-form-item label="所属组织"><a-input v-model="form.organization" placeholder="例如：中共XX委员会" /></a-form-item><a-form-item label="会议标题"><a-input v-model="form.title" /></a-form-item><a-form-item label="计划时间"><a-date-picker v-model="form.scheduled_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width:100%" /></a-form-item><a-form-item label="流程模板"><a-select v-model="form.workflow_template_id"><a-option v-for="item in otherTemplates" :key="item.id" :value="item.id">{{ item.name }}</a-option></a-select></a-form-item><a-form-item label="总负责人"><a-select v-model="form.owner_id"><a-option v-for="item in users.filter((user) => user.active)" :key="item.id" :value="item.id">{{ item.display_name }}</a-option></a-select></a-form-item><a-divider v-if="responsibleRoles.length" orientation="left">按角色指定步骤负责人</a-divider><a-form-item v-for="role in responsibleRoles" :key="role" :label="role"><a-select v-model="assignees[role]" allow-clear placeholder="未指定时使用总负责人"><a-option v-for="item in users.filter((user) => user.active)" :key="item.id" :value="item.id">{{ item.display_name }}</a-option></a-select></a-form-item></a-form>
     </a-modal>
     <a-modal v-model:visible="topicVisible" title="添加会议议题" @ok="addTopic"><a-form :model="topicForm" layout="vertical"><a-form-item label="议题"><a-input v-model="topicForm.title" /></a-form-item><a-form-item label="审议结果"><a-textarea v-model="topicForm.review_result" /></a-form-item><a-form-item label="涉及金额（元）"><a-input v-model="topicForm.amount" /></a-form-item><a-form-item label="统计口径"><a-space><a-checkbox v-model="topicForm.reviewed">已完成审议</a-checkbox><a-checkbox v-model="topicForm.amount_confirmed">金额已确认</a-checkbox></a-space></a-form-item></a-form></a-modal>
   </div>

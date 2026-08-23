@@ -14,6 +14,7 @@ const apiMocks = vi.hoisted(() => ({
   patch: vi.fn<(path: string, body?: unknown) => Promise<unknown>>(),
   put: vi.fn<(path: string, body?: unknown) => Promise<unknown>>(),
   delete: vi.fn<(path: string, headers?: HeadersInit) => Promise<unknown>>(),
+  uploadFormWithProgress: vi.fn<(path: string, body: FormData, options?: unknown) => Promise<unknown>>(),
 }));
 
 vi.mock("../api", () => ({
@@ -33,9 +34,10 @@ vi.mock("../api", () => ({
   },
   api: apiMocks,
   downloadUrl: (path: string) => `/api/v1${path}`,
+  uploadFormWithProgress: apiMocks.uploadFormWithProgress,
+  saveBlobDownload: vi.fn(),
 }));
 
-import DashboardView from "./DashboardView.vue";
 import ArchivesView from "./ArchivesView.vue";
 import AssistantView from "./AssistantView.vue";
 import BusinessMeetingsView from "./BusinessMeetingsView.vue";
@@ -53,7 +55,11 @@ import MyWorkView from "./MyWorkView.vue";
 import MemoView from "./MemoView.vue";
 import NotificationsView from "./NotificationsView.vue";
 import PartyDevelopmentView from "./PartyDevelopmentView.vue";
+import PartyDevelopmentMaterialsView from "./PartyDevelopmentMaterialsView.vue";
+import PartyDevelopmentCasesView from "./PartyDevelopmentCasesView.vue";
 import PartyDevelopmentSettingsView from "./PartyDevelopmentSettingsView.vue";
+import PartyLifeView from "./PartyLifeView.vue";
+import StudyCenterView from "./StudyCenterView.vue";
 import ReportsView from "./ReportsView.vue";
 import RequiredUpdateView from "./RequiredUpdateView.vue";
 import SettingsView from "./SettingsView.vue";
@@ -61,7 +67,6 @@ import TaskDetailView from "./TaskDetailView.vue";
 import TasksView from "./TasksView.vue";
 import TemplatesView from "./TemplatesView.vue";
 import TodayView from "./TodayView.vue";
-import WorkbenchView from "./WorkbenchView.vue";
 import WorkspaceView from "./WorkspaceView.vue";
 
 const now = "2026-08-11T08:00:00Z";
@@ -145,6 +150,77 @@ const archiveAttachment = { id: "attachment-1", record_id: "record-1", blob_sha2
 const archiveRecord = { id: "record-1", category_id: "category-1", archive_year: 2026, sequence_no: 1, document_no: "党字〔2026〕1号", title: "张三年度考核", summary: "年度考核归档", involved_persons: ["张三"], source_unit: "组织科", document_date: now, person_name: "张三", person_identifier: "001", personnel_type: "公务员", organization: "测试单位", assessment_result: "优秀", tags: ["年度"], custom_fields: { assessment_result: "优秀" }, status: "active", void_reason: "", version: 1, created_by: "user-1", updated_by: "user-1", created_at: now, updated_at: now, attachment_count: 1, indexed_attachment_count: 1, duplicate_warnings: [], attachments: [archiveAttachment], links: [], permissions: { view: true, download: true, contribute: true, manage: true } };
 const archiveGrant = { id: "grant-1", category_id: "category-1", user_id: "user-2", device_id: null, can_view: true, can_download: true, can_contribute: true, active: true, version: 1, created_at: now, updated_at: now };
 const material = { id: "material-1", category: "final", name: "最终报送稿", required: true, not_applicable: false, not_applicable_reason: "", version: 1, versions: [], complete: false };
+const developmentCase = {
+  id: "case-1", party_committee: "测试党委", party_branch: "第一党支部", name: "张三", gender: "男", ethnicity: "汉族", birth_date: null, education: "大学",
+  application_at: "2026-01-31T00:00:00Z", activist_at: null, training_contacts: [], introducers: [], development_object_at: null, probationary_at: null, converted_at: null,
+  stage: "application", status: "active", rule_version: "2026.05", version: 1,
+  milestones: [{ id: "milestone-1", milestone_type: "conversation_deadline", actual_at: null, legal_earliest_at: null, legal_deadline_at: "2026-02-28T00:00:00Z", planned_at: "2026-02-28T00:00:00Z", adjusted_at: null, legal_basis: "第十条：一个月内谈话", planning_basis: "", plan_kind: "legal", reminder_days: [7, 1, 0], version: 1 }],
+};
+const referencePlan = {
+  disclaimer: "系统推算仅用于内部工作参考，不替代组织研究、审查、表决或审批。", provisional: true, requires_confirmation: false,
+  profile_snapshot: { name: "发展党员全流程参考计划", version: 1 },
+  nodes: [{ key: "activist_reference", title: "拟研究确定入党积极分子", reference_date: "2026-07-31", persisted_reference_date: "2026-07-31", adjusted_date: null, effective_date: "2026-07-31", planning_basis: "申请书提交后六个月的单位内部参考，不是法定期限", provisional: false, version: 1 }],
+};
+const studyPlan = {
+  id: "study-plan-1",
+  organization: "测试党委",
+  year: 2026,
+  title: "2026 年党委理论学习中心组学习计划",
+  group_leader_id: "user-1",
+  secretary_id: "user-2",
+  status: "draft",
+  notes: "",
+  version: 2,
+  created_by: "user-1",
+  topics: [{
+    id: "study-topic-1",
+    quarter: 3,
+    title: "专题学习研讨",
+    learning_materials: ["公开学习材料"],
+    research_topic: "基层调研",
+    conversion_goal: "形成改进事项",
+    sort_order: 0,
+    version: 1,
+  }],
+};
+const partyMeeting = {
+  id: "party-meeting-1",
+  meeting_type: "party_member_meeting",
+  meeting_type_label: "支部党员大会",
+  organization: "测试党支部",
+  title: "第三季度党员大会",
+  scheduled_at: now,
+  status: "planned",
+  host_id: "user-1",
+  recorder_id: "user-2",
+  venue: "党员活动室",
+  version: 1,
+  ledger_state: "需补充",
+  missing_items: ["会议记录"],
+  present_count: 1,
+  document_count: 0,
+  action_count: 1,
+  overdue_action_count: 0,
+};
+const partyAttendee = {
+  id: "attendee-1",
+  display_name: "张三",
+  role: "member",
+  attendance_status: "present",
+  voting_eligible: true,
+  note: "",
+  version: 1,
+};
+const partyAction = {
+  id: "action-1",
+  title: "落实会议决议",
+  responsible_user_id: "user-1",
+  due_at: now,
+  task_id: "task-1",
+  status: "pending",
+  note: "",
+  version: 1,
+};
 const recommendation = { id: "recommendation-1", generator: "rule", title: "补齐材料", reason: "缺少报送稿", content: "建议上传报送稿", object_type: "task", object_id: "task-1", object_version: 1, route: "/tasks/task-1", sources: [], score: 0.9, status: "pending", expires_at: now, version: 1, created_at: now, updated_at: now };
 const draft = { id: "draft-1", capability: "summarize", title: "本地智能草稿", content: "请核验后使用", status: "draft", sources: [], version: 1, created_at: now, updated_at: now };
 const today = {
@@ -163,6 +239,18 @@ const today = {
     draft_reports: 1,
     backup_stale: true,
     device_alerts: [{ id: "device-1", name: "协同机", status: "offline", app_version: "1.4.1", reason: "离线", route: "/fleet" }],
+  },
+  party_work: {
+    quarter: 3,
+    party_life_expected: 7,
+    party_life_recorded: 4,
+    party_life_remaining: 3,
+    study_center_expected: 1,
+    study_center_recorded: 1,
+    study_center_remaining: 0,
+    pending_archives: 2,
+    overdue_actions: 1,
+    development_reminders: 3,
   },
 };
 
@@ -216,7 +304,16 @@ function responseFor(path: string): unknown {
   }
   if (path === "/auth/me") return { id: "user-1", username: "admin", display_name: "测试管理员", role: "admin", active: true, version: 1 };
   if (path === "/runtime/context") return { node_mode: "host", platform: "windows", user_role: "admin", device_id: null, device_name: "主机", capabilities: ["admin"] };
-  if (path === "/party-development/rules/current") return { version: "2026.05", published_at: "2026-05-18", title: "中国共产党发展党员工作细则（2026年5月修订）", source_url: "https://www.12371.cn/2026/05/18/ARTI1779102179030620.shtml", principles: [], phase_labels: { application: "申请入党" } };
+  if (path === "/party-development/rules/current") return { version: "2026.05", issued_at: "2026-05-11", published_at: "2026-06-11", title: "中国共产党发展党员工作细则（2026年5月修订）", source_url: "https://djyj.12371.cn/2026/06/11/ARTI1781145352074190.shtml", principles: [], phase_labels: { application: "申请入党" } };
+  if (path === "/party-development/materials") return { rule: { version: "2026.05", title: "发展党员工作细则", source_url: "https://example.test" }, phases: [{ phase: "application", label: "申请入党", items: [{ name: "入党申请书", source: "国家规则", responsible_party: "党支部", guidance: "人工核对", required: true, national: true }] }], disclaimer: "系统不替代组织审核" };
+  if (path === "/party-development/cases") return [developmentCase];
+  if (path === "/party-development/statistics") return { total: 1, stage_counts: { application: 1 }, upcoming_60_days: 1, overdue: 0 };
+  if (path === "/party-development/cases/case-1/reference-plan") return referencePlan;
+  if (path.startsWith("/party-life/overview")) return { year: 2026, current_quarter: 3, total: 0, completed: 0, needs_completion: 0, overdue_actions: 0, quarter_guidance: { party_member_meeting: "党员大会一般每季度召开一次" } };
+  if (path.startsWith("/party-life/meetings")) return [];
+  if (path.startsWith("/study-center/plans")) return [studyPlan];
+  if (path.startsWith("/study-center/sessions")) return [];
+  if (path === "/users") return [];
   if (path === "/admin/party-development/profiles") return [{ id: "profile-1", name: "待管理员确认", description: "测试模板", source_label: "测试表格", active: false, version: 1, created_by: "user-1", created_at: now, updated_at: now, items: [{ id: "material-1", profile_id: "profile-1", phase: "activist", name: "三考材料", responsible_party: "党支部", guidance: "待确认", required: false, enabled: true, sort_order: 1, version: 1, created_by: "user-1", created_at: now, updated_at: now }] }];
   if (path === "/calendar/preferences") return { user_id: "user-1", default_view: "week", week_starts_on: 1, visible_event_types: ["task_due"], compact_weekends: false, version: 1, updated_at: now };
   if (path.startsWith("/calendar/events?")) return [];
@@ -283,12 +380,14 @@ async function runAction(state: Record<string, unknown>, name: string, ...args: 
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // 同时清除一次性成功/失败队列，保证故障注入不会跨用例污染后续页面初始化。
+  vi.resetAllMocks();
   apiMocks.get.mockImplementation(async (path) => responseFor(path));
   apiMocks.post.mockImplementation(async (path) => responseFor(path));
   apiMocks.patch.mockImplementation(async (path) => responseFor(path));
   apiMocks.put.mockImplementation(async (path) => responseFor(path));
   apiMocks.delete.mockResolvedValue({});
+  apiMocks.uploadFormWithProgress.mockResolvedValue({});
 });
 
 describe("核心页面真实挂载", () => {
@@ -313,7 +412,7 @@ describe("核心页面真实挂载", () => {
     const workflow = { id: "workflow-1", name: "党委会六步", business_type: "party_committee", steps: [{ title: "起草议程", responsible_role: "承办人" }] };
     const user = { id: "user-1", username: "admin", display_name: "测试管理员", role: "admin", active: true, version: 1, created_at: now };
     apiMocks.get.mockImplementation(async (path) => {
-      if (path === "/business-meetings") return [meeting];
+      if (path.startsWith("/business-meetings?")) return [meeting];
       if (path === "/workflow-templates") return [workflow];
       if (path === "/users") return [user];
       if (path.startsWith("/business-meetings/statistics/annual")) return { completed_meetings: 0, reviewed_topics: 0, confirmed_amount: "0.00" };
@@ -352,8 +451,6 @@ describe("核心页面真实挂载", () => {
 
   it.each([
     ["今日工作台", TodayView, "/"],
-    ["周工作总览", DashboardView, "/dashboard"],
-    ["工作台", WorkbenchView, "/workbench"],
     ["登录", LoginView, "/login"],
     ["事项清单", TasksView, "/tasks"],
     ["事项详情", TaskDetailView, "/tasks/task-1"],
@@ -362,6 +459,10 @@ describe("核心页面真实挂载", () => {
     ["周期模板", TemplatesView, "/templates"],
     ["日历", CalendarView, "/calendar"],
     ["党员发展计算", PartyDevelopmentView, "/party-development"],
+    ["党员发展档案", PartyDevelopmentCasesView, "/party-development?tab=cases"],
+    ["发展党员材料", PartyDevelopmentMaterialsView, "/party-development?tab=materials"],
+    ["三会一课", PartyLifeView, "/party-life"],
+    ["中心组学习", StudyCenterView, "/study-center"],
     ["党员发展补充材料", PartyDevelopmentSettingsView, "/party-development-settings"],
     ["工作日志", JournalView, "/journal"],
     ["报告", ReportsView, "/reports"],
@@ -387,8 +488,6 @@ describe("核心页面真实挂载", () => {
 
   it.each([
     ["今日工作台", TodayView, "/"],
-    ["周工作总览", DashboardView, "/dashboard"],
-    ["工作台", WorkbenchView, "/workbench"],
     ["事项清单", TasksView, "/tasks"],
     ["事项详情", TaskDetailView, "/tasks/task-1"],
     ["快速收件", InboxView, "/inbox"],
@@ -396,6 +495,10 @@ describe("核心页面真实挂载", () => {
     ["周期模板", TemplatesView, "/templates"],
     ["日历", CalendarView, "/calendar"],
     ["党员发展计算", PartyDevelopmentView, "/party-development"],
+    ["党员发展档案", PartyDevelopmentCasesView, "/party-development?tab=cases"],
+    ["发展党员材料", PartyDevelopmentMaterialsView, "/party-development?tab=materials"],
+    ["三会一课", PartyLifeView, "/party-life"],
+    ["中心组学习", StudyCenterView, "/study-center"],
     ["党员发展补充材料", PartyDevelopmentSettingsView, "/party-development-settings"],
     ["工作日志", JournalView, "/journal?tab=notifications"],
     ["报告", ReportsView, "/reports"],
@@ -532,6 +635,18 @@ describe("核心页面真实挂载", () => {
         backup_stale: false,
         device_alerts: [],
       },
+      party_work: {
+        quarter: 3,
+        party_life_expected: 7,
+        party_life_recorded: 7,
+        party_life_remaining: 0,
+        study_center_expected: 1,
+        study_center_recorded: 1,
+        study_center_remaining: 0,
+        pending_archives: 0,
+        overdue_actions: 0,
+        development_reminders: 0,
+      },
     };
     state.recommendations = [];
     await flushPromises();
@@ -652,11 +767,7 @@ describe("核心页面真实挂载", () => {
     await runAction(journalState, "openCreate");
     await runAction(journalState, "openEdit", journal);
     await runAction(journalState, "saveEntry");
-    await runAction(journalState, "markRead", notification);
-    await runAction(journalState, "readAll");
-    await runAction(journalState, "changeTab", "notifications");
-    await runAction(journalState, "enableDesktopNotice");
-    expect(apiMocks.post).toHaveBeenCalled();
+    expect(apiMocks.patch).toHaveBeenCalled();
     journalWrapper.unmount();
   });
 
@@ -809,6 +920,393 @@ describe("核心页面真实挂载", () => {
       "/tasks/task-1",
       { "If-Match": "1" },
     );
+    wrapper.unmount();
+  });
+
+  it("党员发展档案把实际日期、法定边界和参考计划分栏并显式确认", async () => {
+    apiMocks.post.mockImplementation(async (path) => {
+      if (path.endsWith("/reference-plan/recalculate-preview")) return { ...referencePlan, requires_confirmation: true };
+      if (path.endsWith("/generate-milestones")) return developmentCase;
+      return responseFor(path);
+    });
+    apiMocks.patch.mockResolvedValue({ ...developmentCase, version: 2, activist_at: "2026-09-15T00:00:00Z" });
+    apiMocks.put.mockResolvedValue(referencePlan);
+    const wrapper = await mountView(PartyDevelopmentCasesView, "/party-development?tab=cases", true);
+    const state = setupState(wrapper);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("从申请书日期自动生成的后续计划");
+    expect(wrapper.text()).toContain("法定边界与事实记录");
+    await runAction(state, "openActualDates");
+    Object.assign(state.actualForm as object, {
+      application_date: "2026-02-28",
+      activist_date: "2026-09-15",
+    });
+    await runAction(state, "saveActualDates");
+    expect(apiMocks.patch).toHaveBeenCalledWith(
+      "/party-development/cases/case-1",
+      expect.objectContaining({ application_date: "2026-02-28", activist_date: "2026-09-15" }),
+      { "If-Match": "1" },
+    );
+    expect(apiMocks.post).toHaveBeenCalledWith("/party-development/cases/case-1/generate-milestones");
+    expect(state.planVisible).toBe(true);
+
+    (state.planAdjustments as Record<string, string>).conversation_target = "2026-03-20";
+    await runAction(state, "confirmReferencePlan");
+    expect(apiMocks.put).toHaveBeenCalledWith(
+      "/party-development/cases/case-1/reference-plan",
+      expect.objectContaining({ adjustments: expect.any(Object) }),
+      { "If-Match": "1" },
+    );
+    wrapper.unmount();
+  });
+
+  it("党员发展档案覆盖空值守卫、日期状态和失败恢复分支", async () => {
+    const wrapper = await mountView(PartyDevelopmentCasesView, "/party-development?tab=cases", true);
+    const state = setupState(wrapper);
+    await flushPromises();
+
+    const targetDate = state.targetDate as (item: Record<string, unknown>) => string | null;
+    const milestoneState = state.milestoneState as (item: Record<string, unknown>) => string;
+    const milestone = {
+      actual_at: null,
+      adjusted_at: null,
+      legal_deadline_at: null,
+      legal_earliest_at: null,
+      planned_at: null,
+    };
+    expect(targetDate({ ...milestone, adjusted_at: "2026-01-01" })).toBe("2026-01-01");
+    expect(targetDate({ ...milestone, legal_deadline_at: "2026-01-02" })).toBe("2026-01-02");
+    expect(targetDate({ ...milestone, legal_earliest_at: "2026-01-03" })).toBe("2026-01-03");
+    expect(targetDate({ ...milestone, planned_at: "2026-01-04" })).toBe("2026-01-04");
+    expect(targetDate({ ...milestone, actual_at: "2026-01-05" })).toBe("2026-01-05");
+    expect(targetDate(milestone)).toBeNull();
+    expect(milestoneState({ ...milestone, actual_at: "2026-01-05" })).toBe("completed");
+    expect(milestoneState({ ...milestone, planned_at: "2000-01-01" })).toBe("overdue");
+    expect(milestoneState({ ...milestone, planned_at: new Date(Date.now() + 86400000).toISOString() })).toBe("upcoming");
+    expect(milestoneState({ ...milestone, planned_at: "2200-01-01" })).toBe("planned");
+    expect(milestoneState(milestone)).toBe("planned");
+
+    const originalSelectedId = String(state.selectedId);
+    state.selectedId = "";
+    await flushPromises();
+    await runAction(state, "loadReferencePlan");
+    await runAction(state, "openActualDates");
+    await runAction(state, "saveActualDates");
+    await runAction(state, "previewReferencePlan");
+    await runAction(state, "confirmReferencePlan");
+    expect(state.referencePlan).toBeNull();
+    state.selectedId = originalSelectedId;
+    await flushPromises();
+
+    Object.assign(state.form as object, {
+      party_committee: "测试党委",
+      party_branch: "测试党支部",
+      name: "张三",
+      application_date: "2026-02-28",
+      birth_date: "1990-01-01",
+      activist_date: "2026-08-28",
+      development_object_date: "2027-08-28",
+      probationary_date: "2027-10-28",
+      converted_date: "2028-10-28",
+      training_contacts_text: "甲、乙、甲",
+      introducers_text: "丙，丁",
+    });
+    const cleanPayload = state.cleanPayload as () => Record<string, unknown>;
+    expect(cleanPayload()).toEqual(expect.objectContaining({
+      birth_date: "1990-01-01",
+      activist_date: "2026-08-28",
+      development_object_date: "2027-08-28",
+      probationary_date: "2027-10-28",
+      converted_date: "2028-10-28",
+      training_contacts: ["甲", "乙"],
+      introducers: ["丙", "丁"],
+    }));
+    apiMocks.post.mockImplementation(async (path) => path === "/party-development/cases" ? developmentCase : {});
+    await runAction(state, "createCase");
+    expect(apiMocks.post).toHaveBeenCalledWith(
+      "/party-development/cases",
+      expect.objectContaining({ name: "张三", birth_date: "1990-01-01" }),
+    );
+    apiMocks.get.mockImplementation(async (path) => path.startsWith("/party-development/cases/export.") ? new Blob(["ledger"]) : responseFor(path));
+    await runAction(state, "exportCases", "docx");
+    await runAction(state, "exportCases", "xlsx");
+
+    const failTwice = async (mock: ReturnType<typeof vi.fn>, action: string, ...args: unknown[]) => {
+      mock.mockRejectedValueOnce(new Error(`${action} 失败`));
+      await runAction(state, action, ...args);
+      mock.mockRejectedValueOnce("非标准错误");
+      await runAction(state, action, ...args);
+    };
+    await failTwice(apiMocks.post, "createCase");
+    await failTwice(apiMocks.get, "loadReferencePlan");
+    Object.assign(state.actualForm as object, { application_date: "2026-02-28" });
+    await failTwice(apiMocks.patch, "saveActualDates");
+    await failTwice(apiMocks.post, "previewReferencePlan");
+    await runAction(state, "loadReferencePlan");
+    await failTwice(apiMocks.put, "confirmReferencePlan");
+    await failTwice(apiMocks.get, "exportCases", "docx");
+    await failTwice(apiMocks.get, "load");
+    wrapper.unmount();
+  });
+
+  it("三会一课覆盖会议、出席、决议、完成和双格式导出闭环", async () => {
+    apiMocks.get.mockImplementation(async (path) => {
+      if (path.startsWith("/party-life/overview")) return {
+        year: 2026,
+        current_quarter: 3,
+        total: 1,
+        completed: 0,
+        needs_completion: 1,
+        overdue_actions: 0,
+        quarter_guidance: {
+          party_member_meeting: "党员大会一般每季度召开一次",
+          branch_members: "支委会一般每月召开一次",
+        },
+      };
+      if (path.startsWith("/party-life/meetings")) return [partyMeeting];
+      if (path === "/business-meetings/party-meeting-1/attendees") return [partyAttendee];
+      if (path === "/business-meetings/party-meeting-1/actions") return [partyAction];
+      if (path.startsWith("/party-life/ledger/export.")) return new Blob(["ledger"]);
+      if (path === "/users") return [
+        { id: "user-1", username: "admin", display_name: "测试管理员", role: "admin", active: true, version: 1 },
+        { id: "user-2", username: "staff", display_name: "学习秘书", role: "staff", active: true, version: 1 },
+      ];
+      return responseFor(path);
+    });
+    apiMocks.post.mockImplementation(async (path) => path === "/party-life/meetings" ? partyMeeting : {});
+    apiMocks.patch.mockResolvedValue({ ...partyMeeting, status: "completed", version: 2 });
+    const wrapper = await mountView(PartyLifeView, "/party-life", true);
+    const state = setupState(wrapper);
+    expect(wrapper.text()).toContain("第三季度党员大会");
+    expect(wrapper.text()).toContain("落实会议决议");
+
+    await runAction(state, "openCreate");
+    Object.assign(state.form as object, { organization: "", title: "" });
+    const postsBeforeInvalidMeeting = apiMocks.post.mock.calls.length;
+    await runAction(state, "createMeeting");
+    expect(apiMocks.post.mock.calls).toHaveLength(postsBeforeInvalidMeeting);
+    Object.assign(state.form as object, {
+      organization: "测试党支部",
+      title: "第三季度党员大会",
+      scheduled_at: "2026-08-22 09:00:00",
+      host_id: "user-1",
+      recorder_id: "user-2",
+    });
+    await runAction(state, "createMeeting");
+    expect(apiMocks.post).toHaveBeenCalledWith(
+      "/party-life/meetings",
+      expect.objectContaining({ organization: "测试党支部", host_id: "user-1" }),
+    );
+
+    Object.assign(state.attendeeForm as object, { display_name: "" });
+    await runAction(state, "addAttendee");
+    Object.assign(state.attendeeForm as object, { display_name: "李四", attendance_status: "present" });
+    await runAction(state, "addAttendee");
+    expect(apiMocks.post).toHaveBeenCalledWith(
+      "/business-meetings/party-meeting-1/attendees",
+      expect.objectContaining({ display_name: "李四" }),
+    );
+
+    Object.assign(state.actionForm as object, { title: "" });
+    await runAction(state, "addAction");
+    Object.assign(state.actionForm as object, {
+      title: "跟踪会议决议",
+      responsible_user_id: "user-1",
+      due_at: "2026-08-30 18:00:00",
+    });
+    await runAction(state, "addAction");
+    expect(apiMocks.post).toHaveBeenCalledWith(
+      "/business-meetings/party-meeting-1/actions",
+      expect.objectContaining({ title: "跟踪会议决议", responsible_user_id: "user-1" }),
+    );
+
+    await runAction(state, "completeMeeting");
+    expect(apiMocks.patch).toHaveBeenCalledWith(
+      "/business-meetings/party-meeting-1",
+      { status: "completed" },
+      { "If-Match": "1" },
+    );
+    await runAction(state, "exportLedger", "docx");
+    await runAction(state, "exportLedger", "xlsx");
+    expect(apiMocks.get).toHaveBeenCalledWith(expect.stringContaining("/party-life/ledger/export.xlsx"));
+
+    state.selectedId = "";
+    await runAction(state, "loadMeetingDetails");
+    expect(state.attendees).toEqual([]);
+    expect(state.actions).toEqual([]);
+    wrapper.unmount();
+  });
+
+  it("三会一课覆盖全部写入与读取失败的中文恢复路径", async () => {
+    const wrapper = await mountView(PartyLifeView, "/party-life", true);
+    const state = setupState(wrapper);
+    await flushPromises();
+    state.meetings = [partyMeeting];
+    state.selectedId = partyMeeting.id;
+    await flushPromises();
+    Object.assign(state.form as object, {
+      organization: "测试党支部",
+      title: "党员大会",
+      scheduled_at: "",
+      host_id: "",
+      recorder_id: "",
+    });
+    Object.assign(state.attendeeForm as object, { display_name: "李四" });
+    Object.assign(state.actionForm as object, { title: "落实会议决议", responsible_user_id: "", due_at: "" });
+
+    const failTwice = async (mock: ReturnType<typeof vi.fn>, action: string, ...args: unknown[]) => {
+      mock.mockRejectedValueOnce(new Error(`${action} 失败`));
+      await runAction(state, action, ...args);
+      mock.mockRejectedValueOnce("非标准错误");
+      await runAction(state, action, ...args);
+    };
+    await failTwice(apiMocks.get, "load");
+    await failTwice(apiMocks.get, "loadMeetingDetails");
+    await failTwice(apiMocks.post, "createMeeting");
+    await failTwice(apiMocks.post, "addAttendee");
+    await failTwice(apiMocks.post, "addAction");
+    await failTwice(apiMocks.patch, "completeMeeting");
+    await failTwice(apiMocks.get, "exportLedger", "docx");
+    wrapper.unmount();
+  });
+
+  it("中心组年度计划和专题支持版本化编辑与受控删除", async () => {
+    apiMocks.get.mockImplementation(async (path) => {
+      if (path.startsWith("/study-center/plans")) return [studyPlan];
+      if (path.startsWith("/study-center/sessions")) return [];
+      if (path === "/users") return [
+        { id: "user-1", username: "admin", display_name: "测试管理员", role: "admin", active: true, version: 1 },
+        { id: "user-2", username: "staff", display_name: "学习秘书", role: "staff", active: true, version: 1 },
+      ];
+      return responseFor(path);
+    });
+    apiMocks.patch.mockResolvedValue(studyPlan);
+    const wrapper = await mountView(StudyCenterView, "/study-center", true);
+    const state = setupState(wrapper);
+    await flushPromises();
+    expect(wrapper.text()).toContain("编辑计划");
+    expect(wrapper.text()).toContain("专题学习研讨");
+
+    await runAction(state, "openEditPlan");
+    Object.assign(state.editPlanForm as object, { notes: "补充年度安排", status: "active" });
+    await runAction(state, "updatePlan");
+    expect(apiMocks.patch).toHaveBeenCalledWith(
+      "/study-center/plans/study-plan-1",
+      expect.objectContaining({ notes: "补充年度安排", status: "active" }),
+      { "If-Match": "2" },
+    );
+
+    await runAction(state, "openEditTopic", studyPlan.topics[0]);
+    Object.assign(state.editTopicForm as object, { conversion_goal: "形成可跟踪事项" });
+    await runAction(state, "updateTopic");
+    expect(apiMocks.patch).toHaveBeenCalledWith(
+      "/study-center/plans/study-plan-1/topics/study-topic-1",
+      expect.objectContaining({ conversion_goal: "形成可跟踪事项" }),
+      { "If-Match": "1" },
+    );
+
+    await runAction(state, "deleteTopic", studyPlan.topics[0]);
+    expect(apiMocks.delete).toHaveBeenCalledWith(
+      "/study-center/plans/study-plan-1/topics/study-topic-1",
+      { "If-Match": "1" },
+    );
+
+    await runAction(state, "openPlan");
+    Object.assign(state.planForm as object, { organization: "", title: "" });
+    const postsBeforeInvalidPlan = apiMocks.post.mock.calls.length;
+    await runAction(state, "createPlan");
+    expect(apiMocks.post.mock.calls).toHaveLength(postsBeforeInvalidPlan);
+    Object.assign(state.planForm as object, {
+      organization: "测试党委",
+      year: 2026,
+      title: "2026 年理论学习中心组计划",
+      group_leader_id: "user-1",
+      secretary_id: "user-2",
+    });
+    apiMocks.post.mockImplementation(async (path) => path === "/study-center/plans" ? studyPlan : {});
+    await runAction(state, "createPlan");
+    expect(apiMocks.post).toHaveBeenCalledWith(
+      "/study-center/plans",
+      expect.objectContaining({ organization: "测试党委", secretary_id: "user-2" }),
+    );
+
+    Object.assign(state.topicForm as object, { title: "", learning_materials_text: "" });
+    await runAction(state, "createTopic");
+    Object.assign(state.topicForm as object, {
+      quarter: 4,
+      title: "第四季度专题研讨",
+      learning_materials_text: "材料一\n材料二、材料三",
+      research_topic: "基层调研",
+      conversion_goal: "形成事项",
+    });
+    await runAction(state, "createTopic");
+    expect(apiMocks.post).toHaveBeenCalledWith(
+      "/study-center/plans/study-plan-1/topics",
+      expect.objectContaining({ learning_materials: ["材料一", "材料二", "材料三"] }),
+    );
+
+    await runAction(state, "openSession");
+    Object.assign(state.sessionForm as object, { title: "集体学习研讨", scheduled_at: "2026-08-22 10:00:00" });
+    await runAction(state, "createSession");
+    expect(apiMocks.post).toHaveBeenCalledWith(
+      "/study-center/sessions",
+      expect.objectContaining({ meeting_type: "study_group", study_plan_id: "study-plan-1" }),
+    );
+    apiMocks.get.mockImplementation(async (path) => path.startsWith("/study-center/ledger/export.") ? new Blob(["ledger"]) : responseFor(path));
+    await runAction(state, "exportLedger", "docx");
+    await runAction(state, "exportLedger", "xlsx");
+    wrapper.unmount();
+  });
+
+  it("中心组学习覆盖空状态、可选字段和全部失败恢复分支", async () => {
+    const wrapper = await mountView(StudyCenterView, "/study-center", true);
+    const state = setupState(wrapper);
+    await flushPromises();
+
+    const originalPlanId = String(state.selectedPlanId);
+    state.selectedPlanId = "";
+    await runAction(state, "openEditPlan");
+    await runAction(state, "updatePlan");
+    await runAction(state, "createTopic");
+    await runAction(state, "deleteTopic", studyPlan.topics[0]);
+    await runAction(state, "openSession");
+    await runAction(state, "createSession");
+    state.selectedPlanId = originalPlanId;
+    await flushPromises();
+
+    Object.assign(state.planForm as object, {
+      organization: "测试党委",
+      year: 2026,
+      title: "2026 年中心组计划",
+      group_leader_id: "",
+      secretary_id: "",
+    });
+    Object.assign(state.editPlanForm as object, {
+      organization: "测试党委",
+      title: "2026 年中心组计划",
+      group_leader_id: "",
+      secretary_id: "",
+    });
+    Object.assign(state.topicForm as object, { title: "专题学习", learning_materials_text: "材料一\n \n材料二" });
+    await runAction(state, "openEditTopic", studyPlan.topics[0]);
+    Object.assign(state.editTopicForm as object, { title: "专题学习", learning_materials_text: "材料一、 、材料二" });
+    Object.assign(state.sessionForm as object, { title: "集体学习研讨", scheduled_at: "", host_id: "", recorder_id: "" });
+
+    const failTwice = async (mock: ReturnType<typeof vi.fn>, action: string, ...args: unknown[]) => {
+      mock.mockRejectedValueOnce(new Error(`${action} 失败`));
+      await runAction(state, action, ...args);
+      mock.mockRejectedValueOnce("非标准错误");
+      await runAction(state, action, ...args);
+    };
+    await failTwice(apiMocks.post, "createPlan");
+    await failTwice(apiMocks.patch, "updatePlan");
+    await failTwice(apiMocks.post, "createTopic");
+    await failTwice(apiMocks.patch, "updateTopic");
+    await failTwice(apiMocks.delete, "deleteTopic", studyPlan.topics[0]);
+    await failTwice(apiMocks.post, "createSession");
+    await failTwice(apiMocks.get, "exportLedger", "xlsx");
+    await failTwice(apiMocks.get, "load");
     wrapper.unmount();
   });
 
@@ -1627,6 +2125,22 @@ describe("核心页面真实挂载", () => {
     const state = setupState(wrapper);
 
     await runAction(state, "load");
+    const roleConfirmSpy = vi.spyOn(Modal, "confirm").mockReturnValue({ close: vi.fn() } as never);
+    await runAction(state, "openRoleConfigurationWizard");
+    expect(roleConfirmSpy).toHaveBeenCalledWith(expect.objectContaining({
+      title: "重新配置这台电脑的运行角色",
+      okText: "打开配置向导",
+      cancelText: "暂不切换",
+    }));
+    const openRoleOptions = roleConfirmSpy.mock.calls.at(-1)?.[0] as { onOk?: () => Promise<void> };
+    const deepLinkClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    apiMocks.post.mockResolvedValueOnce({ deep_link: "partyops-client://reconfigure" });
+    await openRoleOptions.onOk?.();
+    expect(apiMocks.post).toHaveBeenCalledWith("/system/reconfigure-request");
+    expect(deepLinkClick).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('a[href="partyops-client://reconfigure"]')).toBeNull();
+    deepLinkClick.mockRestore();
+    roleConfirmSpy.mockRestore();
     await runAction(state, "saveAppearance");
     await runAction(state, "saveAdminAppearance");
     await runAction(state, "uploadModelPack", new File(["model"], "bge.partyops-modelpack"));
@@ -1904,7 +2418,7 @@ describe("核心页面真实挂载", () => {
     wrapper.unmount();
   });
 
-  it("工作日志覆盖组合筛选、系统事件摘要和通知权限边界", async () => {
+  it("工作日志覆盖组合筛选、系统事件摘要和异常恢复", async () => {
     const wrapper = await mountView(JournalView, "/journal");
     const state = setupState(wrapper);
     const systemEntry = {
@@ -1945,21 +2459,6 @@ describe("核心页面真实挂载", () => {
     await runAction(state, "saveEntry");
     apiMocks.get.mockRejectedValueOnce("日志加载失败");
     await runAction(state, "load");
-    await runAction(state, "markRead", { ...notification, read_at: now, entity_type: "system", entity_id: null });
-
-    const originalNotification = window.Notification;
-    Object.defineProperty(window, "Notification", {
-      configurable: true,
-      value: { requestPermission: vi.fn(async () => "denied") },
-    });
-    await runAction(state, "enableDesktopNotice");
-    Object.defineProperty(window, "Notification", {
-      configurable: true,
-      value: { requestPermission: vi.fn(async () => "granted") },
-    });
-    await runAction(state, "enableDesktopNotice");
-    Object.defineProperty(window, "Notification", { configurable: true, value: originalNotification });
-    await runAction(state, "changeTab", "journal");
     wrapper.unmount();
   });
 
@@ -2202,7 +2701,11 @@ describe("核心页面真实挂载", () => {
     form.title = "附件事项";
     form.ownerId = "user-1";
     await runAction(state, "create");
-    expect(apiMocks.post).toHaveBeenCalledWith(expect.stringContaining("/versions"), expect.any(FormData));
+    expect(apiMocks.uploadFormWithProgress).toHaveBeenCalledWith(
+      expect.stringContaining("/materials/quick-upload"),
+      expect.any(FormData),
+      expect.objectContaining({ onProgress: expect.any(Function) }),
+    );
 
     form.title = "";
     await runAction(state, "create");
@@ -2253,37 +2756,6 @@ describe("核心页面真实挂载", () => {
     await runAction(state, "startUpdate");
     apiMocks.post.mockRejectedValueOnce(new Error("更新启动异常"));
     await runAction(state, "startUpdate");
-    wrapper.unmount();
-  });
-
-  it("周工作总览覆盖空桶、字段回退和加载异常", async () => {
-    const wrapper = await mountView(DashboardView, "/dashboard");
-    const state = setupState(wrapper);
-    state.selected = "missing";
-    apiMocks.get.mockResolvedValueOnce({
-      buckets: [],
-      this_week_completed: [],
-      next_week_planned: [],
-      carry_over: [],
-      unread_notifications: 0,
-    });
-    await runAction(state, "load");
-    expect(state.selected).toBe("");
-    const noDateTask = { ...task, internal_due_at: null, formal_due_at: null };
-    expect(await (state.dueLabel as (value: unknown) => unknown)(noDateTask)).toBe("未设时限");
-    state.dashboard = {
-      buckets: [{ ...bucket, items: [{ ...noDateTask, source: "", work_area: "", category: "" }] }],
-      this_week_completed: [{ ...noDateTask, work_area: "", category: "" }],
-      next_week_planned: [{ ...noDateTask, planned_start_at: null }],
-      carry_over: [],
-      unread_notifications: 0,
-    };
-    state.buckets = (state.dashboard as { buckets: unknown[] }).buckets;
-    state.selected = "today";
-    await flushPromises();
-    expect(wrapper.text()).toContain("未填写任务来源");
-    apiMocks.get.mockRejectedValueOnce("首页加载失败");
-    await runAction(state, "load");
     wrapper.unmount();
   });
 

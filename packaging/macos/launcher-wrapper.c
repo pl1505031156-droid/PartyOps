@@ -95,10 +95,86 @@ static void append_probe(const char *format, ...) {
     (void)fclose(handle);
 }
 
+static void sanitize_child_environment(void) {
+    /* Finder、旧 PyInstaller 父进程或终端启动均不得把冻结运行时状态传给新进程。 */
+    static const char *variables[] = {
+        "_PYI_ARCHIVE_FILE",
+        "_PYI_APPLICATION_HOME_DIR",
+        "_PYI_PARENT_PROCESS_LEVEL",
+        "_PYI_SPLASH_IPC",
+        "_MEIPASS2",
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONEXECUTABLE",
+        "DYLD_LIBRARY_PATH",
+        "DYLD_FRAMEWORK_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "LD_LIBRARY_PATH",
+        NULL,
+    };
+    for (size_t index = 0; variables[index] != NULL; ++index) {
+        (void)unsetenv(variables[index]);
+    }
+    /*
+     * PyInstaller 官方约定：从另一个程序重新启动冻结入口时显式要求
+     * bootloader 建立全新的运行时层级。用户日志中的 255 发生在 Python
+     * 代码和 launcher.log 之前，正是 bootloader 继承态必须被排除的阶段。
+     */
+    (void)setenv("PYINSTALLER_RESET_ENVIRONMENT", "1", 1);
+    (void)setenv("PYTHONUTF8", "1", 1);
+    (void)setenv("LANG", "zh_CN.UTF-8", 1);
+    (void)setenv("LC_CTYPE", "UTF-8", 1);
+    (void)setenv("PATH", "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin", 1);
+}
+
+static void append_stderr_tail(void) {
+    char path[PATH_MAX];
+    if (!partyops_log_path("launch-stderr.log", path, sizeof(path))) {
+        return;
+    }
+    FILE *handle = fopen(path, "rb");
+    if (handle == NULL) {
+        append_probe("status=desktop-stderr-missing errno=%d", errno);
+        return;
+    }
+    if (fseek(handle, 0L, SEEK_END) != 0) {
+        (void)fclose(handle);
+        return;
+    }
+    const long size = ftell(handle);
+    if (size < 0L) {
+        (void)fclose(handle);
+        return;
+    }
+    const long start = size > 4096L ? size - 4096L : 0L;
+    if (fseek(handle, start, SEEK_SET) != 0) {
+        (void)fclose(handle);
+        return;
+    }
+    char buffer[4097];
+    const size_t count = fread(buffer, 1U, sizeof(buffer) - 1U, handle);
+    (void)fclose(handle);
+    for (size_t index = 0; index < count; ++index) {
+        const unsigned char value = (unsigned char)buffer[index];
+        if (value == '\n' || value == '\r' || value == '\t') {
+            buffer[index] = ' ';
+        } else if (value < 0x20U || value == 0x7fU) {
+            buffer[index] = '?';
+        }
+    }
+    buffer[count] = '\0';
+    append_probe(
+        "status=desktop-stderr-tail source_bytes=%ld captured_bytes=%zu text=%s",
+        size,
+        count,
+        buffer
+    );
+}
+
 static void show_fatal_alert(void) {
     const char *script =
         "display alert \"党建智办启动失败\" message "
-        "\"macOS 原生入口无法启动桌面组件。请把 ~/Library/Logs/PartyOps/launch-probe.log 发给技术支持。\" "
+        "\"macOS 原生入口无法启动桌面组件。请把 ~/Library/Logs/PartyOps/launch-probe.log 和 launch-stderr.log 发给技术支持。\" "
         "as critical buttons {\"知道了\"} default button \"知道了\"";
     execl("/usr/bin/osascript", "osascript", "-e", script, (char *)NULL);
 }
@@ -142,12 +218,18 @@ int main(int argc, char *argv[]) {
     if (uname(&system_info) == 0) {
         architecture = system_info.machine;
     }
+    char working_directory[PATH_MAX] = "unknown";
+    if (getcwd(working_directory, sizeof(working_directory)) == NULL) {
+        (void)snprintf(working_directory, sizeof(working_directory), "unavailable:%d", errno);
+    }
     append_probe(
-        "status=launchservices-entered architecture=%s target=partyops-desktop-bin "
-        "target_size=%lld argc=%d",
+        "status=launchservices-entered architecture=%s os_release=%s "
+        "target=partyops-desktop-bin target_size=%lld argc=%d cwd=%s",
         architecture,
+        uname(&system_info) == 0 ? system_info.release : "unknown",
         (long long)target_metadata.st_size,
-        argc
+        argc,
+        working_directory
     );
 
     char **child_argv = calloc((size_t)argc + 1U, sizeof(char *));
@@ -182,6 +264,21 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
+        if (chdir(directory) != 0) {
+            (void)dprintf(
+                STDERR_FILENO,
+                "[MACOS_DESKTOP_CHDIR_FAILED] errno=%d directory=%s\n",
+                errno,
+                directory
+            );
+            _exit(126);
+        }
+        sanitize_child_environment();
+        (void)dprintf(
+            STDERR_FILENO,
+            "[MACOS_DESKTOP_EXEC] target=partyops-desktop-bin cwd=%s\n",
+            directory
+        );
         execv(target, child_argv);
         (void)dprintf(STDERR_FILENO, "[MACOS_DESKTOP_EXEC_FAILED] errno=%d\n", errno);
         _exit(126);
@@ -203,6 +300,7 @@ int main(int argc, char *argv[]) {
         const int exit_code = WEXITSTATUS(child_status);
         append_probe("status=desktop-child-exited child_pid=%ld exit_code=%d", (long)child, exit_code);
         if (exit_code != 0) {
+            append_stderr_tail();
             show_fatal_alert();
         }
         return exit_code;
@@ -210,6 +308,7 @@ int main(int argc, char *argv[]) {
     if (WIFSIGNALED(child_status)) {
         const int signal_number = WTERMSIG(child_status);
         append_probe("status=desktop-child-signaled child_pid=%ld signal=%d", (long)child, signal_number);
+        append_stderr_tail();
         show_fatal_alert();
         return 128 + signal_number;
     }

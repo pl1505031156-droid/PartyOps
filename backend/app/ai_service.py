@@ -19,6 +19,7 @@ from .enums import AiCapability, FileIndexStatus, Sensitivity
 from .models import (
     AIPolicy,
     AIProviderConfig,
+    BusinessMeeting,
     Task,
     User,
     WorkspaceFile,
@@ -228,7 +229,14 @@ def _citation_excerpt(value: str, limit: int = 240) -> str:
     return normalized[:limit] + ("…" if len(normalized) > limit else "")
 
 
-def _task_source(db: Session, task: Task, user: User, policy: AIPolicy) -> tuple[dict[str, str], str]:
+def _task_source(
+    db: Session,
+    task: Task,
+    user: User,
+    policy: AIPolicy,
+    *,
+    allow_sensitive_party_work: bool = False,
+) -> tuple[dict[str, str], str]:
     if not can_view_task(db, task, user):
         raise ProblemException(404, "TASK_NOT_FOUND", "事项不存在", "未找到可访问事项。")
     if task.sensitivity == Sensitivity.RESTRICTED:
@@ -247,6 +255,27 @@ def _task_source(db: Session, task: Task, user: User, policy: AIPolicy) -> tuple
             "AI_TASK_SCOPE_DENIED",
             "事项不在 AI 授权范围",
             "请由管理员调整允许的工作类别。",
+        )
+    meeting = db.scalar(
+        select(BusinessMeeting).where(BusinessMeeting.task_id == task.id)
+    )
+    sensitive_party_work = bool(
+        meeting
+        and meeting.meeting_type
+        in {
+            "party_member_meeting",
+            "branch_members",
+            "party_group",
+            "party_class",
+            "study_group",
+        }
+    ) or task.category in {"发展党员", "党员发展", "党务落实"}
+    if sensitive_party_work and not allow_sensitive_party_work:
+        raise ProblemException(
+            403,
+            "AI_PARTY_WORK_DENIED",
+            "敏感党务资料默认不进入 AI",
+            "仅管理员可在核对最小片段后逐次明确授权。",
         )
     text_value = "\n".join(
         part
@@ -314,6 +343,8 @@ def collect_sources(
     instruction: str,
     task_ids: list[str],
     file_ids: list[str],
+    *,
+    allow_sensitive_party_work: bool = False,
 ) -> tuple[list[dict[str, str]], list[str]]:
     sources: list[dict[str, str]] = []
     excerpts: list[str] = []
@@ -321,7 +352,13 @@ def collect_sources(
         task = db.get(Task, task_id)
         if not task:
             raise ProblemException(404, "TASK_NOT_FOUND", "事项不存在", "未找到所选事项。")
-        source, excerpt = _task_source(db, task, user, policy)
+        source, excerpt = _task_source(
+            db,
+            task,
+            user,
+            policy,
+            allow_sensitive_party_work=allow_sensitive_party_work,
+        )
         sources.append(source)
         excerpts.append(excerpt)
     for file_id in list(dict.fromkeys(file_ids)):
@@ -337,7 +374,13 @@ def collect_sources(
             if lowered and lowered not in (task.title + task.description + task.category).lower():
                 continue
             try:
-                source, excerpt = _task_source(db, task, user, policy)
+                source, excerpt = _task_source(
+                    db,
+                    task,
+                    user,
+                    policy,
+                    allow_sensitive_party_work=allow_sensitive_party_work,
+                )
             except ProblemException:
                 continue
             sources.append(source)

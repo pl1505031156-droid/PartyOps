@@ -34,7 +34,7 @@ from .models import (
     User,
 )
 from .problems import ProblemException
-from .storage import resolve_blob_path
+from .storage import normalize_client_upload_id, resolve_blob_path
 from .config import get_settings
 
 
@@ -411,7 +411,24 @@ async def save_archive_upload(
     upload: UploadFile,
     actor: User,
     note: str = "",
+    client_upload_id: str | None = None,
 ) -> ArchiveAttachment:
+    normalized_upload_id = normalize_client_upload_id(client_upload_id)
+    if normalized_upload_id:
+        existing = db.scalar(
+            select(ArchiveAttachment).where(
+                ArchiveAttachment.client_upload_id == normalized_upload_id
+            )
+        )
+        if existing:
+            if existing.record_id == record.id:
+                return existing
+            raise ProblemException(
+                409,
+                "UPLOAD_ID_CONFLICT",
+                "上传请求已被使用",
+                "请重新选择该文件后再试。",
+            )
     original_name = safe_archive_name(Path(upload.filename or "未命名文件").name, 255)
     suffix = Path(original_name).suffix.lower()
     if suffix in BLOCKED_SUFFIXES or suffix not in ALLOWED_SUFFIXES:
@@ -442,6 +459,8 @@ async def save_archive_upload(
                 digest.update(chunk)
                 handle.write(chunk)
         sha256 = digest.hexdigest()
+        if size == 0:
+            raise ProblemException(422, "EMPTY_FILE", "文件内容为空", "请选择包含实际内容的文件。")
         relative_path = f"{sha256[:2]}/{sha256}"
         final_path = resolve_blob_path(relative_path)
         final_path.parent.mkdir(parents=True, exist_ok=True)
@@ -476,6 +495,7 @@ async def save_archive_upload(
             display_name=original_name,
             note=note[:2_000],
             uploaded_by=actor.id,
+            client_upload_id=normalized_upload_id,
         )
         db.add(attachment)
         db.flush()
@@ -490,6 +510,8 @@ def index_archive_attachment(attachment_id: str) -> None:
 
     with db_runtime.session_factory() as db:
         attachment, blob, path = archive_attachment_path(db, attachment_id)
+        if attachment.deleted_at is not None:
+            return
         if not path.exists():
             attachment.status = ArchiveAttachmentStatus.OCR_ERROR
             attachment.ocr_text = ""

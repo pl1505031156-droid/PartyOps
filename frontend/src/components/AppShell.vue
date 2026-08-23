@@ -124,6 +124,7 @@ const iconMap = {
 const domainIconMap = {
   today: IconHome,
   work: IconApps,
+  party: IconBook,
   materials: IconFolder,
   collaboration: IconUserGroup,
   management: IconSettings,
@@ -133,6 +134,9 @@ const quickCommands = [
   { id: "new-task", title: "快速新建事项", subtitle: "打开 30 秒建档抽屉", route: "", type: "command" },
   { id: "new-memo", title: "快速新建备忘", subtitle: "仅保存在当前电脑，不进入协同", route: "/memos", type: "command" },
   { id: "calendar", title: "打开工作日历", subtitle: "查看本周安排和年度节点", route: "/calendar", type: "command" },
+  { id: "party-life", title: "打开三会一课", subtitle: "年度台账、会议闭环与决议落实", route: "/party-life", type: "command" },
+  { id: "study-center", title: "打开中心组学习", subtitle: "年度计划、集体研讨与成果转化", route: "/study-center", type: "command" },
+  { id: "party-development", title: "打开发展党员", subtitle: "快速测算、人员台账与参考计划", route: "/party-development", type: "command" },
   { id: "inbox", title: "解析通知或文件", subtitle: "进入快速收件箱", route: "/inbox", type: "command" },
   { id: "workspace", title: "搜索原始文件", subtitle: "进入综合文件中心", route: "/workspace", type: "command" },
   { id: "archives", title: "查询重要档案", subtitle: "人事调动、年度考核和扫描件", route: "/archives", type: "command" },

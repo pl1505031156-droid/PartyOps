@@ -21,6 +21,8 @@ from .problems import ProblemException
 
 password_hasher = PasswordHasher()
 SESSION_COOKIE = "partyops_session"
+CSRF_COOKIE = "partyops_csrf"
+CSRF_HEADER = "X-PartyOps-CSRF"
 
 
 def hash_password(password: str) -> str:
@@ -38,17 +40,47 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def issue_session(db: Session, user: User) -> tuple[str, LoginSession]:
+def issue_session(db: Session, user: User) -> tuple[str, str, LoginSession]:
     settings = get_settings()
     token = secrets.token_urlsafe(32)
+    csrf_token = secrets.token_urlsafe(32)
     login_session = LoginSession(
         token_hash=hash_token(token),
+        csrf_token_hash=hash_token(csrf_token),
         user_id=user.id,
         expires_at=utcnow() + timedelta(hours=settings.session_hours),
     )
     db.add(login_session)
     db.flush()
-    return token, login_session
+    return token, csrf_token, login_session
+
+
+def validate_session_csrf(request: Request, record: LoginSession) -> None:
+    """生产环境的 Cookie 写请求必须同时证明持有会话级 CSRF 令牌。"""
+
+    if request.method.upper() in {"GET", "HEAD", "OPTIONS"}:
+        return
+    if request.headers.get("authorization", "").lower().startswith("bearer "):
+        return
+    expected_hash = (record.csrf_token_hash or "").strip()
+    if not expected_hash:
+        # 0021 前创建的会话继续由严格同源中间件保护；重新登录后自动升级
+        # 为双重提交令牌，避免版本升级时把正在使用的账号直接踢出。
+        return
+    supplied_header = request.headers.get(CSRF_HEADER, "").strip()
+    supplied_cookie = request.cookies.get(CSRF_COOKIE, "").strip()
+    if (
+        not supplied_header
+        or not supplied_cookie
+        or not secrets.compare_digest(supplied_header, supplied_cookie)
+        or not secrets.compare_digest(hash_token(supplied_header), expected_hash)
+    ):
+        raise ProblemException(
+            403,
+            "SESSION_CSRF_INVALID",
+            "安全校验未通过",
+            "页面会话已更新，请刷新页面后重试；如仍失败，请重新登录。",
+        )
 
 
 def _ensure_aware(value: datetime) -> datetime:
@@ -72,6 +104,8 @@ def get_current_user(
         raise ProblemException(401, "SESSION_INVALID", "登录已失效", "请重新登录。")
     if _ensure_aware(record.expires_at) <= utcnow():
         raise ProblemException(401, "SESSION_EXPIRED", "登录已过期", "请重新登录。")
+    if get_settings().environment == "production":
+        validate_session_csrf(request, record)
     user = db.get(User, record.user_id)
     if not user or not user.active:
         raise ProblemException(403, "USER_DISABLED", "账号不可用", "请联系管理员。")

@@ -1,19 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { IconCheck, IconClockCircle, IconEdit, IconPlus, IconRefresh } from "@arco-design/web-vue/es/icon";
+import { IconClockCircle, IconEdit, IconPlus, IconRefresh } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { api } from "../api";
 import PageHelp from "../components/PageHelp.vue";
 import { formatServerTime, localInputToUtc, localNowInput, serverTime } from "../utils/datetime";
 import { localizeEmbeddedCodes } from "../utils/labels";
-import type { NotificationItem, Task, WorkJournal } from "../types";
+import type { Task, WorkJournal } from "../types";
 
-const route = useRoute();
-const router = useRouter();
-const activeTab = ref(route.query.tab === "notifications" ? "notifications" : "journal");
 const entries = ref<WorkJournal[]>([]);
-const notifications = ref<NotificationItem[]>([]);
 const tasks = ref<Task[]>([]);
 const keyword = ref("");
 const actorFilter = ref("");
@@ -45,7 +40,6 @@ const filteredEntries = computed(() => {
     return true;
   });
 });
-const unreadCount = computed(() => notifications.value.filter((item) => !item.read_at).length);
 const actors = computed(() => {
   const values = new Map<string, string>();
   entries.value.forEach((entry) => values.set(entry.created_by, entry.actor_name || "系统"));
@@ -66,13 +60,11 @@ function eventSummary(entry: WorkJournal) {
 async function load() {
   loading.value = true;
   try {
-    const [journal, notice, taskList] = await Promise.all([
+    const [journal, taskList] = await Promise.all([
       api.get<WorkJournal[]>("/work-journal?limit=500"),
-      api.get<NotificationItem[]>("/notifications?limit=200"),
       api.get<{ items: Task[] }>("/tasks?page_size=100"),
     ]);
     entries.value = journal;
-    notifications.value = notice;
     tasks.value = taskList.items;
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "工作日志加载失败");
@@ -132,35 +124,6 @@ async function saveEntry() {
   }
 }
 
-async function markRead(item: NotificationItem) {
-  if (!item.read_at) await api.post(`/notifications/${item.id}/read`);
-  if (item.entity_type === "task" && item.entity_id) {
-    await router.push(`/tasks/${item.entity_id}`);
-  } else {
-    await load();
-  }
-}
-
-async function readAll() {
-  await api.post("/notifications/read-all");
-  Message.success("提醒已全部标记为已读");
-  await load();
-}
-
-async function enableDesktopNotice() {
-  if (!("Notification" in window)) {
-    Message.warning("当前浏览器不支持桌面通知");
-    return;
-  }
-  const result = await Notification.requestPermission();
-  Message.success(result === "granted" ? "已允许浏览器显示统信桌面通知" : "未授予桌面通知权限");
-}
-
-function changeTab(value: string | number) {
-  activeTab.value = String(value);
-  router.replace({ query: activeTab.value === "notifications" ? { tab: "notifications" } : {} });
-}
-
 onMounted(load);
 </script>
 
@@ -169,8 +132,8 @@ onMounted(load);
     <header class="page-header">
       <div>
         <p class="page-kicker">工作办理全程留痕</p>
-        <h1 class="page-title">工作日志与提醒</h1>
-        <p class="page-description">人工记录与系统事件放在同一时间线；任务、文件、报告之间可以互相追溯。</p>
+        <h1 class="page-title">工作日志</h1>
+        <p class="page-description">人工记录与系统事件放在同一时间线；通知与待办提醒统一进入“通知中心”，避免重复查看。</p>
       </div>
       <a-space>
         <PageHelp
@@ -183,8 +146,7 @@ onMounted(load);
       </a-space>
     </header>
 
-    <a-tabs :active-key="activeTab" @change="changeTab">
-      <a-tab-pane key="journal" title="工作时间线">
+    <section class="journal-content" aria-label="工作时间线">
         <div class="journal-toolbar">
           <a-input-search v-model="keyword" allow-clear placeholder="搜索日志标题和内容" />
           <a-select v-model="actorFilter" allow-clear placeholder="全部人员">
@@ -236,33 +198,7 @@ onMounted(load);
           </div>
           <div v-else class="empty-state">尚无工作日志。新建任务、变更状态或上传材料后，系统会自动记录。</div>
         </a-spin>
-      </a-tab-pane>
-
-      <a-tab-pane key="notifications">
-        <template #title>工作提醒 <a-badge :count="unreadCount" /></template>
-        <div class="notice-toolbar">
-          <p>到期、逾期、待审核、等待反馈和材料缺项提醒会持久保留。</p>
-          <a-space>
-            <a-button @click="enableDesktopNotice">允许桌面通知</a-button>
-            <a-button :disabled="!unreadCount" @click="readAll">全部已读</a-button>
-          </a-space>
-        </div>
-        <div class="notice-list">
-          <button
-            v-for="item in notifications"
-            :key="item.id"
-            type="button"
-            :class="{ unread: !item.read_at }"
-            @click="markRead(item)"
-          >
-            <span class="notice-mark"><IconCheck v-if="item.read_at" /><IconClockCircle v-else /></span>
-            <div><strong>{{ item.title }}</strong><p>{{ item.body }}</p></div>
-            <time>{{ formatServerTime(item.created_at, "MM-DD HH:mm") }}</time>
-          </button>
-          <div v-if="!notifications.length" class="empty-state">暂无工作提醒。</div>
-        </div>
-      </a-tab-pane>
-    </a-tabs>
+    </section>
 
     <a-modal v-model:visible="visible" :title="editing ? '修订工作日志' : '记录工作日志'" @ok="saveEntry">
       <a-form :model="form" layout="vertical">

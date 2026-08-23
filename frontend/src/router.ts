@@ -37,12 +37,14 @@ const router = createRouter({
     { path: "/calendar", component: () => import("./views/CalendarView.vue") },
     {
       path: "/party-development",
-      component: () => import("./views/PartyDevelopmentView.vue"),
+      component: () => import("./views/PartyDevelopmentHubView.vue"),
     },
     {
       path: "/party-development-cases",
-      component: () => import("./views/PartyDevelopmentCasesView.vue"),
+      redirect: { path: "/party-development", query: { tab: "cases" } },
     },
+    { path: "/party-life", component: () => import("./views/PartyLifeView.vue") },
+    { path: "/study-center", component: () => import("./views/StudyCenterView.vue") },
     {
       path: "/business-meetings",
       component: () => import("./views/BusinessMeetingsView.vue"),
@@ -174,6 +176,9 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
+  if (to.path === "/journal" && to.query.tab === "notifications") {
+    return "/notifications";
+  }
   if (to.meta.updateGate) return true;
   try {
     const gate = await api.get<DeviceUpdateGate>("/device/update-gate");

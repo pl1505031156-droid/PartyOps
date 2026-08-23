@@ -235,7 +235,7 @@ def test_update_package_validation_and_queue(client: TestClient, admin: dict, mo
         "format_version": 2,
         "version": update_version,
         "min_version": "1.1.1",
-        "schema_revision": "0020",
+        "schema_revision": "0022",
         "architecture_artifacts": {
             "amd64": f"partyops_{update_version}_amd64.deb",
             "arm64": f"partyops_{update_version}_arm64.deb",

@@ -5,11 +5,12 @@ import {
   navigationDomains,
 } from "./navigation";
 
-describe("五域导航", () => {
-  it("只暴露五个稳定工作域且不再出现效率工具中心", () => {
+describe("六域导航", () => {
+  it("暴露独立党务域且不再出现效率工具中心", () => {
     expect(navigationDomains.map((item) => item.key)).toEqual([
       "today",
       "work",
+      "party",
       "materials",
       "collaboration",
       "management",
@@ -22,7 +23,9 @@ describe("五域导航", () => {
   it("详情页和管理工具能归入正确工作域", () => {
     expect(domainForPath("/tasks/task-1").key).toBe("work");
     expect(domainForPath("/calendar").key).toBe("work");
-    expect(domainForPath("/party-development").key).toBe("work");
+    expect(domainForPath("/party-development").key).toBe("party");
+    expect(domainForPath("/party-life").key).toBe("party");
+    expect(domainForPath("/study-center").key).toBe("party");
     expect(domainForPath("/memos").key).toBe("today");
     expect(domainForPath("/archives").key).toBe("materials");
     expect(domainForPath("/fleet").key).toBe("collaboration");
@@ -40,7 +43,9 @@ describe("五域导航", () => {
       "运行诊断",
       "帮助与上手",
       "备忘录",
-      "党员发展计算",
+      "三会一课",
+      "中心组学习",
+      "发展党员",
       "党员发展补充材料",
     ]));
     expect(labels).not.toContain("工作首页");

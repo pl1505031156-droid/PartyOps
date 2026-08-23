@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 
 
-VERSION = "1.4.4"
+VERSION = "1.4.5-rc.1"
 
 
 def _config_root() -> Path:
@@ -117,6 +117,33 @@ def _read_mode() -> dict[str, object] | None:
     return payload
 
 
+def _consume_reconfigure_request() -> bool:
+    """消费设置页写入的 120 秒短期意图，兼容 LaunchServices 不透传 URL 参数。"""
+
+    path = _config_root() / "reconfigure-request.json"
+    if not path.is_file() or path.is_symlink():
+        return False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        now = int(time.time())
+        requested_at = int(payload.get("requested_at", 0))
+        expires_at = int(payload.get("expires_at", 0))
+        valid = (
+            payload.get("format_version") == 1
+            and now - 30 <= requested_at <= now + 30
+            and requested_at < expires_at <= requested_at + 120
+            and now <= expires_at
+        )
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        valid = False
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        # 标记很快过期；删除失败不能阻止用户完成当前这次重新配置。
+        pass
+    return valid
+
+
 def _read_environment(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -213,10 +240,10 @@ def _wait_for_runtime(values: dict[str, str], expected_mode: str) -> str:
     )
 
 
-def _launch(*, background: bool = False) -> None:
+def _launch(*, background: bool = False, force_reconfigure: bool = False) -> None:
     runtime = _runtime_root()
     mode_payload = _read_mode()
-    if mode_payload is None:
+    if force_reconfigure or mode_payload is None:
         # 启动事务已由 launcher.lock 串行化；先删除上次崩溃留下的
         # marker，禁止未就绪的新向导复用过期回环 URL。
         (_config_root() / "wizard.url").unlink(missing_ok=True)
@@ -277,7 +304,21 @@ def main() -> int:
             return 0
         try:
             _append_log(f"启动 PartyOps {VERSION}")
-            _launch(background="--background" in sys.argv[1:])
+            background = "--background" in sys.argv[1:]
+            deep_link_reconfigure = any(
+                value.rstrip("/") == "partyops-client://reconfigure"
+                for value in sys.argv[1:]
+            )
+            force_reconfigure = (
+                not background
+                and (deep_link_reconfigure or _consume_reconfigure_request())
+            )
+            if force_reconfigure:
+                _append_log("已确认本机重新配置请求，打开完整运行角色向导")
+            _launch(
+                background=background,
+                force_reconfigure=force_reconfigure,
+            )
         except Exception as exc:  # noqa: BLE001 - GUI 顶层必须转为中文可见诊断。
             _append_log(f"{type(exc).__name__}: {exc}")
             public = (

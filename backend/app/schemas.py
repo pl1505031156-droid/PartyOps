@@ -241,6 +241,10 @@ class MaterialVersionOut(BaseModel):
     mime_type: str
     uploaded_by: str
     created_at: datetime
+    deleted_at: datetime | None = None
+    deleted_by: str | None = None
+    delete_reason: str = ""
+    purge_after: datetime | None = None
 
 
 class MaterialOut(ORMModel):
@@ -252,6 +256,7 @@ class MaterialOut(ORMModel):
     not_applicable_reason: str
     version: int
     versions: list[MaterialVersionOut] = Field(default_factory=list)
+    deleted_versions: list[MaterialVersionOut] = Field(default_factory=list)
     complete: bool = False
 
 
@@ -371,6 +376,10 @@ class MaterialPatch(BaseModel):
 
 class AttachmentRollbackRequest(BaseModel):
     reason: str = Field(min_length=2, max_length=1_000)
+
+
+class AttachmentDeleteRequest(BaseModel):
+    reason: str = Field(min_length=2, max_length=2_000)
 
 
 class DashboardBucket(BaseModel):
@@ -1040,6 +1049,10 @@ class ArchiveAttachmentOut(ORMModel):
     mime_type: str = "application/octet-stream"
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None = None
+    deleted_by: str | None = None
+    delete_reason: str = ""
+    purge_after: datetime | None = None
 
 
 class ArchiveRecordOut(ORMModel):
@@ -1070,6 +1083,7 @@ class ArchiveRecordOut(ORMModel):
     attachment_count: int = 0
     indexed_attachment_count: int = 0
     attachments: list[ArchiveAttachmentOut] = Field(default_factory=list)
+    deleted_attachments: list[ArchiveAttachmentOut] = Field(default_factory=list)
     duplicate_warnings: list[str] = Field(default_factory=list)
     links: list[dict[str, str]] = Field(default_factory=list)
     permissions: dict[str, bool] = Field(default_factory=dict)
@@ -1213,6 +1227,7 @@ class AIQueryRequest(BaseModel):
     task_ids: list[str] = Field(default_factory=list, max_length=50)
     file_ids: list[str] = Field(default_factory=list, max_length=50)
     confirm_external: bool = False
+    confirm_sensitive: bool = False
 
 
 class AIDraftOut(ORMModel):
@@ -1297,6 +1312,74 @@ class LocalAIRuntimeOut(BaseModel):
     worker_scope: str = "host"
     max_threads: int = 4
     memory_limit_mb: int = 3584
+
+
+class HardwareProfileOut(BaseModel):
+    platform: str
+    platform_version: str
+    architecture: str
+    cpu_name: str
+    cpu_cores: int
+    cpu_flags: list[str] = Field(default_factory=list)
+    total_memory_mb: int
+    available_memory_mb: int
+    reserved_memory_mb: int
+    model_disk_free_mb: int
+    gpu_backends: list[str] = Field(default_factory=list)
+    gpu_memory_mb: int | None = None
+    gpu_names: list[str] = Field(default_factory=list)
+    runtime_backends: list[str] = Field(default_factory=list)
+    partyops_rss_mb: int
+    detected_at: datetime
+    privacy_notice: str
+
+
+class HardwareBenchmarkOut(BaseModel):
+    available: bool
+    score: int
+    duration_ms: int
+    message: str
+
+
+class ModelRecommendationOut(BaseModel):
+    id: str
+    name: str
+    kind: str = Field(pattern=r"^(embedding|llm|intent_router)$")
+    tier: str
+    summary: str
+    official_url: str
+    source_url: str
+    license: str
+    min_memory_mb: int
+    recommended_memory_mb: int
+    disk_mb: int
+    context_tokens: int
+    recommended_threads: int
+    delivery: str = Field(pattern=r"^(partyops_pack|official)$")
+    hosted_url: str = ""
+    platforms: list[str] = Field(default_factory=list)
+    architectures: list[str] = Field(default_factory=list)
+    status: str = Field(pattern=r"^(流畅|可用|不建议)$")
+    reason: str
+    effective_threads: int
+    effective_context_tokens: int
+
+
+class IntentPreviewRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class IntentPreviewOut(BaseModel):
+    engine: str = Field(pattern=r"^(rules|needle)$")
+    intent: str
+    operation: str = Field(pattern=r"^(none|read|write)$")
+    confidence: float = Field(ge=0, le=1)
+    requires_confirmation: bool
+    can_execute: bool
+    clarification: str | None = None
+    flags: list[str] = Field(default_factory=list)
+    preview: dict[str, Any]
+    notice: str
 
 
 class AIRecommendationOut(ORMModel):
@@ -1881,6 +1964,7 @@ class PartyDevelopmentCasePatch(BaseModel):
     ethnicity: str | None = Field(default=None, max_length=40)
     birth_date: dt_date | None = None
     education: str | None = Field(default=None, max_length=80)
+    application_date: dt_date | None = None
     activist_date: dt_date | None = None
     training_contacts: list[str] | None = Field(default=None, max_length=10)
     introducers: list[str] | None = Field(default=None, max_length=10)
@@ -1895,6 +1979,12 @@ class PartyDevelopmentMilestonePatch(BaseModel):
     actual_date: dt_date | None = None
     adjusted_date: dt_date | None = None
     reminder_days: list[int] | None = Field(default=None, max_length=20)
+
+
+class PartyDevelopmentReferencePlanPatch(BaseModel):
+    """用户确认后的参考日期调整；实际日期使用档案字段单独维护。"""
+
+    adjustments: dict[str, dt_date | None] = Field(default_factory=dict, max_length=40)
 
 
 class PartyDevelopmentMaterialInput(BaseModel):

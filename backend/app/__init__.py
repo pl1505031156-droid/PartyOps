@@ -7,4 +7,4 @@ from .compat import install_legacy_hashlib_compat, install_legacy_typing_aliases
 install_legacy_hashlib_compat()
 install_legacy_typing_aliases()
 
-__version__ = "1.4.4"
+__version__ = "1.4.5-rc.1"

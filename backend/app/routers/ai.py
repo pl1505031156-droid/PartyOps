@@ -25,6 +25,9 @@ from ..database import get_session
 from ..config import get_settings
 from ..enums import RecommendationStatus
 from ..local_ai import complete_locally, embedding_runtime, local_runtime_status, llm_runtime
+from ..hardware_profile import collect_hardware_profile, run_light_benchmark
+from ..intent_preview import preview_intent
+from ..model_catalog import recommend_models
 from ..model_packs import (
     activate_model_pack,
     deactivate_model_capability,
@@ -54,6 +57,11 @@ from ..schemas import (
     AIProviderPatch,
     AIQueryRequest,
     LocalAIRuntimeOut,
+    HardwareBenchmarkOut,
+    HardwareProfileOut,
+    ModelRecommendationOut,
+    IntentPreviewRequest,
+    IntentPreviewOut,
 )
 from ..recommendations import list_recommendations
 from ..security import get_current_user, require_admin
@@ -62,6 +70,38 @@ from ..security import get_current_user, require_admin
 router = APIRouter(tags=["ai"])
 
 MAX_MODEL_UPLOAD_BYTES = 4 * 1024**3
+
+
+@router.get("/ai/hardware-profile", response_model=HardwareProfileOut)
+def get_ai_hardware_profile(
+    _admin: User = Depends(require_admin),
+) -> HardwareProfileOut:
+    return HardwareProfileOut.model_validate(collect_hardware_profile())
+
+
+@router.post("/ai/hardware-profile/benchmark", response_model=HardwareBenchmarkOut)
+def benchmark_ai_hardware(
+    _admin: User = Depends(require_admin),
+) -> HardwareBenchmarkOut:
+    return HardwareBenchmarkOut.model_validate(run_light_benchmark())
+
+
+@router.get("/ai/model-recommendations", response_model=typing.List[ModelRecommendationOut])
+def get_model_recommendations(
+    _admin: User = Depends(require_admin),
+) -> list[ModelRecommendationOut]:
+    profile = collect_hardware_profile()
+    return [ModelRecommendationOut.model_validate(item) for item in recommend_models(profile)]
+
+
+@router.post("/ai/intent/preview", response_model=IntentPreviewOut)
+def get_intent_preview(
+    payload: IntentPreviewRequest,
+    _user: User = Depends(get_current_user),
+) -> IntentPreviewOut:
+    """只返回结构化预览，不执行任何模型提出的工具调用。"""
+
+    return IntentPreviewOut.model_validate(preview_intent(payload.text))
 
 
 def client_ip(request: Request) -> str:
@@ -142,7 +182,7 @@ async def upload_model_pack(
 def activate_local_model_pack(
     pack_id: str,
     request: Request,
-    capability: str = Query(pattern=r"^(embedding|llm)$"),
+    capability: str = Query(pattern=r"^(embedding|llm|intent_router)$"),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> AIModelPackOut:
@@ -153,7 +193,7 @@ def activate_local_model_pack(
         raise ProblemException(409, "MODEL_PACK_ARCH_MISMATCH", "模型包架构不匹配", f"本机需要 {normalized_architecture()} 模型包。")
     if capability == "llm":
         llm_runtime.stop()
-    else:
+    elif capability == "embedding":
         embedding_runtime.unload()
     pack = activate_model_pack(db, pack, capability, admin.id)
     write_audit(db, admin, "ai.model_pack_activate", "ai_model_pack", pack.id, {"model_id": pack.model_id, "capability": capability}, client_ip(request))
@@ -175,11 +215,11 @@ def deactivate_local_model_capability(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict:
-    if capability not in {"embedding", "llm"}:
-        raise ProblemException(422, "MODEL_CAPABILITY_INVALID", "模型能力无效", "请选择 embedding 或 llm。")
+    if capability not in {"embedding", "llm", "intent_router"}:
+        raise ProblemException(422, "MODEL_CAPABILITY_INVALID", "模型能力无效", "请选择 embedding、llm 或 intent_router。")
     if capability == "llm":
         llm_runtime.stop()
-    else:
+    elif capability == "embedding":
         embedding_runtime.unload()
     pack = deactivate_model_capability(db, capability)
     write_audit(
@@ -457,6 +497,9 @@ def query_ai(
         payload.instruction,
         payload.task_ids,
         payload.file_ids,
+        allow_sensitive_party_work=(
+            user.role.value == "admin" and payload.confirm_sensitive
+        ),
     )
     if not sources:
         raise ProblemException(422, "AI_SOURCE_EMPTY", "没有可用资料", "请先选择已授权事项或已索引文件。")

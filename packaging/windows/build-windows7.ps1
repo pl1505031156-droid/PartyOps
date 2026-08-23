@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$releaseVersion = "1.4.4"
+$releaseVersion = "1.4.5-rc.1"
 $wheelhousePath = (Resolve-Path -LiteralPath $Wheelhouse).Path
 $evidencePath = (Resolve-Path -LiteralPath $EvidenceRoot).Path
 $pythonPath = (Resolve-Path -LiteralPath $Python).Path
@@ -45,6 +45,32 @@ if ($LASTEXITCODE -ne 0) {
   --find-links $wheelhousePath `
   -r (Join-Path $PSScriptRoot "requirements-build.txt")
 if ($LASTEXITCODE -ne 0) { throw "Win7 冻结工具链安装失败。" }
+
+# FastAPI 路由装饰器会在导入时立即求值，主线 Python 3.11 测试无法发现
+# `list[dict]` 等 Python 3.9+ 写法。冻结前必须用真实 3.8 运行时导入完整应用。
+$backendRoot = Join-Path $repoRoot "backend"
+$legacyImport = & $pythonPath -c "import pathlib,sys; sys.path.insert(0, str(pathlib.Path(sys.argv[1]))); import app.main; print(app.main.app.version)" $backendRoot
+if ($LASTEXITCODE -ne 0 -or $legacyImport -notcontains $releaseVersion) {
+  throw "Win7 $Architecture Python 3.8 完整应用导入门禁失败，拒绝继续冻结安装包。"
+}
+
+# 仅导入应用不会执行 Alembic 历史迁移。使用隔离数据目录真实初始化一次，
+# 防止 Python 3.8 不支持的迁移注解在用户首次启动时才暴露。
+$legacySchemaRoot = Join-Path $repoRoot ".py38-schema-smoke\$Architecture-$PID"
+New-Item -ItemType Directory -Path $legacySchemaRoot -Force | Out-Null
+$savedDataDir = $env:PARTYOPS_DATA_DIR
+try {
+  $env:PARTYOPS_DATA_DIR = $legacySchemaRoot
+  $legacySchema = & $pythonPath -c "import pathlib,sqlite3,sys; sys.path.insert(0, str(pathlib.Path(sys.argv[1]))); from app.database import DatabaseRuntime; DatabaseRuntime().create_schema(); db=sqlite3.connect(str(pathlib.Path(sys.argv[2])/'partyops.db')); print(db.execute('select version_num from alembic_version').fetchone()[0])" $backendRoot $legacySchemaRoot
+  if ($LASTEXITCODE -ne 0 -or $legacySchema -notcontains "0022") {
+    throw "Win7 $Architecture Python 3.8 数据库迁移链初始化门禁失败，拒绝继续冻结安装包。"
+  }
+} finally {
+  $env:PARTYOPS_DATA_DIR = $savedDataDir
+  if (Test-Path -LiteralPath $legacySchemaRoot) {
+    Remove-Item -LiteralPath $legacySchemaRoot -Recurse -Force
+  }
+}
 
 # PyInstaller bootloader 也必须来自已验证 wheelhouse，禁止临时下载主线构建工具。
 & $pythonPath -m PyInstaller --version | Out-Null

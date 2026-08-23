@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import typing
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -47,7 +48,15 @@ from ..schemas import (
     serialize_api_datetime,
 )
 from ..security import get_current_user
-from ..storage import resolve_blob_path, rollback_attachment_version, save_attachment
+from ..storage import (
+    delete_attachment_version,
+    normalize_client_upload_id,
+    resolve_blob_path,
+    restore_attachment_version,
+    rollback_attachment_version,
+    safe_original_name,
+    save_attachment,
+)
 from ..work_journal import record_system_entry
 from ..task_service import (
     apply_task_action,
@@ -756,18 +765,24 @@ async def upload_material_version(
     material = db.get(MaterialItem, material_id)
     if not material or material.task_id != task.id:
         raise ProblemException(404, "MATERIAL_NOT_FOUND", "材料项不存在", "未找到材料项。")
-    await save_attachment(
-        db,
-        task,
-        material,
-        file,
-        stage,
-        is_final,
-        user,
-        note,
-        client_ip(request),
-        parse_if_match(if_match) if if_match is not None else None,
-    )
+    try:
+        await save_attachment(
+            db,
+            task,
+            material,
+            file,
+            stage,
+            is_final,
+            user,
+            note,
+            client_ip(request),
+            parse_if_match(if_match) if if_match is not None else None,
+        )
+    except BaseException:
+        # UploadFile 由异步端点读取；失败时必须在当前线程回滚，避免
+        # FastAPI 在线程池关闭同步依赖时跨线程释放 SQLite 写锁。
+        db.rollback()
+        raise
     return task_to_out(db, task)
 
 
@@ -803,6 +818,162 @@ def rollback_material_version(
     return task_to_out(db, task)
 
 
+@router.post(
+    "/tasks/{task_id}/materials/quick-upload",
+    response_model=TaskOut,
+    status_code=201,
+)
+async def quick_upload_material(
+    task_id: str,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    file: UploadFile = File(...),
+    category: str = Form("其他材料"),
+    required: bool = Form(False),
+    stage: MaterialStage = Form(MaterialStage.DRAFT),
+    is_final: bool = Form(False),
+    note: str = Form(""),
+    client_upload_id: str = Form(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> TaskOut:
+    task = get_task_or_404(db, task_id, user)
+    normalized_upload_id = normalize_client_upload_id(client_upload_id)
+    assert normalized_upload_id is not None
+    existing = db.execute(
+        select(AttachmentVersion, MaterialItem)
+        .join(MaterialItem, MaterialItem.id == AttachmentVersion.material_item_id)
+        .where(AttachmentVersion.client_upload_id == normalized_upload_id)
+    ).one_or_none()
+    if existing:
+        _version, existing_material = existing
+        if existing_material.task_id != task.id:
+            raise ProblemException(
+                409,
+                "UPLOAD_ID_CONFLICT",
+                "上传请求已被使用",
+                "请重新选择该文件后再试。",
+            )
+        return task_to_out(db, task)
+    if not can_edit_task(db, task, user):
+        raise ProblemException(403, "MATERIAL_EDIT_DENIED", "无权上传", "你不是该事项参与人。")
+    normalized_category = category.strip()[:48] or "其他材料"
+    original_name = safe_original_name(file.filename)
+    material_name = (Path(original_name).stem.strip() or original_name)[:200]
+    item = MaterialItem(
+        task_id=task.id,
+        category=normalized_category,
+        name=material_name,
+        required=required,
+    )
+    db.add(item)
+    db.flush()
+    write_audit(
+        db,
+        user,
+        "task.material_quick_upload",
+        "material",
+        item.id,
+        {
+            "task_id": task.id,
+            "name": material_name,
+            "category": normalized_category,
+            "client_upload_id": normalized_upload_id,
+        },
+        client_ip(request),
+    )
+    try:
+        await save_attachment(
+            db,
+            task,
+            item,
+            file,
+            stage,
+            is_final,
+            user,
+            note[:2_000],
+            client_ip(request),
+            parse_if_match(if_match) if if_match is not None else None,
+            client_upload_id=normalized_upload_id,
+        )
+    except BaseException:
+        db.rollback()
+        raise
+    return task_to_out(db, task)
+
+
+@router.delete(
+    "/tasks/{task_id}/materials/{material_id}/versions/{version_id}",
+    response_model=TaskOut,
+)
+def delete_material_version(
+    task_id: str,
+    material_id: str,
+    version_id: str,
+    request: Request,
+    reason: str = Query(min_length=2, max_length=2_000),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> TaskOut:
+    task = get_task_or_404(db, task_id, user)
+    material = db.get(MaterialItem, material_id)
+    version = db.get(AttachmentVersion, version_id)
+    if (
+        not material
+        or material.task_id != task.id
+        or not version
+        or version.material_item_id != material.id
+    ):
+        raise ProblemException(404, "ATTACHMENT_NOT_FOUND", "材料版本不存在", "请刷新材料目录后重试。")
+    delete_attachment_version(
+        db,
+        task,
+        material,
+        version,
+        user,
+        reason,
+        expected_task_version=parse_if_match(if_match),
+        ip=client_ip(request),
+    )
+    return task_to_out(db, task)
+
+
+@router.post(
+    "/tasks/{task_id}/materials/{material_id}/versions/{version_id}/restore",
+    response_model=TaskOut,
+)
+def restore_material_version(
+    task_id: str,
+    material_id: str,
+    version_id: str,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> TaskOut:
+    task = get_task_or_404(db, task_id, user)
+    material = db.get(MaterialItem, material_id)
+    version = db.get(AttachmentVersion, version_id)
+    if (
+        not material
+        or material.task_id != task.id
+        or not version
+        or version.material_item_id != material.id
+    ):
+        raise ProblemException(404, "ATTACHMENT_NOT_FOUND", "材料版本不存在", "请刷新回收站后重试。")
+    restore_attachment_version(
+        db,
+        task,
+        material,
+        version,
+        user,
+        expected_task_version=parse_if_match(if_match),
+        ip=client_ip(request),
+    )
+    return task_to_out(db, task)
+
+
 @router.get("/attachments/{version_id}/download")
 def download_attachment(
     version_id: str,
@@ -820,6 +991,8 @@ def download_attachment(
         raise ProblemException(404, "ATTACHMENT_NOT_FOUND", "附件不存在", "未找到附件。")
     version, blob, material = row
     get_task_or_404(db, material.task_id, user)
+    if getattr(version, "deleted_at", None) is not None:
+        raise ProblemException(410, "ATTACHMENT_IN_RECYCLE_BIN", "文件已移入回收站", "请先恢复文件再下载。")
     path = resolve_blob_path(blob.relative_path)
     if not path.exists():
         raise ProblemException(410, "ATTACHMENT_MISSING", "附件文件缺失", "请从备份恢复。")

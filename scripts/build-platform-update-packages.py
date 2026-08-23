@@ -27,34 +27,30 @@ _VALIDATOR_SPEC.loader.exec_module(_VALIDATOR)
 validate_package = _VALIDATOR.validate_package
 
 
-VERSION = "1.4.4"
+VERSION = "1.4.5-rc.1"
 PLATFORMS = {
-    ("windows", "amd64"): "PartyOps_1.4.4_windows_amd64.exe",
-    ("windows7", "amd64"): "PartyOps_1.4.4_windows7_amd64.exe",
-    ("windows7", "x86"): "PartyOps_1.4.4_windows7_x86.exe",
-    ("linux-deb", "amd64"): "PartyOps_1.4.4_linux_amd64.deb",
-    ("linux-deb", "arm64"): "PartyOps_1.4.4_linux_arm64.deb",
-    ("linux-rpm", "amd64"): "PartyOps-1.4.4-1.x86_64.rpm",
-    ("linux-rpm", "arm64"): "PartyOps-1.4.4-1.aarch64.rpm",
-    ("macos", "amd64"): "PartyOps_1.4.4_macos_x86_64.pkg",
-    ("macos", "arm64"): "PartyOps_1.4.4_macos_arm64.pkg",
+    ("windows", "amd64"): "PartyOps_1.4.5-rc.1_windows_amd64.exe",
+    ("windows7", "amd64"): "PartyOps_1.4.5-rc.1_windows7_amd64.exe",
+    ("windows7", "x86"): "PartyOps_1.4.5-rc.1_windows7_x86.exe",
+    ("linux-deb", "amd64"): "PartyOps_1.4.5-rc.1_linux_amd64.deb",
+    ("linux-deb", "arm64"): "PartyOps_1.4.5-rc.1_linux_arm64.deb",
+    ("linux-rpm", "amd64"): "PartyOps-1.4.5-0.rc.1.1.x86_64.rpm",
+    ("linux-rpm", "arm64"): "PartyOps-1.4.5-0.rc.1.1.aarch64.rpm",
+    ("macos", "amd64"): "PartyOps_1.4.5-rc.1_macos_x86_64.pkg",
+    ("macos", "arm64"): "PartyOps_1.4.5-rc.1_macos_arm64.pkg",
 }
 RELEASE_NOTES = [
-    "新增系统内检查、后台下载和一键原位升级，失败自动回滚且不丢失业务数据",
-    "在线更新按当前系统与架构精确下载，不再下载其他平台安装器",
-    "修复 PartyOps 协议注册表拒绝访问并提供事务回滚诊断",
-    "修复数据库启动异常导致 CHILD_EXITED、乱码与管理员创建 10061",
-    "修复个人模式覆盖升级后旧主机服务仍运行导致的端口争用与版本错配",
-    "新增 Windows 个人模式与可选彻底卸载；提供 Win7 SP1 x64/x86 Legacy 安装器，因未真机验证仅建议受控局域网使用",
-    "新增麒麟、UOS、deepin 的 DEB 与 openEuler RPM 双架构原生包",
-    "安装后自动核对文件、前端、SQLite/FTS5、OCR、智能运行时与健康端点",
-    "Windows 自定义固定磁盘目录不再被父目录通用 ACL 误拦截，安装器自动保护最终程序目录并避免旧安装包缓存",
-    "修复 Windows PowerShell 5.1 误按系统代码页读取校验脚本导致的 INSTALL_DIR_CHECK_FAILED，并把完整错误写入安装日志",
-    "Windows 10/11 通用包会阻止在 Win7 上运行；Win7 必须使用独立 Python 3.8 Legacy 安装包，避免 api-ms-win-core-path-l1-1-0.dll 缺失",
-    "修复麒麟 ARM64 安全中心反复拦截 libgcc_s.so.1：共享库不可执行，服务连续失败三次后停止重试并保留日志",
-    "修复国产 Linux 和 Windows 安装成功后桌面入口静默失败：等待页面真实就绪，浏览器关联失败时显示中文诊断",
-    "补齐 Windows 冻结向导的 backports.tarfile 运行依赖，最终 EXE 无法真实启动时阻断安装器生成",
-    "新增 macOS 11 及以上 Apple 芯片与 Intel 原生安装包、登录恢复和中文启动诊断",
+    "新增“三会一课”独立工作台、年度台账、四类模板、出席记录和决议落实闭环",
+    "新增党委（党组）理论学习中心组年度计划、季度专题、学习场次、成果转化和专属台账",
+    "发展党员只填申请书日期即可生成参考计划，并严格区分实际日期、法定边界和内部参考日期",
+    "今日工作台新增党务季度缺口、待归档会议、逾期决议和发展党员关键提醒",
+    "设置中新增重新启动配置向导，可在个人、主机和协同机角色之间重新选择并保留业务数据",
+    "一事一档等业务资料入口支持多文件队列、逐文件重试和 30 天可恢复删除",
+    "设置新增本机硬件检测与 12 档模型推荐，大模型通过官方来源接入且不进入安装器",
+    "新增受控意图预览，任何新增、修改、删除、发送和导出操作都必须由用户确认",
+    "修复官网社群与赞助二维码无法移入操作的问题，支持点击固定、键盘切换和触屏底部面板",
+    "加强党务台账的越权防护、公式注入防护、导出审计、敏感响应缓存和 AI 数据隔离",
+    "修复 macOS 原生入口在继承异常冻结环境时提前退出，并强化启动前诊断和最低系统版本门禁",
 ]
 
 
@@ -117,7 +113,7 @@ def _signed_manifest(
         "version": VERSION,
         # rc.2 的旧公钥无法验证轮换后的签名；rc.3 是新的应用内更新信任基线。
         "min_version": "1.4.3-rc.3",
-        "schema_revision": "0019",
+        "schema_revision": "0022",
         "release_title": "多系统适配与专业级应用内升级",
         "target_platform": platform_name,
         "target_architecture": architecture,

@@ -12,15 +12,15 @@ from pathlib import Path
 
 
 INSTALLERS = {
-    "PartyOps_1.4.4_windows_amd64.exe": "windows/amd64",
-    "PartyOps_1.4.4_windows7_amd64.exe": "windows7/amd64",
-    "PartyOps_1.4.4_windows7_x86.exe": "windows7/x86",
-    "PartyOps_1.4.4_linux_amd64.deb": "linux-deb/amd64",
-    "PartyOps_1.4.4_linux_arm64.deb": "linux-deb/arm64",
-    "PartyOps-1.4.4-1.x86_64.rpm": "linux-rpm/amd64",
-    "PartyOps-1.4.4-1.aarch64.rpm": "linux-rpm/arm64",
-    "PartyOps_1.4.4_macos_x86_64.pkg": "macos/amd64",
-    "PartyOps_1.4.4_macos_arm64.pkg": "macos/arm64",
+    "PartyOps_1.4.5-rc.1_windows_amd64.exe": "windows/amd64",
+    "PartyOps_1.4.5-rc.1_windows7_amd64.exe": "windows7/amd64",
+    "PartyOps_1.4.5-rc.1_windows7_x86.exe": "windows7/x86",
+    "PartyOps_1.4.5-rc.1_linux_amd64.deb": "linux-deb/amd64",
+    "PartyOps_1.4.5-rc.1_linux_arm64.deb": "linux-deb/arm64",
+    "PartyOps-1.4.5-0.rc.1.1.x86_64.rpm": "linux-rpm/amd64",
+    "PartyOps-1.4.5-0.rc.1.1.aarch64.rpm": "linux-rpm/arm64",
+    "PartyOps_1.4.5-rc.1_macos_x86_64.pkg": "macos/amd64",
+    "PartyOps_1.4.5-rc.1_macos_arm64.pkg": "macos/arm64",
 }
 
 
@@ -66,8 +66,8 @@ def build_manifest(
     return {
         "schema_version": 4,
         "product": "PartyOps",
-        "version": "1.4.4",
-        "release_tag": "v1.4.4",
+        "version": "1.4.5-rc.1",
+        "release_tag": "v1.4.5-rc.1",
         "source_commit": source_commit,
         "release_tooling_commit": tooling_commit,
         "generated_at": generated_at,

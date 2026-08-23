@@ -33,6 +33,22 @@ def test_today_calendar_preferences_and_workdays(
     today = client.get("/api/v1/today")
     assert today.status_code == 200, today.text
     assert task["id"] in {item["id"] for item in today.json()["today_tasks"]}
+    # 测试客户端按会话共享数据库，其他用例可能已经创建党务记录；这里验证
+    # 今日工作台的稳定契约与计数不变量，避免用例顺序影响结果。
+    party_work = today.json()["party_work"]
+    assert party_work["quarter"] == (local_today_noon.month - 1) // 3 + 1
+    assert party_work["party_life_expected"] == 7
+    assert party_work["study_center_expected"] == 1
+    assert party_work["party_life_recorded"] >= 0
+    assert party_work["study_center_recorded"] >= 0
+    assert party_work["party_life_remaining"] == max(
+        party_work["party_life_expected"] - party_work["party_life_recorded"], 0
+    )
+    assert party_work["study_center_remaining"] == max(
+        party_work["study_center_expected"] - party_work["study_center_recorded"], 0
+    )
+    for key in ("pending_archives", "overdue_actions", "development_reminders"):
+        assert party_work[key] >= 0
 
     calendar = client.get(
         "/api/v1/calendar/events",

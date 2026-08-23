@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   IconArrowLeft,
@@ -13,11 +13,13 @@ import {
   IconUpload,
 } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
-import { ApiError, api, downloadUrl } from "../api";
+import { ApiError, api, downloadUrl, uploadFormWithProgress } from "../api";
 import type { Comment as TaskComment, Material, MaterialVersion, Task, TaskStatus, User } from "../types";
 import TaskStatusTag from "../components/TaskStatusTag.vue";
 import ObjectContextPanel from "../components/ObjectContextPanel.vue";
 import PageHelp from "../components/PageHelp.vue";
+import BusinessUploadQueue from "../components/BusinessUploadQueue.vue";
+import { useUploadQueue } from "../composables/useUploadQueue";
 import { formatServerTime } from "../utils/datetime";
 import { fieldLabel, localizeEmbeddedCodes } from "../utils/labels";
 import { useSessionStore } from "../stores/session";
@@ -43,6 +45,12 @@ const notApplicableVisible = ref(false);
 const uploadVisible = ref(false);
 const uploadMaterial = ref<Material | null>(null);
 const uploadFile = ref<File | null>(null);
+const batchUploadVisible = ref(false);
+const batchFileInput = ref<HTMLInputElement | null>(null);
+const deleteAttachmentVisible = ref(false);
+const deleteAttachmentMaterial = ref<Material | null>(null);
+const deleteAttachmentVersion = ref<MaterialVersion | null>(null);
+const deleteAttachmentReason = ref("");
 const rollbackVisible = ref(false);
 const rollbackMaterial = ref<Material | null>(null);
 const rollbackVersion = ref<MaterialVersion | null>(null);
@@ -107,6 +115,38 @@ const subtaskForm = reactive({
 });
 const participantUserId = ref("");
 const uploadForm = reactive({ stage: "draft", is_final: false, note: "" });
+const batchUploadForm = reactive({
+  category: "other",
+  required: false,
+  stage: "draft",
+  is_final: false,
+  note: "",
+});
+
+const batchQueue = useUploadQueue(async (item, context) => {
+  if (!task.value) throw new Error("事项尚未加载，请刷新后重试。");
+  const formData = new FormData();
+  formData.append("file", item.file);
+  formData.append("category", batchUploadForm.category.trim() || "other");
+  formData.append("required", String(batchUploadForm.required));
+  formData.append("stage", batchUploadForm.stage);
+  formData.append("is_final", String(batchUploadForm.is_final));
+  formData.append("note", batchUploadForm.note);
+  formData.append("client_upload_id", item.clientUploadId);
+  await uploadFormWithProgress<Task>(
+    `/tasks/${task.value.id}/materials/quick-upload`,
+    formData,
+    { signal: context.signal, onProgress: context.onProgress },
+  );
+}, 2);
+const batchUploadItems = batchQueue.items;
+
+watch(batchQueue.pending, (pending, previous) => {
+  if (previous > 0 && pending === 0) {
+    void load();
+    if (batchQueue.failed.value === 0) Message.success("所选文件已分别建立材料项");
+  }
+});
 
 const userNames = computed(() => Object.fromEntries(users.value.map((item) => [item.id, item.display_name])));
 const mentionableUsers = computed(() => {
@@ -514,6 +554,75 @@ function toggleFinal(value: boolean) {
   if (value) uploadForm.stage = "submitted";
 }
 
+function openBatchUpload() {
+  batchUploadVisible.value = true;
+}
+
+function chooseBatchFiles() {
+  batchFileInput.value?.click();
+}
+
+function addBatchFiles(files: FileList | null) {
+  if (!files?.length) return;
+  batchQueue.addFiles(files);
+  if (batchFileInput.value) batchFileInput.value.value = "";
+}
+
+function toggleBatchFinal(value: boolean) {
+  batchUploadForm.is_final = value;
+  if (value) batchUploadForm.stage = "submitted";
+}
+
+function canDeleteAttachment(version: MaterialVersion): boolean {
+  return Boolean(
+    task.value
+    && task.value.status !== "archived"
+    && session.user
+    && (canManageTask.value || (version.uploaded_by === session.user.id && !version.is_final)),
+  );
+}
+
+function openDeleteAttachment(material: Material, version: MaterialVersion) {
+  deleteAttachmentMaterial.value = material;
+  deleteAttachmentVersion.value = version;
+  deleteAttachmentReason.value = "";
+  deleteAttachmentVisible.value = true;
+}
+
+async function confirmDeleteAttachment() {
+  if (!task.value || !deleteAttachmentMaterial.value || !deleteAttachmentVersion.value) return;
+  if (deleteAttachmentReason.value.trim().length < 2) {
+    Message.warning("请填写至少两个字的删除原因");
+    return;
+  }
+  try {
+    task.value = await api.delete<Task>(
+      `/tasks/${task.value.id}/materials/${deleteAttachmentMaterial.value.id}/versions/${deleteAttachmentVersion.value.id}?reason=${encodeURIComponent(deleteAttachmentReason.value.trim())}`,
+      { "If-Match": String(task.value.version) },
+    );
+    deleteAttachmentVisible.value = false;
+    Message.success("文件已移入回收站，30 天内可恢复");
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "VERSION_CONFLICT") await load();
+    Message.error(error instanceof Error ? error.message : "文件删除失败");
+  }
+}
+
+async function restoreAttachment(material: Material, version: MaterialVersion) {
+  if (!task.value) return;
+  try {
+    task.value = await api.post<Task>(
+      `/tasks/${task.value.id}/materials/${material.id}/versions/${version.id}/restore`,
+      undefined,
+      { "If-Match": String(task.value.version) },
+    );
+    Message.success("文件已恢复到材料目录");
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "VERSION_CONFLICT") await load();
+    Message.error(error instanceof Error ? error.message : "文件恢复失败");
+  }
+}
+
 function openRollback(material: Material, version: MaterialVersion) {
   rollbackMaterial.value = material;
   rollbackVersion.value = version;
@@ -698,9 +807,10 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
           <a-tab-pane key="materials" title="一事一档">
             <div class="tab-toolbar">
               <p>一个材料项保留多版过程，但只确认一个最终版本。</p>
-              <a-button v-if="task.status !== 'archived'" size="small" @click="materialVisible = true">
-                <template #icon><IconPlus /></template> 添加材料项
-              </a-button>
+              <a-space v-if="task.status !== 'archived'">
+                <a-button size="small" @click="openBatchUpload"><template #icon><IconUpload /></template>批量上传文件</a-button>
+                <a-button size="small" @click="materialVisible = true"><template #icon><IconPlus /></template> 添加材料项</a-button>
+              </a-space>
             </div>
             <div v-if="task.materials.length" class="material-list">
               <section v-for="material in task.materials" :key="material.id" class="material-row">
@@ -725,6 +835,7 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
                       type="text"
                       @click="openRollback(material, version)"
                     >回退到此版</a-button>
+                    <a-button v-if="canDeleteAttachment(version)" size="mini" type="text" status="danger" @click="openDeleteAttachment(material, version)"><template #icon><IconDelete /></template>删除</a-button>
                   </div>
                   <span v-if="!material.versions.length" class="muted">尚未上传</span>
                 </div>
@@ -740,6 +851,13 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
                     不适用
                   </a-button>
                 </div>
+                <details v-if="(material.deleted_versions || []).length" class="recycle-bin">
+                  <summary>回收站（{{ (material.deleted_versions || []).length }}）</summary>
+                  <div v-for="version in (material.deleted_versions || [])" :key="version.id" class="recycled-version">
+                    <div><strong>{{ version.original_name }}</strong><span>{{ version.delete_reason }} · {{ formatServerTime(version.deleted_at, 'YYYY-MM-DD HH:mm') }}</span></div>
+                    <a-button v-if="canManageTask || version.uploaded_by === session.user?.id" size="mini" @click="restoreAttachment(material, version)">恢复</a-button>
+                  </div>
+                </details>
               </section>
             </div>
             <div v-else class="empty-state">尚未设置材料清单。</div>
@@ -915,6 +1033,30 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
         <a-form-item label="确认最终版本"><a-switch :model-value="uploadForm.is_final" @change="toggleFinal(Boolean($event))" /></a-form-item>
         <a-form-item label="版本说明"><a-input v-model="uploadForm.note" /></a-form-item>
       </a-form>
+    </a-modal>
+
+    <a-modal v-model:visible="batchUploadVisible" title="批量上传业务材料" width="680px" :footer="false" :mask-closable="false">
+      <a-alert type="info" show-icon>一次可选择多个文件。每个文件会建立独立材料项；最多同时上传 2 个，单个失败不会影响其他文件。</a-alert>
+      <a-form :model="batchUploadForm" layout="vertical" class="batch-upload-form">
+        <div class="two-columns">
+          <a-form-item label="材料类别">
+            <a-select v-model="batchUploadForm.category" allow-create allow-search>
+              <a-option v-for="category in materialCategories" :key="category.value" :value="category.value">{{ category.label }}</a-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item label="版本阶段"><a-select v-model="batchUploadForm.stage"><a-option value="draft">初稿</a-option><a-option value="revision">修改稿</a-option><a-option value="leader_approved">领导审定稿</a-option><a-option value="submitted">实际报送稿</a-option></a-select></a-form-item>
+        </div>
+        <a-space><a-checkbox v-model="batchUploadForm.required">设为必备材料</a-checkbox><span>确认最终版本</span><a-switch :model-value="batchUploadForm.is_final" @change="toggleBatchFinal(Boolean($event))" /></a-space>
+        <a-form-item label="统一说明（可选）"><a-input v-model="batchUploadForm.note" /></a-form-item>
+        <input ref="batchFileInput" hidden type="file" multiple @change="addBatchFiles(($event.target as HTMLInputElement).files)" />
+        <a-button type="primary" long @click="chooseBatchFiles"><template #icon><IconUpload /></template>选择多个文件并开始上传</a-button>
+      </a-form>
+      <BusinessUploadQueue :items="batchUploadItems" @retry="batchQueue.retry" @cancel="batchQueue.cancel" @clear="batchQueue.clearSettled" />
+    </a-modal>
+
+    <a-modal v-model:visible="deleteAttachmentVisible" title="将文件移入回收站" @ok="confirmDeleteAttachment">
+      <a-alert type="warning" show-icon>文件会保留 30 天并可恢复。已定稿文件删除后，材料项会重新显示“待补充”。</a-alert>
+      <a-form :model="{ reason: deleteAttachmentReason }" layout="vertical" class="delete-attachment-form"><a-form-item label="删除原因（必填）"><a-textarea v-model="deleteAttachmentReason" :max-length="2000" show-word-limit :auto-size="{ minRows: 3, maxRows: 6 }" /></a-form-item></a-form>
     </a-modal>
 
     <a-modal v-model:visible="rollbackVisible" title="回退材料版本" @ok="rollbackAttachment">
@@ -1163,6 +1305,30 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
   gap: 12px;
 }
 
+.recycle-bin {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  color: var(--muted);
+  background: rgba(98, 84, 66, 0.045);
+  border-left: 2px solid var(--line);
+}
+
+.recycle-bin summary { cursor: pointer; font-size: 12px; }
+
+.recycled-version {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0 0;
+}
+
+.recycled-version strong,
+.recycled-version span { display: block; }
+.recycled-version span { margin-top: 3px; font-size: 11px; }
+.batch-upload-form { margin-top: 16px; }
+.delete-attachment-form { margin-top: 14px; }
+
 .comment-composer {
   display: flex;
   align-items: flex-end;
@@ -1314,5 +1480,12 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
 
 .conflict-head {
   color: var(--muted);
+}
+
+@media (max-width: 860px) {
+  .material-row { grid-template-columns: 1fr; gap: 10px; padding: 16px 0; }
+  .material-status { justify-content: flex-start; flex-wrap: wrap; }
+  .two-columns { grid-template-columns: 1fr; }
+  .tab-toolbar { align-items: flex-start; flex-direction: column; }
 }
 </style>

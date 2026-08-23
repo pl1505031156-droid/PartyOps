@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from fastapi import Request
 
-from app import config
+from app import config, security
 from app.login_throttle import LoginThrottle, login_throttle
+from app.problems import ProblemException
 from app.routers import auth
 
 
@@ -165,3 +167,30 @@ def test_production_bootstrap_requires_same_origin_or_protected_token(monkeypatc
 
 def test_demo_seed_is_opt_in_by_default() -> None:
     assert config.Settings.model_fields["seed_demo"].default is False
+
+
+def test_session_csrf_uses_double_submit_token_and_keeps_legacy_session() -> None:
+    token = "session-bound-csrf-token"
+    valid = _request_from(
+        "127.0.0.1",
+        [
+            (b"cookie", f"partyops_csrf={token}".encode("ascii")),
+            (b"x-partyops-csrf", token.encode("ascii")),
+        ],
+    )
+    record = SimpleNamespace(csrf_token_hash=security.hash_token(token))
+    security.validate_session_csrf(valid, record)
+
+    forged = _request_from(
+        "127.0.0.1",
+        [
+            (b"cookie", f"partyops_csrf={token}".encode("ascii")),
+            (b"x-partyops-csrf", b"forged"),
+        ],
+    )
+    with pytest.raises(ProblemException) as captured:
+        security.validate_session_csrf(forged, record)
+    assert captured.value.code == "SESSION_CSRF_INVALID"
+
+    # 旧会话仍由生产同源中间件保护；用户下一次登录后自动具备新令牌。
+    security.validate_session_csrf(valid, SimpleNamespace(csrf_token_hash=None))

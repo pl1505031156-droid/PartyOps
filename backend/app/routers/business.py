@@ -17,12 +17,13 @@ from sqlalchemy.orm import Session
 
 from ..audit import write_audit
 from ..database import get_session
-from ..enums import Priority, Sensitivity, TaskStatus, TaskType
+from ..enums import Priority, Sensitivity, TaskStatus, TaskType, UserRole
 from ..models import (
     BusinessDocument,
     BusinessDocumentRevision,
     BusinessMeeting,
     MeetingTopic,
+    StudyPlan,
     Task,
     TaskStep,
     User,
@@ -94,7 +95,9 @@ class TopicInput(BaseModel):
 class DocumentInput(BaseModel):
     meeting_id: str | None = None
     task_step_id: str | None = None
-    document_type: str = Field(pattern=r"^(agenda|notice|minutes|summary|materials|other)$")
+    document_type: str = Field(
+        pattern=r"^(agenda|notice|minutes|summary|materials|attendance|archive|other)$"
+    )
     title: str = Field(min_length=1, max_length=240)
     content: dict[str, Any] = Field(default_factory=dict)
 
@@ -111,10 +114,13 @@ def ensure_committee_template(db: Session, user: User) -> WorkflowTemplate:
         return template
     template = WorkflowTemplate(
         name="党委会筹备（六步）",
+        system_key="other-meeting.party-committee.v1",
         business_type="party_committee",
         description="议程、通知、资料、打印、记录、纪要六个固定步骤，可按月复用。",
         steps=COMMITTEE_STEPS,
         recurrence={"kind": "monthly", "enabled": False},
+        built_in=True,
+        template_version="1.0",
         created_by=user.id,
     )
     db.add(template)
@@ -126,11 +132,14 @@ def template_out(item: WorkflowTemplate) -> dict[str, Any]:
     return {
         "id": item.id,
         "name": item.name,
+        "system_key": item.system_key,
         "business_type": item.business_type,
         "description": item.description,
         "steps": item.steps,
         "recurrence": item.recurrence,
         "active": item.active,
+        "built_in": item.built_in,
+        "template_version": item.template_version,
         "version": item.version,
     }
 
@@ -149,6 +158,11 @@ def meeting_out(db: Session, item: BusinessMeeting) -> dict[str, Any]:
         "completed_at": item.completed_at,
         "status": item.status,
         "workflow_template_id": item.workflow_template_id,
+        "host_id": item.host_id,
+        "recorder_id": item.recorder_id,
+        "venue": item.venue,
+        "study_plan_id": item.study_plan_id,
+        "business_data": item.business_data,
         "task_id": item.task_id,
         "recurrence_key": item.recurrence_key,
         "version": item.version,
@@ -162,6 +176,43 @@ def meeting_out(db: Session, item: BusinessMeeting) -> dict[str, Any]:
             for topic in topics
         ],
     }
+
+
+def _can_modify_meeting(db: Session, meeting: BusinessMeeting, user: User) -> bool:
+    """旧通用接口与专属模块共用同一权限边界，防止旁路修改。"""
+
+    if user.role == UserRole.ADMIN or user.id in {
+        meeting.created_by,
+        meeting.host_id,
+        meeting.recorder_id,
+    }:
+        return True
+    plan = db.get(StudyPlan, meeting.study_plan_id) if meeting.study_plan_id else None
+    return bool(plan and plan.secretary_id == user.id)
+
+
+def _require_modify_meeting(db: Session, meeting: BusinessMeeting, user: User) -> None:
+    if not _can_modify_meeting(db, meeting, user):
+        raise ProblemException(
+            403,
+            "MEETING_MODIFY_FORBIDDEN",
+            "没有修改此台账的权限",
+            "仅管理员、创建人、主持人、记录人或指定学习秘书可以修改。",
+        )
+
+
+def _require_export_meeting(db: Session, meeting: BusinessMeeting, user: User) -> None:
+    if user.role == UserRole.ADMIN or user.id == meeting.recorder_id:
+        return
+    plan = db.get(StudyPlan, meeting.study_plan_id) if meeting.study_plan_id else None
+    if plan and plan.secretary_id == user.id:
+        return
+    raise ProblemException(
+        403,
+        "MEETING_EXPORT_FORBIDDEN",
+        "没有导出此材料的权限",
+        "仅管理员、记录负责人或指定学习秘书可以导出。",
+    )
 
 
 def _create_meeting_record(
@@ -364,10 +415,17 @@ def list_meetings(
     year: int | None = Query(default=None, ge=2000, le=2200),
     organization: str = "",
     meeting_type: str = "",
+    scope: str = Query(default="", pattern=r"^(|other)$"),
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[dict[str, Any]]:
     query = select(BusinessMeeting)
+    if scope == "other":
+        query = query.where(
+            BusinessMeeting.meeting_type.not_in(
+                {"branch_members", "party_member_meeting", "party_group", "party_class", "study_group"}
+            )
+        )
     if organization:
         query = query.where(BusinessMeeting.organization == organization)
     if meeting_type:
@@ -446,6 +504,7 @@ def patch_meeting(
     item = db.get(BusinessMeeting, meeting_id)
     if not item:
         raise ProblemException(404, "MEETING_NOT_FOUND", "会议不存在", "请刷新后重试。")
+    _require_modify_meeting(db, item, user)
     if item.version != parse_if_match(if_match):
         raise ProblemException(409, "VERSION_CONFLICT", "会议信息已更新", "请刷新后重试。")
     changes = payload.model_dump(exclude_unset=True)
@@ -495,8 +554,10 @@ def create_topic(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    if not db.get(BusinessMeeting, meeting_id):
+    meeting = db.get(BusinessMeeting, meeting_id)
+    if not meeting:
         raise ProblemException(404, "MEETING_NOT_FOUND", "会议不存在", "请刷新后重试。")
+    _require_modify_meeting(db, meeting, user)
     try:
         amount = Decimal(payload.amount)
         if not amount.is_finite() or amount != amount.quantize(Decimal("0.01")):
@@ -557,6 +618,8 @@ def create_document(
     step = db.get(TaskStep, payload.task_step_id) if payload.task_step_id else None
     if payload.meeting_id and not meeting:
         raise ProblemException(422, "DOCUMENT_MEETING_INVALID", "关联会议不存在", "请刷新会议列表后重试。")
+    if meeting:
+        _require_modify_meeting(db, meeting, user)
     if payload.task_step_id and not step:
         raise ProblemException(422, "DOCUMENT_STEP_INVALID", "关联步骤不存在", "请刷新筹备步骤后重试。")
     if meeting and step and meeting.task_id != step.task_id:
@@ -582,6 +645,9 @@ def update_document(
     item = db.get(BusinessDocument, document_id)
     if not item or item.archived_at:
         raise ProblemException(404, "BUSINESS_DOCUMENT_NOT_FOUND", "文档不存在", "请刷新后重试。")
+    meeting = db.get(BusinessMeeting, item.meeting_id) if item.meeting_id else None
+    if meeting:
+        _require_modify_meeting(db, meeting, user)
     if item.version != parse_if_match(if_match):
         raise ProblemException(409, "DOCUMENT_VERSION_CONFLICT", "文档已被其他人修改", "请刷新并合并修改后重试。", extra={"current_version": item.version})
     if payload.title is not None:
@@ -625,12 +691,16 @@ def _append_structured_content(document: Document, content: dict[str, Any]) -> N
 @router.get("/business-documents/{document_id}/export.docx")
 def export_business_document(
     document_id: str,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> StreamingResponse:
     item = db.get(BusinessDocument, document_id)
     if not item or item.archived_at:
         raise ProblemException(404, "BUSINESS_DOCUMENT_NOT_FOUND", "文档不存在", "请刷新后重试。")
+    meeting = db.get(BusinessMeeting, item.meeting_id) if item.meeting_id else None
+    if meeting:
+        _require_export_meeting(db, meeting, user)
     doc = Document()
     doc.add_heading(item.title, 0)
     _append_structured_content(doc, item.content)
@@ -638,6 +708,6 @@ def export_business_document(
     doc.save(buffer)
     buffer.seek(0)
     filename = "".join(char if char not in '\\/:*?\"<>|' else "_" for char in item.title)[:80] or "PartyOps文档"
-    write_audit(db, user, "business_document.export", "business_document", item.id, {"version": item.version})
+    write_audit(db, user, "business_document.export", "business_document", item.id, {"version": item.version}, client_ip(request))
     db.commit()
-    return StreamingResponse(buffer, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}.docx"})
+    return StreamingResponse(buffer, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}.docx", "Cache-Control": "no-store"})

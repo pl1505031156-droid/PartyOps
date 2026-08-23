@@ -3,16 +3,21 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { IconDelete, IconFile, IconScan, IconSend } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
-import { api } from "../api";
+import { api, uploadFormWithProgress } from "../api";
 import PageHelp from "../components/PageHelp.vue";
-import type { Material, Task, User } from "../types";
+import BusinessUploadQueue from "../components/BusinessUploadQueue.vue";
+import { useUploadQueue } from "../composables/useUploadQueue";
+import type { Task, User } from "../types";
 
 const router = useRouter();
 const users = ref<User[]>([]);
-const selectedFile = ref<File | null>(null);
+const selectedFiles = ref<File[]>([]);
+const selectedFile = computed(() => selectedFiles.value[0] || null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const parsing = ref(false);
 const creating = ref(false);
+const createdTaskId = ref("");
+const inboxArchiveTaskId = ref("");
 const candidate = ref<null | {
   title: string;
   formal_due_at: string | null;
@@ -36,6 +41,22 @@ const identifiedCount = computed(
     Number(Boolean(candidate.value?.formal_due_at)) +
     Number(Boolean(candidate.value?.requirements.length)),
 );
+const inboxUploadQueue = useUploadQueue(async (item, context) => {
+  if (!inboxArchiveTaskId.value) throw new Error("事项尚未建立，请重新确认后重试。");
+  const upload = new FormData();
+  upload.append("file", item.file);
+  upload.append("category", "notice");
+  upload.append("stage", "submitted");
+  upload.append("is_final", "true");
+  upload.append("note", "快速收件箱原始文件");
+  upload.append("client_upload_id", item.clientUploadId);
+  await uploadFormWithProgress<Task>(
+    `/tasks/${inboxArchiveTaskId.value}/materials/quick-upload`,
+    upload,
+    { signal: context.signal, onProgress: context.onProgress },
+  );
+}, 2);
+const inboxUploadItems = inboxUploadQueue.items;
 
 onMounted(async () => {
   try {
@@ -68,13 +89,23 @@ async function parse() {
   }
 }
 
-function selectFile(file: File | null) {
-  selectedFile.value = file;
+function selectFiles(files: FileList | null) {
+  selectedFiles.value = Array.from(files || []);
   candidate.value = null;
+  createdTaskId.value = "";
+  inboxUploadQueue.clearSettled();
+}
+
+// 保留旧页面测试和书签脚本使用的单文件入口；真实界面统一走多文件选择。
+function selectFile(file: File | null) {
+  selectedFiles.value = file ? [file] : [];
+  candidate.value = null;
+  createdTaskId.value = "";
+  inboxUploadQueue.clearSettled();
 }
 
 function resetIntake() {
-  selectedFile.value = null;
+  selectedFiles.value = [];
   candidate.value = null;
   form.pastedText = "";
   form.title = "";
@@ -84,6 +115,18 @@ function resetIntake() {
 }
 
 async function create() {
+  if (createdTaskId.value) {
+    if (inboxUploadQueue.pending.value) {
+      Message.info("文件仍在归档，请稍候。");
+      return;
+    }
+    if (inboxUploadQueue.failed.value) {
+      Message.warning("请先重试失败文件，或稍后在事项中继续补充。");
+      return;
+    }
+    await router.push(`/tasks/${createdTaskId.value}`);
+    return;
+  }
   if (!form.title || !form.ownerId) {
     Message.warning("请确认事项名称与责任人");
     return;
@@ -106,20 +149,17 @@ async function create() {
       steps: [],
       materials: [],
     });
-    if (selectedFile.value) {
-      const material = await api.post<Material>(`/tasks/${task.id}/materials`, {
-        category: "notice",
-        name: "原始通知",
-        required: false,
-      });
-      const upload = new FormData();
-      upload.append("file", selectedFile.value);
-      upload.append("stage", "submitted");
-      upload.append("is_final", "true");
-      upload.append("note", "快速收件箱原始文件");
-      task = await api.post<Task>(`/tasks/${task.id}/materials/${material.id}/versions`, upload);
+    createdTaskId.value = task.id;
+    if (selectedFiles.value.length) {
+      inboxArchiveTaskId.value = task.id;
+      inboxUploadQueue.addFiles(selectedFiles.value);
+      await inboxUploadQueue.waitForIdle();
+      if (inboxUploadQueue.failed.value) {
+        Message.warning("事项已创建，但有原始文件未归档；请重试失败文件后进入事项。");
+        return;
+      }
     }
-    Message.success("事项已创建，原始通知已归档");
+    Message.success(selectedFiles.value.length > 1 ? "事项已创建，原始文件已逐项归档" : "事项已创建，原始通知已归档");
     await router.push(`/tasks/${task.id}`);
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "创建失败");
@@ -142,7 +182,7 @@ async function create() {
           :tips="['粘贴通知或上传原件后，先核对系统提取的候选信息。', '确认前不会创建事项，也不会改变原文件。', '原始通知随事项归档，避免重复录入。']"
           help-query="快速收件箱"
         />
-        <a-button v-if="form.pastedText || selectedFile || candidate" @click="resetIntake">
+        <a-button v-if="form.pastedText || selectedFiles.length || candidate" @click="resetIntake">
           <template #icon><IconDelete /></template>清空本次收件
         </a-button>
       </a-space>
@@ -161,11 +201,12 @@ async function create() {
           placeholder="将微信通知、上级要求或办理说明粘贴到这里……"
         />
         <label class="file-drop">
-          <input ref="fileInput" type="file" accept=".docx,.doc,.wps,.pdf,.png,.jpg,.jpeg,.bmp,.tif,.tiff,.webp,.txt,.md" @change="selectFile(($event.target as HTMLInputElement).files?.[0] || null)" />
+          <input ref="fileInput" type="file" multiple accept=".docx,.doc,.wps,.pdf,.png,.jpg,.jpeg,.bmp,.tif,.tiff,.webp,.txt,.md" @change="selectFiles(($event.target as HTMLInputElement).files)" />
           <IconFile :size="24" />
-          <span>{{ selectedFile?.name || "选择 Word、WPS、PDF、图片或文本附件" }}</span>
-          <small>{{ selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB · 点击可重新选择` : "单个文件不超过 50 MB，识别过程留在主机本地" }}</small>
+          <span>{{ selectedFiles.length > 1 ? `已选择 ${selectedFiles.length} 个文件` : selectedFile?.name || "选择一个或多个 Word、WPS、PDF、图片或文本附件" }}</span>
+          <small>{{ selectedFile ? `以“${selectedFile.name}”提取候选信息；全部文件会分别归档 · 点击可重新选择` : "单个文件不超过 50 MB，识别过程留在主机本地" }}</small>
         </label>
+        <BusinessUploadQueue :items="inboxUploadItems" @retry="inboxUploadQueue.retry" @cancel="inboxUploadQueue.cancel" @clear="inboxUploadQueue.clearSettled" />
         <a-button type="primary" size="large" long :loading="parsing" @click="parse">
           <template #icon><IconScan /></template>
           本地识别并进入确认
@@ -200,7 +241,7 @@ async function create() {
           </details>
           <a-button type="primary" size="large" long :loading="creating" @click="create">
             <template #icon><IconSend /></template>
-            确认并创建事项
+            {{ createdTaskId ? "进入已创建事项" : "确认并创建事项" }}
           </a-button>
         </template>
         <div v-else class="waiting">

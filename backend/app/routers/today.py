@@ -14,8 +14,13 @@ from ..enums import PeriodReportStatus, TaskStatus
 from ..models import (
     AttachmentVersion,
     BackupRun,
+    BusinessDocument,
+    BusinessMeeting,
     Device,
     MaterialItem,
+    MeetingAction,
+    PartyDevelopmentCase,
+    PartyDevelopmentMilestone,
     PeriodReport,
     RecurrenceRule,
     Task,
@@ -38,6 +43,16 @@ OPEN_STATUSES = {
     TaskStatus.WAITING_FEEDBACK,
     TaskStatus.PENDING_REVIEW,
     TaskStatus.RETURNED,
+}
+PARTY_LIFE_QUARTER_TARGETS = {
+    "party_member_meeting": 1,
+    "branch_members": 3,
+    "party_group": 3,
+}
+SPECIALIZED_MEETING_TYPES = {
+    *PARTY_LIFE_QUARTER_TARGETS,
+    "party_class",
+    "study_group",
 }
 
 
@@ -181,6 +196,84 @@ def today(
             PeriodReport.status == PeriodReportStatus.DRAFT
         )
     ) or 0
+    quarter_start_month = ((local_now.month - 1) // 3) * 3 + 1
+    quarter_start = local_now.replace(
+        month=quarter_start_month,
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if quarter_start_month == 10:
+        quarter_end = quarter_start.replace(year=quarter_start.year + 1, month=1)
+    else:
+        quarter_end = quarter_start.replace(month=quarter_start_month + 3)
+    quarter_start_utc = quarter_start.astimezone(timezone.utc)
+    quarter_end_utc = quarter_end.astimezone(timezone.utc)
+    specialized_meetings = db.scalars(
+        select(BusinessMeeting).where(
+            BusinessMeeting.meeting_type.in_(SPECIALIZED_MEETING_TYPES)
+        )
+    ).all()
+    quarter_counts = {key: 0 for key in SPECIALIZED_MEETING_TYPES}
+    pending_archives = 0
+    specialized_ids: list[str] = []
+    for meeting in specialized_meetings:
+        specialized_ids.append(meeting.id)
+        scheduled = aware_utc(meeting.scheduled_at)
+        if (
+            meeting.status != "cancelled"
+            and scheduled
+            and quarter_start_utc <= scheduled < quarter_end_utc
+        ):
+            quarter_counts[meeting.meeting_type] += 1
+        if meeting.status == "completed" and not db.scalar(
+            select(BusinessDocument.id).where(
+                BusinessDocument.meeting_id == meeting.id
+            )
+        ):
+            pending_archives += 1
+    party_life_recorded = sum(
+        min(quarter_counts[key], target)
+        for key, target in PARTY_LIFE_QUARTER_TARGETS.items()
+    )
+    party_life_expected = sum(PARTY_LIFE_QUARTER_TARGETS.values())
+    study_center_recorded = min(quarter_counts["study_group"], 1)
+    overdue_actions = 0
+    if specialized_ids:
+        actions = db.scalars(
+            select(MeetingAction).where(MeetingAction.meeting_id.in_(specialized_ids))
+        ).all()
+        overdue_actions = sum(
+            1
+            for action in actions
+            if action.status not in {"completed", "cancelled"}
+            and (aware_utc(action.due_at) or now) < now
+            and action.due_at is not None
+        )
+    reminder_limit = now + timedelta(days=30)
+    development_reminders = 0
+    active_case_ids = list(
+        db.scalars(
+            select(PartyDevelopmentCase.id).where(
+                PartyDevelopmentCase.status == "active"
+            )
+        ).all()
+    )
+    if active_case_ids:
+        milestones = db.scalars(
+            select(PartyDevelopmentMilestone).where(
+                PartyDevelopmentMilestone.case_id.in_(active_case_ids),
+                PartyDevelopmentMilestone.actual_at.is_(None),
+            )
+        ).all()
+        development_reminders = sum(
+            1
+            for milestone in milestones
+            if (aware_utc(milestone.adjusted_at or milestone.planned_at))
+            and aware_utc(milestone.adjusted_at or milestone.planned_at) <= reminder_limit
+        )
     return {
         "updated_at": now,
         "dashboard": dashboard(db, user).model_dump(mode="json"),
@@ -218,5 +311,17 @@ def today(
             "draft_reports": report_drafts,
             "backup_stale": backup_stale,
             "device_alerts": device_alerts,
+        },
+        "party_work": {
+            "quarter": (local_now.month - 1) // 3 + 1,
+            "party_life_expected": party_life_expected,
+            "party_life_recorded": party_life_recorded,
+            "party_life_remaining": max(0, party_life_expected - party_life_recorded),
+            "study_center_expected": 1,
+            "study_center_recorded": study_center_recorded,
+            "study_center_remaining": max(0, 1 - study_center_recorded),
+            "pending_archives": pending_archives,
+            "overdue_actions": overdue_actions,
+            "development_reminders": development_reminders,
         },
     }

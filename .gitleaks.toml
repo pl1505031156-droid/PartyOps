@@ -4,7 +4,11 @@ title = "PartyOps secret scanning"
 useDefault = true
 
 [allowlist]
-description = "只排除本机生成且已由 .gitignore 禁止提交的测试、构建目录和官网本机部署凭据"
+description = "只排除本机生成目录，以及明确属于业务幂等标识而非凭据的 recurrence_key 测试字段"
+regexTarget = "line"
+regexes = [
+  '''["']recurrence_key["']\s*:''',
+]
 paths = [
   '''(^|/)backend/\.test-data/''',
   '''(^|/)frontend/node_modules/''',

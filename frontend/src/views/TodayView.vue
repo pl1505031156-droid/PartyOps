@@ -27,7 +27,15 @@ const alertCount = computed(() => {
     + data.value.risks.recurrence_anomalies
     + data.value.risks.device_alerts.length
     + (data.value.risks.backup_stale ? 1 : 0)
+    + data.value.party_work.pending_archives
+    + data.value.party_work.overdue_actions
+    + data.value.party_work.development_reminders
   );
+});
+
+const partyQuarterRemaining = computed(() => {
+  if (!data.value) return 0;
+  return data.value.party_work.party_life_remaining + data.value.party_work.study_center_remaining;
 });
 
 const primaryTasks = computed(() => {
@@ -171,6 +179,29 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
           <RouterLink to="/tasks"><strong>{{ dashboardCount("反馈") }}</strong><span>等待反馈</span></RouterLink>
           <RouterLink to="/tasks"><strong>{{ data.risks.incomplete_materials }}</strong><span>材料不完整</span></RouterLink>
           <RouterLink to="/fleet/devices"><strong>{{ data.risks.device_alerts.length }}</strong><span>设备异常</span></RouterLink>
+        </section>
+
+        <section class="party-work-strip" aria-label="党务工作提醒">
+          <RouterLink to="/party-life">
+            <span>本季度应安排</span>
+            <strong>{{ partyQuarterRemaining }}</strong>
+            <small>三会一课已登记 {{ data.party_work.party_life_recorded }}/{{ data.party_work.party_life_expected }}，中心组 {{ data.party_work.study_center_recorded }}/{{ data.party_work.study_center_expected }}</small>
+          </RouterLink>
+          <RouterLink to="/party-life">
+            <span>会议待归档</span>
+            <strong>{{ data.party_work.pending_archives }}</strong>
+            <small>已完成但尚未关联归档材料</small>
+          </RouterLink>
+          <RouterLink to="/party-life">
+            <span>决议落实逾期</span>
+            <strong>{{ data.party_work.overdue_actions }}</strong>
+            <small>只提示风险，不替代组织判断</small>
+          </RouterLink>
+          <RouterLink to="/party-development">
+            <span>发展党员提醒</span>
+            <strong>{{ data.party_work.development_reminders }}</strong>
+            <small>未来 30 天及已到期的参考节点</small>
+          </RouterLink>
         </section>
 
         <section class="must-do">
@@ -408,6 +439,60 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
   display: block;
 }
 
+.party-work-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: -6px 0 28px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.party-work-strip a {
+  position: relative;
+  min-height: 104px;
+  padding: 17px 20px 15px;
+  border-right: 1px solid var(--line-light);
+}
+
+.party-work-strip a:last-child {
+  border-right: 0;
+}
+
+.party-work-strip a::before {
+  position: absolute;
+  top: 17px;
+  left: 0;
+  width: 3px;
+  height: 22px;
+  background: var(--cinnabar);
+  content: "";
+}
+
+.party-work-strip span,
+.party-work-strip strong,
+.party-work-strip small {
+  display: block;
+}
+
+.party-work-strip span {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.party-work-strip strong {
+  margin-top: 4px;
+  font: 27px Georgia, serif;
+  font-weight: 400;
+}
+
+.party-work-strip small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
 .status-ledger strong {
   font: 27px Georgia, serif;
   font-weight: 400;
@@ -553,6 +638,22 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
 
   .status-ledger {
     grid-template-columns: repeat(4, 1fr);
+  }
+
+  .party-work-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .party-work-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .party-work-strip a {
+    min-height: 88px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-light);
   }
 }
 

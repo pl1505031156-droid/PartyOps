@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 import os
+import re
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -15,8 +17,8 @@ from sqlalchemy.orm import Session
 from .audit import emit_event, write_audit
 from .config import get_settings
 from .database import db_runtime
-from .enums import MaterialStage, Sensitivity, TaskStatus
-from .models import AttachmentVersion, FileBlob, MaterialItem, Task, User
+from .enums import MaterialStage, Sensitivity, TaskStatus, UserRole
+from .models import ArchiveAttachment, AttachmentVersion, FileBlob, MaterialItem, Task, User
 from .problems import ProblemException
 from .task_service import can_edit_task, can_manage_task
 from .work_journal import record_system_entry
@@ -25,6 +27,59 @@ from .work_journal import record_system_entry
 def _safe_original_name(filename: str | None) -> str:
     name = Path(filename or "未命名文件").name.strip()
     return name[:255] or "未命名文件"
+
+
+_BLOCKED_BUSINESS_SUFFIXES = {
+    ".app",
+    ".bat",
+    ".cmd",
+    ".com",
+    ".dll",
+    ".exe",
+    ".hta",
+    ".jar",
+    ".js",
+    ".jse",
+    ".lnk",
+    ".msi",
+    ".msp",
+    ".ps1",
+    ".scr",
+    ".sys",
+    ".vbe",
+    ".vbs",
+    ".wsf",
+}
+
+
+def safe_original_name(filename: str | None) -> str:
+    """返回可显示的叶子文件名，供原子快速上传入口复用。"""
+
+    return _safe_original_name(filename)
+
+
+def normalize_client_upload_id(value: str | None) -> str | None:
+    normalized = (value or "").strip()
+    if not normalized:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,79}", normalized):
+        raise ProblemException(
+            422,
+            "CLIENT_UPLOAD_ID_INVALID",
+            "上传标识无效",
+            "请重新选择文件后再试。",
+        )
+    return normalized
+
+
+def _assert_business_filename_allowed(filename: str) -> None:
+    if Path(filename).suffix.casefold() in _BLOCKED_BUSINESS_SUFFIXES:
+        raise ProblemException(
+            415,
+            "BUSINESS_FILE_TYPE_BLOCKED",
+            "该文件类型不能上传",
+            "为避免误运行程序，请上传 PDF、Office、图片、压缩包或普通文本资料。",
+        )
 
 
 def resolve_blob_path(relative_path: str) -> Path:
@@ -46,7 +101,24 @@ async def save_attachment(
     note: str = "",
     ip: str = "",
     expected_task_version: int | None = None,
+    client_upload_id: str | None = None,
 ) -> AttachmentVersion:
+    normalized_upload_id = normalize_client_upload_id(client_upload_id)
+    if normalized_upload_id:
+        existing = db.scalar(
+            select(AttachmentVersion).where(
+                AttachmentVersion.client_upload_id == normalized_upload_id
+            )
+        )
+        if existing:
+            if existing.material_item_id == material.id:
+                return existing
+            raise ProblemException(
+                409,
+                "UPLOAD_ID_CONFLICT",
+                "上传请求已被使用",
+                "系统检测到重复的上传请求，请重新选择该文件。",
+            )
     if not can_edit_task(db, task, actor):
         raise ProblemException(403, "MATERIAL_EDIT_DENIED", "无权上传", "你不是该事项参与人。")
     if task.sensitivity == Sensitivity.RESTRICTED and not task.allow_sensitive_content:
@@ -99,6 +171,7 @@ async def save_attachment(
     settings = get_settings()
     maximum = settings.max_upload_mb * 1024 * 1024
     original_name = _safe_original_name(upload.filename)
+    _assert_business_filename_allowed(original_name)
     incoming = settings.attachments_dir / ".incoming"
     incoming.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix="upload-", dir=incoming)
@@ -118,6 +191,8 @@ async def save_attachment(
                 digest.update(chunk)
                 handle.write(chunk)
         sha256 = digest.hexdigest()
+        if size == 0:
+            raise ProblemException(422, "EMPTY_FILE", "文件内容为空", "请选择包含实际内容的文件。")
         relative_path = f"{sha256[:2]}/{sha256}"
         final_path = resolve_blob_path(relative_path)
         final_path.parent.mkdir(parents=True, exist_ok=True)
@@ -151,6 +226,21 @@ async def save_attachment(
                     "最终版本已锁定",
                     "该材料已有最终版本，系统不会静默替换；如需更正，请由管理员按更正流程处理。",
                 )
+            if normalized_upload_id:
+                existing = db.scalar(
+                    select(AttachmentVersion).where(
+                        AttachmentVersion.client_upload_id == normalized_upload_id
+                    )
+                )
+                if existing:
+                    if existing.material_item_id == material.id:
+                        return existing
+                    raise ProblemException(
+                        409,
+                        "UPLOAD_ID_CONFLICT",
+                        "上传请求已被使用",
+                        "系统检测到重复的上传请求，请重新选择该文件。",
+                    )
             blob = db.get(FileBlob, sha256)
             if not blob:
                 blob = FileBlob(
@@ -178,6 +268,7 @@ async def save_attachment(
                 uploaded_by=actor.id,
                 note=note,
                 display_name=original_name,
+                client_upload_id=normalized_upload_id,
             )
             db.add(version)
             db.flush()
@@ -224,6 +315,243 @@ async def save_attachment(
     finally:
         if temporary_name and os.path.exists(temporary_name):
             os.unlink(temporary_name)
+
+
+def _require_attachment_reason(reason: str) -> str:
+    normalized = reason.strip()
+    if len(normalized) < 2:
+        raise ProblemException(
+            422,
+            "ATTACHMENT_DELETE_REASON_REQUIRED",
+            "需要填写删除原因",
+            "请至少填写两个字，方便日后审计和恢复。",
+        )
+    return normalized[:2_000]
+
+
+def _task_allows_attachment_recovery(task: Task, actor: User) -> None:
+    if task.status in {TaskStatus.COMPLETED, TaskStatus.ARCHIVED} and actor.role != UserRole.ADMIN:
+        raise ProblemException(
+            409,
+            "TASK_REOPEN_REQUIRED",
+            "事项已办结，不能直接修改材料",
+            "请由主办人重新打开事项，或联系管理员处理。",
+        )
+
+
+def delete_attachment_version(
+    db: Session,
+    task: Task,
+    material: MaterialItem,
+    version: AttachmentVersion,
+    actor: User,
+    reason: str,
+    *,
+    expected_task_version: int,
+    ip: str = "",
+) -> AttachmentVersion:
+    normalized_reason = _require_attachment_reason(reason)
+    _task_allows_attachment_recovery(task, actor)
+    manager = can_manage_task(db, task, actor)
+    if not manager and not (
+        can_edit_task(db, task, actor)
+        and version.uploaded_by == actor.id
+        and not version.is_final
+    ):
+        raise ProblemException(
+            403,
+            "ATTACHMENT_DELETE_DENIED",
+            "无权删除该文件",
+            "上传人只能删除自己的非终稿；终稿由事项负责人或管理员处理。",
+        )
+    if task.version != expected_task_version:
+        raise ProblemException(409, "VERSION_CONFLICT", "事项已被他人更新", "请刷新后再删除。")
+    if version.deleted_at is not None:
+        return version
+    with db_runtime.write_lock:
+        db.refresh(task)
+        db.refresh(version)
+        if task.version != expected_task_version:
+            raise ProblemException(409, "VERSION_CONFLICT", "事项已被他人更新", "请刷新后再删除。")
+        if version.deleted_at is not None:
+            return version
+        was_final = bool(version.is_final)
+        version.deleted_was_final = was_final
+        version.is_final = False
+        version.deleted_at = datetime.now(timezone.utc)
+        version.deleted_by = actor.id
+        version.delete_reason = normalized_reason
+        version.purge_after = version.deleted_at + timedelta(
+            days=get_settings().deleted_attachment_retention_days
+        )
+        material.version += 1
+        task.version += 1
+        task.updated_by = actor.id
+        write_audit(
+            db,
+            actor,
+            "attachment.delete",
+            "attachment",
+            version.id,
+            {
+                "task_id": task.id,
+                "material_id": material.id,
+                "was_final": was_final,
+                "reason": normalized_reason,
+                "purge_after": version.purge_after.isoformat(),
+            },
+            ip,
+        )
+        record_system_entry(
+            db,
+            actor,
+            f"移入回收站：{version.display_name or material.name}",
+            f"关联事项：{task.title}；保留 {get_settings().deleted_attachment_retention_days} 天。",
+            task_id=task.id,
+            event_code="material.deleted",
+            event_data={"material_id": material.id, "version_id": version.id},
+        )
+        emit_event(db, "attachment.deleted", task.id, {"version_id": version.id})
+        db.commit()
+        db.refresh(version)
+        return version
+
+
+def restore_attachment_version(
+    db: Session,
+    task: Task,
+    material: MaterialItem,
+    version: AttachmentVersion,
+    actor: User,
+    *,
+    expected_task_version: int,
+    ip: str = "",
+) -> AttachmentVersion:
+    _task_allows_attachment_recovery(task, actor)
+    manager = can_manage_task(db, task, actor)
+    if not manager and not (
+        can_edit_task(db, task, actor) and version.uploaded_by == actor.id
+    ):
+        raise ProblemException(403, "ATTACHMENT_RESTORE_DENIED", "无权恢复该文件", "请联系事项负责人。")
+    if version.deleted_at is None:
+        return version
+    if task.version != expected_task_version:
+        raise ProblemException(409, "VERSION_CONFLICT", "事项已被他人更新", "请刷新后再恢复。")
+    with db_runtime.write_lock:
+        db.refresh(task)
+        db.refresh(version)
+        if task.version != expected_task_version:
+            raise ProblemException(409, "VERSION_CONFLICT", "事项已被他人更新", "请刷新后再恢复。")
+        if version.deleted_at is None:
+            return version
+        restore_final = bool(version.deleted_was_final) and db.scalar(
+            select(AttachmentVersion.id)
+            .where(
+                AttachmentVersion.material_item_id == material.id,
+                AttachmentVersion.deleted_at.is_(None),
+                AttachmentVersion.is_final.is_(True),
+            )
+            .limit(1)
+        ) is None
+        version.is_final = restore_final
+        version.deleted_at = None
+        version.deleted_by = None
+        version.delete_reason = ""
+        version.purge_after = None
+        version.deleted_was_final = False
+        material.version += 1
+        task.version += 1
+        task.updated_by = actor.id
+        write_audit(
+            db,
+            actor,
+            "attachment.restore",
+            "attachment",
+            version.id,
+            {
+                "task_id": task.id,
+                "material_id": material.id,
+                "restored_as_final": restore_final,
+            },
+            ip,
+        )
+        record_system_entry(
+            db,
+            actor,
+            f"恢复文件：{version.display_name or material.name}",
+            f"关联事项：{task.title}" + ("；已恢复为终稿" if restore_final else ""),
+            task_id=task.id,
+            event_code="material.restored",
+            event_data={"material_id": material.id, "version_id": version.id},
+        )
+        emit_event(db, "attachment.restored", task.id, {"version_id": version.id})
+        db.commit()
+        db.refresh(version)
+        return version
+
+
+def purge_expired_deleted_attachments(
+    db: Session, *, now: datetime | None = None
+) -> dict[str, int]:
+    """清理超过保留期的逻辑附件；被其他记录引用的 Blob 永不误删。"""
+
+    current = now or datetime.now(timezone.utc)
+    task_rows = list(
+        db.scalars(
+            select(AttachmentVersion).where(
+                AttachmentVersion.deleted_at.is_not(None),
+                AttachmentVersion.purge_after.is_not(None),
+                AttachmentVersion.purge_after <= current,
+            )
+        ).all()
+    )
+    archive_rows = list(
+        db.scalars(
+            select(ArchiveAttachment).where(
+                ArchiveAttachment.deleted_at.is_not(None),
+                ArchiveAttachment.purge_after.is_not(None),
+                ArchiveAttachment.purge_after <= current,
+            )
+        ).all()
+    )
+    candidate_hashes = {
+        *(row.blob_sha256 for row in task_rows),
+        *(row.blob_sha256 for row in archive_rows),
+    }
+    for row in [*task_rows, *archive_rows]:
+        db.delete(row)
+    db.flush()
+    purged_blobs = 0
+    for sha256 in candidate_hashes:
+        task_reference = db.scalar(
+            select(AttachmentVersion.id)
+            .where(AttachmentVersion.blob_sha256 == sha256)
+            .limit(1)
+        )
+        archive_reference = db.scalar(
+            select(ArchiveAttachment.id)
+            .where(ArchiveAttachment.blob_sha256 == sha256)
+            .limit(1)
+        )
+        if task_reference or archive_reference:
+            continue
+        blob = db.get(FileBlob, sha256)
+        if not blob:
+            continue
+        path = resolve_blob_path(blob.relative_path)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            # 文件仍被系统扫描器或备份程序占用时保留元数据，下次周期重试。
+            continue
+        db.delete(blob)
+        purged_blobs += 1
+    db.commit()
+    return {
+        "task_versions": len(task_rows),
+        "archive_attachments": len(archive_rows),
+        "blobs": purged_blobs,
+    }
 
 
 def rollback_attachment_version(

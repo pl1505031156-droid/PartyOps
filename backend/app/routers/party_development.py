@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import typing
 
@@ -26,13 +27,18 @@ from ..models import (
     PartyDevelopmentCase,
     PartyDevelopmentMaterial,
     PartyDevelopmentMilestone,
+    PartyDevelopmentPlanProfile,
     PartyDevelopmentProfile,
     User,
     WorkCalendarEntry,
     utcnow,
 )
 from ..party_development import (
+    NATIONAL_MATERIALS,
+    PHASE_LABELS,
     calculate_party_development,
+    calculate_reference_plan,
+    ensure_reference_plan_profile,
     ensure_reference_profile,
     export_result_docx,
     profile_to_dict,
@@ -51,9 +57,11 @@ from ..schemas import (
     PartyDevelopmentProfileCreate,
     PartyDevelopmentProfileOut,
     PartyDevelopmentProfilePatch,
+    PartyDevelopmentReferencePlanPatch,
     PartyDevelopmentResultOut,
 )
 from ..security import get_current_user, require_admin
+from ..spreadsheet_security import safe_spreadsheet_row
 from .router_utils import client_ip, parse_if_match
 
 
@@ -113,6 +121,8 @@ def _case_out(db: Session, item: PartyDevelopmentCase) -> dict[str, typing.Any]:
         "stage": item.stage,
         "status": item.status,
         "rule_version": item.rule_version,
+        "planning_profile_id": item.planning_profile_id,
+        "planning_profile_snapshot": item.planning_profile_snapshot,
         "version": item.version,
         "milestones": [
             {
@@ -125,6 +135,7 @@ def _case_out(db: Session, item: PartyDevelopmentCase) -> dict[str, typing.Any]:
                 "adjusted_at": row.adjusted_at,
                 "rule_version": row.rule_version,
                 "legal_basis": row.legal_basis,
+                "planning_basis": row.planning_basis,
                 "plan_kind": row.plan_kind,
                 "reminder_days": row.reminder_days,
                 "version": row.version,
@@ -132,6 +143,111 @@ def _case_out(db: Session, item: PartyDevelopmentCase) -> dict[str, typing.Any]:
             for row in milestones
         ],
     }
+
+
+def _calculated_reference_plan(
+    db: Session, item: PartyDevelopmentCase
+) -> dict[str, typing.Any]:
+    snapshot = (
+        item.planning_profile_snapshot
+        if isinstance(item.planning_profile_snapshot, dict)
+        else {}
+    )
+    assumptions = snapshot.get("assumptions")
+    if not isinstance(assumptions, dict):
+        profile = (
+            db.get(PartyDevelopmentPlanProfile, item.planning_profile_id)
+            if item.planning_profile_id
+            else None
+        )
+        assumptions = profile.assumptions if profile else {}
+    plan = calculate_reference_plan(
+        application_date=item.application_at.date(),
+        calendar_entries=db.scalars(select(WorkCalendarEntry)).all(),
+        activist_date=_as_date(item.activist_at),
+        development_object_date=_as_date(item.development_object_at),
+        branch_acceptance_date=_as_date(item.probationary_at),
+        assumptions=assumptions,
+    )
+    existing = {
+        row.milestone_type: row
+        for row in db.scalars(
+            select(PartyDevelopmentMilestone).where(
+                PartyDevelopmentMilestone.case_id == item.id,
+                PartyDevelopmentMilestone.plan_kind == "reference",
+            )
+        ).all()
+    }
+    for node in plan["nodes"]:
+        row = existing.get(str(node["key"]))
+        node["persisted_reference_date"] = _as_date(row.planned_at) if row else None
+        node["adjusted_date"] = _as_date(row.adjusted_at) if row else None
+        node["effective_date"] = (
+            _as_date(row.adjusted_at or row.planned_at)
+            if row
+            else node["reference_date"]
+        )
+        node["version"] = row.version if row else 0
+    plan["profile_snapshot"] = snapshot
+    return plan
+
+
+def _apply_reference_plan(
+    db: Session,
+    item: PartyDevelopmentCase,
+    *,
+    adjustments: dict[str, date | None] | None = None,
+    bump_case_version: bool = True,
+) -> dict[str, typing.Any]:
+    plan = _calculated_reference_plan(db, item)
+    adjustment_values = adjustments or {}
+    allowed = {str(node["key"]) for node in plan["nodes"]}
+    unknown = sorted(set(adjustment_values) - allowed)
+    if unknown:
+        raise ProblemException(
+            422,
+            "REFERENCE_PLAN_NODE_INVALID",
+            "参考计划节点无效",
+            "请刷新参考计划后重新调整。",
+            extra={"unknown_keys": unknown},
+        )
+    previous = {
+        row.milestone_type: row
+        for row in db.scalars(
+            select(PartyDevelopmentMilestone).where(
+                PartyDevelopmentMilestone.case_id == item.id,
+                PartyDevelopmentMilestone.plan_kind == "reference",
+            )
+        ).all()
+    }
+    for node in plan["nodes"]:
+        key = str(node["key"])
+        row = previous.get(key)
+        if row is None:
+            row = PartyDevelopmentMilestone(
+                case_id=item.id,
+                milestone_type=key,
+                plan_kind="reference",
+            )
+            db.add(row)
+        else:
+            row.version += 1
+        row.actual_at = None
+        row.legal_earliest_at = None
+        row.legal_deadline_at = None
+        row.planned_at = _as_datetime(node["reference_date"])
+        row.adjusted_at = (
+            _as_datetime(adjustment_values[key])
+            if key in adjustment_values
+            else row.adjusted_at
+        )
+        row.rule_version = item.rule_version
+        row.legal_basis = ""
+        row.planning_basis = str(node["planning_basis"])
+    if bump_case_version:
+        item.version += 1
+    db.flush()
+    return _calculated_reference_plan(db, item)
 
 
 def _profile(db: Session, profile_id: str) -> PartyDevelopmentProfile:
@@ -177,6 +293,41 @@ def current_rules(_user: User = Depends(get_current_user)) -> dict:
     return rule_metadata()
 
 
+@router.get("/party-development/materials", response_model=dict)
+def material_checklist(
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    """返回国家规则材料和已启用单位补充项，供全体登录用户查阅。"""
+
+    supplemental = supplemental_materials(db, [])
+    phases: list[dict[str, typing.Any]] = []
+    for phase, label in PHASE_LABELS.items():
+        national = [
+            {
+                "name": name,
+                "source": "国家规则",
+                "responsible_party": "按组织程序确认",
+                "guidance": "具体表单、签署和归档要求由本单位组织部门确认",
+                "required": True,
+                "national": True,
+            }
+            for name in NATIONAL_MATERIALS.get(phase, [])
+        ]
+        phases.append(
+            {
+                "phase": phase,
+                "label": label,
+                "items": national + supplemental.get(phase, []),
+            }
+        )
+    return {
+        "rule": rule_metadata(),
+        "phases": phases,
+        "disclaimer": "材料清单用于办理提醒，不替代组织部门对个案材料和程序的审核。",
+    }
+
+
 @router.post("/party-development/calculate", response_model=PartyDevelopmentResultOut)
 def calculate(
     payload: PartyDevelopmentCalculateRequest,
@@ -216,6 +367,14 @@ def create_case(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> dict[str, typing.Any]:
+    profile = ensure_reference_plan_profile(db, user)
+    snapshot = {
+        "system_key": profile.system_key,
+        "name": profile.name,
+        "version": profile.version,
+        "assumptions": dict(profile.assumptions),
+        "captured_at": utcnow().isoformat(),
+    }
     item = PartyDevelopmentCase(
         party_committee=payload.party_committee.strip(),
         party_branch=payload.party_branch.strip(),
@@ -232,13 +391,76 @@ def create_case(
         probationary_at=_as_datetime(payload.probationary_date),
         converted_at=_as_datetime(payload.converted_date),
         rule_version=str(rule_metadata()["version"]),
+        planning_profile_id=profile.id,
+        planning_profile_snapshot=snapshot,
         created_by=user.id,
     )
     db.add(item)
     db.flush()
+    # 新建档案的初始计划属于同一笔创建事务，不应把初始版本从 1 抬高到 2。
+    _apply_reference_plan(db, item, bump_case_version=False)
     write_audit(db, user, "party_development.case_create", "party_development_case", item.id, {"party_branch": item.party_branch}, client_ip(request))
     db.commit()
     return _case_out(db, item)
+
+
+@router.get("/party-development/cases/{case_id}/reference-plan", response_model=dict)
+def get_reference_plan(
+    case_id: str,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    item = db.get(PartyDevelopmentCase, case_id)
+    if not item:
+        raise ProblemException(404, "PARTY_DEVELOPMENT_CASE_NOT_FOUND", "发展档案不存在", "请刷新后重试。")
+    return _calculated_reference_plan(db, item)
+
+
+@router.post("/party-development/cases/{case_id}/reference-plan/recalculate-preview", response_model=dict)
+def preview_reference_plan(
+    case_id: str,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    """只读预览实际日期重锚后的计划，不静默覆盖已保存日期。"""
+
+    item = db.get(PartyDevelopmentCase, case_id)
+    if not item:
+        raise ProblemException(404, "PARTY_DEVELOPMENT_CASE_NOT_FOUND", "发展档案不存在", "请刷新后重试。")
+    result = _calculated_reference_plan(db, item)
+    result["requires_confirmation"] = any(
+        node["persisted_reference_date"] not in {None, node["reference_date"]}
+        for node in result["nodes"]
+    )
+    return result
+
+
+@router.put("/party-development/cases/{case_id}/reference-plan", response_model=dict)
+def confirm_reference_plan(
+    case_id: str,
+    payload: PartyDevelopmentReferencePlanPatch,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    item = db.get(PartyDevelopmentCase, case_id)
+    if not item:
+        raise ProblemException(404, "PARTY_DEVELOPMENT_CASE_NOT_FOUND", "发展档案不存在", "请刷新后重试。")
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "发展档案已更新", "请刷新预览后重新确认。")
+    result = _apply_reference_plan(db, item, adjustments=payload.adjustments)
+    write_audit(
+        db,
+        user,
+        "party_development.reference_plan_confirm",
+        "party_development_case",
+        item.id,
+        {"adjusted_nodes": sorted(payload.adjustments), "profile_version": item.planning_profile_snapshot.get("version")},
+        client_ip(request),
+    )
+    db.commit()
+    return result
 
 
 @router.patch("/party-development/cases/{case_id}", response_model=dict)
@@ -256,8 +478,16 @@ def patch_case(
     if item.version != parse_if_match(if_match):
         raise ProblemException(409, "VERSION_CONFLICT", "发展档案已更新", "请刷新后重试。")
     changes = payload.model_dump(exclude_unset=True)
+    if "application_date" in changes and changes["application_date"] is None:
+        raise ProblemException(
+            422,
+            "APPLICATION_DATE_REQUIRED",
+            "入党申请书日期不能为空",
+            "请填写实际提交日期；系统将据此重新预览后续参考计划。",
+        )
     date_fields = {
         "birth_date": "birth_date",
+        "application_date": "application_at",
         "activist_date": "activist_at",
         "development_object_date": "development_object_at",
         "probationary_date": "probationary_at",
@@ -463,14 +693,15 @@ def export_development_cases_docx(
             cells[index].text = value
     output = io.BytesIO()
     document.save(output)
+    export_hash = hashlib.sha256(output.getvalue()).hexdigest()
     output.seek(0)
-    write_audit(db, user, "party_development.cases_exported", "party_development_case", None, {"format": "docx", "count": len(cases)}, client_ip(request))
+    write_audit(db, user, "party_development.cases_exported", "party_development_case", None, {"format": "docx", "count": len(cases), "party_committee": party_committee, "party_branch": party_branch, "sha256": export_hash}, client_ip(request))
     db.commit()
     filename = quote("党员发展情况统计表.docx")
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}", "Cache-Control": "no-store"},
     )
 
 
@@ -490,7 +721,7 @@ def export_development_cases_xlsx(
     sheet.title = "党员发展情况"
     sheet.append(DEVELOPMENT_EXPORT_HEADERS)
     for row in _development_export_rows(cases):
-        sheet.append(row)
+        sheet.append(safe_spreadsheet_row(row))
     sheet.freeze_panes = "A2"
     sheet.auto_filter.ref = sheet.dimensions
     for cell in sheet[1]:
@@ -501,14 +732,15 @@ def export_development_cases_xlsx(
         sheet.column_dimensions[letter].width = min(28, max(12, max(len(str(cell.value or "")) for cell in column) + 2))
     output = io.BytesIO()
     workbook.save(output)
+    export_hash = hashlib.sha256(output.getvalue()).hexdigest()
     output.seek(0)
-    write_audit(db, user, "party_development.cases_exported", "party_development_case", None, {"format": "xlsx", "count": len(cases)}, client_ip(request))
+    write_audit(db, user, "party_development.cases_exported", "party_development_case", None, {"format": "xlsx", "count": len(cases), "party_committee": party_committee, "party_branch": party_branch, "sha256": export_hash}, client_ip(request))
     db.commit()
     filename = quote("党员发展情况统计表.xlsx")
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}", "Cache-Control": "no-store"},
     )
 
 

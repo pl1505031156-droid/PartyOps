@@ -29,7 +29,8 @@ except ImportError:  # pragma: no cover
     Ed25519PublicKey = None  # type: ignore[assignment,misc]
 
 
-MODEL_PACK_FORMAT_VERSION = 1
+MODEL_PACK_FORMAT_VERSION = 2
+SUPPORTED_MODEL_PACK_FORMAT_VERSIONS = {1, 2}
 MAX_MODEL_PACK_BYTES = 4 * 1024**3
 MAX_UNPACKED_BYTES = 6 * 1024**3
 MAX_MEMBERS = 64
@@ -119,7 +120,7 @@ def _validate_manifest(manifest: dict, archive: zipfile.ZipFile) -> tuple[dict, 
         format_version = int(manifest.get("format_version", 0))
     except (TypeError, ValueError) as exc:
         raise ProblemException(422, "MODEL_PACK_FORMAT_INVALID", "模型包格式无效", "format_version 必须是整数。") from exc
-    if manifest.get("format") != "partyops-modelpack" or format_version != MODEL_PACK_FORMAT_VERSION:
+    if manifest.get("format") != "partyops-modelpack" or format_version not in SUPPORTED_MODEL_PACK_FORMAT_VERSIONS:
         raise ProblemException(422, "MODEL_PACK_FORMAT_INVALID", "模型包格式无效", "请选择 PartyOps 兼容的 .partyops-modelpack 文件。")
     files = manifest.get("files")
     components = manifest.get("components")
@@ -133,6 +134,7 @@ def _validate_manifest(manifest: dict, archive: zipfile.ZipFile) -> tuple[dict, 
         raise ProblemException(422, "MODEL_PACK_MEMORY_INVALID", "模型内存需求无效", "estimated_memory_mb 超出合理范围。")
     llm = components.get("llm")
     embedding = components.get("embedding")
+    intent_router = components.get("intent_router")
     capabilities: list[str] = []
     required: set[str] = set()
     if isinstance(llm, dict):
@@ -159,13 +161,57 @@ def _validate_manifest(manifest: dict, archive: zipfile.ZipFile) -> tuple[dict, 
                 raise ProblemException(422, "MODEL_PACK_EMBEDDING_INVALID", "向量模型配置无效", f"{field} 必须是整数。") from exc
             if not lower <= value <= upper:
                 raise ProblemException(422, "MODEL_PACK_EMBEDDING_INVALID", "向量模型配置无效", f"{field} 超出允许范围。")
+    if isinstance(intent_router, dict):
+        capabilities.append("intent_router")
+        required.update(
+            {
+                str(intent_router.get("runtime_file", "")),
+                str(intent_router.get("model_file", "")),
+            }
+        )
     if not capabilities:
         raise ProblemException(
             422,
             "MODEL_PACK_COMPONENT_MISSING",
             "模型组件不完整",
-            "模型包必须至少包含 embedding 或 llm 组件。",
+            "模型包必须至少包含 embedding、llm 或 intent_router 组件。",
         )
+    if format_version >= 2:
+        resource = manifest.get("resource_profile")
+        platforms = manifest.get("platforms")
+        architectures = manifest.get("architectures")
+        runtime = manifest.get("runtime")
+        if (
+            not isinstance(resource, dict)
+            or not isinstance(platforms, list)
+            or not platforms
+            or not isinstance(architectures, list)
+            or not architectures
+            or not isinstance(runtime, str)
+            or not runtime.strip()
+        ):
+            raise ProblemException(
+                422,
+                "MODEL_PACK_RESOURCE_PROFILE_MISSING",
+                "模型资源画像不完整",
+                "v2 模型包必须声明平台、架构、运行时和资源要求。",
+            )
+        for field, lower, upper in (
+            ("min_memory_mb", 256, 1024 * 1024),
+            ("recommended_memory_mb", 256, 1024 * 1024),
+            ("disk_mb", 1, 1024 * 1024),
+            ("threads", 1, 512),
+            ("context_tokens", 1, 1024 * 1024),
+            ("measured_peak_memory_mb", 0, 1024 * 1024),
+        ):
+            try:
+                value = int(resource.get(field, -1))
+            except (TypeError, ValueError) as exc:
+                raise ProblemException(422, "MODEL_PACK_RESOURCE_PROFILE_INVALID", "模型资源画像无效", f"{field} 必须是整数。") from exc
+            if not lower <= value <= upper:
+                raise ProblemException(422, "MODEL_PACK_RESOURCE_PROFILE_INVALID", "模型资源画像无效", f"{field} 超出允许范围。")
+        if int(resource["recommended_memory_mb"]) < int(resource["min_memory_mb"]):
+            raise ProblemException(422, "MODEL_PACK_RESOURCE_PROFILE_INVALID", "模型资源画像无效", "推荐内存不能低于最低内存。")
     licenses = manifest.get("license_files", [])
     if not isinstance(licenses, list) or not licenses:
         raise ProblemException(422, "MODEL_PACK_LICENSE_MISSING", "模型许可文件缺失", "模型包必须包含模型许可说明。")
@@ -352,7 +398,7 @@ def install_model_pack(path: Path, original_name: str, admin: User, db: Session)
         manifest=manifest_copy,
         capabilities=[
             capability
-            for capability in ("embedding", "llm")
+            for capability in ("embedding", "llm", "intent_router")
             if isinstance(manifest_copy.get("components", {}).get(capability), dict)
         ],
         min_runtime_version=str(manifest.get("min_runtime_version", "1.4.1"))[:32],
@@ -432,7 +478,7 @@ def verify_installed_pack(pack: AIModelPack) -> bool:
 
 
 def active_model_pack(db: Session, capability: str = "embedding") -> AIModelPack | None:
-    if capability not in {"embedding", "llm"}:
+    if capability not in {"embedding", "llm", "intent_router"}:
         return None
     activation = db.scalar(
         select(AIModelActivation).where(AIModelActivation.capability == capability)
@@ -459,8 +505,8 @@ def activate_model_pack(
     capability: str,
     activated_by: str,
 ) -> AIModelPack:
-    if capability not in {"embedding", "llm"}:
-        raise ProblemException(422, "MODEL_CAPABILITY_INVALID", "模型能力无效", "请选择 embedding 或 llm。")
+    if capability not in {"embedding", "llm", "intent_router"}:
+        raise ProblemException(422, "MODEL_CAPABILITY_INVALID", "模型能力无效", "请选择 embedding、llm 或 intent_router。")
     if capability not in (pack.capabilities or []):
         raise ProblemException(422, "MODEL_CAPABILITY_MISSING", "模型包不含所选能力", "请选择包含该组件的模型包。")
     if _numeric_version(pack.min_runtime_version or "1.4.1") > _numeric_version(get_settings().app_version):

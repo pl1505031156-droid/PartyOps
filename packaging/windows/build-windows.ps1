@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
-$releaseVersion = "1.4.4"
-$releaseTag = "v1.4.4"
+$releaseVersion = "1.4.5-rc.1"
+$releaseTag = "v1.4.5-rc.1"
 & $Python (Join-Path $repoRoot "scripts\verify-version-consistency.py") `
   --root $repoRoot --expected $releaseVersion
 if ($LASTEXITCODE -ne 0) { throw "版本一致性门禁失败，拒绝冻结 Windows 制品。" }
@@ -194,6 +194,22 @@ Write-Host "开发 Python SQLite=$sqliteVersion；正式冻结运行时固定使
 if (Test-Path -LiteralPath $buildRoot) { Remove-Item -LiteralPath $buildRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
+# Alembic 迁移必须进入冻结运行时，但源码目录可能残留由不同 Python
+# 版本生成的 __pycache__。直接递归收集会把无用 pyc 混入安装器，并使
+# 发布清单依赖本机构建历史。先生成只含可审计 .py 源文件的干净暂存目录。
+$migrationSourceRoot = Join-Path $repoRoot "backend\alembic"
+$migrationDataRoot = Join-Path $repoRoot ".build-windows\alembic-data"
+if (Test-Path -LiteralPath $migrationDataRoot) {
+  Remove-Item -LiteralPath $migrationDataRoot -Recurse -Force
+}
+foreach ($migrationFile in Get-ChildItem -LiteralPath $migrationSourceRoot -Recurse -File -Filter "*.py") {
+  if ($migrationFile.FullName -match "[\\/]__pycache__[\\/]") { continue }
+  $relativeMigrationPath = $migrationFile.FullName.Substring($migrationSourceRoot.Length).TrimStart("\", "/")
+  $stagedMigrationPath = Join-Path $migrationDataRoot $relativeMigrationPath
+  New-Item -ItemType Directory -Path (Split-Path -Parent $stagedMigrationPath) -Force | Out-Null
+  Copy-Item -LiteralPath $migrationFile.FullName -Destination $stagedMigrationPath -Force
+}
+
 # 所有入口统一使用 onedir，并在 bundleRoot 合并同版本的 _internal 运行时。
 # onefile 会把约 80MB Python/原生依赖重复嵌入每个辅助程序，使安装器、应用内
 # 更新包和弱网续传无谓膨胀；共享运行时仍由发布清单逐文件校验，不降低完整性。
@@ -235,7 +251,7 @@ foreach ($entry in $entries) {
   if ($entry.Name -eq "PartyOps") {
     $arguments += @(
       "--add-data", "$frontendDist\client;frontend",
-      "--add-data", "$(Join-Path $repoRoot 'backend\alembic');alembic",
+      "--add-data", "$migrationDataRoot;alembic",
       "--add-data", "$(Join-Path $repoRoot 'backend\alembic.ini');."
     )
   }
@@ -390,7 +406,7 @@ try {
 }
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
-$installerBase = if ($isLegacy) { "PartyOps_1.4.4_windows7_$targetArchitecture" } else { "PartyOps_1.4.4_windows_amd64" }
+$installerBase = if ($isLegacy) { "PartyOps_1.4.5-rc.1_windows7_$targetArchitecture" } else { "PartyOps_1.4.5-rc.1_windows_amd64" }
 $installer = Join-Path $outputRoot "$installerBase.exe"
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"

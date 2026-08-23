@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "党建智办"
-    app_version: str = "1.4.4"
+    app_version: str = "1.4.5-rc.1"
     mode: Literal["host", "personal", "client"] = "host"
     # 未显式配置时按生产边界运行。开发脚本和自动化测试会主动设置
     # development/test，避免开源用户直接启动时意外开启调试与弱校验。
@@ -103,6 +103,7 @@ class Settings(BaseSettings):
     inbox_unhandled_retention_days: int = Field(default=180, ge=30, le=3650)
     export_retention_days: int = Field(default=7, ge=1, le=365)
     upgrade_backup_retention_days: int = Field(default=30, ge=7, le=365)
+    deleted_attachment_retention_days: int = Field(default=30, ge=7, le=365)
     upgrade_backup_keep: int = Field(default=2, ge=1, le=10)
     tls_enabled: bool = False
     tls_cert_file: Path | None = None

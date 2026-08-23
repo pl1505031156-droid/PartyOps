@@ -1,10 +1,10 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
-$python = Join-Path $root ".venv\Scripts\python.exe"
+$python = Join-Path $root "backend\.venv\Scripts\python.exe"
 $corepackCommand = Get-Command "corepack" -ErrorAction SilentlyContinue
 if (-not (Test-Path -LiteralPath $python)) {
-  throw "缺少项目 Python 环境：$python。请先按开发说明安装锁定依赖。"
+  throw "缺少后端 Python 环境：$python。请先按开发说明安装锁定依赖。"
 }
 if (-not $corepackCommand) {
   throw "未找到 Corepack。请安装 Node.js 22 并启用 package.json 指定的 pnpm 版本。"

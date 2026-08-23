@@ -263,11 +263,20 @@ def test_main_dispatches_privileged_shared_root_and_normal_wizard(monkeypatch, t
     )
     assert valid.code == 7 and managed == [(False, "x" * 43)]
 
-    launched: list[tuple[bool, str]] = []
+    launched: list[tuple[bool, str, bool]] = []
     monkeypatch.setattr(
         setup_wizard,
         "run_wizard",
-        lambda browser, role: launched.append((browser, role)) or 3,
+        lambda browser, role, *, reconfiguration=False: (
+            launched.append((browser, role, reconfiguration)) or 3
+        ),
     )
     normal = _run_main(monkeypatch, ["--no-browser", "--initial-role", "client"])
-    assert normal.code == 3 and launched == [(False, "client")]
+    assert normal.code == 3 and launched == [(False, "client", False)]
+
+    reconfigured = _run_main(
+        monkeypatch,
+        ["--no-browser", "--initial-role", "personal", "--reconfigure"],
+    )
+    assert reconfigured.code == 3
+    assert launched[-1] == (False, "personal", True)

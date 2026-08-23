@@ -15,6 +15,20 @@ def _expect(pattern: str, text: str, expected: str, label: str) -> None:
         raise ValueError(f"{label}版本不一致：期望 {expected}，实际 {actual}")
 
 
+def _artifact_versions(text: str) -> set[str]:
+    """同时识别通用文件名和 RPM 的候选版发布号。"""
+
+    versions = set(
+        re.findall(r"PartyOps_(\d+\.\d+\.\d+(?:-rc\.\d+)?)_", text)
+    )
+    for base, rc in re.findall(
+        r"PartyOps-(\d+\.\d+\.\d+)-(?:0\.rc\.(\d+)\.\d+|\d+)[.'\"${]",
+        text,
+    ):
+        versions.add(f"{base}-rc.{rc}" if rc else base)
+    return versions
+
+
 def verify(root: Path, expected: str) -> None:
     """验证应用仓库内的运行时、打包入口与发布生成器版本。"""
 
@@ -113,7 +127,7 @@ def verify(root: Path, expected: str) -> None:
         ("scripts/generate-release-bundle-manifest.py", "安装包发布矩阵"),
     ):
         text = (root / relative).read_text(encoding="utf-8")
-        versions = set(re.findall(r"PartyOps[_-](\d+\.\d+\.\d+(?:-rc\.\d+)?)", text))
+        versions = _artifact_versions(text)
         if versions != {expected}:
             actual = ", ".join(sorted(versions)) or "<missing>"
             raise ValueError(f"{label}版本不一致：期望 {expected}，实际 {actual}")

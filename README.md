@@ -6,8 +6,8 @@
 
 把事项办理、跨机文件、重要档案、迎检材料、通知评论和工作留痕，收进一套真正能落地的局域网协同闭环。
 
-[![Release](https://img.shields.io/badge/release-v1.4.4-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.4)
-[![Source](https://img.shields.io/badge/source-v1.4.4-c58b3d?style=for-the-badge)](docs/release-notes-v1.4.4.md)
+[![Release](https://img.shields.io/badge/release-v1.4.5--rc.1-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.5-rc.1)
+[![Source](https://img.shields.io/badge/source-v1.4.5--rc.1-c58b3d?style=for-the-badge)](docs/release-notes-v1.4.5-rc.1.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-292520?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-c17b17?style=for-the-badge)](#安装教程)
 [![Local first](https://img.shields.io/badge/data-local--first-2f7d57?style=for-the-badge)](#安全与隐私)
@@ -18,15 +18,15 @@
 </div>
 
 > [!IMPORTANT]
-> 当前源码版本为 `1.4.4`，数据库模式为 `0020`。本版提供 Windows 10/11 x64、Windows 7 SP1 x64/x86、麒麟/UOS/deepin 双架构 DEB、openEuler 双架构 RPM，以及 macOS 11+ Apple Silicon/Intel 双架构 PKG；实际可下载项以[机器可读支持矩阵](docs/support-matrix-1.4.4.json)和发布清单为准。Windows/macOS 未使用商业签名，macOS 未公证；Windows ARM64、Linux i686/ARMv7/LoongArch/RISC-V 未完成原生构建与真机验证，不提供伪兼容包。详见[1.4.4 发布说明](docs/release-notes-v1.4.4.md)。
+> 当前源码版本为 `1.4.5-rc.1`，数据库模式为 `0022`。本版把“三会一课”、党委（党组）理论学习中心组和发展党员升级为独立党务模块，并加入多文件资料队列、30 天可恢复删除、运行身份重新配置、本机硬件检测及 12 档本地模型推荐。Windows 10/11 x64、Windows 7 SP1 x64/x86、麒麟/UOS/deepin 双架构 DEB、openEuler 双架构 RPM，以及 macOS 11+ Apple Silicon/Intel 双架构 PKG 均按独立门禁发布；实际可下载项以[机器可读支持矩阵](docs/support-matrix-1.4.5-rc.1.json)和发布清单为准。Windows/macOS 未使用商业签名，macOS 未公证；未完成原生构建的架构不提供伪兼容包。详见[1.4.5-rc.1 发布说明](docs/release-notes-v1.4.5-rc.1.md)。
 
 ## 当前公开发布
 
 | 项目 | 当前状态 |
 | --- | --- |
-| 公开版本 | [`v1.4.4`](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.4)，GitHub 普通 Release |
+| 公开版本 | [`v1.4.5-rc.1`](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.5-rc.1)，GitHub 普通 Release |
 | 发布时间 | 以 GitHub Release 与官网显示的北京时间为准 |
-| 冻结源码 | 不可变标签 [`v1.4.4`](https://github.com/pl1505031156-droid/PartyOps/tree/v1.4.4) |
+| 冻结源码 | 不可变标签 [`v1.4.5-rc.1`](https://github.com/pl1505031156-droid/PartyOps/tree/v1.4.5-rc.1) |
 | 官方网站 | [https://www.partyops.cn/](https://www.partyops.cn/) |
 | 制品校验 | 当前九个 Windows/Linux/macOS 主安装包以同一 Release、官网和机器可读清单为准 |
 | 发布边界 | 只有完成对应原生构建和目标系统门禁的制品才提供下载；缺少商业签名或用户真机交互验收的平台标为 preview，未构建架构标为 unavailable |
@@ -38,6 +38,15 @@ Release 当前提供九个 Windows/Linux/macOS 主安装包、可选 `.sha256`�
 PartyOps 不是一套把表单搬到浏览器里的系统。它解决的是基层办公最常见的断点：事项散落在聊天记录里，材料留在不同电脑上，档案与办理过程彼此脱节，迎检时再临时拼接。
 
 系统以一台单位主机保存权威数据库和受管附件，Windows 或 UOS 协同电脑通过受控 Agent 接入。团队成员可以发布自己电脑上的真实文件夹，在权限范围内互相浏览、阅读、下载和转发；事项、材料、档案、评论、通知与审计记录始终沿同一条责任链关联。
+
+### 1.4.5-rc.1：把党务业务真正做成闭环
+
+- **三会一课**：支部党员大会、支委会、党小组会和党课都有独立模板、年度台账、出席记录、决议落实、材料检查与归档。
+- **中心组学习**：从年度计划、专题安排、会前材料、集体研讨到调研成果和成果转化，使用专属台账推进。
+- **发展党员**：输入申请书日期即可生成参考计划，同时清楚区分实际日期、法定边界和内部参考日期，系统推算不替代组织研究审批。
+- **一事一档多文件**：一次选择多个资料，逐文件上传、失败重试；业务附件删除后保留 30 天，可按权限恢复。
+- **本机智能**：先检测 CPU、内存、显存、磁盘和运行后端，再从 Needle、BGE 与 Qwen3 的 12 个档位中给出量化和资源建议；不安装模型也不影响全部核心业务。
+- **身份重新配置**：已经配置过的电脑可从设置重新打开向导，在个人、主机和协同机之间重新选择，并保留业务数据。
 
 ## 系统主界面实景
 
@@ -98,23 +107,22 @@ PartyOps 不是一套把表单搬到浏览器里的系统。它解决的是基�
 
 ## PartyOps 的亮点
 
-| 真协同文件网 | 一条责任链 | 档案不是孤岛 |
+| 今日工作一处看清 | 三会一课与中心组 | 发展党员时间轴 |
 | --- | --- | --- |
-| 已入网用户可以发布本机真实文件夹，按团队或指定人员授权浏览、下载和转发。设备间仍由主机中转，不开放 SMB、匿名共享或设备直连。 | 事项的主办、协办、审核、步骤、材料、评论、提及和通知围绕同一业务对象推进，减少重复建表和版本漂移。 | 重要档案支持年度目录、类别权限、协同贡献、扫描件、OCR、版本历史、业务关联、作废与恢复。 |
-| **文件打开就能读** | **本地数据边界** | **失败可恢复、过程可追溯** |
-| PDF、Word、Excel、PowerPoint、OpenDocument、RTF、EPUB、CSV 和常见文本可在文件中心打开，远端内容先完成分块传输与 SHA-256 校验。 | 文档正文不上传 Firecrawl 或外部服务；本地 AI 由管理员离线导入并按向量、LLM 两种能力启停。 | SQLite 在线快照、版本化备份、更新前备份、原子恢复、断点续传、哈希失败隔离、审计记录和设备隔离共同守住数据。 |
-| **本机私有备忘** | **新版细则时间计算** | **规则与单位材料分层** |
-| 细小工作用文本或清单随手记录，按账号和当前电脑隔离；支持 30 天回收站与 AES-GCM 加密备份，内容不进入主机。 | 依据 2026 年 5 月新版细则确定性计算截止、最早和建议窗口；工作日不完整时明确“暂算”，不使用 LLM 猜日期。 | 国家节点与期限写死并带条款来源；管理员只能追加本单位“三考”、思想汇报、自传等材料，不能缩短法定流程。 |
+| 本周完成、下周计划、临期风险、党务季度缺口、待归档会议和逾期决议汇总在同一工作台。 | 两个独立业务模块分别提供专属模板、流程、出席/发言记录、整改或成果转化、台账和导出。 | 只填申请书日期即可生成参考计划；实际、法定和参考日期分轨显示，规则版本随档案保存。 |
+| **事项、汇总与多文件** | **真实文件与重要档案** | **本地协同与可选智能** |
+| 主办、协办、审核、步骤、材料、评论和通知围绕同一事项推进；资料可批量上传、逐项重试并在删除后 30 天内恢复。 | 已授权用户可发布本机真实文件夹；常见办公文档可直接阅读，重要档案保留 OCR、版本、权限、业务关联和审计链。 | 数据默认留在本机或单位主机；设置会按硬件推荐本地模型，模型只增强搜索、草稿、提示和操作预览，核心业务不依赖模型。 |
 
-## 五大工作域
+## 六大工作域
 
 | 工作域 | 面向谁 | 主要能力 |
 | --- | --- | --- |
 | **今日** | 所有人 | 一周总览、临期风险、必须办理、日历节点、周期汇总与本机私有备忘 |
-| **工作** | 主办、协办、审核人 | 事项与清单、我的工作、通知、日历、党员发展计算、收件箱、报告、日志和专题空间 |
+| **党务** | 党务经办人、记录人、管理员 | 三会一课、中心组学习、发展党员和其他党建会议的专属工作台、流程、台账与归档 |
+| **工作** | 主办、协办、审核人 | 事项与清单、我的工作、通知、日历、收件箱、报告、日志和专题空间 |
 | **资料** | 档案与材料经办人 | 原始文件中心、跨机共享、重要档案、迎检归档、知识库、文档比较与查重 |
 | **协同** | 主机与协同机用户 | 设备入网、共享目录、接收箱、三种传输、目录与人员授权 |
-| **管理** | 有效能力对应的管理员 | 周期模板、自动归档、报告模板、本地 AI、更新、备份、诊断与帮助 |
+| **管理** | 有效能力对应的管理员 | 周期模板、自动归档、报告模板、本机智能、模型导入、更新、备份、诊断与帮助 |
 
 ## 主机与协同机的界面差异
 
@@ -143,7 +151,8 @@ PartyOps 不是一套把表单搬到浏览器里的系统。它解决的是基�
 | `1.4.3-rc.7` | 修复个人模式连接拒绝、网页与服务版本不一致、Win7 Python 3.8 首页错误、Linux 安装后无响应和桌面启动静默失败 | 历史候选；已由 rc.8 取代 |
 | `1.4.3-rc.8` | 修复国产 Linux 启动链并新增 macOS Apple Silicon/Intel 原生候选包 | 历史候选；已由 rc.9 取代 |
 | `1.4.3-rc.9` | 修复跨平台安装/启动/端口/服务冲突、麒麟与 macOS 双击无响应，并补齐回退、目录操作和 DOCX 导出 | 历史候选；已由 1.4.4 取代 |
-| `1.4.4` | 修复协同凭据升级、跨平台静默启动、文件授权和通知改期，增加会议筹备、在线文档、用户归档及发展党员全周期档案 | 当前版本；支持等级、签名和真机验证状态以发布清单为准 |
+| `1.4.4` | 修复协同凭据升级、跨平台静默启动、文件授权和通知改期，增加会议筹备、在线文档、用户归档及发展党员全周期档案 | 历史版本；已由 1.4.5-rc.1 取代 |
+| `1.4.5-rc.1` | 新增三会一课、中心组学习、发展党员三轨时间轴、多文件可恢复资料、本机硬件检测、12 档模型推荐和身份重新配置 | 当前候选；支持等级、签名和真机验证状态以发布清单为准 |
 
 完整变更、修复与安全说明见 [CHANGELOG.md](CHANGELOG.md)。PartyOps 不会为了看起来“已发布”而隐藏未完成门禁，版本证据、制品哈希和已知限制都会随 Release 一起公开。
 
@@ -164,19 +173,19 @@ flowchart LR
 
 ## 下载
 
-当前可下载版本为 [v1.4.4](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.4)：
+当前可下载版本为 [v1.4.5-rc.1](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.5-rc.1)：
 
-1.4.4 使用版本化文件名和不可变标签。Windows 安装器继续支持本机固定 D/E 盘、中文与空格目录；Win7 使用独立 Python 3.8 Legacy 包并随附 UCRT/API-set；国产 Linux 四个入口共用固定运行时和 Bash 桌面启动链；macOS 双架构包使用原生启动探针和 Finder LaunchServices 自检。请以 Release/官网显示的支持等级、上传时间、大小与 SHA-256 为准。
+1.4.5-rc.1 使用版本化文件名和不可变标签。Windows 安装器继续支持本机固定 D/E 盘、中文与空格目录；Win7 使用独立 Python 3.8 Legacy 包并随附 UCRT/API-set；国产 Linux 四个入口共用固定运行时和 Bash 桌面启动链；macOS 双架构包使用原生启动探针和 Finder LaunchServices 自检。请以 Release/官网显示的支持等级、上传时间、大小与 SHA-256 为准。
 
-- [Windows 10/11 x64 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.4/PartyOps_1.4.4_windows_amd64.exe)
-- [Windows 7 SP1 x64 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.4/PartyOps_1.4.4_windows7_amd64.exe)
-- [Windows 7 SP1 x86 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.4/PartyOps_1.4.4_windows7_x86.exe)
-- [麒麟/UOS/deepin AMD64 DEB](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.4/PartyOps_1.4.4_linux_amd64.deb)
-- [麒麟/UOS/deepin ARM64 DEB](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.4/PartyOps_1.4.4_linux_arm64.deb)
-- [openEuler x86_64 RPM](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.4/PartyOps-1.4.4-1.x86_64.rpm)
-- [openEuler ARM64 RPM](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.4/PartyOps-1.4.4-1.aarch64.rpm)
-- [macOS 11+ Apple Silicon ARM64 PKG](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.4/PartyOps_1.4.4_macos_arm64.pkg)
-- [macOS 11+ Intel x86_64 PKG](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.4/PartyOps_1.4.4_macos_x86_64.pkg)
+- [Windows 10/11 x64 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps_1.4.5-rc.1_windows_amd64.exe)
+- [Windows 7 SP1 x64 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps_1.4.5-rc.1_windows7_amd64.exe)
+- [Windows 7 SP1 x86 单文件安装器](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps_1.4.5-rc.1_windows7_x86.exe)
+- [麒麟/UOS/deepin AMD64 DEB](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps_1.4.5-rc.1_linux_amd64.deb)
+- [麒麟/UOS/deepin ARM64 DEB](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps_1.4.5-rc.1_linux_arm64.deb)
+- [openEuler x86_64 RPM](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps-1.4.5-0.rc.1.1.x86_64.rpm)
+- [openEuler ARM64 RPM](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps-1.4.5-0.rc.1.1.aarch64.rpm)
+- [macOS 11+ Apple Silicon ARM64 PKG](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps_1.4.5-rc.1_macos_arm64.pkg)
+- [macOS 11+ Intel x86_64 PKG](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps_1.4.5-rc.1_macos_x86_64.pkg)
 
 普通 Windows 用户只需下载一个 EXE。安装器会校验其内部载荷；最终文件大小与 SHA-256 直接显示在 Release 和官网，无需再下载第二个“校验包”。同名 `.sha256` 仅为自动化工具提供，不是安装必需步骤。
 
@@ -198,27 +207,27 @@ macOS 用户在“关于本机”看到 Apple M1/M2/M3/M4 等 Apple 芯片时选
 Windows PowerShell：
 
 ```powershell
-Get-FileHash .\PartyOps_1.4.4_windows_amd64.exe -Algorithm SHA256
-Get-AuthenticodeSignature .\PartyOps_1.4.4_windows_amd64.exe
+Get-FileHash .\PartyOps_1.4.5-rc.1_windows_amd64.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\PartyOps_1.4.5-rc.1_windows_amd64.exe
 ```
 
 Linux：
 
 ```bash
 dpkg --print-architecture
-sha256sum PartyOps_1.4.4_linux_amd64.deb
+sha256sum PartyOps_1.4.5-rc.1_linux_amd64.deb
 ```
 
 macOS：
 
 ```bash
 uname -m
-shasum -a 256 PartyOps_1.4.4_macos_arm64.pkg
+shasum -a 256 PartyOps_1.4.5-rc.1_macos_arm64.pkg
 ```
 
 ### Windows 10/11 x64
 
-1. 双击 `PartyOps_1.4.4_windows_amd64.exe`。未签名候选出现 SmartScreen 时，先核对 SHA-256，再选择“更多信息 → 仍要运行”。
+1. 双击 `PartyOps_1.4.5-rc.1_windows_amd64.exe`。未签名候选出现 SmartScreen 时，先核对 SHA-256，再选择“更多信息 → 仍要运行”。
 2. PartyOps 中文安装向导会分别询问程序安装目录和业务数据目录；两者都可自定义，升级时会保留原选择。数据目录建议使用 `D:\PartyOps-数据` 等本机固定磁盘目录，支持中文和空格，不支持磁盘根目录、系统目录、网络盘或移动盘。
 3. 首次打开“党建智办”，明确选择角色：
    - **个人使用（新手推荐）**：无需管理员授权，只在本机使用，不安装服务、不开放局域网。
@@ -233,9 +242,9 @@ shasum -a 256 PartyOps_1.4.4_macos_arm64.pkg
 ### Windows 7 SP1 x64/x86
 
 1. 仅在已停止系统级安全维护风险可控的局域网电脑使用，并先完成 SP1、KB2533623（或包含同等 Loader API 的后续汇总更新）和 Universal CRT 更新；安装器直接探测系统能力，不再只按补丁名称判断。
-2. 64 位系统下载 `PartyOps_1.4.4_windows7_amd64.exe`；32 位系统下载 `PartyOps_1.4.4_windows7_x86.exe`。不要按 CPU 品牌猜测，先打开“控制面板 → 系统”查看系统类型。若出现 `api-ms-win-core-path-l1-1-0.dll` 缺失，说明误用了 Windows 10/11 通用包；不要下载单个 DLL，改下正确的 Win7 专用包。
+2. 64 位系统下载 `PartyOps_1.4.5-rc.1_windows7_amd64.exe`；32 位系统下载 `PartyOps_1.4.5-rc.1_windows7_x86.exe`。不要按 CPU 品牌猜测，先打开“控制面板 → 系统”查看系统类型。若出现 `api-ms-win-core-path-l1-1-0.dll` 缺失，说明误用了 Windows 10/11 通用包；不要下载单个 DLL，改下正确的 Win7 专用包。
 3. 安装与首次配置同样支持受管理员保护的本机 D/E 盘、中文和空格目录。不要选择磁盘根目录、网络盘、移动盘、目录联接或允许普通用户替换文件的公共目录。
-4. 1.4.4 安装器在目标电脑真实启动刚释放的主程序，并检查 RSA/Fernet、SQLite/FTS5、数据库迁移、健康端点、运行版本和首页入口；失败会回滚并在安装日志中保留原因，不会显示安装成功后才让桌面图标静默失败。
+4. 1.4.5-rc.1 安装器在目标电脑真实启动刚释放的主程序，并检查 RSA/Fernet、SQLite/FTS5、数据库迁移、健康端点、运行版本和首页入口；失败会回滚并在安装日志中保留原因，不会显示安装成功后才让桌面图标静默失败。
 5. Win7 x86 不提供语义重排与本地 LLM；这不会影响核心主机、文件协同、档案、备份和中文 OCR。Win7 不捆绑第三方浏览器，请使用单位安全策略允许的浏览器访问。若仍出现 `CHILD_EXITED`，请保留安装日志与提示路径中的 `launcher.log`；不要删除业务数据，下个候选版会按日志中的真实异常栈定点处理。
 
 ### 麒麟 / UOS / deepin / openEuler
@@ -251,14 +260,14 @@ dpkg --print-architecture
 海光、兆芯、Intel、AMD 通常使用 `amd64/x86_64`；飞腾 D2000/FT-2000、麒麟 9000C/9006C/990、鲲鹏等使用 `arm64/aarch64`。银河麒麟桌面 V10 SP1 2107—2503、UOS、deepin 下载 DEB，openEuler 下载 RPM。截图中 `D2000`、`HUAWEI Kirin 9000C` 且 `uname -m` 返回 `aarch64` 的电脑，都选择同一个 ARM64 DEB：
 
 ```bash
-sudo install -m 0644 ./PartyOps_1.4.4_linux_amd64.deb /var/tmp/partyops.deb
+sudo install -m 0644 ./PartyOps_1.4.5-rc.1_linux_amd64.deb /var/tmp/partyops.deb
 sudo apt install /var/tmp/partyops.deb
-# ARM64 把第一行文件名改为 PartyOps_1.4.4_linux_arm64.deb
+# ARM64 把第一行文件名改为 PartyOps_1.4.5-rc.1_linux_arm64.deb
 ```
 
 ```bash
-sudo dnf install ./PartyOps-1.4.4-1.x86_64.rpm
-# ARM64 改用 PartyOps-1.4.4-1.aarch64.rpm
+sudo dnf install ./PartyOps-1.4.5-0.rc.1.1.x86_64.rpm
+# ARM64 改用 PartyOps-1.4.5-0.rc.1.1.aarch64.rpm
 ```
 
 安装后从应用菜单打开“党建智办”，按与 Windows 相同的向导选择个人、主机或协同机。启动器会先等待配置页或健康端点真正就绪，再打开系统默认浏览器；若浏览器关联失败会显示中文提示，诊断位于 `~/.config/partyops/desktop-launch.log`。Windows 桌面入口也会在默认浏览器关联损坏或协同页面准备超时时显示中文弹窗，不会静默退出。主机服务数据默认位于 `/var/lib/partyops`；日常用户的协同配置位于 `~/.config/partyops`，接收目录位于用户数据目录。无 sudo 的日常账号应由管理员安装，不要在 root 桌面完成普通用户配置。
@@ -282,14 +291,14 @@ sudo dnf install ./PartyOps-1.4.4-1.x86_64.rpm
 
 ### 升级、备份与回滚
 
-- 一次性桥接：由于 rc.2 的发布签名私钥已经不可恢复，rc.2 及更早版本需最后一次从官网运行与本机系统、CPU 架构匹配的当前 1.4.4 安装器并选择原位升级；无需卸载且默认保留数据。rc.3 及后续版本只有在发布端使用现有离线私钥签发新目录时才走系统内快速升级；否则同样使用完整安装器原位升级，不卸载、不删除数据。
+- 一次性桥接：由于 rc.2 的发布签名私钥已经不可恢复，rc.2 及更早版本需最后一次从官网运行与本机系统、CPU 架构匹配的当前 1.4.5-rc.1 安装器并选择原位升级；无需卸载且默认保留数据。rc.3 及后续版本只有在发布端使用现有离线私钥签发新目录时才走系统内快速升级；否则同样使用完整安装器原位升级，不卸载、不删除数据。
 - 日常升级：管理员在“管理 → 系统更新”查看官方签名目录。系统每天至多自动检查一次，只在后台下载本机对应的 Windows、DEB 或 RPM 单平台签名更新包；弱网和关机中断后从已校验位置续传，已完整校验的包不会重复下载。
 - 专业门禁：安装前再次确认版本、上传时间和中文更新内容，并逐层验证 Ed25519 目录签名、更新包签名、文件大小、SHA-256、平台和架构。主机升级成功并通过版本/数据库/健康检查后，协同电脑才分别读取官方目录并获取自己的平台制品。
 - 升级前：系统自动创建一致性数据库、附件和档案快照；重要升级仍建议手工导出一份完整备份到独立介质。
 - 失败回滚：安装、迁移或健康检查任一步失败都会尝试恢复上一版本程序和升级前数据；回滚未完成时服务保持停止并显示中文诊断编号，禁止带病继续运行。
 - 不要通过复制正在运行的 SQLite 文件做备份，也不要混用不同版本的主机和协同 Agent。
 
-完整步骤见[安装、升级与回滚](docs/upgrade-1.4.4.md)、[备份恢复手册](docs/backup-restore.md)和[长期运行手册](docs/operations-runbook.md)。
+完整步骤见[安装、升级与回滚](docs/upgrade-1.4.5-rc.1.md)、[备份恢复手册](docs/backup-restore.md)和[长期运行手册](docs/operations-runbook.md)。
 
 ### 卸载
 
@@ -298,13 +307,15 @@ sudo dnf install ./PartyOps-1.4.4-1.x86_64.rpm
 
 ## 可选本地智能
 
-主程序不强制捆绑模型权重。管理员可以离线导入独立签名模型包：
+主程序不强制捆绑模型权重。管理员先在“设置 → 本机智能能力”执行本机检测，系统按处理器、架构、当前可用内存、模型目录空间和 GPU 后端给出“流畅、可用、不建议”结果，并至少为系统和 PartyOps 保留 `max(2GB, 总内存的 25%)`。
 
-- 中文向量：BGE 小型中文模型，用于事项、档案、知识和已授权共享目录的语义检索。
-- 轻量 LLM：面向内存 8 GB 以上主机的本地草稿生成。
-- 增强 LLM：面向内存 16 GB 以上主机的本地草稿生成。
+- 受控意图：Needle 2 用于把中文指令整理为事项预览、字段和提醒建议；任何新增、修改、删除、发送、导出和身份切换都必须由用户明确确认。
+- 中文检索：BGE Small、Base、Large 三档，用于事项、档案、知识和已授权共享目录的语义检索。
+- 本地草稿：Qwen3 0.6B、1.7B、4B、8B、14B、30B-A3B、32B 和 235B-A22B，覆盖普通办公电脑、高端工作站到多 GPU 服务器。4B 及以上大模型不在官网重复存储，统一从 Qwen 官方仓库获取并通过本机 OpenAI 兼容服务接入。
 
-本地 LLM 只生成带来源的草稿，不自动修改事项、档案或文件权限；未获正文索引授权的共享内容不会进入提示词。模型不存在、资源不足或推理失败时，系统自动降级为规则推荐与普通检索。
+体积适中的模型只有在来源、许可证、逐文件 SHA-256、Ed25519 签名和平台运行门禁全部完成后，才通过官网 `.partyops-modelpack` 直接下载。大模型不复制到官网：从 Qwen 官方仓库取得 GGUF 后，使用官方 `llama.cpp` 的 `llama-server` 在本机提供 OpenAI 兼容接口，再在 PartyOps AI 配置中接入。不得把来源不明的 GGUF 或运行器直接导入系统。
+
+本地 LLM 只生成带来源的草稿，不自动修改事项、档案或文件权限；未获正文索引授权的共享内容不会进入提示词。模型不存在、资源不足或推理失败时，系统自动降级为规则推荐与普通检索。完整分档与新手接入说明见[官网本地模型页](https://www.partyops.cn/models)。
 
 ## 从源码运行
 
@@ -353,7 +364,7 @@ corepack pnpm --dir frontend install --frozen-lockfile
 
 PartyOps 希望把“基层真正怎么办公”变成可以持续改进的开源产品。如果它对你有启发，欢迎点击右上角 **Star**，让更多需要本地协同、国产系统适配和党建业务闭环的团队看到它。
 
-- **想直接体验**：从 [v1.4.4 Release](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.4) 下载支持矩阵中与本机系统和 CPU 架构匹配的单文件安装包，先阅读已知限制并核对页面显示的 SHA-256。
+- **想直接体验**：从 [v1.4.5-rc.1 Release](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.5-rc.1) 下载支持矩阵中与本机系统和 CPU 架构匹配的单文件安装包，先阅读已知限制并核对页面显示的 SHA-256。
 - **发现问题**：在 [Issues](https://github.com/pl1505031156-droid/PartyOps/issues) 提交版本、系统、主机/协同机角色、复现步骤、期望/实际结果和已脱敏日志。
 - **有产品建议**：在 [Discussions](https://github.com/pl1505031156-droid/PartyOps/discussions) 讲清真实工作场景、现在怎么做、卡在哪里、哪些角色会受益。
 - **愿意贡献代码**：先阅读[贡献指南](CONTRIBUTING.md)，从 `main` 创建短分支，为修复补充回归测试，并运行 `scripts/test.ps1`。

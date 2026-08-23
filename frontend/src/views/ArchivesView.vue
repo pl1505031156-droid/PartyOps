@@ -13,8 +13,10 @@ import {
   IconUpload,
 } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
-import { ApiError, api, downloadUrl } from "../api";
+import { ApiError, api, downloadUrl, uploadFormWithProgress } from "../api";
 import PageHelp from "../components/PageHelp.vue";
+import BusinessUploadQueue from "../components/BusinessUploadQueue.vue";
+import { useUploadQueue } from "../composables/useUploadQueue";
 import { useSessionStore } from "../stores/session";
 import type {
   ArchiveAttachment,
@@ -49,6 +51,10 @@ const history = ref<Array<{ revision_no: number; change_note: string; created_at
 const voidReason = ref("");
 const fileInput = ref<HTMLInputElement | null>(null);
 const uploading = ref(false);
+const archiveQueueTargetId = ref("");
+const deleteAttachmentVisible = ref(false);
+const deleteAttachmentTarget = ref<ArchiveAttachment | null>(null);
+const deleteAttachmentReason = ref("");
 const fieldErrors = ref<Record<string, string>>({});
 const grants = ref<ArchiveAccessGrant[]>([]);
 const grantUsers = ref<User[]>([]);
@@ -60,6 +66,32 @@ const grantForm = reactive({
   can_view: true,
   can_download: true,
   can_contribute: false,
+});
+
+const archiveUploadQueue = useUploadQueue(async (item, context) => {
+  if (!archiveQueueTargetId.value) throw new Error("请重新选择要上传到的档案。");
+  const form = new FormData();
+  form.append("file", item.file);
+  form.append("note", "重要档案扫描件");
+  form.append("client_upload_id", item.clientUploadId);
+  await uploadFormWithProgress<ArchiveAttachment>(
+    `/archives/records/${archiveQueueTargetId.value}/attachments`,
+    form,
+    { signal: context.signal, onProgress: context.onProgress },
+  );
+}, 2);
+const archiveUploadItems = archiveUploadQueue.items;
+
+watch(archiveUploadQueue.pending, async (pending, previous) => {
+  uploading.value = pending > 0;
+  if (previous <= 0 || pending !== 0 || !archiveQueueTargetId.value) return;
+  const recordId = archiveQueueTargetId.value;
+  if (selectedRecord.value?.id === recordId) {
+    selectedRecord.value = await api.get<ArchiveRecord>(`/archives/records/${recordId}`);
+  }
+  await loadYears();
+  pollAttachmentRecognition(recordId);
+  if (archiveUploadQueue.failed.value === 0) Message.success("所选扫描件均已保存，正文识别将在后台完成");
 });
 
 const recordForm = reactive({
@@ -108,8 +140,8 @@ const formCategory = computed(() =>
 );
 const visibleYears = computed(() => years.value.map((item) => item.year));
 const canManage = computed(() => session.user?.role === "admin");
-const canCreate = computed(() => categories.value.some((item) => item.permissions.contribute));
-const canContributeSelected = computed(() => Boolean(selectedRecord.value?.permissions.contribute));
+const canCreate = computed(() => categories.value.some((item) => Boolean(item.permissions?.contribute)));
+const canContributeSelected = computed(() => Boolean(selectedRecord.value?.permissions?.contribute));
 const assessmentField = computed(() =>
   formCategory.value?.field_schema.find((field) => field.key === "assessment_result"),
 );
@@ -510,30 +542,12 @@ function pollAttachmentRecognition(recordId: string, attempts = 12) {
   }, 1500);
 }
 
-async function uploadFiles(event: Event) {
+function uploadFiles(event: Event) {
   const files = Array.from((event.target as HTMLInputElement).files || []);
   if (!selectedRecord.value || !files.length) return;
-  uploading.value = true;
-  try {
-    for (const file of files) {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("note", "重要档案扫描件");
-      await api.post<ArchiveAttachment>(
-        `/archives/records/${selectedRecord.value.id}/attachments`,
-        form,
-      );
-    }
-    selectedRecord.value = await api.get<ArchiveRecord>(`/archives/records/${selectedRecord.value.id}`);
-    await loadYears();
-    pollAttachmentRecognition(selectedRecord.value.id);
-    Message.success(`已上传 ${files.length} 个扫描件，正文识别将在后台完成`);
-  } catch (error) {
-    Message.error(error instanceof Error ? error.message : "扫描件上传失败");
-  } finally {
-    uploading.value = false;
-    if (fileInput.value) fileInput.value.value = "";
-  }
+  archiveQueueTargetId.value = selectedRecord.value.id;
+  archiveUploadQueue.addFiles(files);
+  if (fileInput.value) fileInput.value.value = "";
 }
 
 async function openHistory() {
@@ -581,6 +595,13 @@ async function restoreRecord() {
   }
 }
 
+function openDeleteAttachment(attachment: ArchiveAttachment) {
+  deleteAttachmentTarget.value = attachment;
+  deleteAttachmentReason.value = "";
+  deleteAttachmentVisible.value = true;
+}
+
+// 兼容旧自动化与历史入口；新界面默认使用 30 天可恢复删除。
 async function voidAttachment(attachment: ArchiveAttachment) {
   if (!selectedRecord.value) return;
   try {
@@ -593,6 +614,44 @@ async function voidAttachment(attachment: ArchiveAttachment) {
     Message.success("扫描件已作废，原文件仍保留在受管附件库");
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "扫描件作废失败");
+  }
+}
+
+async function deleteAttachment(): Promise<boolean> {
+  if (!selectedRecord.value || !deleteAttachmentTarget.value) return false;
+  if (deleteAttachmentReason.value.trim().length < 2) {
+    Message.warning("请填写至少两个字的删除原因");
+    return false;
+  }
+  try {
+    await api.delete<ArchiveAttachment>(
+      `/archives/attachments/${deleteAttachmentTarget.value.id}?reason=${encodeURIComponent(deleteAttachmentReason.value.trim())}`,
+      { "If-Match": String(selectedRecord.value.version) },
+    );
+    selectedRecord.value = await api.get<ArchiveRecord>(`/archives/records/${selectedRecord.value.id}`);
+    Message.success("扫描件已移入回收站，30 天内可恢复");
+    return true;
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "VERSION_CONFLICT") {
+      selectedRecord.value = await api.get<ArchiveRecord>(`/archives/records/${selectedRecord.value.id}`);
+    }
+    Message.error(error instanceof Error ? error.message : "扫描件删除失败");
+    return false;
+  }
+}
+
+async function restoreAttachment(attachment: ArchiveAttachment) {
+  if (!selectedRecord.value) return;
+  try {
+    await api.post<ArchiveAttachment>(
+      `/archives/attachments/${attachment.id}/restore`,
+      undefined,
+      { "If-Match": String(selectedRecord.value.version) },
+    );
+    selectedRecord.value = await api.get<ArchiveRecord>(`/archives/records/${selectedRecord.value.id}`);
+    Message.success("扫描件已恢复");
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "扫描件恢复失败");
   }
 }
 
@@ -708,30 +767,36 @@ onMounted(load);
           <dl class="archive-fields">
             <dt>序号</dt><dd>{{ String(selectedRecord.sequence_no).padStart(3, "0") }}</dd>
             <dt>文号</dt><dd>{{ selectedRecord.document_no || "—" }}</dd>
-            <dt>涉及人员</dt><dd>{{ selectedRecord.person_name || selectedRecord.involved_persons.join("、") || "—" }}</dd>
+            <dt>涉及人员</dt><dd>{{ selectedRecord.person_name || (selectedRecord.involved_persons || []).join("、") || "—" }}</dd>
             <dt>来源单位</dt><dd>{{ selectedRecord.source_unit || selectedRecord.organization || "—" }}</dd>
             <dt>日期</dt><dd>{{ formatDate(selectedRecord.document_date) }}</dd>
             <dt>摘要</dt><dd class="long-value">{{ selectedRecord.summary || "—" }}</dd>
-            <dt>标签</dt><dd>{{ selectedRecord.tags.join("、") || "—" }}</dd>
+            <dt>标签</dt><dd>{{ (selectedRecord.tags || []).join("、") || "—" }}</dd>
           </dl>
-          <a-alert v-if="selectedRecord.duplicate_warnings.length" type="warning" class="archive-warning">
-            {{ selectedRecord.duplicate_warnings.join("；") }}
+          <a-alert v-if="(selectedRecord.duplicate_warnings || []).length" type="warning" class="archive-warning">
+            {{ (selectedRecord.duplicate_warnings || []).join("；") }}
           </a-alert>
           <div class="attachment-heading">
-            <b>扫描件（{{ selectedRecord.attachments.length }}）</b>
+            <b>扫描件（{{ (selectedRecord.attachments || []).length }}）</b>
             <a-button v-if="canContributeSelected" size="small" :loading="uploading" @click="chooseUpload"><template #icon><IconUpload /></template>上传扫描件</a-button>
             <input ref="fileInput" type="file" hidden multiple accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.docx,.xlsx,.xlsm,.txt,.csv" @change="uploadFiles" />
           </div>
-          <div v-if="!selectedRecord.attachments.length" class="attachment-empty">尚未上传扫描件，目录仍可先保存，后续补齐。</div>
-          <div v-for="attachment in selectedRecord.attachments" :key="attachment.id" class="attachment-row">
+          <BusinessUploadQueue :items="archiveUploadItems" @retry="archiveUploadQueue.retry" @cancel="archiveUploadQueue.cancel" @clear="archiveUploadQueue.clearSettled" />
+          <div v-if="!(selectedRecord.attachments || []).length" class="attachment-empty">尚未上传扫描件，目录仍可先保存，后续补齐。</div>
+          <div v-for="attachment in (selectedRecord.attachments || [])" :key="attachment.id" class="attachment-row">
             <span><IconArchive /><b>{{ attachment.display_name }}</b><small>{{ statusLabel(attachment.status) }} · {{ Math.ceil(attachment.size_bytes / 1024) }} KB</small></span>
             <a-space>
               <a-button v-if="attachment.status !== 'voided'" type="text" size="small" :href="downloadUrl(`/archives/attachments/${attachment.id}/download`)" target="_blank"><template #icon><IconDownload /></template></a-button>
-              <a-popconfirm v-if="canManage && attachment.status !== 'voided'" content="仅作废该扫描件版本，原文件不会删除。确认继续？" @ok="voidAttachment(attachment)">
-                <a-button type="text" size="mini" status="danger">作废</a-button>
-              </a-popconfirm>
+              <a-button v-if="canContributeSelected && attachment.status !== 'voided'" type="text" size="mini" status="danger" @click="openDeleteAttachment(attachment)">删除</a-button>
             </a-space>
           </div>
+          <details v-if="(selectedRecord.deleted_attachments || []).length" class="archive-recycle-bin">
+            <summary>扫描件回收站（{{ (selectedRecord.deleted_attachments || []).length }}）</summary>
+            <div v-for="attachment in (selectedRecord.deleted_attachments || [])" :key="attachment.id" class="attachment-row recycled">
+              <span><IconArchive /><b>{{ attachment.display_name }}</b><small>{{ attachment.delete_reason }} · 30 天内可恢复</small></span>
+              <a-button v-if="canManage || attachment.uploaded_by === session.user?.id" size="mini" @click="restoreAttachment(attachment)">恢复</a-button>
+            </div>
+          </details>
           <div class="detail-footer">版本 {{ selectedRecord.version }} · 最后修改 {{ formatDate(selectedRecord.updated_at) }}</div>
         </template>
         <div v-else class="inspector-empty"><IconArchive /><p>从左侧选择档案，查看目录字段和扫描件。</p></div>
@@ -828,6 +893,11 @@ onMounted(load);
       <a-textarea v-model="voidReason" placeholder="请填写作废原因" />
     </a-modal>
 
+    <a-modal v-model:visible="deleteAttachmentVisible" title="将扫描件移入回收站" :onBeforeOk="deleteAttachment">
+      <a-alert type="warning" show-icon>扫描件会保留 30 天并可恢复，不会影响本批次中其他文件。</a-alert>
+      <a-form :model="{ reason: deleteAttachmentReason }" layout="vertical" class="delete-attachment-form"><a-form-item label="删除原因（必填）"><a-textarea v-model="deleteAttachmentReason" :max-length="2000" show-word-limit :auto-size="{ minRows: 3, maxRows: 6 }" /></a-form-item></a-form>
+    </a-modal>
+
     <a-modal v-model:visible="historyVisible" title="档案修订历史" :width="720">
       <div v-for="item in history" :key="item.revision_no" class="history-row">
         <b>修订 {{ item.revision_no }}</b><span>{{ item.change_note || "创建档案" }}</span><small>{{ formatDate(item.created_at) }}</small>
@@ -871,6 +941,10 @@ onMounted(load);
 .attachment-row b, .attachment-row small { grid-column: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attachment-row small { color: var(--muted); font-size: 10px; }
 .attachment-empty, .inspector-empty { padding: 30px 12px; color: var(--muted); text-align: center; }
+.archive-recycle-bin { margin-top: 12px; padding: 10px 12px; color: var(--muted); background: rgba(98,84,66,.045); border-left: 2px solid var(--line); }
+.archive-recycle-bin summary { cursor: pointer; font-size: 12px; }
+.attachment-row.recycled { padding-bottom: 2px; }
+.delete-attachment-form { margin-top: 14px; }
 .detail-footer { margin-top: 22px; color: var(--muted); font-size: 11px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
 .category-manager-list { display: flex; gap: 6px; margin: 14px 0 4px; padding-bottom: 12px; overflow-x: auto; border-bottom: 1px solid var(--line); }

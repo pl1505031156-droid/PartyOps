@@ -96,6 +96,7 @@ class LoginSession(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    csrf_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -428,6 +429,20 @@ class AttachmentVersion(Base):
     uploaded_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     note: Mapped[str] = mapped_column(Text, default="")
     display_name: Mapped[str] = mapped_column(String(255), default="")
+    client_upload_id: Mapped[Optional[str]] = mapped_column(
+        String(80), nullable=True, unique=True, index=True
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    deleted_by: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    delete_reason: Mapped[str] = mapped_column(Text, default="")
+    purge_after: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    deleted_was_final: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (
@@ -1011,6 +1026,19 @@ class ArchiveAttachment(Base):
     )
     ocr_text: Mapped[str] = mapped_column(Text, default="")
     uploaded_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    client_upload_id: Mapped[Optional[str]] = mapped_column(
+        String(80), nullable=True, unique=True, index=True
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    deleted_by: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    delete_reason: Mapped[str] = mapped_column(Text, default="")
+    purge_after: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -1805,11 +1833,14 @@ class WorkflowTemplate(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     name: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    system_key: Mapped[str] = mapped_column(String(80), default="", index=True)
     business_type: Mapped[str] = mapped_column(String(48), index=True)
     description: Mapped[str] = mapped_column(Text, default="")
     steps: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     recurrence: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    built_in: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    template_version: Mapped[str] = mapped_column(String(32), default="1.0")
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1831,6 +1862,17 @@ class BusinessMeeting(Base):
     workflow_template_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("workflow_templates.id"), nullable=True, index=True
     )
+    host_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    recorder_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    venue: Mapped[str] = mapped_column(String(240), default="")
+    study_plan_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("study_plans.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    business_data: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     task_id: Mapped[Optional[str]] = mapped_column(ForeignKey("tasks.id"), nullable=True, index=True)
     recurrence_key: Mapped[str] = mapped_column(String(120), default="", index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -1862,6 +1904,105 @@ class MeetingTopic(Base):
     amount_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     amount_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MeetingAttendee(Base):
+    """会议人员及其出席、表决角色；不从普通用户列表推断实际出席。"""
+
+    __tablename__ = "meeting_attendees"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    meeting_id: Mapped[str] = mapped_column(
+        ForeignKey("business_meetings.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    display_name: Mapped[str] = mapped_column(String(120))
+    role: Mapped[str] = mapped_column(String(48), default="member", index=True)
+    attendance_status: Mapped[str] = mapped_column(
+        String(24), default="expected", index=True
+    )
+    voting_eligible: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (UniqueConstraint("meeting_id", "user_id", "display_name"),)
+
+
+class MeetingAction(Base):
+    """会后决议落实项；可关联 PartyOps 事项但不重复保存事项正文。"""
+
+    __tablename__ = "meeting_actions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    meeting_id: Mapped[str] = mapped_column(
+        ForeignKey("business_meetings.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(240))
+    responsible_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    task_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class StudyPlan(Base):
+    """党委（党组）理论学习中心组年度计划。"""
+
+    __tablename__ = "study_plans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    organization: Mapped[str] = mapped_column(String(160), index=True)
+    year: Mapped[int] = mapped_column(Integer, index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    group_leader_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    secretary_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (UniqueConstraint("organization", "year"),)
+
+
+class StudyPlanTopic(Base):
+    __tablename__ = "study_plan_topics"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    plan_id: Mapped[str] = mapped_column(
+        ForeignKey("study_plans.id", ondelete="CASCADE"), index=True
+    )
+    quarter: Mapped[int] = mapped_column(Integer, index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    learning_materials: Mapped[List[str]] = mapped_column(JSON, default=list)
+    research_topic: Mapped[str] = mapped_column(Text, default="")
+    conversion_goal: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -1927,6 +2068,12 @@ class PartyDevelopmentCase(Base):
     stage: Mapped[str] = mapped_column(String(48), default="application", index=True)
     status: Mapped[str] = mapped_column(String(24), default="active", index=True)
     rule_version: Mapped[str] = mapped_column(String(32), default="2026.05")
+    planning_profile_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("party_development_plan_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    planning_profile_snapshot: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1950,12 +2097,35 @@ class PartyDevelopmentMilestone(Base):
     adjusted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     rule_version: Mapped[str] = mapped_column(String(32), default="2026.05")
     legal_basis: Mapped[str] = mapped_column(Text, default="")
+    planning_basis: Mapped[str] = mapped_column(Text, default="")
     plan_kind: Mapped[str] = mapped_column(String(24), default="reference")
     reminder_days: Mapped[List[int]] = mapped_column(JSON, default=lambda: [60, 30, 14, 7, 1, 0])
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (UniqueConstraint("case_id", "milestone_type"),)
+
+
+class PartyDevelopmentPlanProfile(Base):
+    """参考计划口径。档案保存快照，后续模板升级不静默改写历史。"""
+
+    __tablename__ = "party_development_plan_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    system_key: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    description: Mapped[str] = mapped_column(Text, default="")
+    assumptions: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    built_in: Mapped[bool] = mapped_column(Boolean, default=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class NotificationSource(Base):

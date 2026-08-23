@@ -1,6 +1,7 @@
 export type NavigationDomainKey =
   | "today"
   | "work"
+  | "party"
   | "materials"
   | "collaboration"
   | "management";
@@ -22,7 +23,7 @@ export interface NavigationDomain {
   items: NavigationItem[];
 }
 
-/** 五个稳定工作域。新增业务页面只需登记在所属域，不修改壳层组件。 */
+/** 六个稳定工作域。党务规则型业务独立呈现，通用事项仍留在工作域。 */
 export const navigationDomains: NavigationDomain[] = [
   {
     key: "today",
@@ -44,13 +45,22 @@ export const navigationDomains: NavigationDomain[] = [
       { path: "/my-work", label: "我的工作", icon: "task" },
       { path: "/notifications", label: "通知中心", icon: "inbox" },
       { path: "/calendar", label: "工作日历", icon: "calendar" },
-      { path: "/party-development", label: "党员发展计算", icon: "calendar" },
-      { path: "/party-development-cases", label: "党员发展档案", icon: "calendar" },
-      { path: "/business-meetings", label: "党建会议与筹备", icon: "task" },
       { path: "/inbox", label: "快速收件箱", icon: "inbox" },
       { path: "/reports", label: "周期汇总", icon: "report" },
       { path: "/journal", label: "工作日志", icon: "journal" },
       { path: "/topics", label: "专题工作空间", icon: "topic" },
+    ],
+  },
+  {
+    key: "party",
+    label: "党务",
+    shortLabel: "党务",
+    defaultPath: "/party-life",
+    items: [
+      { path: "/party-life", label: "三会一课", icon: "book" },
+      { path: "/study-center", label: "中心组学习", icon: "calendar" },
+      { path: "/party-development", label: "发展党员", icon: "task" },
+      { path: "/business-meetings", label: "其他党建会议", icon: "journal" },
     ],
   },
   {

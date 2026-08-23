@@ -60,6 +60,7 @@ fi
 
 bad_architecture=''
 bad_dependency=''
+bad_deployment_target=''
 while IFS= read -r -d '' candidate; do
   description="$(/usr/bin/file -b "$candidate" 2>/dev/null || true)"
   [[ "$description" == *Mach-O* ]] || continue
@@ -72,6 +73,25 @@ while IFS= read -r -d '' candidate; do
     bad_dependency="$candidate"
     break
   fi
+  deployment_target="$(/usr/bin/otool -l "$candidate" 2>/dev/null | /usr/bin/awk '
+    $1 == "cmd" && $2 == "LC_BUILD_VERSION" { section = "build"; next }
+    $1 == "cmd" && $2 == "LC_VERSION_MIN_MACOSX" { section = "legacy"; next }
+    section == "build" && $1 == "minos" { print $2; exit }
+    section == "legacy" && $1 == "version" { print $2; exit }
+  ')"
+  if [[ -z "$deployment_target" ]]; then
+    bad_deployment_target="$candidate: 未找到 macOS 最低版本载入命令"
+    break
+  fi
+  deployment_major="${deployment_target%%.*}"
+  deployment_tail="${deployment_target#*.}"
+  deployment_minor="${deployment_tail%%.*}"
+  if ! [[ "$deployment_major" =~ ^[0-9]+$ && "$deployment_minor" =~ ^[0-9]+$ ]] ||
+    ((deployment_major > 11)) ||
+    ((deployment_major == 11 && deployment_minor > 0)); then
+    bad_deployment_target="$candidate: min macOS $deployment_target（发布基线为 11.0）"
+    break
+  fi
 done < <(/usr/bin/find "$APP_PATH/Contents" -type f -print0)
 
 if [[ -n "$bad_architecture" ]]; then
@@ -80,6 +100,10 @@ if [[ -n "$bad_architecture" ]]; then
 fi
 if [[ -n "$bad_dependency" ]]; then
   printf '[MACOS_EXTERNAL_DEPENDENCY] 应用包仍依赖构建机路径：%s\n' "$bad_dependency" >&2
+  exit 2
+fi
+if [[ -n "$bad_deployment_target" ]]; then
+  printf '[MACOS_DEPLOYMENT_TARGET_TOO_NEW] 应用包包含无法在 macOS 11 启动的组件：%s\n' "$bad_deployment_target" >&2
   exit 2
 fi
 

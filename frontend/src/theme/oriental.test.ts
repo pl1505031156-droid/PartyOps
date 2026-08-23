@@ -31,6 +31,8 @@ describe("东方四时长卷路由配置", () => {
       ["/inbox", "inbox"],
       ["/reports", "reports"],
       ["/journal", "journal"],
+      ["/party-life", "journal"],
+      ["/study-center", "calendar"],
       ["/party-development", "calendar"],
       ["/topics", "topic"],
       ["/workspace", "workspace"],

@@ -134,6 +134,8 @@ export function sceneConfigForPath(path: string): OrientalSceneConfig {
   if (path.startsWith("/reports")) return config("reports", "standard", "open", STANDARD_SLOTS);
   if (path.startsWith("/journal")) return config("journal", "standard", "open", STANDARD_SLOTS);
   if (path.startsWith("/memos")) return config("journal", "standard", "open", STANDARD_SLOTS);
+  if (path.startsWith("/party-life")) return config("journal", "standard", "open", STANDARD_SLOTS);
+  if (path.startsWith("/study-center")) return config("calendar", "standard", "open", STANDARD_SLOTS);
   if (path.startsWith("/party-development")) return config("calendar", "standard", "open", STANDARD_SLOTS);
   if (path.startsWith("/topics")) return config("topic", "standard", "open", STANDARD_SLOTS);
   if (path.startsWith("/workspace")) return config("workspace", "standard", "open", STANDARD_SLOTS);

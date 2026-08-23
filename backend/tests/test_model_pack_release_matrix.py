@@ -79,7 +79,7 @@ def test_manifest_rejects_invalid_metadata_components_and_paths(monkeypatch, tmp
     assert accepted == manifest["files"] and signed is True
 
     cases = [
-        ({**manifest, "format_version": 2}, "MODEL_PACK_FORMAT_INVALID"),
+        ({**manifest, "format_version": 3}, "MODEL_PACK_FORMAT_INVALID"),
         ({**manifest, "format_version": "bad"}, "MODEL_PACK_FORMAT_INVALID"),
         ({**manifest, "files": []}, "MODEL_PACK_MANIFEST_INVALID"),
         ({**manifest, "estimated_memory_mb": "many"}, "MODEL_PACK_MEMORY_INVALID"),
@@ -103,6 +103,33 @@ def test_manifest_rejects_invalid_metadata_components_and_paths(monkeypatch, tmp
             with pytest.raises(ProblemException) as error:
                 model_packs._validate_manifest(value, archive)
             assert error.value.code == code
+
+    manifest_v2 = {
+        **manifest,
+        "format_version": 2,
+        "platforms": ["windows", "linux"],
+        "architectures": ["amd64", "arm64"],
+        "runtime": "onnxruntime",
+        "resource_profile": {
+            "min_memory_mb": 2048,
+            "recommended_memory_mb": 4096,
+            "disk_mb": 512,
+            "threads": 2,
+            "context_tokens": 512,
+            "measured_peak_memory_mb": 768,
+        },
+    }
+    with zipfile.ZipFile(path) as archive:
+        accepted, signed = model_packs._validate_manifest(manifest_v2, archive)
+    assert accepted == manifest["files"] and signed is True
+    with zipfile.ZipFile(path) as archive, pytest.raises(ProblemException) as missing_profile:
+        model_packs._validate_manifest({**manifest, "format_version": 2}, archive)
+    assert missing_profile.value.code == "MODEL_PACK_RESOURCE_PROFILE_MISSING"
+    invalid_profile = json.loads(json.dumps(manifest_v2))
+    invalid_profile["resource_profile"]["recommended_memory_mb"] = 1024
+    with zipfile.ZipFile(path) as archive, pytest.raises(ProblemException) as bad_profile:
+        model_packs._validate_manifest(invalid_profile, archive)
+    assert bad_profile.value.code == "MODEL_PACK_RESOURCE_PROFILE_INVALID"
 
     assert model_packs._safe_member("models/model.gguf").parts == ("models", "model.gguf")
     for unsafe in (

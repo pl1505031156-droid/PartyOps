@@ -7,6 +7,8 @@ import typing
 import hashlib
 import csv
 import io
+import ipaddress
+import json
 import os
 import secrets
 import shutil
@@ -115,6 +117,35 @@ PROCESS_STARTED_AT = datetime.now(timezone.utc)
 
 def client_ip(request: Request) -> str:
     return request.client.host if request.client else ""
+
+
+def _role_reconfigure_marker_path() -> Path:
+    """返回桌面启动器和当前服务共同可见的短期角色重配请求。"""
+
+    if sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support" / "PartyOps" / "Config"
+    elif os.name == "nt":
+        root = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "PartyOps"
+    else:
+        root = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config")) / "partyops"
+    return root / "reconfigure-request.json"
+
+
+def _request_from_host_desktop(request: Request) -> bool:
+    """只允许主机本机页面请求重配，局域网协同机不能远程改变主机角色。"""
+
+    raw = client_ip(request).strip()
+    if raw == "testclient" and get_settings().environment == "test":
+        return True
+    try:
+        address = ipaddress.ip_address(raw)
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+            address = address.ipv4_mapped
+        if address.is_loopback:
+            return True
+        return str(address) in set(discover_lan_addresses())
+    except ValueError:
+        return False
 
 
 @router.get("/admin/users", response_model=typing.List[UserOut])
@@ -798,6 +829,60 @@ def get_network_configuration(
         "tls_enabled": settings.tls_enabled,
         "service_url": service_url(settings.network_advertise_host, settings.port, tls_enabled=settings.tls_enabled),
         "pending": pending.value if pending else None,
+    }
+
+
+@router.post("/system/reconfigure-request", response_model=dict)
+def request_role_reconfiguration(
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    """为 macOS 等 URL 事件不透传参数的平台写入一次性短期启动意图。"""
+
+    if not _request_from_host_desktop(request):
+        raise ProblemException(
+            403,
+            "ROLE_RECONFIGURE_LOCAL_REQUIRED",
+            "只能在这台电脑上重新配置运行角色",
+            "请回到 PartyOps 所在电脑，从系统设置打开配置向导；协同机不能远程改变主机角色。",
+        )
+    marker = _role_reconfigure_marker_path()
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    requested_at = int(utcnow().timestamp())
+    payload = {
+        "format_version": 1,
+        "requested_at": requested_at,
+        "expires_at": requested_at + 120,
+        "requested_by": admin.id,
+    }
+    temporary = marker.with_name(f".{marker.name}.{secrets.token_hex(8)}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        temporary.chmod(0o600)
+        temporary.replace(marker)
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise ProblemException(
+            500,
+            "ROLE_RECONFIGURE_MARKER_FAILED",
+            "无法准备配置向导",
+            "本机配置目录暂时不可写；请从桌面重新打开 PartyOps 后重试。",
+        ) from exc
+    write_audit(
+        db,
+        admin,
+        "system.role_reconfigure_request",
+        "system",
+        None,
+        {"expires_at": payload["expires_at"]},
+        client_ip(request),
+    )
+    db.commit()
+    return {
+        "deep_link": "partyops-client://reconfigure",
+        "expires_at": payload["expires_at"],
+        "current_mode": get_settings().mode,
     }
 
 

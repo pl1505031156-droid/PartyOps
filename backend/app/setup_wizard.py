@@ -1444,7 +1444,8 @@ def _listener_pid_for_loopback_port(port: int) -> int | None:
                 if not local.endswith(f":{port}"):
                     continue
                 host = local.rsplit(":", 1)[0].strip("[]")
-                if host in {"127.0.0.1", "0.0.0.0", "::1", "::"}:
+                # 这里只解析 netstat 的监听端点，用于识别占用端口的进程；不会创建或绑定套接字。
+                if host in {"127.0.0.1", "0.0.0.0", "::1", "::"}:  # nosec B104
                     candidates.add(int(fields[-1]))
             return next(iter(candidates)) if len(candidates) == 1 else None
         if sys.platform == "darwin":
@@ -3516,6 +3517,57 @@ def bootstrap_first_admin(
         ) from exc
 
 
+def configured_runtime_status(
+    service_url: str,
+    *,
+    ca_file: Path | None = None,
+) -> bool:
+    """通过固定回环地址判断旧业务库是否已有账号，避免切换角色后重复创建管理员。"""
+
+    parsed = urllib.parse.urlparse(service_url)
+    if parsed.scheme not in {"http", "https"} or parsed.port is None:
+        raise ValueError("本机服务地址无效，请返回重新配置")
+    local_url = urllib.parse.urlunparse(
+        (
+            parsed.scheme,
+            f"127.0.0.1:{parsed.port}",
+            "/api/v1/bootstrap/status",
+            "",
+            "",
+            "",
+        )
+    )
+    context: ssl.SSLContext | None = None
+    if parsed.scheme == "https":
+        if ca_file is not None and ca_file.is_file():
+            context = ssl.create_default_context(cafile=str(ca_file.resolve()))
+        elif os.getenv("PARTYOPS_ENVIRONMENT") == "test":
+            context = ssl._create_unverified_context()  # nosec B323 - 测试夹具没有真实 CA。
+        else:
+            raise ValueError("PartyOps 内部 CA 尚未就绪，无法确认原账号状态")
+    request = urllib.request.Request(local_url, headers={"Cache-Control": "no-store"})
+    try:
+        with urllib.request.urlopen(  # nosec B310 - URL 已固定为 127.0.0.1 与只读状态接口。
+            request,
+            timeout=10,
+            context=context,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        OSError,
+        TimeoutError,
+        ssl.SSLError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ValueError("本机服务已启动，但无法确认原账号状态；系统没有继续切换") from exc
+    if not isinstance(payload, dict) or not isinstance(payload.get("configured"), bool):
+        raise ValueError("本机账号状态返回格式无效；系统没有继续切换")
+    return bool(payload["configured"])
+
+
 def ensure_configured_runtime_ready(config_path: Path, mode: str) -> str:
     """在管理员真正提交前重新确认运行进程，消除人工填写期间的失活窗口。"""
 
@@ -3570,6 +3622,7 @@ def render_page(
     message: str = "",
     error: str = "",
     selected_mode: str = "",
+    reconfiguration: bool = False,
 ) -> str:
     """渲染小白可完成的角色式首次配置向导。"""
 
@@ -3617,7 +3670,7 @@ def render_page(
     )
     return f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>党建智办 · 首次配置</title><style>
+<title>党建智办 · {'重新配置运行角色' if reconfiguration else '首次配置'}</title><style>
 *{{box-sizing:border-box}}body{{margin:0;color:#282522;background:#f7f1e7;font:14px/1.6 system-ui,"Noto Sans CJK SC",sans-serif}}
 main{{width:min(1040px,94vw);margin:4vh auto;background:#fbf8f1;border:1px solid #d8cec1;box-shadow:0 22px 70px #5d30221a}}
 header{{padding:28px 38px;border-bottom:3px solid #b42318}}h1{{margin:0;font:600 34px/1.2 SimSun,serif}}h1 b{{color:#b42318}}header p{{margin:8px 0 0;color:#776f66}}
@@ -3636,7 +3689,7 @@ input,select{{width:100%;height:44px;padding:0 12px;border:1px solid #cfc3b6;bac
 .startup-status{{display:none;margin:14px 0 0;padding:12px;background:#f4ede3;border-left:3px solid #b42318}}.startup-status.active{{display:block}}.startup-status ol{{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0 0;padding:0;list-style:none}}.startup-status li{{padding:8px;background:#fffdf8;color:#776f66;font-size:12px}}.startup-status li.active{{color:#8f1f17;font-weight:700}}
 footer{{padding:18px 38px;color:#776f66;background:#f1e9de;border-top:1px solid #ddd2c5}}
 @media(max-width:760px){{.role-grid,.form-grid,.test-row,.checklist{{grid-template-columns:1fr}}.progress{{grid-template-columns:1fr}}.setup-panel{{margin:0 18px 22px}}section,header{{padding-left:22px;padding-right:22px}}}}
-</style></head><body><main><header><h1><b>党建</b>智办</h1><p>基层党建工作闭环协同系统 · PartyOps</p></header>
+</style></head><body><main><header><h1><b>党建</b>智办</h1><p>{'重新配置运行角色 · 切换失败会保留原角色和业务数据' if reconfiguration else '基层党建工作闭环协同系统 · PartyOps'}</p></header>
 <div class="progress"><span class="active">1　选择这台电脑的角色</span><span>2　核对网络与配置</span><span>3　启动并确认连接</span></div>
 {notice}{failure}
 <section id="role-choice"><h2 class="role-title">第一步 · 这台电脑怎么使用</h2><p class="role-subtitle">只给自己用请选择“个人使用”，无需管理员授权；需要多台电脑协同办公时再选择主机或协同机。</p>
@@ -3893,7 +3946,12 @@ def run_shared_root_manager(open_browser: bool = True, action_token: str = "") -
     return 0
 
 
-def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
+def run_wizard(
+    open_browser: bool = True,
+    initial_mode: str = "",
+    *,
+    reconfiguration: bool = False,
+) -> int:
     csrf = secrets.token_urlsafe(24)
     shutdown = threading.Event()
     startup_error = ""
@@ -3940,6 +3998,7 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                     csrf,
                     selected_mode=selected_mode,
                     error=startup_error,
+                    reconfiguration=reconfiguration,
                 )
             )
 
@@ -4043,6 +4102,13 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                     host_setup["bootstrap_token"] = environment.get(
                         "PARTYOPS_BOOTSTRAP_TOKEN", ""
                     )
+                    if reconfiguration and configured_runtime_status(url):
+                        self._redirect(url)
+                        threading.Thread(
+                            target=lambda: (time.sleep(1), shutdown.set()),
+                            daemon=True,
+                        ).start()
+                        return
                     self._send(render_admin_setup_page(csrf, url))
                     return
                 if mode == "host":
@@ -4068,6 +4134,20 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                     host_setup["bootstrap_token"] = environment.get(
                         "PARTYOPS_BOOTSTRAP_TOKEN", ""
                     )
+                    if reconfiguration and configured_runtime_status(
+                        url,
+                        ca_file=(
+                            Path(host_setup["ca_file"])
+                            if host_setup.get("ca_file")
+                            else None
+                        ),
+                    ):
+                        self._redirect(url)
+                        threading.Thread(
+                            target=lambda: (time.sleep(1), shutdown.set()),
+                            daemon=True,
+                        ).start()
+                        return
                     self._send(render_admin_setup_page(csrf, url))
                     return
                 elif mode == "bootstrap_admin":
@@ -4136,7 +4216,14 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                     message = f"协同终端已启动并连接：{url}"
                 else:
                     raise ValueError("请选择个人使用、主机或协同终端")
-                self._send(render_page(csrf, message=message, selected_mode=mode))
+                self._send(
+                    render_page(
+                        csrf,
+                        message=message,
+                        selected_mode=mode,
+                        reconfiguration=reconfiguration,
+                    )
+                )
                 threading.Thread(
                     target=lambda: (
                         time.sleep(1),
@@ -4158,7 +4245,12 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                     )
                 else:
                     self._send(
-                        render_page(csrf, error=str(exc), selected_mode=failed_mode),
+                        render_page(
+                            csrf,
+                            error=str(exc),
+                            selected_mode=failed_mode,
+                            reconfiguration=reconfiguration,
+                        ),
                         400,
                     )
             except Exception as exc:  # noqa: BLE001 - 本地 HTTP 边界必须返回完整诊断页。
@@ -4170,6 +4262,7 @@ def run_wizard(open_browser: bool = True, initial_mode: str = "") -> int:
                             "配置未完成，系统已保留可恢复信息。请稍后重试；"
                             f"若仍失败，请在运行诊断中提供追踪编号 {diagnostic_id}。"
                         ),
+                        reconfiguration=reconfiguration,
                     ),
                     500,
                 )
@@ -4199,6 +4292,7 @@ def main() -> None:
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--manage-shared-roots", action="store_true")
     parser.add_argument("--action-uri", default="")
+    parser.add_argument("--reconfigure", action="store_true")
     parser.add_argument(
         "--initial-role", choices=("personal", "host", "client"), default=""
     )
@@ -4243,6 +4337,16 @@ def main() -> None:
         action_token = ""
         if args.action_uri:
             parsed = urllib.parse.urlparse(args.action_uri)
+            if parsed.scheme == "partyops-client" and parsed.netloc == "reconfigure":
+                if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+                    raise SystemExit("无效的重新配置地址")
+                raise SystemExit(
+                    run_wizard(
+                        not args.no_browser,
+                        args.initial_role,
+                        reconfiguration=True,
+                    )
+                )
             if parsed.scheme != "partyops-client" or parsed.netloc != "manage-shares":
                 raise SystemExit("无效的本机共享操作地址")
             action_token = parsed.path.strip("/")
@@ -4253,7 +4357,13 @@ def main() -> None:
             ):
                 raise SystemExit("本机共享操作令牌无效")
         raise SystemExit(run_shared_root_manager(not args.no_browser, action_token))
-    raise SystemExit(run_wizard(not args.no_browser, args.initial_role))
+    raise SystemExit(
+        run_wizard(
+            not args.no_browser,
+            args.initial_role,
+            reconfiguration=args.reconfigure,
+        )
+    )
 
 
 if __name__ == "__main__":

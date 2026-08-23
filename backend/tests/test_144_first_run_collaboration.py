@@ -135,6 +135,78 @@ def test_first_run_wizard_prioritizes_reachable_role_based_setup(monkeypatch) ->
     assert 'id="client-submit"' in page and "disabled" in page
 
 
+def test_reconfiguration_page_explains_transactional_role_switch(monkeypatch) -> None:
+    """从设置重新进入向导时必须明确保留原角色和业务数据。"""
+
+    monkeypatch.setattr(setup_wizard, "discover_lan_addresses", lambda: ["192.168.36.18"])
+    page = setup_wizard.render_page(
+        "csrf-token",
+        selected_mode="personal",
+        reconfiguration=True,
+    )
+
+    assert "重新配置运行角色" in page
+    assert "切换失败会保留原角色和业务数据" in page
+    assert 'data-role="personal"' in page
+    assert 'data-role="host"' in page
+    assert 'data-role="client"' in page
+
+
+def test_reconfigure_protocol_dispatches_to_full_wizard(monkeypatch) -> None:
+    """partyops-client 深链不得被误送到共享目录管理器。"""
+
+    calls: list[tuple[bool, str, bool]] = []
+    monkeypatch.setattr(
+        setup_wizard,
+        "run_wizard",
+        lambda open_browser, initial_mode, *, reconfiguration=False: (
+            calls.append((open_browser, initial_mode, reconfiguration)) or 17
+        ),
+    )
+    monkeypatch.setattr(
+        setup_wizard.sys,
+        "argv",
+        [
+            "partyops-wizard",
+            "--manage-shared-roots",
+            "--action-uri",
+            "partyops-client://reconfigure",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exited:
+        setup_wizard.main()
+
+    assert exited.value.code == 17
+    assert calls == [(True, "", True)]
+
+
+def test_configured_runtime_status_uses_loopback_and_requires_boolean(monkeypatch) -> None:
+    """角色切换只能通过本机只读状态确认旧账号存在。"""
+
+    captured: dict[str, str] = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        @staticmethod
+        def read() -> bytes:
+            return b'{"configured":true}'
+
+    def open_request(request, **_kwargs):
+        captured["url"] = request.full_url
+        return Response()
+
+    monkeypatch.setattr(setup_wizard.urllib.request, "urlopen", open_request)
+
+    assert setup_wizard.configured_runtime_status("http://192.168.36.18:18765") is True
+    assert captured["url"] == "http://127.0.0.1:18765/api/v1/bootstrap/status"
+
+
 def test_client_first_run_rejects_loopback_host(monkeypatch) -> None:
     """协同机填写 127.0.0.1 等于连接自己，正式环境应在联网前阻止。"""
 
