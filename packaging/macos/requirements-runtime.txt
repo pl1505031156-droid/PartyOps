@@ -1,8 +1,11 @@
 # macOS 11 兼容运行时。
 #
-# 主线仍使用 onnxruntime 1.22.1；其官方 macOS universal2 wheel 标记为
-# macOS 13，且内部 arm64 动态库实际最低要求 13.3。macOS 安装包因此使用
-# 上游最后一代 macOS 11 universal2 wheel，并由 bundle 门禁逐个核验 Mach-O
-# deployment target，避免安装成功后才在旧系统启动失败。
+# 主线的 numpy 2.2.6 Apple Silicon wheel 实际最低要求 macOS 14；
+# onnxruntime 1.22.1 官方 universal2 wheel 标记为 macOS 13，内部动态库实际
+# 最低要求 13.3。macOS 安装包使用仍支持 macOS 11 的上游 wheel，并由
+# bundle 门禁逐个核验 Mach-O deployment target，避免安装后才启动失败。
+numpy==1.26.4 \
+    --hash=sha256:4c66707fabe114439db9068ee468c26bbdf909cac0fb58686a42a24de1760c71 \
+    --hash=sha256:edd8b5fe47dab091176d21bb6de568acdd906d1887a4584a15a9a96a1dca06ef
 onnxruntime==1.19.2 \
     --hash=sha256:d863e8acdc7232d705d49e41087e10b274c42f09e259016a46f32c34e06dc4fd
