@@ -258,7 +258,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "contents: read" in workflow
     assert "macos-15-intel" in workflow and "macos-15" in workflow
     assert "BUILD-UNSIGNED-145-RC1" in workflow
-    assert "ref: c3c03ac26b2c5ba23f8d696da846ac92001099bb" in workflow
+    assert "ref: 64c2ab2a200a53c05adb3009861b2800e0f932e4" in workflow
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1
     assert workflow.count("install_package") == 3
