@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import ipaddress
 import os
 import json
 import logging
@@ -308,14 +309,24 @@ def _apply_security_headers(response, request: Request):
 
     response.headers["X-Trace-Id"] = request.state.trace_id
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
+    path_parts = request.url.path.strip("/").split("/")
+    inline_workspace_preview = (
+        request.method.upper() == "GET"
+        and len(path_parts) == 6
+        and path_parts[:4] == ["api", "v1", "workspace", "files"]
+        and path_parts[-1] == "preview"
+    )
+    response.headers["X-Frame-Options"] = (
+        "SAMEORIGIN" if inline_workspace_preview else "DENY"
+    )
     if "Referrer-Policy" not in response.headers:
         response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    frame_ancestors = "'self'" if inline_workspace_preview else "'none'"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; "
+        f"default-src 'self'; base-uri 'self'; frame-ancestors {frame_ancestors}; "
         "form-action 'self'; object-src 'none'; script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
         "font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:"
@@ -381,6 +392,15 @@ def _host_allowed(request: Request) -> bool:
     return hostname in allowed
 
 
+def _loopback_client(request: Request) -> bool:
+    try:
+        return bool(request.client and ipaddress.ip_address(request.client.host.split("%", 1)[0]).is_loopback)
+    except ValueError:
+        return settings.environment == "test" and bool(
+            request.client and request.client.host == "testclient"
+        )
+
+
 @app.middleware("http")
 async def trace_requests(request: Request, call_next):
     request.state.trace_id = normalize_trace_id(request.headers.get("X-Trace-Id"))
@@ -406,6 +426,11 @@ async def trace_requests(request: Request, call_next):
         or (
             request.url.path == "/api/v1/bootstrap/host"
             and bool(request.headers.get("X-PartyOps-Bootstrap-Token"))
+        )
+        or (
+            request.url.path.startswith("/api/v1/workspace/open-tokens/")
+            and request.url.path.endswith("/complete")
+            and _loopback_client(request)
         )
     )
     if (

@@ -6,6 +6,7 @@ import argparse
 import getpass
 import hashlib
 import http.client
+import ipaddress
 import json
 import logging
 import mimetypes
@@ -42,7 +43,7 @@ from .platform_info import detect_platform_info
 from .schemas import serialize_api_datetime
 
 
-AGENT_VERSION = "1.4.5-rc.1"
+AGENT_VERSION = "1.4.5-rc.2"
 AGENT_PROTOCOL_VERSION = 2
 AUTHENTICATION_EXIT_CODE = 4
 _ACTIVE_SSL_CONTEXT = None
@@ -326,6 +327,83 @@ def validate_config(config: dict[str, object]) -> tuple[str, str, Path]:
         raise ValueError("缺少终端配对令牌")
     destination = Path(str(config.get("backup_dir", ""))).expanduser().resolve()
     return host_url, token, destination
+
+
+def _validated_migration_url(value: object, *, field: str) -> str:
+    url = str(value or "").strip().rstrip("/")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise AgentCommandError("NETWORK_MIGRATION_URL_INVALID", f"{field} 不是可信的 HTTP/HTTPS 地址")
+    try:
+        address = ipaddress.ip_address(parsed.hostname)
+    except ValueError:
+        address = None
+    if parsed.hostname.lower() == "localhost" or (address is not None and (address.is_loopback or address.is_unspecified)):
+        raise AgentCommandError("NETWORK_MIGRATION_LOOPBACK_DENIED", f"{field} 不能使用仅主机本机可达的地址")
+    return url
+
+
+def apply_network_migration_command(
+    payload: dict[str, object],
+    config: dict[str, object],
+    config_path: Path,
+) -> dict[str, object]:
+    """原子保存新旧主机地址；重启后新地址失败时仍可回退旧地址。"""
+
+    new_host = _validated_migration_url(payload.get("host_url"), field="主机地址")
+    new_agent = _validated_migration_url(payload.get("agent_url") or new_host, field="Agent 地址")
+    previous_host = str(config.get("host_url", "")).rstrip("/")
+    previous_agent = str(config.get("agent_url") or previous_host).rstrip("/")
+    transaction_id = str(payload.get("transaction_id", "")).strip()
+    expires_at = str(payload.get("expires_at", "")).strip()
+    if not transaction_id or not expires_at:
+        raise AgentCommandError("NETWORK_MIGRATION_METADATA_INVALID", "网络迁移事务缺少编号或宽限截止时间")
+    candidate = dict(config)
+    candidate.update(
+        {
+            "host_url": new_host,
+            "agent_url": new_agent,
+            "network_migration": {
+                "transaction_id": transaction_id,
+                "previous_host_url": previous_host,
+                "previous_agent_url": previous_agent,
+                "new_host_url": new_host,
+                "new_agent_url": new_agent,
+                "expires_at": expires_at,
+                "state": "pending_restart",
+            },
+        }
+    )
+    _save_config(config_path, candidate)
+    config.clear()
+    config.update(candidate)
+    return {"ok": True, "message": "新旧协同地址已保存，Agent 将受控重启并验证新地址。", "transaction_id": transaction_id}
+
+
+def _select_migration_endpoints(
+    config: dict[str, object],
+    host_url: str,
+    agent_url: str,
+) -> tuple[str, str]:
+    migration = config.get("network_migration")
+    if not isinstance(migration, dict):
+        return host_url, agent_url
+    try:
+        expires_at = datetime.fromisoformat(str(migration.get("expires_at", "")).replace("Z", "+00:00"))
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return host_url, agent_url
+    if host_reachable(host_url):
+        migration["state"] = "new_address_ready"
+        return host_url, agent_url
+    previous_host = str(migration.get("previous_host_url", "")).rstrip("/")
+    previous_agent = str(migration.get("previous_agent_url") or previous_host).rstrip("/")
+    if datetime.now(timezone.utc) <= expires_at and previous_host and host_reachable(previous_host):
+        migration["state"] = "using_previous_address"
+        return previous_host, previous_agent
+    migration["state"] = "new_address_unreachable"
+    return host_url, agent_url
 
 
 def configure_ssl_context(config: dict[str, object]) -> None:
@@ -1588,6 +1666,8 @@ def process_device_command(
             result = apply_update_command(host_url, token, payload, config)
         elif command_type == "rotate_certificate" and config_path is not None:
             result = rotate_device_certificate(host_url, token, config, config_path)
+        elif command_type == "network_migration" and config_path is not None:
+            result = apply_network_migration_command(payload, config, config_path)
         else:
             result = {
                 "ok": False,
@@ -1606,12 +1686,12 @@ def process_device_command(
         }
     acknowledged = ack_device_command(host_url, token, command_id, result)
     if (
-        command_type == "apply_update"
+        command_type in {"apply_update", "network_migration"}
         and bool(result.get("ok"))
         and config_path is not None
     ):
-        # 更新程序替换的是磁盘上的 Agent。当前进程仍映射着旧版本，如果不
-        # 主动重启，它会持续上报旧版本并让更新门禁一直阻止用户进入系统。
+        # 更新程序或协同地址事务都必须在旧连接完成回执后再重启；否则主机
+        # 无法区分“已安全保存”与“终端在迁移中失联”。
         _restart_agent_after_update(config_path)
     return acknowledged
 
@@ -2219,6 +2299,13 @@ def run(
         else open_browser
     )
     agent_host_url = str(config.get("agent_url") or host_url).rstrip("/")
+    host_url, agent_host_url = _select_migration_endpoints(
+        config,
+        host_url,
+        agent_host_url,
+    )
+    if isinstance(config.get("network_migration"), dict):
+        _save_config(config_path, config)
     if should_open_browser or browser_url_file is not None:
         browser_url = create_browser_launch_url(host_url, agent_host_url, token)
         if browser_url_file is not None:

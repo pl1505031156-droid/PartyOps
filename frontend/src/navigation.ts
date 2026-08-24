@@ -70,6 +70,7 @@ export const navigationDomains: NavigationDomain[] = [
     defaultPath: "/workspace",
     items: [
       { path: "/workspace", label: "原始文件中心", icon: "folder" },
+      { path: "/official-format", label: "公文规范排版", icon: "compare" },
       { path: "/archives", label: "重要档案", icon: "archive" },
       { path: "/inspection", label: "迎检与归档", icon: "archive" },
       { path: "/knowledge", label: "知识与联系人", icon: "book" },

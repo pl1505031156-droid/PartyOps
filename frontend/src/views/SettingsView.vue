@@ -102,8 +102,14 @@ interface NetworkConfiguration {
   advertise_host: string;
   port: number;
   tls_enabled: boolean;
+  local_browser_url: string;
   service_url: string;
-  pending: Record<string, unknown> | null;
+  pending: {
+    transaction_id?: string;
+    state?: string;
+    device_notifications?: number;
+    requested?: Record<string, unknown>;
+  } | null;
 }
 
 interface UserDeletionImpact {
@@ -127,6 +133,7 @@ const pairings = ref<Pairing[]>([]);
 const diagnostics = ref<Diagnostics | null>(null);
 const systemStatus = ref<SystemStatus | null>(null);
 const network = ref<NetworkConfiguration | null>(null);
+const networkActionLoading = ref(false);
 const aiProvider = ref<AIProvider | null>(null);
 const aiPolicies = ref<AIPolicy[]>([]);
 const workspaceRoots = ref<WorkspaceRoot[]>([]);
@@ -970,13 +977,46 @@ async function restoreUser(user: User) {
 }
 
 async function saveNetwork() {
+  networkActionLoading.value = true;
   try {
     await api.post("/system/network/validate", networkForm);
-    const result = await api.patch<{ restart_required: boolean }>("/system/network", networkForm);
-    Message.success(result.restart_required ? "网络配置和证书已准备，请从受控按钮重启服务后完成健康检查" : "网络配置未变化");
+    const result = await api.patch<{ restart_required: boolean; device_notifications?: number }>("/system/network", networkForm);
+    Message.success(result.restart_required ? `网络事务已准备，并通知 ${result.device_notifications || 0} 台协同电脑；重启服务后请完成健康检查` : "网络配置未变化");
     await load();
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "网络配置更新失败");
+  } finally {
+    networkActionLoading.value = false;
+  }
+}
+
+async function confirmNetwork() {
+  const transactionId = network.value?.pending?.transaction_id;
+  if (!transactionId) return;
+  networkActionLoading.value = true;
+  try {
+    await api.post(`/system/network/transactions/${transactionId}/confirm`);
+    Message.success("回环、公布地址、TLS 证书和健康端点均已通过，网络事务已提交");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "网络健康检查失败");
+  } finally {
+    networkActionLoading.value = false;
+  }
+}
+
+async function rollbackNetwork() {
+  const transactionId = network.value?.pending?.transaction_id;
+  if (!transactionId) return;
+  networkActionLoading.value = true;
+  try {
+    await api.post(`/system/network/transactions/${transactionId}/rollback`);
+    Message.success("旧网络配置和证书已恢复，请受控重启服务完成回滚");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "网络配置回滚失败");
+  } finally {
+    networkActionLoading.value = false;
   }
 }
 
@@ -1166,9 +1206,21 @@ onBeforeUnmount(() => {
           <p>自动探测、监听地址和协同机实际访问地址分开管理；变更前先校验，失败会恢复旧配置。</p>
           <a-tag :color="network?.tls_enabled ? 'green' : 'orange'">{{ network?.tls_enabled ? "HTTPS 已启用" : "仅本机可使用 HTTP" }}</a-tag>
         </div>
-        <a-alert v-if="network?.pending" type="warning" class="update-note">
-          新地址已写入并保留旧地址回滚快照，需重启服务并完成健康检查后生效。协同机绑定和业务数据均已保留。
+        <a-alert v-if="network?.pending && network.pending.state !== 'active' && network.pending.state !== 'rolled_back'" type="warning" class="update-note">
+          网络事务 {{ network.pending.transaction_id }} 已保存回滚快照，并通知 {{ network.pending.device_notifications || 0 }} 台协同电脑。
+          当前状态：{{ zhLabel(network.pending.state || "pending") }}。重启服务后执行健康检查，失败可恢复旧配置和证书。
+          <a-space>
+            <a-button size="mini" :loading="networkActionLoading" @click="confirmNetwork">验证新地址并提交</a-button>
+            <a-popconfirm content="确认恢复旧地址和旧主机证书？恢复后需要受控重启服务。" @ok="rollbackNetwork">
+              <a-button size="mini" status="danger" :loading="networkActionLoading">回滚旧配置</a-button>
+            </a-popconfirm>
+          </a-space>
         </a-alert>
+        <section class="network-address-ledger">
+          <article><span>本机浏览地址</span><strong>{{ network?.local_browser_url || "待检测" }}</strong><small>只供主机自己打开，不会下发协同机</small></article>
+          <article><span>实际监听</span><strong>{{ network?.bind_host || "待检测" }}:{{ network?.port || 18765 }}</strong><small>可使用通配监听，但必须配套明确私网公布地址</small></article>
+          <article><span>协同公布地址</span><strong>{{ network?.service_url || "待配置" }}</strong><small>127.0.0.1、localhost、0.0.0.0 永不允许下发</small></article>
+        </section>
         <a-form :model="networkForm" layout="vertical" class="network-form">
           <a-form-item label="自动探测地址">
             <a-radio-group v-model="networkForm.advertise_host">
@@ -1180,8 +1232,18 @@ onBeforeUnmount(() => {
           <a-form-item label="对外公布地址"><a-input v-model="networkForm.advertise_host" placeholder="协同机实际能够访问的地址" /></a-form-item>
           <a-form-item label="业务端口"><a-input-number v-model="networkForm.port" :min="1024" :max="65535" /></a-form-item>
           <a-form-item label="旧地址迁移宽限（小时）"><a-input-number v-model="networkForm.migration_grace_hours" :min="1" :max="168" /></a-form-item>
-          <a-button type="primary" @click="saveNetwork">验证并保存网络配置</a-button>
+          <a-button type="primary" :loading="networkActionLoading" @click="saveNetwork">验证并创建网络事务</a-button>
         </a-form>
+        <a-table :data="updateDevices.filter((item) => item.active)" :pagination="false" class="network-device-table">
+          <template #columns>
+            <a-table-column title="协同电脑" data-index="name" />
+            <a-table-column title="系统 / 架构"><template #cell="{ record }">{{ record.platform }} / {{ record.architecture }}</template></a-table-column>
+            <a-table-column title="协议"><template #cell="{ record }">v{{ record.protocol_version || 1 }}</template></a-table-column>
+            <a-table-column title="凭据"><template #cell="{ record }">{{ zhLabel(record.credential_state || "active") }}</template></a-table-column>
+            <a-table-column title="最后心跳"><template #cell="{ record }">{{ formatServerTime(record.last_seen_at, "YYYY-MM-DD HH:mm", "从未连接") }}</template></a-table-column>
+            <a-table-column title="状态"><template #cell="{ record }"><a-tag>{{ zhLabel(record.status) }}</a-tag></template></a-table-column>
+          </template>
+        </a-table>
       </a-tab-pane>
 
       <a-tab-pane key="appearance" title="外观与东方主题">
@@ -1972,6 +2034,25 @@ onBeforeUnmount(() => {
 
 .policy-save {
   margin-top: 16px;
+}
+
+.network-address-ledger {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 16px 0;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.network-address-ledger article { min-width: 0; padding: 16px; background: rgba(255, 250, 240, 0.94); }
+.network-address-ledger span, .network-address-ledger strong, .network-address-ledger small { display: block; }
+.network-address-ledger span, .network-address-ledger small { color: var(--muted); font-size: 10px; }
+.network-address-ledger strong { margin: 6px 0; overflow-wrap: anywhere; color: var(--charcoal); }
+.network-device-table { margin-top: 20px; }
+
+@media (max-width: 760px) {
+  .network-address-ledger { grid-template-columns: 1fr; }
 }
 
 .update-targets {

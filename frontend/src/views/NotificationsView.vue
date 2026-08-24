@@ -7,6 +7,7 @@ import { api } from "../api";
 import type { NotificationItem } from "../types";
 import { formatServerTime } from "../utils/datetime";
 import { zhLabel } from "../utils/labels";
+import PageHelp from "../components/PageHelp.vue";
 
 const router = useRouter();
 const items = ref<NotificationItem[]>([]);
@@ -54,7 +55,7 @@ onMounted(load);
   <div class="page notifications-page">
     <header class="page-header">
       <div><p class="page-kicker">协同消息中心</p><h1 class="page-title">通知中心</h1><p class="page-description">评论、提及、指派、审核、文件传输和共享目录审批在这里统一查看并跳转处理。</p></div>
-      <a-space><a-button @click="load"><template #icon><IconRefresh /></template>刷新</a-button><a-button type="primary" :disabled="!unreadCount" @click="markAllRead"><template #icon><IconCheck /></template>全部已读</a-button></a-space>
+      <a-space><PageHelp title="通知中心" :tips="['点击通知会标为已读并跳到对应事项、传输或审批。', '事项改期、改状态或改参与人后，未读活动通知会立即联动更新。', '已读记录保留审计，但不会继续作为活动通知重复提醒。']" help-query="通知 改期 联动" /><a-button @click="load"><template #icon><IconRefresh /></template>刷新</a-button><a-button type="primary" :disabled="!unreadCount" @click="markAllRead"><template #icon><IconCheck /></template>全部已读</a-button></a-space>
     </header>
     <section class="notice-toolbar">
       <a-select v-model="typeFilter" style="width: 180px" @change="load"><a-option v-for="option in types" :key="option[0]" :value="option[0]">{{ option[1] }}</a-option></a-select>

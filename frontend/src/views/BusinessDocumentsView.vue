@@ -4,6 +4,7 @@ import { IconDownload, IconPlus, IconSave } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { api, downloadUrl } from "../api";
 import { formatServerTime } from "../utils/datetime";
+import PageHelp from "../components/PageHelp.vue";
 
 interface BusinessDocument { id: string; meeting_id: string | null; task_step_id: string | null; document_type: string; title: string; content: { blocks?: Array<{ type: string; text: string; level?: number }> }; version: number; updated_at: string; }
 interface Revision { id: string; revision_no: number; change_note: string; created_at: string; }
@@ -96,7 +97,7 @@ onBeforeUnmount(() => window.clearTimeout(saveTimer));
 
 <template>
   <div class="page documents-page">
-    <header class="page-header"><div><p class="page-kicker">资料 · 可追溯协同写作</p><h1 class="page-title">在线业务文档</h1><p class="page-description">议程、通知和纪要采用结构化正文在线修改；自动保存、版本冲突检查和修订记录始终开启。</p></div><a-button type="primary" @click="createVisible = true"><template #icon><IconPlus /></template>新建文档</a-button></header>
+    <header class="page-header"><div><p class="page-kicker">资料 · 可追溯协同写作</p><h1 class="page-title">在线业务文档</h1><p class="page-description">议程、通知和纪要采用结构化正文在线修改；自动保存、版本冲突检查和修订记录始终开启。</p></div><a-space><PageHelp title="在线业务文档" :tips="['有创建权限的主机或协同用户都可新建并关联会议。', '正文自动保存并校验版本；发生并发冲突时先刷新核对，系统不会静默覆盖。', '这里编辑 PartyOps 结构化文档；外部任意 DOCX/WPS 不承诺原格式在线编辑。']" help-query="在线业务文档 协同 修订" /><a-button type="primary" @click="createVisible = true"><template #icon><IconPlus /></template>新建文档</a-button></a-space></header>
     <section class="document-studio">
       <aside><button v-for="item in documents" :key="item.id" type="button" :class="{ active: selectedId === item.id }" @click="selectedId = item.id"><span>{{ ({ agenda:'议程', notice:'通知', minutes:'记录', summary:'纪要', materials:'材料', other:'其他' } as Record<string,string>)[item.document_type] }}</span><strong>{{ item.title }}</strong><small>v{{ item.version }} · {{ formatServerTime(item.updated_at, "MM-DD HH:mm") }}</small></button><div v-if="!documents.length" class="empty-state">暂无在线文档。</div></aside>
       <main v-if="selected" class="editor-shell">

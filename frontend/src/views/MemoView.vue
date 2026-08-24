@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Message } from "@arco-design/web-vue";
 import { useRoute } from "vue-router";
+import PageHelp from "../components/PageHelp.vue";
 import { useSessionStore } from "../stores/session";
 import {
   LocalMemoRepository,
@@ -264,6 +265,7 @@ onBeforeUnmount(() => {
         <p class="page-description">随手记下不必立项的小事。内容只留在当前电脑，主机与其他协同机均不可见。</p>
       </div>
       <a-space wrap>
+        <PageHelp title="备忘录" :tips="['内容仅保存在当前电脑和当前账号范围，不会同步到主机。', '输入后自动保存；清理浏览器站点数据前应先导出加密备份。', '误删可从回收站恢复，永久删除前请确认不再需要。']" help-query="备忘录 本机保存 加密备份" />
         <a-button @click="openImportPicker">导入加密备份</a-button>
         <a-button @click="openExport">导出加密备份</a-button>
         <a-button type="primary" @click="newMemo('note')">新建备忘</a-button>

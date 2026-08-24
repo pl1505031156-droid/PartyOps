@@ -47,7 +47,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
     startup_selftest._validate_probe(
         {
             "status": "ok",
-            "app_version": "1.4.5-rc.1",
+            "app_version": "1.4.5-rc.2",
             "mode": "personal",
             "sqlite": {"safe_version": True, "fts5": True},
         },
@@ -67,7 +67,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.1",
+                "app_version": "1.4.5-rc.2",
                 "mode": "host",
                 "sqlite": {"safe_version": True, "fts5": True},
             },
@@ -77,7 +77,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.1",
+                "app_version": "1.4.5-rc.2",
                 "mode": "personal",
                 "sqlite": {"safe_version": True, "fts5": False},
             },
@@ -87,7 +87,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.1",
+                "app_version": "1.4.5-rc.2",
                 "mode": "personal",
                 "sqlite": {"safe_version": True, "fts5": True},
             },
@@ -95,12 +95,12 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         )
     with pytest.raises(RuntimeError, match="未返回 ok"):
         startup_selftest._validate_probe(
-            {"status": "failed", "app_version": "1.4.5-rc.1", "mode": "personal", "sqlite": {}},
+            {"status": "failed", "app_version": "1.4.5-rc.2", "mode": "personal", "sqlite": {}},
             b'<!doctype html><div id="app"></div>',
         )
     with pytest.raises(RuntimeError, match="SQLite"):
         startup_selftest._validate_probe(
-            {"status": "ok", "app_version": "1.4.5-rc.1", "mode": "personal", "sqlite": "invalid"},
+            {"status": "ok", "app_version": "1.4.5-rc.2", "mode": "personal", "sqlite": "invalid"},
             b'<!doctype html><div id="app"></div>',
         )
 
@@ -170,7 +170,7 @@ def test_frozen_probe_success_exit_and_timeout(monkeypatch: pytest.MonkeyPatch, 
     success = _Process([None, None])
     monkeypatch.setattr(startup_selftest.subprocess, "Popen", lambda *_args, **_kwargs: success)
     monkeypatch.setattr(startup_selftest, "_reserve_loopback_port", lambda: 18888)
-    monkeypatch.setattr(startup_selftest, "_read_json", lambda _url: {"status": "ok", "app_version": "1.4.5-rc.1", "mode": "personal", "sqlite": {"safe_version": True, "fts5": True}})
+    monkeypatch.setattr(startup_selftest, "_read_json", lambda _url: {"status": "ok", "app_version": "1.4.5-rc.2", "mode": "personal", "sqlite": {"safe_version": True, "fts5": True}})
     monkeypatch.setattr(startup_selftest, "_read_frontend", lambda _url: b'<!doctype html><div id="app"></div>')
     assert startup_selftest._probe_frozen_server(runtime, 10)["status"] == "ok"
     assert success.terminated is True
@@ -205,7 +205,7 @@ def test_main_reports_success_and_bounded_failure(
         "run_selftest",
         lambda _runtime: {
             "passed": True,
-            "version": "1.4.5-rc.1",
+            "version": "1.4.5-rc.2",
             "mode": "personal",
         },
     )

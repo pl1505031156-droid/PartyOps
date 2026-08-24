@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { IconCalendar, IconDownload, IconPlus, IconRefresh } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { api, saveBlobDownload } from "../api";
+import PageHelp from "../components/PageHelp.vue";
 import { formatServerTime } from "../utils/datetime";
 
 interface Milestone { id: string; milestone_type: string; actual_at: string | null; legal_earliest_at: string | null; legal_deadline_at: string | null; planned_at: string | null; adjusted_at: string | null; legal_basis: string; planning_basis?: string; plan_kind: string; reminder_days: number[]; version: number; }
@@ -201,7 +202,7 @@ onMounted(load);
 
 <template>
   <div class="page case-page">
-    <header class="page-header"><div><p class="page-kicker">工作 · 全周期发展档案</p><h1 class="page-title">党员发展档案与提醒</h1><p class="page-description">实际发生日期、法定边界和参考计划分栏保存；系统只辅助计算，不替代组织研究和审批。</p></div><a-space><a-button @click="exportCases('docx')"><template #icon><IconDownload /></template>导出 Word</a-button><a-button @click="exportCases('xlsx')"><template #icon><IconDownload /></template>导出 Excel</a-button><a-button type="primary" @click="createVisible = true"><template #icon><IconPlus /></template>新增发展档案</a-button></a-space></header>
+    <header class="page-header"><div><p class="page-kicker">工作 · 全周期发展档案</p><h1 class="page-title">党员发展档案与提醒</h1><p class="page-description">实际发生日期、法定边界和参考计划分栏保存；系统只辅助计算，不替代组织研究和审批。</p></div><a-space><PageHelp title="党员发展档案" :tips="['新增档案后会生成法定边界和首轮参考计划，组织结论仍须据实补录。', '实际日期、参考日期和人工调整分开保存；修改上游节点不会覆盖已发生节点。', '提醒和导出都带规则版本，党务人员应在办理前复核最新制度与本单位流程。']" help-query="党员发展档案 提醒 导出" /><a-button @click="exportCases('docx')"><template #icon><IconDownload /></template>导出 Word</a-button><a-button @click="exportCases('xlsx')"><template #icon><IconDownload /></template>导出 Excel</a-button><a-button type="primary" @click="createVisible = true"><template #icon><IconPlus /></template>新增发展档案</a-button></a-space></header>
     <section class="case-stats"><article><span>在办人员</span><strong>{{ statistics.total }}</strong></article><article><span>60 天内节点</span><strong>{{ statistics.upcoming_60_days }}</strong></article><article :class="{ danger: statistics.overdue }"><span>逾期待核查</span><strong>{{ statistics.overdue }}</strong></article><article><span>规则版本</span><strong class="rule-version">{{ selected?.rule_version || "—" }}</strong></article></section>
     <section class="case-workspace">
       <aside><button v-for="item in cases" :key="item.id" type="button" :class="{ active: selectedId === item.id }" @click="selectedId = item.id"><span>{{ item.party_branch }}</span><strong>{{ item.name }}</strong><small>{{ item.stage }} · {{ formatServerTime(item.application_at, "YYYY-MM-DD") }}</small></button><div v-if="!cases.length" class="empty-state">尚无发展档案。</div></aside>

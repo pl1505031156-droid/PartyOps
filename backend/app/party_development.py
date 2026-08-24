@@ -35,9 +35,9 @@ from .compat import strict_zip
 
 RULE_VERSION = "2026.05"
 RULE_ISSUED_AT = date(2026, 5, 11)
-RULE_PUBLISHED_AT = date(2026, 6, 11)
+RULE_PUBLISHED_AT = date(2026, 5, 18)
 RULE_TITLE = "中国共产党发展党员工作细则（2026年5月修订）"
-RULE_SOURCE_URL = "https://djyj.12371.cn/2026/06/11/ARTI1781145352074190.shtml"
+RULE_SOURCE_URL = "https://www.12371.cn/2026/05/18/ARTI1779102179030620.shtml"
 REFERENCE_PLAN_SYSTEM_KEY = "party-development.reference-plan.2026-v1"
 REFERENCE_PLAN_ASSUMPTIONS: dict[str, Any] = {
     "conversation_target_days": 15,
@@ -54,6 +54,28 @@ REFERENCE_PLAN_ASSUMPTIONS: dict[str, Any] = {
     "transition_meeting_target_days": 30,
     "transition_approval_months": 2,
     "archive_target_days": 15,
+}
+
+# 快速测算与持久化档案共用同一参考计划，避免出现两套互相矛盾的日期算法。
+REFERENCE_NODE_MAP: dict[str, str] = {
+    "conversation_window": "conversation_target",
+    "conversation_deadline": "conversation_target",
+    "activist_date": "activist_reference",
+    "first_half_year_assessment": "first_half_year_assessment_reference",
+    "development_object_earliest": "development_object_reference",
+    "development_object_date": "development_object_reference",
+    "political_review": "political_review_target",
+    "training": "political_review_target",
+    "pre_review_approved": "pre_review_target",
+    "branch_acceptance_deadline": "branch_acceptance_target",
+    "branch_acceptance": "branch_acceptance_target",
+    "committee_approval": "committee_approval_target",
+    "oath_deadline": "oath_target",
+    "probation_end": "probation_end_reference",
+    "transition_application": "probation_end_reference",
+    "transition_branch_meeting": "transition_branch_target",
+    "transition_approval_deadline": "transition_approval_target",
+    "archive": "archive_target",
 }
 
 PHASE_LABELS = {
@@ -410,10 +432,18 @@ def calculate_party_development(
 ) -> PartyDevelopmentResultOut:
     today = today or datetime.now(timezone.utc).date()
     actual = payload.actual_dates
-    workdays = WorkdayCalendar(calendar_entries)
+    calendar_rows = list(calendar_entries)
+    workdays = WorkdayCalendar(calendar_rows)
     warnings: list[dict[str, str]] = []
     nodes: list[PartyDevelopmentNodeOut] = []
     application = payload.application_date
+    reference_plan = calculate_reference_plan(
+        application_date=application,
+        calendar_entries=calendar_rows,
+        activist_date=actual.activist_date,
+        development_object_date=actual.development_object_date,
+        branch_acceptance_date=actual.branch_acceptance_date,
+    )
 
     def warn(code: str, level: str, message: str) -> None:
         warnings.append({"code": code, "level": level, "message": message})
@@ -589,7 +619,45 @@ def calculate_party_development(
         if later and earlier and later < earlier:
             warn("DATE_ORDER_INVALID", "high", f"{later_label}日期早于{earlier_label}日期，请核对实际记录。")
 
-    manual_items = [node.title for node in nodes if node.requires_manual_confirmation and node.status == "waiting_manual"]
+    reference_nodes = {
+        str(item["key"]): item for item in reference_plan["nodes"]
+    }
+    publicity_start = reference_nodes["development_object_reference"]
+    publicity_end_reference = reference_nodes["publicity_reference_end"]
+    for node in nodes:
+        if node.key in {"application", "development_object_publicity"} or (
+            node.date_kind == "manual" and node.date is not None
+        ):
+            node.actual_at = node.date if node.date is not None else None
+        if node.date_kind == "earliest":
+            node.legal_earliest_at = node.date
+        if node.date_kind == "deadline":
+            node.legal_deadline_at = node.end_date or node.date
+        elif node.date_kind == "workday_window":
+            node.legal_deadline_at = node.end_date
+
+        if node.key == "development_object_publicity":
+            node.reference_at = publicity_start["reference_date"]
+            node.reference_end_at = publicity_end_reference["reference_date"]
+            node.reference_basis = str(publicity_end_reference["planning_basis"])
+            node.provisional = node.provisional or bool(
+                publicity_end_reference["provisional"]
+            )
+        else:
+            reference_key = REFERENCE_NODE_MAP.get(node.key)
+            reference = reference_nodes.get(reference_key or "")
+            if reference:
+                node.reference_at = reference["reference_date"]
+                node.reference_basis = str(reference["planning_basis"])
+                node.provisional = node.provisional or bool(reference["provisional"])
+        node.rule_version = RULE_VERSION
+        node.is_reference = node.actual_at is None and node.reference_at is not None
+
+    manual_items = [
+        node.title
+        for node in nodes
+        if node.requires_manual_confirmation and node.status == "waiting_manual"
+    ]
     return PartyDevelopmentResultOut(
         name=payload.name,
         application_date=application,
@@ -737,11 +805,24 @@ def _format_chinese_date(value: date | None) -> str:
 
 
 def _format_node_date(node: PartyDevelopmentNodeOut) -> str:
-    text = _format_chinese_date(node.date)
-    if node.end_date:
-        text = f"{text}至{_format_chinese_date(node.end_date)}"
+    parts: list[str] = []
+    if node.actual_at:
+        parts.append(f"实际：{_format_chinese_date(node.actual_at)}")
+    elif node.date:
+        value = _format_chinese_date(node.date)
+        if node.end_date:
+            value = f"{value}至{_format_chinese_date(node.end_date)}"
+        parts.append(f"{('法定' if node.date_kind in {'deadline', 'earliest', 'workday_window'} else '建议')}：{value}")
+    if node.adjusted_at:
+        parts.append(f"人工调整：{_format_chinese_date(node.adjusted_at)}")
+    elif node.reference_at:
+        reference = _format_chinese_date(node.reference_at)
+        if node.reference_end_at:
+            reference = f"{reference}至{_format_chinese_date(node.reference_end_at)}"
+        parts.append(f"参考计划：{reference}")
+    text = "；".join(parts) or "待组织确认"
     if node.provisional:
-        text += "（暂算）"
+        text += "（工作日暂算）"
     return text
 
 

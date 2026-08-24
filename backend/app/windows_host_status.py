@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import ssl
 import urllib.error
 import urllib.request
@@ -29,6 +30,13 @@ DATA_DIR_DENIED = "DATA_DIR_DENIED"
 TLS_INIT_FAILED = "TLS_INIT_FAILED"
 HEALTH_TIMEOUT = "HEALTH_TIMEOUT"
 RUNTIME_VERSION_MISMATCH = "RUNTIME_VERSION_MISMATCH"
+RUNTIME_EXECUTABLE_MISSING = "RUNTIME_EXECUTABLE_MISSING"
+RUNTIME_DEPENDENCY_MISSING = "RUNTIME_DEPENDENCY_MISSING"
+RUNTIME_BINARY_INCOMPATIBLE = "RUNTIME_BINARY_INCOMPATIBLE"
+RUNTIME_NATIVE_CRASH = "RUNTIME_NATIVE_CRASH"
+RUNTIME_PERMISSION_DENIED = "RUNTIME_PERMISSION_DENIED"
+SQLITE_RUNTIME_FAILED = "SQLITE_RUNTIME_FAILED"
+CONFIG_MIGRATION_FAILED = "CONFIG_MIGRATION_FAILED"
 
 TERMINAL_CODES = {
     CHILD_EXITED,
@@ -42,7 +50,66 @@ TERMINAL_CODES = {
     DATA_DIR_FULL,
     DATABASE_STARTUP_FAILED,
     RUNTIME_VERSION_MISMATCH,
+    RUNTIME_EXECUTABLE_MISSING,
+    RUNTIME_DEPENDENCY_MISSING,
+    RUNTIME_BINARY_INCOMPATIBLE,
+    RUNTIME_NATIVE_CRASH,
+    RUNTIME_PERMISSION_DENIED,
+    SQLITE_RUNTIME_FAILED,
+    CONFIG_MIGRATION_FAILED,
 }
+
+
+def classify_runtime_failure(
+    detail: str,
+    *,
+    exit_code: int | None = None,
+    winerror: int | None = None,
+) -> str:
+    """把 Loader、SQLite、迁移、端口和权限故障映射为稳定诊断码。"""
+
+    text = detail[-12000:]
+    lowered = text.lower()
+    known_codes = TERMINAL_CODES | {
+        DATABASE_LOCKED,
+        DATABASE_CORRUPT,
+        DATABASE_SCHEMA_FAILED,
+        DATABASE_IO_FAILED,
+        DATA_DIR_FULL,
+        DATABASE_STARTUP_FAILED,
+    }
+    for match in reversed(re.findall(r"\[([A-Z][A-Z0-9_]{2,63})\]", text)):
+        if match in known_codes:
+            return match
+    unsigned = exit_code & 0xFFFFFFFF if exit_code is not None else None
+    if winerror == 2 or "winerror 2" in lowered or "no such file or directory" in lowered:
+        return RUNTIME_EXECUTABLE_MISSING
+    if winerror == 126 or unsigned == 0xC0000135 or any(
+        marker in lowered
+        for marker in (
+            "winerror 126", "dll load failed", "module not found", "modulenotfounderror",
+            "api-ms-win-", "vcruntime", "ucrtbase", "找不到指定的模块", "找不到 dll",
+        )
+    ):
+        return RUNTIME_DEPENDENCY_MISSING
+    if winerror == 193 or unsigned == 0xC000007B or any(
+        marker in lowered
+        for marker in ("winerror 193", "not a valid win32 application", "bad image", "incorrect format", "不是有效的 win32")
+    ):
+        return RUNTIME_BINARY_INCOMPATIBLE
+    if unsigned in {0xC0000005, 0xC0000409}:
+        return RUNTIME_NATIVE_CRASH
+    if any(marker in lowered for marker in ("sqlite", "fts5", "pysqlite", "database disk image")):
+        return SQLITE_RUNTIME_FAILED
+    if any(marker in lowered for marker in ("alembic", "migration", "迁移", "schema upgrade")):
+        return CONFIG_MIGRATION_FAILED
+    if any(marker in lowered for marker in ("address already in use", "winerror 10048", "端口", "占用")):
+        return PORT_IN_USE
+    if winerror == 5 or any(marker in lowered for marker in ("permission denied", "access is denied", "拒绝访问", "权限")):
+        return RUNTIME_PERMISSION_DENIED
+    if any(marker in lowered for marker in ("ssl", "tls", "certificate", "证书", "内部 ca")):
+        return TLS_INIT_FAILED
+    return CHILD_EXITED
 
 
 def service_log_path(data_dir: Path) -> Path:

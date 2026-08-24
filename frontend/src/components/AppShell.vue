@@ -139,6 +139,7 @@ const quickCommands = [
   { id: "party-development", title: "打开发展党员", subtitle: "快速测算、人员台账与参考计划", route: "/party-development", type: "command" },
   { id: "inbox", title: "解析通知或文件", subtitle: "进入快速收件箱", route: "/inbox", type: "command" },
   { id: "workspace", title: "搜索原始文件", subtitle: "进入综合文件中心", route: "/workspace", type: "command" },
+  { id: "official-format", title: "公文规范排版", subtitle: "启动不上传文件的本机排版助手", route: "/official-format", type: "command" },
   { id: "archives", title: "查询重要档案", subtitle: "人事调动、年度考核和扫描件", route: "/archives", type: "command" },
   { id: "reports", title: "建立周期报告", subtitle: "周、月、季度和年度汇总", route: "/reports", type: "command" },
   { id: "topics", title: "打开专题工作空间", subtitle: "集中查看专项任务、文件、日志和联系人", route: "/topics", type: "command" },

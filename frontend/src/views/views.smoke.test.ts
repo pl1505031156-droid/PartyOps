@@ -304,7 +304,7 @@ function responseFor(path: string): unknown {
   }
   if (path === "/auth/me") return { id: "user-1", username: "admin", display_name: "测试管理员", role: "admin", active: true, version: 1 };
   if (path === "/runtime/context") return { node_mode: "host", platform: "windows", user_role: "admin", device_id: null, device_name: "主机", capabilities: ["admin"] };
-  if (path === "/party-development/rules/current") return { version: "2026.05", issued_at: "2026-05-11", published_at: "2026-06-11", title: "中国共产党发展党员工作细则（2026年5月修订）", source_url: "https://djyj.12371.cn/2026/06/11/ARTI1781145352074190.shtml", principles: [], phase_labels: { application: "申请入党" } };
+  if (path === "/party-development/rules/current") return { version: "2026.05", issued_at: "2026-05-11", published_at: "2026-05-18", title: "中国共产党发展党员工作细则（2026年5月修订）", source_url: "https://www.12371.cn/2026/05/18/ARTI1779102179030620.shtml", principles: [], phase_labels: { application: "申请入党" } };
   if (path === "/party-development/materials") return { rule: { version: "2026.05", title: "发展党员工作细则", source_url: "https://example.test" }, phases: [{ phase: "application", label: "申请入党", items: [{ name: "入党申请书", source: "国家规则", responsible_party: "党支部", guidance: "人工核对", required: true, national: true }] }], disclaimer: "系统不替代组织审核" };
   if (path === "/party-development/cases") return [developmentCase];
   if (path === "/party-development/statistics") return { total: 1, stage_counts: { application: 1 }, upcoming_60_days: 1, overdue: 0 };
@@ -1445,7 +1445,8 @@ describe("核心页面真实挂载", () => {
       if (path === "/workspace/downloads") return { transfer_id: "transfer-1", status: "completed", delivery: "browser", content_url: "/api/v1/transfers/transfer-1/content" };
       if (path.includes("/links") || path.includes("/freeze")) return workspaceFile;
       if (path === "/transfers") return transfer;
-      if (path.includes("open-local") || path === "/workspace/local-share-actions") return { open_uri: "#opened" };
+      if (path.includes("open-local")) return { grant_id: "grant-1", open_uri: "#opened", status_url: "/api/v1/files/open-grants/grant-1" };
+      if (path === "/workspace/local-share-actions") return { open_uri: "#opened" };
       return {};
     });
     apiMocks.patch.mockImplementation(async (path) => {
@@ -1500,6 +1501,10 @@ describe("核心页面真实挂载", () => {
     state.selectedFile = { ...workspaceFile, name: "未知.bin", extension: "bin", mime_type: "application/octet-stream" };
     await runAction(state, "openDocumentPreview");
     expect(state.previewError).toBeTruthy();
+    await runAction(state, "closeDocumentPreview");
+    state.selectedFile = { ...workspaceFile, name: "会议材料.wps", extension: "wps", mime_type: "application/wps-office.doc" };
+    await runAction(state, "openDocumentPreview");
+    expect(state.previewError).toContain("WPS");
     await runAction(state, "closeDocumentPreview");
 
     const previewFile = { ...workspaceFile, name: "通知.docx", extension: "docx", mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };

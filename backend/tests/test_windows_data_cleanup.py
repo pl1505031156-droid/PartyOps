@@ -117,6 +117,10 @@ def test_installer_exposes_preserve_or_full_delete_choice() -> None:
     assert "ExecAsOriginalUser(" not in installer
     assert "RunDataCleanup('runtime', False)" in installer
     assert "UNINSTALL_DATA_PREFLIGHT_FAILED" in installer
+    preflight = installer[installer.index("if DeleteAllDataOnUninstall then") : installer.index("procedure CurUninstallStepChanged")]
+    assert "DeleteAllDataOnUninstall := False;" in preflight
+    assert "自动改为“仅删除程序并保留数据”" in preflight
+    assert "Result := False" not in preflight
 
 
 def test_runtime_cleanup_removes_only_system_cache_and_preserves_business_data(

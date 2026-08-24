@@ -1921,6 +1921,15 @@ class PartyDevelopmentNodeOut(BaseModel):
     status: str
     article: str
     basis: str
+    actual_at: dt_date | None = None
+    legal_earliest_at: dt_date | None = None
+    legal_deadline_at: dt_date | None = None
+    reference_at: dt_date | None = None
+    reference_end_at: dt_date | None = None
+    adjusted_at: dt_date | None = None
+    rule_version: str = ""
+    reference_basis: str = ""
+    is_reference: bool = False
     requires_manual_confirmation: bool = False
     materials: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -2218,6 +2227,15 @@ class DocumentComparisonOut(ORMModel):
     result: dict[str, Any]
     created_by: str
     created_at: datetime
+
+
+class FileOpenGrantCompletion(BaseModel):
+    """本机文件助手的脱敏完成回执；禁止携带文件名、路径或正文。"""
+
+    result_code: str = Field(
+        pattern=r"^(OPENED|DEFAULT_APP_FAILED|FILE_MISSING|UNSUPPORTED_FORMAT|HELPER_FAILED)$"
+    )
+    detail: str = Field(default="", max_length=300)
 
 
 class DuplicateGroupOut(ORMModel):

@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { IconDownload, IconPlus, IconRefresh } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { api, saveBlobDownload } from "../api";
+import PageHelp from "../components/PageHelp.vue";
 import { useSessionStore } from "../stores/session";
 import { formatServerTime, localInputToUtc, localNowInput } from "../utils/datetime";
 import type { User } from "../types";
@@ -268,7 +269,7 @@ onMounted(load);
 
 <template>
   <div class="page study-page">
-    <header class="page-header"><div><p class="page-kicker">党务 · 理论学习制度化</p><h1 class="page-title">党委（党组）理论学习中心组</h1><p class="page-description">年度计划、会前自学、集体研讨、考勤发言、专题调研、成果转化与备案归档统一留痕。</p></div><a-space><a-button @click="exportLedger('docx')"><template #icon><IconDownload /></template>Word 台账</a-button><a-button @click="exportLedger('xlsx')"><template #icon><IconDownload /></template>Excel 台账</a-button><a-button v-if="isAdmin" @click="openPlan"><template #icon><IconPlus /></template>年度计划</a-button><a-button type="primary" @click="openSession"><template #icon><IconPlus /></template>新建学习场次</a-button></a-space></header>
+    <header class="page-header"><div><p class="page-kicker">党务 · 理论学习制度化</p><h1 class="page-title">党委（党组）理论学习中心组</h1><p class="page-description">年度计划、会前自学、集体研讨、考勤发言、专题调研、成果转化与备案归档统一留痕。</p></div><a-space><PageHelp title="理论学习中心组" :tips="['按年度计划组织季度专题，再由具体学习场次完成考勤、研讨和成果转化。', '具备创建权限的协同用户可以新建场次或维护本人负责的内容，不要求回到主机操作。', 'Word、Excel 台账按当前年度和组织筛选导出，导出前应核对缺项提示。']" help-query="中心组学习 协同 台账" /><a-button @click="exportLedger('docx')"><template #icon><IconDownload /></template>Word 台账</a-button><a-button @click="exportLedger('xlsx')"><template #icon><IconDownload /></template>Excel 台账</a-button><a-button v-if="isAdmin" @click="openPlan"><template #icon><IconPlus /></template>年度计划</a-button><a-button type="primary" @click="openSession"><template #icon><IconPlus /></template>新建学习场次</a-button></a-space></header>
     <a-alert type="info">国家规则提示：集体学习研讨每季度不少于一次；本单位可以设置更高频率。系统不复制未公开内部法规，也不代替组织审核。</a-alert>
     <section class="filters"><a-input-number v-model="year" :min="2000" :max="2200" /><a-input v-model="organization" allow-clear placeholder="按党组织筛选" @press-enter="load" /><a-button :loading="loading" @click="load"><template #icon><IconRefresh /></template>刷新</a-button></section>
 

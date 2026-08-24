@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "党建智办"
-    app_version: str = "1.4.5-rc.1"
+    app_version: str = "1.4.5-rc.2"
     mode: Literal["host", "personal", "client"] = "host"
     # 未显式配置时按生产边界运行。开发脚本和自动化测试会主动设置
     # development/test，避免开源用户直接启动时意外开启调试与弱校验。

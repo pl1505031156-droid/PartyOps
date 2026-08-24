@@ -521,20 +521,20 @@ def generate_case_milestones(
         db.scalars(select(WorkCalendarEntry)).all(),
         supplemental_materials(db, []),
     )
-    actual_by_key = {
-        "application": item.application_at,
-        "activist_date": item.activist_at,
-        "development_object_date": item.development_object_at,
-        "branch_acceptance": item.probationary_at,
-        "transition_approval_deadline": item.converted_at,
-    }
     previous = {
         row.milestone_type: row
         for row in db.scalars(select(PartyDevelopmentMilestone).where(PartyDevelopmentMilestone.case_id == item.id)).all()
     }
     generated: set[str] = set()
     for node in result.nodes:
-        if node.date is None and node.key not in actual_by_key:
+        if not any(
+            (
+                node.actual_at,
+                node.legal_earliest_at,
+                node.legal_deadline_at,
+                node.reference_at,
+            )
+        ):
             continue
         generated.add(node.key)
         row = previous.get(node.key)
@@ -542,13 +542,14 @@ def generate_case_milestones(
         if is_new:
             row = PartyDevelopmentMilestone(case_id=item.id, milestone_type=node.key, version=1)
             db.add(row)
-        row.actual_at = actual_by_key.get(node.key)
-        row.legal_earliest_at = _as_datetime(node.date) if node.date_kind == "earliest" else None
-        row.legal_deadline_at = _as_datetime(node.end_date or node.date) if node.date_kind in {"deadline", "workday_window"} else None
-        row.planned_at = _as_datetime(node.date) if node.date_kind in {"window", "earliest", "deadline", "workday_window"} else None
+        row.actual_at = _as_datetime(node.actual_at)
+        row.legal_earliest_at = _as_datetime(node.legal_earliest_at)
+        row.legal_deadline_at = _as_datetime(node.legal_deadline_at)
+        row.planned_at = _as_datetime(node.reference_at)
         row.rule_version = result.rule_version
         row.legal_basis = f"{node.article}：{node.basis}"
-        row.plan_kind = "legal" if node.date_kind in {"earliest", "deadline", "workday_window"} else "reference"
+        row.planning_basis = node.reference_basis
+        row.plan_kind = "reference" if node.reference_at else "legal"
         if not is_new:
             row.version += 1
     item.rule_version = result.rule_version

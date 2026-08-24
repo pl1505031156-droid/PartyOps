@@ -22,6 +22,14 @@ from app.setup_wizard import (
     load_host_environment,
     wait_for_host_health,
 )
+from app.windows_host_status import (
+    RUNTIME_BINARY_INCOMPATIBLE,
+    RUNTIME_DEPENDENCY_MISSING,
+    RUNTIME_EXECUTABLE_MISSING,
+    RUNTIME_NATIVE_CRASH,
+    RUNTIME_PERMISSION_DENIED,
+    classify_runtime_failure,
+)
 
 WIZARD_WAIT_SECONDS = 180.0
 WIZARD_POLL_SECONDS = 0.5
@@ -492,16 +500,23 @@ def main() -> int:
             url = launch_personal(config)
         except (HostStartupError, OSError, KeyError, ValueError) as exc:
             if not background:
-                code = (
-                    exc.code
-                    if isinstance(exc, HostStartupError)
-                    else "PERSONAL_CONFIG_INVALID"
-                )
-                message = (
-                    str(exc)
-                    if isinstance(exc, HostStartupError)
-                    else "个人模式配置无法读取，系统没有继续启动。"
-                )
+                if isinstance(exc, HostStartupError):
+                    code = exc.code
+                    message = str(exc)
+                elif isinstance(exc, OSError):
+                    code = classify_runtime_failure(
+                        str(exc), winerror=getattr(exc, "winerror", None)
+                    )
+                    message = {
+                        RUNTIME_EXECUTABLE_MISSING: "PartyOps 主程序缺失，请使用当前安装包执行修复安装。",
+                        RUNTIME_DEPENDENCY_MISSING: "Windows 缺少 PartyOps 所需 DLL 或系统 API，请执行修复安装并复制诊断摘要。",
+                        RUNTIME_BINARY_INCOMPATIBLE: "PartyOps 程序架构或系统 API 与当前 Windows 不兼容，请安装匹配的 x86/x64 版本。",
+                        RUNTIME_NATIVE_CRASH: "PartyOps 原生运行时在进入业务代码前异常退出，请复制诊断摘要。",
+                        RUNTIME_PERMISSION_DENIED: "当前账号无法读取或启动 PartyOps 运行文件，请检查安全软件和安装目录权限。",
+                    }.get(code, "个人模式运行文件无法启动，系统没有继续打开页面。")
+                else:
+                    code = "PERSONAL_CONFIG_INVALID"
+                    message = "个人模式配置无法读取，系统没有继续启动。"
                 show_launch_failure(
                     f"个人模式未能启动（诊断码 {code}）。\n\n"
                     f"{message}\n诊断日志：{personal_log}"

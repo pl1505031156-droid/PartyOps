@@ -49,6 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--intent-model", type=Path, help="Needle 模型文件")
     parser.add_argument("--license", type=Path, action="append", required=True, help="模型许可文件，可重复")
     parser.add_argument("--private-key", type=Path, required=True, help="Ed25519 发布私钥")
+    parser.add_argument("--public-key", type=Path, required=True, help="客户端内置 Ed25519 公钥 Base64 文件")
     parser.add_argument("--architecture", choices=["universal", "amd64", "arm64"], default="universal")
     parser.add_argument("--version", default="1.0.0")
     parser.add_argument("--model-id", default="qwen3-1.7b-q8_0")
@@ -97,6 +98,7 @@ def main() -> None:
         *([args.intent_runtime, args.intent_model] if args.intent_runtime else []),
         *args.license,
         args.private_key,
+        args.public_key,
     ]
     for path in inputs:
         if not path.is_file():
@@ -184,6 +186,9 @@ def main() -> None:
             serialization.PublicFormat.Raw,
         )
     ).decode("ascii")
+    trusted_public_key = args.public_key.read_text(encoding="ascii").strip()
+    if manifest["public_key"] != trusted_public_key:
+        raise SystemExit("模型发布私钥与客户端内置信任公钥不匹配，拒绝生成公开模型包")
     unsigned = dict(manifest)
     unsigned.pop("signature", None)
     canonical = json.dumps(

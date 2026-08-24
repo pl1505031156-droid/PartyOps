@@ -4,6 +4,7 @@ import { IconRefresh, IconUserGroup } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { api } from "../api";
 import TaskStatusTag from "../components/TaskStatusTag.vue";
+import PageHelp from "../components/PageHelp.vue";
 import type { Task } from "../types";
 import { formatServerTime } from "../utils/datetime";
 
@@ -50,7 +51,7 @@ onMounted(load);
         <h1 class="page-title">我的工作</h1>
         <p class="page-description">把主办、协办、审核和步骤分派集中到一处，只显示当前账号真正需要处理的工作。</p>
       </div>
-      <a-button @click="load"><template #icon><IconRefresh /></template>刷新</a-button>
+      <a-space><PageHelp title="我的工作" :tips="['我主办、我协办、我审核和步骤分派按当前账号实时归集。', '点击事项可进入详情完成步骤、评论、提交或审核。', '事项参与人或状态变化后列表会重算；必要时点击刷新核对。']" help-query="我的工作 协同 审核" /><a-button @click="load"><template #icon><IconRefresh /></template>刷新</a-button></a-space>
     </header>
 
     <section class="scope-grid" aria-label="我的工作分类">

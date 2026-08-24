@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { Message } from "@arco-design/web-vue";
 import { api, saveBlobDownload } from "../api";
+import PageHelp from "../components/PageHelp.vue";
 import { useSessionStore } from "../stores/session";
 import type { PartyDevelopmentResult, PartyDevelopmentRuleMetadata } from "../types";
 
@@ -140,9 +141,19 @@ async function exportWord() {
 }
 
 function nodeDate(node: PartyDevelopmentResult["nodes"][number]) {
-  if (!node.date) return "等待组织研究或人工录入";
-  const range = node.end_date ? `${node.date} 至 ${node.end_date}` : node.date;
-  return node.provisional ? `${range}（暂算）` : range;
+  const parts: string[] = [];
+  if (node.actual_at) parts.push(`实际：${node.actual_at}`);
+  else if (node.date) {
+    const range = node.end_date ? `${node.date} 至 ${node.end_date}` : node.date;
+    parts.push(`${["deadline", "earliest", "workday_window"].includes(node.date_kind) ? "法定" : "建议"}：${range}`);
+  }
+  if (node.adjusted_at) parts.push(`人工调整：${node.adjusted_at}`);
+  else if (node.reference_at) {
+    const range = node.reference_end_at ? `${node.reference_at} 至 ${node.reference_end_at}` : node.reference_at;
+    parts.push(`参考计划：${range}`);
+  }
+  const text = parts.join("；") || "待组织确认";
+  return node.provisional ? `${text}（工作日暂算）` : text;
 }
 
 function dateKindLabel(kind: string) {
@@ -177,7 +188,7 @@ onBeforeUnmount(() => {
         <h1 class="page-title">发展党员时间计算</h1>
         <p class="page-description">输入申请书日期即可形成首轮时间轴；实际进度随时补录，系统据此重算并提示风险。</p>
       </div>
-      <a-space><a-button @click="clearDraft">清除本机草稿</a-button><a-button :disabled="!result" :loading="exporting" @click="exportWord">导出 Word</a-button><a-button type="primary" :loading="calculating" @click="calculate">开始计算</a-button></a-space>
+      <a-space><PageHelp title="发展党员时间计算" :tips="['只需填写申请书日期即可生成全部后续节点的首轮参考计划；参考日期不是组织决定。', '补录实际发生日期后，系统只重算尚未发生的下游节点，不覆盖实际记录。', '姓名和草稿只存当前电脑；计算结果导出时会标注规则版本、法定边界与参考属性。']" help-query="发展党员 参考计划 法定期限" /><a-button @click="clearDraft">清除本机草稿</a-button><a-button :disabled="!result" :loading="exporting" @click="exportWord">导出 Word</a-button><a-button type="primary" :loading="calculating" @click="calculate">开始计算</a-button></a-space>
     </header>
 
     <a-alert v-if="rule" class="rule-alert" type="info" show-icon>
@@ -234,17 +245,18 @@ onBeforeUnmount(() => {
                 <h3>{{ node.title }}</h3>
                 <strong class="node-date">{{ nodeDate(node) }}</strong>
                 <p>{{ node.article }} · {{ node.basis }}</p>
+                <p v-if="node.reference_at" class="reference-basis">参考计划依据：{{ node.reference_basis }}。预测不代表组织决定或实际发生。</p>
                 <details v-if="node.materials.length"><summary>本阶段材料 {{ node.materials.length }} 项</summary><ul><li v-for="material in node.materials" :key="`${node.key}-${material.name}`"><b>{{ material.name }}</b><span>{{ material.national ? '国家规则' : `单位补充 · ${material.source}` }}</span></li></ul></details>
               </div>
             </article>
           </section>
         </template>
-        <div v-else class="result-empty"><span>2026</span><h2>一条可解释、可复核的时间轴</h2><p>系统不会猜测组织决定。填写左侧姓名和申请日期后，先给出确定期限；再根据实际节点逐步更新。</p><a-button type="primary" @click="calculate">生成首轮时间轴</a-button></div>
+        <div v-else class="result-empty"><span>2026</span><h2>一条可解释、可复核的时间轴</h2><p>只填申请日期即可生成全部后续节点的首轮参考计划；法定期限、参考计划和实际日期分开显示，预测不会冒充组织决定。</p><a-button type="primary" @click="calculate">生成首轮时间轴</a-button></div>
       </main>
     </section>
   </div>
 </template>
 
 <style scoped>
-.development-page { max-width: 1520px; }.development-header { align-items: flex-end; }.rule-alert { margin-bottom: 16px; }.calculator-layout { display: grid; grid-template-columns: 390px minmax(0, 1fr); gap: 20px; align-items: start; }.input-panel,.result-panel { border: 1px solid rgba(113,75,47,.17); border-radius: 22px; background: rgba(255,252,244,.94); box-shadow: 0 16px 42px rgba(78,47,27,.07); }.input-panel { position: sticky; top: 18px; padding: 22px; }.result-panel { min-height: 740px; padding: 26px; }.section-heading { display: flex; gap: 12px; margin-bottom: 18px; }.section-heading > span { display: grid; place-items: center; flex: 0 0 34px; height: 34px; border-radius: 50%; color: white; background: #9b2b24; font-family: Georgia,serif; }.section-heading h2 { margin: 0; color: #4b3528; font-family: "Noto Serif SC","Songti SC",serif; font-size: 19px; }.section-heading p { margin: 4px 0 0; color: #897262; font-size: 12px; }.section-heading.secondary { margin-top: 28px; }.privacy-note { padding: 13px 15px; border-left: 3px solid #b78b4a; background: #faf3e4; color: #715d4f; }.privacy-note p { margin: 5px 0 0; font-size: 12px; line-height: 1.7; }.training-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.result-summary { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 18px; }.result-summary div { padding: 15px; border-radius: 14px; background: #f7f1e5; }.result-summary span { display: block; color: #907b69; font-size: 11px; }.result-summary strong { display: block; margin-top: 5px; color: #4d3729; font-size: 21px; }.result-summary strong.risk { color: #b42318; }.warning-list { display: grid; gap: 8px; margin: 22px 0; }.warning-list h2 { color: #5a3a2d; font-size: 17px; }.timeline { margin-top: 26px; }.timeline article { display: grid; grid-template-columns: 36px 22px 1fr; min-height: 150px; }.timeline-index { padding-top: 4px; color: #a18d7b; font-family: Georgia,serif; }.timeline-line { position: relative; display: flex; justify-content: center; }.timeline-line::after { position: absolute; top: 14px; bottom: -8px; width: 1px; content: ""; background: #d9cbb8; }.timeline article:last-child .timeline-line::after { display: none; }.timeline-line i { position: relative; z-index: 1; width: 11px; height: 11px; margin-top: 6px; border: 3px solid #fffaf0; border-radius: 50%; background: #b6854a; box-shadow: 0 0 0 1px #b6854a; }.status-completed .timeline-line i { background: #4c7a5d; box-shadow: 0 0 0 1px #4c7a5d; }.status-overdue .timeline-line i { background: #ae3028; box-shadow: 0 0 0 1px #ae3028; }.timeline-content { padding: 0 8px 28px 14px; border-bottom: 1px solid rgba(106,76,52,.1); }.timeline-top { display: flex; justify-content: space-between; color: #9a2d26; font-size: 12px; }.timeline-content h3 { margin: 7px 0; color: #493328; font-family: "Noto Serif SC","Songti SC",serif; font-size: 19px; }.node-date { color: #8c5f35; font-size: 15px; }.timeline-content p { color: #796656; line-height: 1.65; }.timeline details summary { color: #8f2b25; cursor: pointer; }.timeline details ul { display: grid; gap: 6px; padding-left: 20px; }.timeline details li span { display: block; color: #917c6a; font-size: 11px; }.result-empty { display: grid; place-items: center; max-width: 520px; margin: 150px auto; text-align: center; color: #806b5a; }.result-empty > span { color: rgba(143,40,34,.16); font-family: Georgia,serif; font-size: 84px; line-height: 1; }.result-empty h2 { margin: 0; color: #4d382c; font-family: "Noto Serif SC","Songti SC",serif; font-size: 26px; }.result-empty p { line-height: 1.8; }@media(max-width:1000px){.calculator-layout{grid-template-columns:1fr}.input-panel{position:static}.result-summary{grid-template-columns:repeat(2,1fr)}}
+.development-page { max-width: 1520px; }.development-header { align-items: flex-end; }.rule-alert { margin-bottom: 16px; }.calculator-layout { display: grid; grid-template-columns: 390px minmax(0, 1fr); gap: 20px; align-items: start; }.input-panel,.result-panel { border: 1px solid rgba(113,75,47,.17); border-radius: 22px; background: rgba(255,252,244,.94); box-shadow: 0 16px 42px rgba(78,47,27,.07); }.input-panel { position: sticky; top: 18px; padding: 22px; }.result-panel { min-height: 740px; padding: 26px; }.section-heading { display: flex; gap: 12px; margin-bottom: 18px; }.section-heading > span { display: grid; place-items: center; flex: 0 0 34px; height: 34px; border-radius: 50%; color: white; background: #9b2b24; font-family: Georgia,serif; }.section-heading h2 { margin: 0; color: #4b3528; font-family: "Noto Serif SC","Songti SC",serif; font-size: 19px; }.section-heading p { margin: 4px 0 0; color: #897262; font-size: 12px; }.section-heading.secondary { margin-top: 28px; }.privacy-note { padding: 13px 15px; border-left: 3px solid #b78b4a; background: #faf3e4; color: #715d4f; }.privacy-note p { margin: 5px 0 0; font-size: 12px; line-height: 1.7; }.training-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.result-summary { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 18px; }.result-summary div { padding: 15px; border-radius: 14px; background: #f7f1e5; }.result-summary span { display: block; color: #907b69; font-size: 11px; }.result-summary strong { display: block; margin-top: 5px; color: #4d3729; font-size: 21px; }.result-summary strong.risk { color: #b42318; }.warning-list { display: grid; gap: 8px; margin: 22px 0; }.warning-list h2 { color: #5a3a2d; font-size: 17px; }.timeline { margin-top: 26px; }.timeline article { display: grid; grid-template-columns: 36px 22px 1fr; min-height: 150px; }.timeline-index { padding-top: 4px; color: #a18d7b; font-family: Georgia,serif; }.timeline-line { position: relative; display: flex; justify-content: center; }.timeline-line::after { position: absolute; top: 14px; bottom: -8px; width: 1px; content: ""; background: #d9cbb8; }.timeline article:last-child .timeline-line::after { display: none; }.timeline-line i { position: relative; z-index: 1; width: 11px; height: 11px; margin-top: 6px; border: 3px solid #fffaf0; border-radius: 50%; background: #b6854a; box-shadow: 0 0 0 1px #b6854a; }.status-completed .timeline-line i { background: #4c7a5d; box-shadow: 0 0 0 1px #4c7a5d; }.status-overdue .timeline-line i { background: #ae3028; box-shadow: 0 0 0 1px #ae3028; }.timeline-content { padding: 0 8px 28px 14px; border-bottom: 1px solid rgba(106,76,52,.1); }.timeline-top { display: flex; justify-content: space-between; color: #9a2d26; font-size: 12px; }.timeline-content h3 { margin: 7px 0; color: #493328; font-family: "Noto Serif SC","Songti SC",serif; font-size: 19px; }.node-date { color: #8c5f35; font-size: 15px; }.timeline-content p { color: #796656; line-height: 1.65; }.timeline-content .reference-basis { margin-top: -4px; color: #9a6f43; font-size: 12px; }.timeline details summary { color: #8f2b25; cursor: pointer; }.timeline details ul { display: grid; gap: 6px; padding-left: 20px; }.timeline details li span { display: block; color: #917c6a; font-size: 11px; }.result-empty { display: grid; place-items: center; max-width: 520px; margin: 150px auto; text-align: center; color: #806b5a; }.result-empty > span { color: rgba(143,40,34,.16); font-family: Georgia,serif; font-size: 84px; line-height: 1; }.result-empty h2 { margin: 0; color: #4d382c; font-family: "Noto Serif SC","Songti SC",serif; font-size: 26px; }.result-empty p { line-height: 1.8; }@media(max-width:1000px){.calculator-layout{grid-template-columns:1fr}.input-panel{position:static}.result-summary{grid-template-columns:repeat(2,1fr)}}
 </style>

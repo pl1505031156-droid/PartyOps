@@ -11,9 +11,42 @@ from pathlib import Path
 import pytest
 
 from app import __version__ as APP_VERSION
-from app import setup_wizard
+from app import client_agent, setup_wizard
 from app import windows_host_status
 from app.windows_host_status import CHILD_EXITED, write_service_status
+
+
+def test_agent_network_migration_preserves_previous_address_and_rejects_loopback(tmp_path: Path) -> None:
+    config_path = tmp_path / "client.json"
+    config = {
+        "host_url": "https://192.168.1.10:18765",
+        "agent_url": "https://192.168.1.10:18766",
+        "device_token": "device-token",
+    }
+    result = client_agent.apply_network_migration_command(
+        {
+            "transaction_id": "network-1",
+            "host_url": "https://192.168.1.20:18765",
+            "agent_url": "https://192.168.1.20:18766",
+            "expires_at": "2026-08-25T12:00:00+08:00",
+        },
+        config,
+        config_path,
+    )
+    assert result["ok"] is True
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["host_url"] == "https://192.168.1.20:18765"
+    assert saved["network_migration"]["previous_host_url"] == "https://192.168.1.10:18765"
+    with pytest.raises(client_agent.AgentCommandError, match="不能使用"):
+        client_agent.apply_network_migration_command(
+            {
+                "transaction_id": "network-2",
+                "host_url": "https://127.0.0.1:18765",
+                "expires_at": "2026-08-25T12:00:00+08:00",
+            },
+            config,
+            config_path,
+        )
 
 
 class _HealthResponse:
@@ -199,6 +232,28 @@ def test_personal_startup_failure_trims_partial_large_log_line(tmp_path) -> None
         )
     assert failure.value.code == CHILD_EXITED
     assert failure.value.detail == "current failure"
+
+
+@pytest.mark.parametrize(
+    ("detail", "exit_code", "winerror", "expected"),
+    [
+        ("DLL load failed: api-ms-win-core-path-l1-1-0.dll", 1, None, "RUNTIME_DEPENDENCY_MISSING"),
+        ("%1 不是有效的 Win32 应用程序", 1, 193, "RUNTIME_BINARY_INCOMPATIBLE"),
+        ("sqlite3.OperationalError: no such module: fts5", 1, None, "SQLITE_RUNTIME_FAILED"),
+        ("alembic migration failed", 1, None, "CONFIG_MIGRATION_FAILED"),
+        ("[DATABASE_LOCKED] database is locked", 1, None, "DATABASE_LOCKED"),
+        ("", -1073741515, None, "RUNTIME_DEPENDENCY_MISSING"),
+        ("", -1073741701, None, "RUNTIME_BINARY_INCOMPATIBLE"),
+        ("access violation", -1073741819, None, "RUNTIME_NATIVE_CRASH"),
+        ("Access is denied", 1, 5, "RUNTIME_PERMISSION_DENIED"),
+    ],
+)
+def test_windows_runtime_failure_probe_returns_precise_codes(
+    detail, exit_code, winerror, expected
+) -> None:
+    assert windows_host_status.classify_runtime_failure(
+        detail, exit_code=exit_code, winerror=winerror
+    ) == expected
 
 
 def test_data_directory_migration_copies_and_keeps_source(tmp_path) -> None:

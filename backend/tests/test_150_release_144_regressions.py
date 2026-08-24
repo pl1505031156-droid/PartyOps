@@ -148,7 +148,7 @@ def test_device_403_marks_reauthorization_and_stops_agent(
     assert saved["authentication_state"] == "reauth_required"
     assert saved["last_agent_error"] == "heartbeat"
     assert saved["protocol_version"] == 2
-    assert saved["runtime_version"] == "1.4.5-rc.1"
+    assert saved["runtime_version"] == "1.4.5-rc.2"
 
 
 def test_legacy_pairing_403_stops_backup_retry_loop(
@@ -663,39 +663,40 @@ def test_network_configuration_validation_and_pending_update(client, admin: dict
     current = client.get("/api/v1/system/network")
     assert current.status_code == 200, current.text
     value = current.json()
-    unchanged = client.patch(
-        "/api/v1/system/network",
-        json={"bind_host": value["bind_host"], "advertise_host": value["advertise_host"], "port": value["port"]},
-    )
-    assert unchanged.status_code == 200 and unchanged.json()["changed"] is False
     for payload in (
         {"port": "not-a-port"},
         {"port": 100},
         {"bind_host": "http://127.0.0.1", "advertise_host": "127.0.0.1"},
         {"bind_host": "", "advertise_host": "127.0.0.1"},
+        {"bind_host": "0.0.0.0", "advertise_host": "127.0.0.1"},
+        {"bind_host": "0.0.0.0", "advertise_host": "0.0.0.0"},
     ):
         assert client.post("/api/v1/system/network/validate", json=payload).status_code == 422
+    advertised = "192.168.123.8"
     validated = client.post(
         "/api/v1/system/network/validate",
-        json={"bind_host": "127.0.0.1", "advertise_host": "127.0.0.1", "port": value["port"] + 11},
+        json={"bind_host": "0.0.0.0", "advertise_host": advertised, "port": value["port"] + 11},
     )
     assert validated.status_code == 200 and validated.json()["valid"] is True
     first = client.patch(
         "/api/v1/system/network",
         json={
-            "bind_host": "127.0.0.1",
-            "advertise_host": "127.0.0.1",
+            "bind_host": "0.0.0.0",
+            "advertise_host": advertised,
             "port": value["port"] + 11,
             "migration_grace_hours": 999,
         },
     )
     assert first.status_code == 200 and first.json()["restart_required"] is True
     assert first.json()["migration_grace_hours"] == 168
+    assert first.json()["transaction_id"]
+    status = client.get(f"/api/v1/system/network/transactions/{first.json()['transaction_id']}")
+    assert status.status_code == 200 and status.json()["state"] == "restart_required"
     second = client.patch(
         "/api/v1/system/network",
         json={
-            "bind_host": "127.0.0.1",
-            "advertise_host": "127.0.0.1",
+            "bind_host": "0.0.0.0",
+            "advertise_host": advertised,
             "port": value["port"] + 12,
             "migration_grace_hours": 0,
         },

@@ -13,8 +13,12 @@ import os
 import secrets
 import shutil
 import platform
+import ssl
 import sys
-from datetime import datetime, timezone
+import uuid
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Header, Query, Request, Response, UploadFile
@@ -44,6 +48,7 @@ from ..models import (
     BackupRun,
     ClientPairing,
     Device,
+    DeviceCommand,
     DeviceGrant,
     FileBlob,
     LoginSession,
@@ -63,6 +68,7 @@ from ..models import (
 from ..networking import (
     discover_lan_addresses,
     service_url,
+    validate_advertise_host,
     validate_bind_host,
     validate_transport_security,
 )
@@ -146,6 +152,82 @@ def _request_from_host_desktop(request: Request) -> bool:
         return str(address) in set(discover_lan_addresses())
     except ValueError:
         return False
+
+
+def _create_network_snapshot(transaction_id: str) -> Path:
+    """在更换配置或证书前保存仅本机可读的回滚副本。"""
+
+    settings = get_settings()
+    root = settings.secrets_dir / "network-transactions" / transaction_id
+    root.mkdir(parents=True, exist_ok=False)
+    if os.name != "nt":
+        root.chmod(0o700)
+    sources = {
+        "network-settings.json": settings.data_dir / "network-settings.json",
+        "server.key": settings.secrets_dir / "pki" / "server.key",
+        "server.pem": settings.secrets_dir / "pki" / "server.pem",
+    }
+    present: list[str] = []
+    for name, source in sources.items():
+        if source.is_file():
+            shutil.copy2(source, root / name)
+            present.append(name)
+    marker = root / "snapshot.json"
+    marker.write_text(
+        json.dumps({"format_version": 1, "present": present}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    if os.name != "nt":
+        for item in root.iterdir():
+            item.chmod(0o600)
+    return root
+
+
+def _restore_network_snapshot(transaction_id: str, previous: dict[str, object]) -> None:
+    """恢复网络覆盖与主机证书；不会改动内部 CA 或设备证书。"""
+
+    settings = get_settings()
+    root = settings.secrets_dir / "network-transactions" / transaction_id
+    marker = root / "snapshot.json"
+    if not marker.is_file():
+        raise FileNotFoundError("网络事务回滚快照不存在")
+    metadata = json.loads(marker.read_text(encoding="utf-8"))
+    present = set(metadata.get("present", []))
+    write_network_override(previous)
+    targets = {
+        "server.key": settings.secrets_dir / "pki" / "server.key",
+        "server.pem": settings.secrets_dir / "pki" / "server.pem",
+    }
+    for name, target in targets.items():
+        saved = root / name
+        if name in present and saved.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(saved, target)
+        elif target.exists():
+            target.unlink()
+
+
+def _probe_network_health(value: dict[str, object]) -> dict[str, object]:
+    """从主机本机访问即将公布的地址，验证端口、TLS SAN 和健康端点。"""
+
+    settings = get_settings()
+    url = service_url(
+        str(value["advertise_host"]),
+        int(value["port"]),
+        tls_enabled=settings.tls_enabled,
+    )
+    context = None
+    if settings.tls_enabled:
+        ca_path = settings.secrets_dir / "pki" / "ca.pem"
+        if not ca_path.is_file():
+            raise OSError("PartyOps 内部 CA 尚未就绪")
+        context = ssl.create_default_context(cafile=str(ca_path))
+    request = urllib.request.Request(f"{url}/api/v1/health", headers={"Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=5, context=context) as response:  # nosec B310 - URL 来自受限私网配置。
+        payload = json.loads(response.read(64 * 1024).decode("utf-8"))
+        if response.status != 200 or not isinstance(payload, dict):
+            raise OSError("主机健康端点返回异常")
+    return {"url": url, "status": response.status, "version": str(payload.get("version", ""))}
 
 
 @router.get("/admin/users", response_model=typing.List[UserOut])
@@ -606,7 +688,24 @@ def create_pairing(
         client_ip(request),
     )
     db.commit()
-    host_url = str(request.base_url).rstrip("/")
+    settings = get_settings()
+    if settings.environment == "test":
+        host_url = str(request.base_url).rstrip("/")
+    else:
+        try:
+            validate_advertise_host(settings.network_advertise_host)
+        except RuntimeError as exc:
+            raise ProblemException(
+                409,
+                "PAIRING_ADVERTISE_HOST_REQUIRED",
+                "请先配置协同公布地址",
+                "127.0.0.1 只能由主机自己访问；请在“网络与协同”选择协同电脑可达的私网地址。",
+            ) from exc
+        host_url = service_url(
+            settings.network_advertise_host,
+            settings.port,
+            tls_enabled=settings.tls_enabled,
+        )
     expires_at = pairing_expires_at(pairing)
     return PairingOut(
         id=pairing.id,
@@ -795,6 +894,7 @@ def validate_network_payload(payload: dict[str, object]) -> dict[str, object]:
     if not 1024 <= port <= 65535:
         raise ProblemException(422, "NETWORK_PORT_INVALID", "端口无效", "端口必须在 1024 到 65535 之间。")
     try:
+        validate_advertise_host(advertise_host)
         validate_bind_host(
             bind_host,
             settings.environment == "production",
@@ -827,6 +927,7 @@ def get_network_configuration(
         "advertise_host": settings.network_advertise_host,
         "port": settings.port,
         "tls_enabled": settings.tls_enabled,
+        "local_browser_url": service_url("127.0.0.1", settings.port, tls_enabled=settings.tls_enabled),
         "service_url": service_url(settings.network_advertise_host, settings.port, tls_enabled=settings.tls_enabled),
         "pending": pending.value if pending else None,
     }
@@ -909,6 +1010,14 @@ def patch_network_configuration(
 ) -> dict[str, object]:
     """保存、更新证书 SAN 并留下旧地址宽限/失败回滚所需快照。"""
 
+    if not _request_from_host_desktop(request):
+        raise ProblemException(
+            403,
+            "NETWORK_UPDATE_LOCAL_REQUIRED",
+            "只能在主机本机修改协同地址",
+            "请回到主机电脑的 PartyOps 设置页操作；协同电脑不能远程改变主机监听和证书。",
+        )
+
     settings = get_settings()
     new_value = validate_network_payload(payload)
     old_value = {
@@ -918,6 +1027,8 @@ def patch_network_configuration(
     }
     if new_value == old_value:
         return {**new_value, "changed": False, "restart_required": False}
+    transaction_id = uuid.uuid4().hex
+    _create_network_snapshot(transaction_id)
     try:
         write_network_override(new_value)
         if new_value["advertise_host"] != old_value["advertise_host"] and settings.tls_enabled:
@@ -932,7 +1043,7 @@ def patch_network_configuration(
             )
             ensure_tls_material(candidate)
     except Exception as exc:
-        write_network_override(old_value)
+        _restore_network_snapshot(transaction_id, old_value)
         raise ProblemException(
             500,
             "NETWORK_UPDATE_ROLLED_BACK",
@@ -944,23 +1055,191 @@ def patch_network_configuration(
         "requested": new_value,
         "requested_at": utcnow().isoformat(),
         "requested_by": admin.id,
+        "transaction_id": transaction_id,
         "migration_grace_hours": max(1, min(168, int(payload.get("migration_grace_hours", 24)))),
         "state": "restart_required",
     }
+    migration_expires_at = utcnow() + timedelta(hours=pending_value["migration_grace_hours"])
+    migrated_devices = 0
+    for device in db.scalars(select(Device).where(Device.active.is_(True))).all():
+        db.add(
+            DeviceCommand(
+                device_id=device.id,
+                command_type="network_migration",
+                idempotency_key=f"network:{transaction_id}:{device.id}",
+                payload={
+                    "transaction_id": transaction_id,
+                    "host_url": service_url(
+                        str(new_value["advertise_host"]),
+                        int(new_value["port"]),
+                        tls_enabled=settings.tls_enabled,
+                    ),
+                    "agent_url": service_url(
+                        str(new_value["advertise_host"]),
+                        settings.agent_port,
+                        tls_enabled=settings.tls_enabled,
+                    ),
+                    "expires_at": migration_expires_at.isoformat(),
+                },
+            )
+        )
+        migrated_devices += 1
+    pending_value["device_notifications"] = migrated_devices
     pending = db.get(SystemSetting, "network.pending")
     if pending:
         pending.value = pending_value
     else:
         db.add(SystemSetting(key="network.pending", value=pending_value))
     write_audit(db, admin, "system.network_update", "system_setting", "network.pending", {"previous": old_value, "requested": new_value}, client_ip(request))
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        _restore_network_snapshot(transaction_id, old_value)
+        raise ProblemException(
+            500,
+            "NETWORK_TRANSACTION_ROLLED_BACK",
+            "网络事务保存失败并已回滚",
+            "配置、证书和数据库事务均未提交，请保留诊断后重试。",
+        ) from exc
     return {
         **new_value,
         "changed": True,
         "restart_required": True,
         "certificate_rotated": bool(settings.tls_enabled and new_value["advertise_host"] != old_value["advertise_host"]),
+        "transaction_id": transaction_id,
+        "state": pending_value["state"],
         "migration_grace_hours": pending_value["migration_grace_hours"],
+        "device_notifications": migrated_devices,
         "rollback": old_value,
+    }
+
+
+@router.get("/system/network/transactions/{transaction_id}", response_model=dict)
+def get_network_transaction(
+    transaction_id: str,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    pending = db.get(SystemSetting, "network.pending")
+    value = pending.value if pending and isinstance(pending.value, dict) else {}
+    if value.get("transaction_id") != transaction_id:
+        raise ProblemException(404, "NETWORK_TRANSACTION_NOT_FOUND", "网络事务不存在", "请刷新网络设置后重试。")
+    return value
+
+
+@router.post("/system/network/transactions/{transaction_id}/confirm", response_model=dict)
+def confirm_network_transaction(
+    transaction_id: str,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    if not _request_from_host_desktop(request):
+        raise ProblemException(403, "NETWORK_CONFIRM_LOCAL_REQUIRED", "只能在主机本机确认网络配置", "请到主机电脑完成健康检查。")
+    pending = db.get(SystemSetting, "network.pending")
+    value = pending.value if pending and isinstance(pending.value, dict) else {}
+    if value.get("transaction_id") != transaction_id:
+        raise ProblemException(404, "NETWORK_TRANSACTION_NOT_FOUND", "网络事务不存在", "请刷新网络设置后重试。")
+    if value.get("state") == "active":
+        return value
+    requested = value.get("requested")
+    if not isinstance(requested, dict):
+        raise ProblemException(409, "NETWORK_TRANSACTION_INVALID", "网络事务信息不完整", "请回滚并重新提交网络配置。")
+    settings = get_settings()
+    active = {
+        "bind_host": settings.network_bind_host,
+        "advertise_host": settings.network_advertise_host,
+        "port": settings.port,
+    }
+    if active != requested:
+        raise ProblemException(409, "NETWORK_RESTART_REQUIRED", "新网络配置尚未由服务加载", "请先使用受控方式重启 PartyOps 服务，再执行健康检查。")
+    try:
+        health = _probe_network_health(requested)
+    except (OSError, ValueError, urllib.error.URLError, urllib.error.HTTPError, ssl.SSLError) as exc:
+        raise ProblemException(
+            503,
+            "NETWORK_HEALTH_CHECK_FAILED",
+            "新协同地址健康检查失败",
+            "系统没有提交本次变更；可修复监听、证书或防火墙后重试，也可一键回滚。",
+        ) from exc
+    value = {
+        **value,
+        "state": "active",
+        "activated_at": utcnow().isoformat(),
+        "activated_by": admin.id,
+        "health": health,
+    }
+    pending.value = value
+    write_audit(db, admin, "system.network_activate", "system_setting", "network.pending", {"transaction_id": transaction_id, "health": health}, client_ip(request))
+    db.commit()
+    return value
+
+
+@router.post("/system/network/transactions/{transaction_id}/rollback", response_model=dict)
+def rollback_network_transaction(
+    transaction_id: str,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    if not _request_from_host_desktop(request):
+        raise ProblemException(403, "NETWORK_ROLLBACK_LOCAL_REQUIRED", "只能在主机本机回滚网络配置", "请到主机电脑操作。")
+    pending = db.get(SystemSetting, "network.pending")
+    value = pending.value if pending and isinstance(pending.value, dict) else {}
+    if value.get("transaction_id") != transaction_id:
+        raise ProblemException(404, "NETWORK_TRANSACTION_NOT_FOUND", "网络事务不存在", "请刷新网络设置后重试。")
+    if value.get("state") == "rolled_back":
+        return {"transaction_id": transaction_id, "state": "rolled_back", "changed": False}
+    previous = value.get("previous")
+    if not isinstance(previous, dict):
+        raise ProblemException(409, "NETWORK_ROLLBACK_SNAPSHOT_INVALID", "网络回滚信息不完整", "请保留现场并复制诊断摘要。")
+    try:
+        _restore_network_snapshot(transaction_id, previous)
+    except (OSError, ValueError, TypeError) as exc:
+        raise ProblemException(500, "NETWORK_ROLLBACK_FAILED", "网络配置回滚失败", "回滚副本未通过校验，请保留现场并复制诊断摘要。") from exc
+    rollback_expires_at = utcnow() + timedelta(hours=max(1, int(value.get("migration_grace_hours", 24))))
+    rollback_notifications = 0
+    settings = get_settings()
+    for device in db.scalars(select(Device).where(Device.active.is_(True))).all():
+        db.add(
+            DeviceCommand(
+                device_id=device.id,
+                command_type="network_migration",
+                idempotency_key=f"network-rollback:{transaction_id}:{device.id}",
+                payload={
+                    "transaction_id": f"{transaction_id}:rollback",
+                    "host_url": service_url(
+                        str(previous["advertise_host"]),
+                        int(previous["port"]),
+                        tls_enabled=settings.tls_enabled,
+                    ),
+                    "agent_url": service_url(
+                        str(previous["advertise_host"]),
+                        settings.agent_port,
+                        tls_enabled=settings.tls_enabled,
+                    ),
+                    "expires_at": rollback_expires_at.isoformat(),
+                },
+            )
+        )
+        rollback_notifications += 1
+    value = {
+        **value,
+        "state": "rolled_back",
+        "rolled_back_at": utcnow().isoformat(),
+        "rolled_back_by": admin.id,
+        "rollback_notifications": rollback_notifications,
+    }
+    pending.value = value
+    write_audit(db, admin, "system.network_rollback", "system_setting", "network.pending", {"transaction_id": transaction_id}, client_ip(request))
+    db.commit()
+    return {
+        "transaction_id": transaction_id,
+        "state": "rolled_back",
+        "changed": True,
+        "previous": previous,
+        "device_notifications": rollback_notifications,
     }
 
 

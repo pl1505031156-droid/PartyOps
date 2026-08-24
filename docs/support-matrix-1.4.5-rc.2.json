@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "product_version": "1.4.5-rc.2",
+  "release_tag": "v1.4.5-rc.2",
+  "updated_at": "2026-08-24T15:00:00+08:00",
+  "levels": {
+    "stable": "已完成原生构建和目标系统用户验收",
+    "preview": "已完成原生构建与自动门禁，仍有明确的真机或签名限制",
+    "unavailable": "没有完成对应原生构建、目标系统门禁或正式签名发布条件"
+  },
+  "targets": [
+    {"id": "windows-x64", "os": "Windows 10/11", "arch": "x86_64", "level": "unavailable", "artifact": null, "reason": "rc.2 冻结安装包和安装后真实启动门禁尚未完成"},
+    {"id": "windows7-x64", "os": "Windows 7 SP1", "arch": "x86_64", "level": "unavailable", "artifact": null, "reason": "rc.2 Legacy 冻结运行时和目标系统门禁尚未完成"},
+    {"id": "windows7-x86", "os": "Windows 7 SP1", "arch": "x86", "level": "unavailable", "artifact": null, "reason": "rc.2 Legacy x86 冻结运行时和目标系统门禁尚未完成"},
+    {"id": "linux-deb-amd64", "os": "麒麟/UOS/deepin", "arch": "x86_64", "level": "unavailable", "artifact": null, "reason": "rc.2 原生 DEB 构建及图形安装后验证门禁尚未完成"},
+    {"id": "linux-deb-arm64", "os": "麒麟/UOS/deepin", "arch": "aarch64", "level": "unavailable", "artifact": null, "reason": "rc.2 原生 ARM64 DEB 构建和目标系统门禁尚未完成"},
+    {"id": "linux-rpm-amd64", "os": "openEuler", "arch": "x86_64", "level": "unavailable", "artifact": null, "reason": "rc.2 原生 RPM 构建和目标系统门禁尚未完成"},
+    {"id": "linux-rpm-arm64", "os": "openEuler", "arch": "aarch64", "level": "unavailable", "artifact": null, "reason": "rc.2 原生 ARM64 RPM 构建和目标系统门禁尚未完成"},
+    {"id": "macos-arm64", "os": "macOS 11+", "arch": "arm64", "level": "unavailable", "artifact": null, "reason": "rc.2 Apple Silicon 原生 Darwin 构建和 LaunchServices 门禁尚未完成"},
+    {"id": "macos-x86_64", "os": "macOS 11+", "arch": "x86_64", "level": "unavailable", "artifact": null, "reason": "rc.2 Intel 原生 Darwin 构建和 LaunchServices 门禁尚未完成"},
+    {"id": "windows-arm64", "os": "Windows 11", "arch": "arm64", "level": "unavailable", "artifact": null, "reason": "没有原生托管构建与真机验证，不提供伪兼容包"},
+    {"id": "linux-other", "os": "Linux", "arch": "i686/armv7/loongarch64/riscv64", "level": "unavailable", "artifact": null, "reason": "没有对应原生依赖闭包与真机门禁，不提供伪兼容包"}
+  ]
+}

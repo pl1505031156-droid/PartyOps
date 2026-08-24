@@ -5,6 +5,7 @@ import { Message } from "@arco-design/web-vue";
 import { api } from "../api";
 import type { User } from "../types";
 import { formatServerTime } from "../utils/datetime";
+import PageHelp from "../components/PageHelp.vue";
 
 interface WorkflowTemplate { id: string; name: string; business_type: string; steps: Array<{ title: string; responsible_role: string }>; }
 interface MeetingStep { id: string; title: string; assignee_id: string | null; due_at: string | null; done: boolean; version: number; }
@@ -105,7 +106,7 @@ onMounted(load);
   <div class="page meetings-page">
     <header class="page-header">
       <div><p class="page-kicker">党务 · 其他会议制度化执行</p><h1 class="page-title">其他党建会议</h1><p class="page-description">党委会、主题党日、组织生活会等其他会议在此筹备；三会一课与中心组学习使用各自专属模块。</p></div>
-      <a-space><a-select v-model="year" :style="{ width: '120px' }" @change="load"><a-option v-for="value in [year - 1, year, year + 1]" :key="value" :value="value">{{ value }} 年</a-option></a-select><a-button type="primary" @click="createVisible = true"><template #icon><IconPlus /></template>新建会议</a-button></a-space>
+      <a-space><PageHelp title="其他党建会议" :tips="['按模板建立筹备步骤，并为每一步指定负责人和截止时间。', '有会议创建权限的协同用户可新建、编辑和完成本人负责的步骤。', '年度统计只计已完成会议、已审议议题和已确认金额。']" help-query="业务会议 筹备 协同 年度统计" /><a-select v-model="year" :style="{ width: '120px' }" @change="load"><a-option v-for="value in [year - 1, year, year + 1]" :key="value" :value="value">{{ value }} 年</a-option></a-select><a-button type="primary" @click="createVisible = true"><template #icon><IconPlus /></template>新建会议</a-button></a-space>
     </header>
 
     <section class="meeting-ledger">

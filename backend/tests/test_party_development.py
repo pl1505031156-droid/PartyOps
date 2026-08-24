@@ -87,6 +87,11 @@ def test_rules_cover_deadlines_manual_nodes_and_risk_warnings() -> None:
     assert nodes["committee_approval"].end_date == date(2027, 11, 2)
     assert nodes["probation_end"].date == date(2028, 5, 2)
     assert nodes["transition_approval_deadline"].date == date(2028, 8, 3)
+    assert all(node.rule_version == "2026.05" for node in result.nodes)
+    assert nodes["activist_date"].actual_at == date(2026, 3, 1)
+    assert nodes["activist_date"].reference_at == date(2026, 3, 1)
+    assert nodes["conversation_deadline"].legal_deadline_at == date(2026, 2, 28)
+    assert nodes["archive"].reference_at is not None
     codes = {warning["code"] for warning in result.warnings}
     assert {
         "CONVERSATION_OVERDUE",
@@ -121,6 +126,10 @@ def test_public_calculation_and_word_export_do_not_require_admin(
     assert calculated.status_code == 200, calculated.text
     assert calculated.json()["name"] == "李四/测试"
     assert len(calculated.json()["nodes"]) >= 15
+    calculated_nodes = {item["key"]: item for item in calculated.json()["nodes"]}
+    assert calculated_nodes["development_object_date"]["reference_at"] == "2027-06-30"
+    assert calculated_nodes["archive"]["reference_at"] is not None
+    assert calculated_nodes["archive"]["is_reference"] is True
 
     exported = client.post("/api/v1/party-development/export.docx", json=payload)
     assert exported.status_code == 200, exported.text
@@ -176,7 +185,7 @@ def test_public_calculation_and_word_export_do_not_require_admin(
     assert "制度来源：共产党员网《2026年新版细则全文》（点击查看）。" in text
     assert any(
         relationship.is_external
-            and relationship.target_ref == "https://djyj.12371.cn/2026/06/11/ARTI1781145352074190.shtml"
+            and relationship.target_ref == "https://www.12371.cn/2026/05/18/ARTI1779102179030620.shtml"
         for relationship in document.part.rels.values()
     )
     assert " PAGE " in document.sections[0].footer._element.xml

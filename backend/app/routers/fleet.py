@@ -63,7 +63,12 @@ from ..models import (
     utcnow,
 )
 from ..local_secrets import decrypt_local_json, encrypt_local_json
-from ..networking import discover_lan_addresses, enrollment_service_url
+from ..networking import (
+    discover_lan_addresses,
+    enrollment_service_url,
+    service_url,
+    validate_advertise_host,
+)
 from ..problems import ProblemException
 from ..pki import issue_device_certificate
 from ..schemas import (
@@ -603,7 +608,7 @@ def create_enrollment(
     try:
         advertised_url = enrollment_service_url(
             requested_host=requested_host,
-            configured_host=settings.host,
+            configured_host=settings.network_advertise_host,
             configured_port=settings.port,
             request_base_url=str(request.base_url),
             lan_candidates=available_hosts,
@@ -816,16 +821,37 @@ def enroll_device(
             certificate_bundle.get("certificate_fingerprint", "")
         )
         device.certificate_expires_at = utcnow() + timedelta(days=365)
+        settings = get_settings()
+        if settings.environment == "test":
+            response_host_url = str(request.base_url).rstrip("/")
+            response_agent_url = f"{request.base_url.scheme}://{request.base_url.hostname}:{settings.agent_port}"
+        else:
+            try:
+                validate_advertise_host(settings.network_advertise_host)
+            except RuntimeError as exc:
+                raise ProblemException(
+                    409,
+                    "ENROLLMENT_ADVERTISE_HOST_INVALID",
+                    "主机协同地址已失效",
+                    "主机当前公布地址不能由其他电脑访问，请由管理员修复网络配置后重新入网。",
+                ) from exc
+            response_host_url = service_url(
+                settings.network_advertise_host,
+                settings.port,
+                tls_enabled=settings.tls_enabled,
+            )
+            response_agent_url = service_url(
+                settings.network_advertise_host,
+                settings.agent_port,
+                tls_enabled=settings.tls_enabled,
+            )
         response = DeviceEnrollOut(
             device_id=device.id,
             device_token=token,
-            host_url=str(request.base_url).rstrip("/"),
+            host_url=response_host_url,
             expires_at=utcnow() + timedelta(days=365),
             **certificate_bundle,
-            agent_url=(
-                f"{request.base_url.scheme}://{request.base_url.hostname}:"
-                f"{get_settings().agent_port}"
-            ),
+            agent_url=response_agent_url,
         )
         device.device_metadata = {
             **dict(device.device_metadata or {}),
@@ -1569,11 +1595,24 @@ def rotate_certificate(
     device.certificate_expires_at = utcnow() + timedelta(days=365)
     device.version += 1
     db.commit()
+    settings = get_settings()
+    if settings.environment == "test":
+        response_agent_url = f"{request.base_url.scheme}://{request.base_url.hostname}:{settings.agent_port}"
+    else:
+        try:
+            validate_advertise_host(settings.network_advertise_host)
+        except RuntimeError as exc:
+            raise ProblemException(409, "AGENT_ADVERTISE_HOST_INVALID", "主机协同地址已失效", "请由主机管理员修复网络配置。") from exc
+        response_agent_url = service_url(
+            settings.network_advertise_host,
+            settings.agent_port,
+            tls_enabled=settings.tls_enabled,
+        )
     return DeviceCertificateOut(
         certificate_pem=str(bundle.get("certificate_pem", "")),
         ca_certificate_pem=str(bundle.get("ca_certificate_pem", "")),
         certificate_fingerprint=device.certificate_fingerprint,
-        agent_url=f"{request.base_url.scheme}://{request.base_url.hostname}:{get_settings().agent_port}",
+        agent_url=response_agent_url,
         expires_at=device.certificate_expires_at,
     )
 

@@ -31,7 +31,7 @@ repair_hint() {
 
 if ! {
   systemctl enable partyops-updater.service &&
-    systemctl start partyops-updater.service
+    systemctl start --no-block partyops-updater.service
 } >>"$INSTALL_LOG" 2>&1; then
   systemctl disable --now partyops-updater.service >/dev/null 2>&1 || true
   echo '[PACKAGE_UPDATER_START_FAILED] PartyOps 更新服务未能启用，安装配置已停止。' >&2
@@ -42,7 +42,7 @@ if ! {
 fi
 
 if [ -f "$RESTART_MARKER" ]; then
-  if ! systemctl restart partyops.service >>"$INSTALL_LOG" 2>&1; then
+  if ! systemctl restart --no-block partyops.service >>"$INSTALL_LOG" 2>&1; then
     echo '[PACKAGE_HOST_RESTART_FAILED] 升级后主机服务未能恢复，保留重试标记。' >&2
     journalctl -u partyops.service -n 80 --no-pager >&2 2>/dev/null || true
     repair_hint

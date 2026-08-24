@@ -239,7 +239,7 @@ def test_fetch_online_catalog_rejects_duplicate_json_and_encoded_response(monkey
     monkeypatch.setattr(updates, "_open_trusted_update_url", lambda _url: Response(duplicate))
     with pytest.raises(ProblemException) as captured:
         updates.fetch_online_update_catalog()
-    assert captured.value.code == "UPDATE_CATALOG_UNAVAILABLE"
+    assert captured.value.code == "UPDATE_CATALOG_FORMAT_INVALID"
 
     monkeypatch.setattr(
         updates,
@@ -248,7 +248,7 @@ def test_fetch_online_catalog_rejects_duplicate_json_and_encoded_response(monkey
     )
     with pytest.raises(ProblemException) as captured:
         updates.fetch_online_update_catalog()
-    assert captured.value.code == "UPDATE_CATALOG_UNAVAILABLE"
+    assert captured.value.code == "UPDATE_CATALOG_RESPONSE_INVALID"
 
 
 def test_fetch_online_catalog_rejects_ambiguous_or_incomplete_signed_contract(monkeypatch) -> None:

@@ -30,6 +30,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 import webbrowser
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -60,6 +61,7 @@ from .windows_host_status import (
     SERVICE_STOPPED,
     TERMINAL_CODES,
     TLS_INIT_FAILED,
+    classify_runtime_failure,
     read_service_status,
     health_payload_ready,
     service_log_path,
@@ -2689,9 +2691,10 @@ def wait_for_host_health(
                 if data_dir is not None
                 else f"个人进程退出码 {process.returncode}"
             )
+            code = classify_runtime_failure(detail, exit_code=process.returncode)
             raise HostStartupError(
-                CHILD_EXITED,
-                "PartyOps 个人进程启动后提前退出。",
+                code,
+                "PartyOps 个人进程启动后提前退出。" if code == CHILD_EXITED else "PartyOps 个人进程启动探针发现明确故障。",
                 detail=detail or f"个人进程退出码 {process.returncode}",
             )
         if progress:
@@ -3738,7 +3741,8 @@ testButton.addEventListener('click',async()=>{{const host=clientHost.value.trim(
 const hostForm=document.getElementById('host-form');const startupStatus=document.getElementById('startup-status');const startupMessage=document.getElementById('startup-message');let startupPoll=null;
 function showStartup(stage,message){{startupStatus.classList.add('active');startupMessage.textContent=message||'正在启动主机……';const order=['service','child','port','health','ready'];const index=Math.max(0,order.indexOf(stage));startupStatus.querySelectorAll('li').forEach((item,key)=>item.classList.toggle('active',key<=index));}}
 async function pollStartup(){{try{{const body=new URLSearchParams({{csrf:{json.dumps(csrf)},mode:'host_status'}});const response=await fetch(location.href,{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body}});const result=await response.json();if(response.ok)showStartup(result.ui_stage||'service',result.message||'正在启动主机……')}}catch(error){{}}}}
-hostForm.addEventListener('submit',async event=>{{event.preventDefault();setProgress(2);hostSubmit.disabled=true;showStartup('service','正在确认主机服务……');startupPoll=setInterval(pollStartup,1000);try{{const response=await fetch(location.href,{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:new URLSearchParams(new FormData(hostForm))}});const page=await response.text();document.open();document.write(page);document.close();}}catch(error){{showStartup('service','向导连接中断，请重新打开配置向导。');hostSubmit.disabled=false}}finally{{if(startupPoll)clearInterval(startupPoll)}}}});
+async function pollRuntimeTransaction(pollUrl){{for(let attempt=0;attempt<240;attempt+=1){{const response=await fetch(pollUrl,{{cache:'no-store'}});const state=await response.json();showStartup(state.status==='ready'?'ready':'service',state.message||'正在切换运行身份……');if(state.status==='ready'){{window.location.assign(state.redirect_url);return}}if(state.status==='failed'||state.status==='missing'){{throw new Error(`[${{state.code||'RUNTIME_RECONFIGURATION_FAILED'}}] ${{state.message||'运行身份切换失败'}}`)}}await new Promise(resolve=>setTimeout(resolve,1000))}}throw new Error('[RUNTIME_TRANSACTION_TIMEOUT] 运行身份切换超过 240 秒，请打开运行诊断。')}}
+hostForm.addEventListener('submit',async event=>{{event.preventDefault();setProgress(2);hostSubmit.disabled=true;showStartup('service','正在确认主机服务……');startupPoll=setInterval(pollStartup,1000);try{{const response=await fetch(location.href,{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json, text/html'}},body:new URLSearchParams(new FormData(hostForm)),redirect:'manual'}});if(response.status===202){{const transaction=await response.json();await pollRuntimeTransaction(transaction.poll_url);return}}const page=await response.text();document.open();document.write(page);document.close();}}catch(error){{showStartup('service',error instanceof Error?error.message:'向导连接中断，请重新打开配置向导。');hostSubmit.disabled=false}}finally{{if(startupPoll)clearInterval(startupPoll)}}}});
 document.querySelectorAll('form:not(#host-form)').forEach(form=>form.addEventListener('submit',()=>setProgress(2)));
 const browseButton=document.getElementById('browse-data-dir');const dataDirInput=document.getElementById('data-dir');
 if(browseButton&&dataDirInput){{browseButton.addEventListener('click',async()=>{{browseButton.disabled=true;browseButton.textContent='选择中…';try{{const body=new URLSearchParams({{csrf:{json.dumps(csrf)},mode:'browse_data_dir'}});const response=await fetch(location.href,{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body}});const result=await response.json();if(!response.ok)throw new Error(result.error||'选择失败');if(result.path)dataDirInput.value=result.path;}}catch(error){{}}finally{{browseButton.disabled=false;browseButton.textContent='浏览…'}}}})}};
@@ -3966,6 +3970,104 @@ def run_wizard(
         initial_mode if initial_mode in {"personal", "host", "client"} else ""
     )
     host_setup: dict[str, str] = {}
+    reconfiguration_transactions: dict[str, dict[str, object]] = {}
+    reconfiguration_lock = threading.Lock()
+
+    def update_reconfiguration_transaction(
+        transaction_id: str,
+        *,
+        status: str,
+        code: str = "",
+        message: str = "",
+        redirect_url: str = "",
+    ) -> None:
+        with reconfiguration_lock:
+            current = reconfiguration_transactions.get(transaction_id)
+            if current is None:
+                return
+            current.update(
+                status=status,
+                code=code,
+                message=message,
+                redirect_url=redirect_url,
+                updated_at=time.time(),
+            )
+
+    def perform_runtime_reconfiguration(
+        transaction_id: str,
+        mode: str,
+        values: dict[str, str],
+    ) -> None:
+        """在向导回环服务内完成角色切换，页面只轮询脱敏事务状态。"""
+
+        try:
+            update_reconfiguration_transaction(
+                transaction_id,
+                status="running",
+                code="RUNTIME_CONFIGURING",
+                message="正在写入新配置并启动运行时……",
+            )
+            if mode == "personal":
+                path = write_personal_config(
+                    Path(values["data_dir"]),
+                    int(values["port"]),
+                )
+                url = launch_personal(path)
+                ready = configured_runtime_status(url)
+            elif mode == "host":
+                path = configure_host_config(
+                    values["host"],
+                    int(values["port"]),
+                    Path(values["data_dir"]),
+                )
+                url = launch_host(path)
+                environment = load_host_environment(path) if path.exists() else {}
+                ca_file: Path | None = None
+                if environment.get("PARTYOPS_TLS_ENABLED", "").lower() == "true":
+                    parsed = urllib.parse.urlparse(url)
+                    url = urllib.parse.urlunparse(parsed._replace(scheme="https"))
+                    data_dir = Path(
+                        environment.get("PARTYOPS_DATA_DIR")
+                        or Path(values["data_dir"]).expanduser().resolve()
+                    )
+                    ca_file = data_dir / "secrets" / "pki" / "ca.pem"
+                ready = configured_runtime_status(url, ca_file=ca_file)
+            else:
+                raise ValueError("运行身份事务只接受个人模式或主机模式")
+            if not ready:
+                raise HostStartupError(
+                    "RUNTIME_HEALTH_MISMATCH",
+                    "新运行身份已经启动，但健康信息与当前版本或模式不一致。",
+                )
+            update_reconfiguration_transaction(
+                transaction_id,
+                status="ready",
+                code="RUNTIME_READY",
+                message="新运行身份已通过本机健康检查，正在进入系统。",
+                redirect_url=url,
+            )
+        except HostStartupError as exc:
+            update_reconfiguration_transaction(
+                transaction_id,
+                status="failed",
+                code=exc.code,
+                message=str(exc),
+            )
+        except ValueError as exc:
+            update_reconfiguration_transaction(
+                transaction_id,
+                status="failed",
+                code="RUNTIME_CONFIGURATION_INVALID",
+                message=str(exc),
+            )
+        except Exception as exc:  # noqa: BLE001 - 后台事务必须保留诊断并返回脱敏失败。
+            diagnostic_id = _record_wizard_failure(exc)
+            update_reconfiguration_transaction(
+                transaction_id,
+                status="failed",
+                code="RUNTIME_RECONFIGURATION_FAILED",
+                message=f"运行身份切换失败；诊断追踪编号 {diagnostic_id}。原业务数据保持不变。",
+            )
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, body: str, status: int = 200) -> None:
@@ -3993,6 +4095,32 @@ def run_wizard(
             self.end_headers()
 
         def do_GET(self) -> None:  # noqa: N802 - 标准库接口命名。
+            parsed_path = urllib.parse.urlparse(self.path).path
+            if parsed_path.startswith("/transactions/"):
+                transaction_id = parsed_path[len("/transactions/") :].strip("/")
+                with reconfiguration_lock:
+                    transaction = dict(
+                        reconfiguration_transactions.get(transaction_id) or {}
+                    )
+                if not transaction:
+                    self._send_json(
+                        {
+                            "status": "missing",
+                            "code": "RUNTIME_TRANSACTION_NOT_FOUND",
+                            "message": "运行身份事务不存在或已经过期，请重新提交。",
+                        },
+                        404,
+                    )
+                    return
+                transaction.pop("created_at", None)
+                transaction.pop("updated_at", None)
+                self._send_json(transaction)
+                if transaction.get("status") == "ready":
+                    threading.Thread(
+                        target=lambda: (time.sleep(2), shutdown.set()),
+                        daemon=True,
+                    ).start()
+                return
             self._send(
                 render_page(
                     csrf,
@@ -4086,6 +4214,45 @@ def run_wizard(
                             "message": message,
                             "code": status.get("code", ""),
                         }
+                    )
+                    return
+                if reconfiguration and mode in {"personal", "host"}:
+                    transaction_id = secrets.token_urlsafe(18)
+                    now = time.time()
+                    with reconfiguration_lock:
+                        stale_ids = [
+                            key
+                            for key, item in reconfiguration_transactions.items()
+                            if now - float(item.get("created_at", now)) > 600
+                        ]
+                        for key in stale_ids:
+                            reconfiguration_transactions.pop(key, None)
+                        reconfiguration_transactions[transaction_id] = {
+                            "transaction_id": transaction_id,
+                            "status": "queued",
+                            "code": "RUNTIME_TRANSACTION_QUEUED",
+                            "message": "运行身份切换事务已创建。",
+                            "redirect_url": "",
+                            "created_at": now,
+                            "updated_at": now,
+                        }
+                    submitted = {
+                        "host": value("host"),
+                        "port": value("port"),
+                        "data_dir": value("data_dir"),
+                    }
+                    threading.Thread(
+                        target=perform_runtime_reconfiguration,
+                        args=(transaction_id, mode, submitted),
+                        daemon=True,
+                    ).start()
+                    self._send_json(
+                        {
+                            "transaction_id": transaction_id,
+                            "status": "queued",
+                            "poll_url": f"/transactions/{transaction_id}",
+                        },
+                        202,
                     )
                     return
                 if mode == "personal":
@@ -4337,6 +4504,26 @@ def main() -> None:
         action_token = ""
         if args.action_uri:
             parsed = urllib.parse.urlparse(args.action_uri)
+            if parsed.scheme == "partyops-client" and parsed.netloc == "official-format":
+                if parsed.query or parsed.fragment:
+                    raise SystemExit("无效的公文排版事务地址")
+                transaction_id = parsed.path.strip("/")
+                try:
+                    transaction_id = str(uuid.UUID(transaction_id))
+                except (ValueError, AttributeError) as exc:
+                    raise SystemExit("公文排版事务标识无效") from exc
+                from .official_format import OfficialFormatError, run_official_format_tool
+
+                try:
+                    raise SystemExit(
+                        run_official_format_tool(
+                            transaction_id,
+                            open_browser=not args.no_browser,
+                            config_dir=config_root(),
+                        )
+                    )
+                except OfficialFormatError as exc:
+                    raise SystemExit(f"[{exc.code}] {exc.title}：{exc.detail}") from exc
             if parsed.scheme == "partyops-client" and parsed.netloc == "reconfigure":
                 if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
                     raise SystemExit("无效的重新配置地址")

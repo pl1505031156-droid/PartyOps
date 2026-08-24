@@ -66,6 +66,8 @@ def test_real_bge_pack_import_activate_and_infer(
             serialization.PublicFormat.Raw,
         )
     ).decode("ascii")
+    public_key_path = tmp_path / "update-public-key.txt"
+    public_key_path.write_text(public_key + "\n", encoding="ascii")
     monkeypatch.setattr(get_settings(), "model_pack_public_key", public_key)
 
     output = tmp_path / "bge-small-zh-v1.5-test.partyops-modelpack"
@@ -80,6 +82,8 @@ def test_real_bge_pack_import_activate_and_infer(
         str(license_file),
         "--private-key",
         str(private_key_path),
+        "--public-key",
+        str(public_key_path),
         "--version",
         "1.5.0-test",
         "--model-id",

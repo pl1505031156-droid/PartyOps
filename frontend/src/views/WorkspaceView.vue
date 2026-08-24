@@ -93,6 +93,7 @@ let previewWorker: Worker | undefined;
 let previewAbortController: AbortController | undefined;
 let previewTimeout: number | undefined;
 let previewWorkerReject: ((reason?: unknown) => void) | undefined;
+let openGrantTimer: number | undefined;
 
 const selectedRoot = computed(() => roots.value.find((item) => item.id === selectedRootId.value));
 const canShareLocalFolder = computed(() =>
@@ -612,9 +613,9 @@ async function openDocumentPreview() {
 
   const structured = isStructuredPreviewSupported(file.name, file.size_bytes);
   if (!structured && !previewRawAvailable.value) {
-    previewError.value = previewErrorMessage(
-      file.size_bytes > MAX_STRUCTURED_PREVIEW_BYTES ? "previewTooLarge" : "unsupported",
-    );
+    previewError.value = file.size_bytes > MAX_STRUCTURED_PREVIEW_BYTES
+      ? previewErrorMessage("previewTooLarge")
+      : "该格式暂不支持浏览器结构化阅读，请使用本机 WPS、Office 等默认程序打开，或下载到本机。";
     previewLoading.value = false;
     return;
   }
@@ -807,12 +808,50 @@ async function sendToDevice() {
 
 async function openWithDefaultApp() {
   if (!selectedFile.value) return;
+  if (openGrantTimer !== undefined) window.clearTimeout(openGrantTimer);
   try {
-    const result = await api.post<{ open_uri: string }>(
+    const result = await api.post<{
+      grant_id: string;
+      open_uri: string;
+      status_url: string;
+    }>(
       `/workspace/files/${selectedFile.value.id}/open-local`,
     );
     window.location.href = result.open_uri;
-    Message.success("正在调用系统默认程序打开文件");
+    Message.info("正在调用本机默认程序，系统会继续确认实际打开结果");
+    let attempts = 0;
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const status = await api.get<{
+          status: string;
+          result_code: string;
+          result_detail: string;
+        }>(result.status_url.replace(/^\/api\/v1/, ""));
+        if (status.status === "completed") {
+          Message.success("文件已交给本机默认程序打开");
+          return;
+        }
+        if (status.status === "failed") {
+          const labels: Record<string, string> = {
+            DEFAULT_APP_FAILED: "系统默认程序未能打开该格式，请检查 WPS 或 Office 文件关联。",
+            FILE_MISSING: "原文件已移动或删除，请刷新文件中心。",
+            UNSUPPORTED_FORMAT: "本机没有可打开该格式的应用。",
+            HELPER_FAILED: "本机文件助手运行失败，请打开运行诊断查看精确错误码。",
+          };
+          Message.error(labels[status.result_code] || status.result_detail || "本机文件打开失败");
+          return;
+        }
+        if (status.status === "expired") {
+          Message.warning("本机助手没有在五分钟内兑换授权，请重新点击打开");
+          return;
+        }
+      } catch {
+        if (attempts >= 12) return;
+      }
+      if (attempts < 12) openGrantTimer = window.setTimeout(poll, 1000);
+    };
+    openGrantTimer = window.setTimeout(poll, 800);
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "文件打开失败");
   }
@@ -821,6 +860,7 @@ async function openWithDefaultApp() {
 onMounted(load);
 onBeforeUnmount(() => {
   if (scanMonitorTimer !== undefined) window.clearTimeout(scanMonitorTimer);
+  if (openGrantTimer !== undefined) window.clearTimeout(openGrantTimer);
   disposePreviewRuntime();
 });
 </script>
@@ -1001,6 +1041,7 @@ onBeforeUnmount(() => {
             <span v-if="previewEngine">{{ previewEngine }} · {{ previewFormat.toUpperCase() }}</span>
           </div>
           <a-space>
+            <a-button v-if="selectedFile && selectedRoot?.source !== 'device'" size="small" type="primary" @click="openWithDefaultApp">使用默认程序打开</a-button>
             <a-button v-if="previewRawAvailable && previewRawUrl" size="small" :href="previewRawUrl" target="_blank">新窗口打开原始预览</a-button>
             <a-button v-if="selectedFile" size="small" @click="createDownload([selectedFile.id], 'browser')"><template #icon><IconDownload /></template>浏览器另存为</a-button>
             <a-button

@@ -583,6 +583,9 @@ export interface Device {
   kernel: string;
   app_version: string;
   agent_version: string;
+  protocol_version: number;
+  credential_state: string;
+  credential_rotated_at: string | null;
   local_username: string;
   ip_address: string;
   certificate_fingerprint: string;
@@ -1054,6 +1057,15 @@ export interface PartyDevelopmentNode {
   status: "completed" | "overdue" | "waiting_manual" | "planned";
   article: string;
   basis: string;
+  actual_at: string | null;
+  legal_earliest_at: string | null;
+  legal_deadline_at: string | null;
+  reference_at: string | null;
+  reference_end_at: string | null;
+  adjusted_at: string | null;
+  rule_version: string;
+  reference_basis: string;
+  is_reference: boolean;
   requires_manual_confirmation: boolean;
   materials: PartyDevelopmentMaterial[];
 }

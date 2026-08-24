@@ -494,7 +494,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     assert "post-install-transaction.sh %s deb" in build
     assert "sed 's/\\r$//'" in build
     assert "桌面入口换行规范化失败" in build
-    assert 'DEB_VERSION="1.4.5~rc.1"' in build
+    assert 'DEB_VERSION="1.4.5~rc.2"' in build
     assert "Version: $DEB_VERSION" in build
     assert "systemd, util-linux, coreutils, iproute2" in build
     assert "systemd, util-linux, coreutils, iproute" in build
@@ -519,7 +519,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
         "systemctl enable --now partyops-updater.service >/dev/null 2>&1 || true"
         not in services
     )
-    assert services.index("systemctl restart partyops.service") < services.index(
+    assert services.index("systemctl restart --no-block partyops.service") < services.index(
         'rm -f -- "$RESTART_MARKER"'
     )
     rpm_preun = build.split("%preun", 1)[1].split("%postun", 1)[0]
@@ -529,8 +529,8 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     one_click = (ROOT / "packaging" / "uos" / "one-click-install.sh").read_text(
         encoding="utf-8"
     )
-    assert 'VERSION="${PARTYOPS_VERSION:-1.4.5-rc.1}"' in one_click
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.5~rc.1}"' in one_click
+    assert 'VERSION="${PARTYOPS_VERSION:-1.4.5-rc.2}"' in one_click
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.5~rc.2}"' in one_click
     assert 'DEB="$ARTIFACTS/PartyOps_${VERSION}_linux_${ARCH}.deb"' in one_click
     assert '[[ "$installed_version" == "$PACKAGE_VERSION" ]]' in one_click
     assert 'chown -R "$CURRENT_USER' not in one_click
@@ -538,7 +538,7 @@ def test_native_linux_packages_embed_upgrade_and_selftest_lifecycle() -> None:
     acceptance = (ROOT / "packaging" / "uos" / "target-acceptance.sh").read_text(
         encoding="utf-8"
     )
-    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.5~rc.1}"' in acceptance
+    assert 'PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.5~rc.2}"' in acceptance
     assert 'test "$INSTALLED_VERSION" = "$PACKAGE_VERSION"' in acceptance
     assert "LD_LIBRARY_PATH=/opt/partyops/ocr/lib" in acceptance
 
@@ -806,7 +806,7 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "INSTALL_DIR_TREE_ACL_VERIFY_FAILED" in installer
     assert "INSTALL_DIR_INTEGRITY_DENIED" in installer
     assert " /setintegritylevel (OI)(CI)H /T /C /Q" in installer
-    assert "VersionInfoVersion=1.4.5.1" in installer
+    assert "VersionInfoVersion=1.4.5.2" in installer
     assert "MinVersion=10.0" in installer
     assert "MinVersion=6.1sp1" in installer
     assert "此安装包仅支持 Windows 10/11" in installer
@@ -962,6 +962,23 @@ def test_linux_wizard_freeze_includes_tcl_runtime_and_entrypoint_smoke() -> None
     assert "冻结入口自检失败" in script
 
 
+def test_linux_native_install_moves_slow_runtime_health_check_out_of_package_transaction() -> None:
+    transaction = (ROOT / "packaging" / "linux" / "post-install-transaction.sh").read_text(encoding="utf-8")
+    selftest = (ROOT / "packaging" / "linux" / "post-install-selftest.sh").read_text(encoding="utf-8")
+    verifier = (ROOT / "packaging" / "linux" / "post-install-verify.sh").read_text(encoding="utf-8")
+    service = (ROOT / "packaging" / "linux" / "partyops-install-verify.service").read_text(encoding="utf-8")
+    build = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(encoding="utf-8")
+
+    assert 'post-install-selftest.sh" "$EXPECTED_ARCH" quick' in transaction
+    assert "systemctl start --no-block partyops-install-verify.service" in transaction
+    assert 'if [ "$MODE" = "quick" ]' in selftest
+    assert 'post-install-selftest.sh" "" full' in verifier
+    assert "install-verification.json" in verifier
+    assert "ExecStart=/opt/partyops/post-install-verify.sh" in service
+    assert "TimeoutStartSec=240" in service
+    assert "partyops-install-verify.service" in build
+
+
 def test_linux_bundle_only_includes_current_user_documents() -> None:
     """发布后生成的验收/哈希记录不能反向封入制品形成循环或残留旧版本。"""
 
@@ -970,7 +987,7 @@ def test_linux_bundle_only_includes_current_user_documents() -> None:
     )
 
     assert 'cp -a "$ROOT/docs" "$RUNTIME/"' not in script
-    assert '"release-notes-v1.4.5-rc.1.md"' in script
+    assert '"release-notes-v1.4.5-rc.2.md"' in script
     for document in (
         "user-guide.md",
         "deployment.md",
@@ -1038,8 +1055,8 @@ def test_linux_rpm_rollback_seed_keeps_current_release_generation() -> None:
         encoding="utf-8"
     )
 
-    assert 'RPM_RELEASE="0.rc.1.1"' in script
-    assert 'SEED_RELEASE="0.rc.1.0"' in script
+    assert 'RPM_RELEASE="0.rc.2.1"' in script
+    assert 'SEED_RELEASE="0.rc.2.0"' in script
 
 
 def test_linux_native_build_uses_a_posix_permission_build_root() -> None:

@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 import { IconRefresh } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { api } from "../api";
+import PageHelp from "../components/PageHelp.vue";
 
 interface MaterialItem { name: string; source: string; responsible_party: string; guidance: string; required: boolean; national: boolean; }
 interface MaterialPhase { phase: string; label: string; items: MaterialItem[]; }
@@ -27,7 +28,7 @@ onMounted(load);
 
 <template>
   <section class="materials-page">
-    <header class="subpage-header"><div><p class="page-kicker">发展党员 · 材料清单</p><h2>按阶段准备，一次归集</h2><p>{{ checklist?.disclaimer || "国家规则材料与本单位启用的补充材料分开标识。" }}</p></div><a-button :loading="loading" @click="load"><template #icon><IconRefresh /></template>刷新</a-button></header>
+    <header class="subpage-header"><div><p class="page-kicker">发展党员 · 材料清单</p><h2>按阶段准备，一次归集</h2><p>{{ checklist?.disclaimer || "国家规则材料与本单位启用的补充材料分开标识。" }}</p></div><a-space><PageHelp title="发展党员材料清单" :tips="['国家规则材料和本单位补充材料分开标识，单位模板不能删改国家规则项。', '按当前阶段提前核对责任主体、必备属性和办理说明，避免临近节点才补材料。', '材料清单是工作辅助，具体归档口径仍应由党组织审核确认。']" help-query="发展党员 材料清单 单位补充" /><a-button :loading="loading" @click="load"><template #icon><IconRefresh /></template>刷新</a-button></a-space></header>
     <a-alert v-if="checklist" type="info">规则版本 {{ checklist.rule.version }}：{{ checklist.rule.title }}。国家规则项不可由单位模板删除或降级。</a-alert>
     <div class="phase-grid"><article v-for="(phase, index) in checklist?.phases || []" :key="phase.phase"><header><span>{{ String(index + 1).padStart(2, "0") }}</span><h3>{{ phase.label }}</h3><b>{{ phase.items.length }} 项</b></header><ul><li v-for="item in phase.items" :key="`${item.source}-${item.name}`"><div><strong>{{ item.name }}</strong><em :class="{ national: item.national }">{{ item.national ? "国家规则" : `单位补充 · ${item.source}` }}</em></div><p>{{ item.responsible_party }} · {{ item.guidance }}</p></li></ul><p v-if="!phase.items.length" class="empty-state">本阶段暂无固定材料，按组织要求人工确认。</p></article></div>
   </section>

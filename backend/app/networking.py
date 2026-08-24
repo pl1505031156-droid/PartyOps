@@ -57,8 +57,12 @@ def validate_bind_host(
             address = ipaddress.ip_address(advertised)
         except ValueError:
             return
-        if not (address.is_private or address.is_loopback) or address.is_link_local:
-            raise RuntimeError("生产模式禁止向协同电脑展示公网或链路本地地址")
+        if address.is_link_local:
+            raise RuntimeError("协同公布地址不能使用链路本地地址")
+        if address.is_loopback or address.is_unspecified or address.is_multicast:
+            raise RuntimeError("协同公布地址必须是其他电脑可达的明确私网地址")
+        if not address.is_private:
+            raise RuntimeError("协同公布地址不得直接使用公网 IP")
         return
     try:
         address = ipaddress.ip_address(host)
@@ -67,6 +71,25 @@ def validate_bind_host(
         return
     if not (address.is_private or address.is_loopback):
         raise RuntimeError("生产模式禁止绑定公网 IP")
+
+
+def validate_advertise_host(host: str) -> None:
+    """拒绝不能由其他电脑访问的协同公布地址。"""
+
+    normalized = host.strip().lower().rstrip(".")
+    if not normalized or normalized in {"localhost", "0.0.0.0", "::"}:  # nosec B104 - 此处只校验展示值。
+        raise RuntimeError("协同公布地址不能使用 localhost 或通配地址")
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        # 固定局域网 DNS 名称由管理员控制；协议和路径在调用方拒绝。
+        if normalized.endswith(".localhost"):
+            raise RuntimeError("协同公布地址不能使用仅本机解析的名称")
+        return
+    if address.is_loopback or address.is_link_local or address.is_unspecified or address.is_multicast:
+        raise RuntimeError("协同公布地址必须是其他电脑可达的明确私网地址或局域网主机名")
+    if not address.is_private:
+        raise RuntimeError("协同公布地址不得直接使用公网 IP")
 
 
 def validate_transport_security(
@@ -94,6 +117,11 @@ def service_url(host: str, port: int, *, tls_enabled: bool = False) -> str:
     """返回浏览器和诊断接口应展示的主服务地址。"""
 
     shown_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host  # nosec B104 - 通配值只映射为回环展示地址。
+    try:
+        if isinstance(ipaddress.ip_address(shown_host), ipaddress.IPv6Address):
+            shown_host = f"[{shown_host}]"
+    except ValueError:
+        pass
     scheme = "https" if tls_enabled else "http"
     return f"{scheme}://{shown_host}:{port}"
 
@@ -138,5 +166,4 @@ def enrollment_service_url(
         else:
             raise LookupError("请明确选择协同电脑能够访问的主机局域网地址")
 
-    scheme = "https" if tls_enabled else "http"
-    return f"{scheme}://{selected}:{configured_port}"
+    return service_url(selected, configured_port, tls_enabled=tls_enabled)

@@ -58,6 +58,10 @@ const router = createRouter({
       component: () => import("./views/WorkspaceView.vue"),
     },
     {
+      path: "/official-format",
+      component: () => import("./views/OfficialFormatView.vue"),
+    },
+    {
       path: "/archives",
       component: () => import("./views/ArchivesView.vue"),
     },

@@ -267,6 +267,38 @@ describe("应用壳与快捷操作", () => {
     wrapper.unmount();
   });
 
+  it("快捷新建覆盖用户回退、空用户与非标准创建错误", async () => {
+    const { pinia, router } = setupContext();
+    await router.push("/");
+    apiMocks.get.mockRejectedValueOnce(new Error("用户列表离线")).mockResolvedValueOnce(user);
+    const fallback = shallowMount(QuickCreateDrawer, {
+      props: { visible: true },
+      global: { plugins: [pinia, router, ArcoVue] },
+    });
+    await flushPromises();
+    const fallbackState = (fallback.vm as unknown as { $: { setupState: Record<string, unknown> } }).$.setupState;
+    const fallbackForm = fallbackState.form as { title: string; owner_id: string };
+    expect(fallbackForm.owner_id).toBe(user.id);
+    fallbackForm.title = "回退用户创建事项";
+    apiMocks.post.mockRejectedValueOnce("非标准错误");
+    await (fallbackState.submit as () => Promise<void>)();
+    fallback.unmount();
+
+    apiMocks.get.mockImplementation(async (path: string) => path === "/users" ? [] : user);
+    const empty = shallowMount(QuickCreateDrawer, {
+      props: { visible: true },
+      global: { plugins: [pinia, router, ArcoVue] },
+    });
+    await flushPromises();
+    const emptyState = (empty.vm as unknown as { $: { setupState: Record<string, unknown> } }).$.setupState;
+    const emptyForm = emptyState.form as { title: string; owner_id: string };
+    expect(emptyForm.owner_id).toBe("");
+    emptyForm.title = "只有标题";
+    await (emptyState.submit as () => Promise<void>)();
+    expect(apiMocks.post).toHaveBeenCalledTimes(1);
+    empty.unmount();
+  });
+
   it("应用壳覆盖离线、静默时段、搜索失败和键盘替代路径", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 7, 11, 12, 30, 0));

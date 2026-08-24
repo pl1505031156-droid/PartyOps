@@ -14,6 +14,8 @@ vi.mock("../api", () => ({ api: apiMocks, saveBlobDownload }));
 import MemoView from "./MemoView.vue";
 import PartyDevelopmentView from "./PartyDevelopmentView.vue";
 import PartyDevelopmentSettingsView from "./PartyDevelopmentSettingsView.vue";
+import OfficialFormatView from "./OfficialFormatView.vue";
+import PartyDevelopmentMaterialsView from "./PartyDevelopmentMaterialsView.vue";
 import { useSessionStore } from "../stores/session";
 import { encryptMemoBackup } from "../localMemo";
 
@@ -31,6 +33,8 @@ const result = {
   nodes: [{
     key: "application", title: "提交入党申请书", phase: "application", date_kind: "actual", date: "2026-05-20",
     end_date: null, provisional: false, status: "completed", article: "第六条", basis: "自愿申请",
+    actual_at: "2026-05-20", legal_earliest_at: null, legal_deadline_at: null, reference_at: null,
+    reference_end_at: null, adjusted_at: null, rule_version: "2026.05", reference_basis: "", is_reference: false,
     requires_manual_confirmation: false, materials: [{ phase: "application", name: "入党申请书", responsible_party: "申请人", guidance: "", required: true, national: true, source: rule.title }],
   }],
 };
@@ -74,6 +78,58 @@ beforeEach(() => {
 });
 
 describe("1.4.3 新增页面", () => {
+  it("公文排版页只通过随机事务深链启动本机助手", async () => {
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const wrapper = await mount(OfficialFormatView as typeof MemoView, "/official-format");
+    const vm = state(wrapper);
+    vm.launchFormatter();
+    expect(clicked).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("不得使用 PartyOps 处理涉密文件");
+    expect(wrapper.text()).toContain("服务端存储");
+    expect(apiMocks.post).not.toHaveBeenCalled();
+    expect(document.querySelector('a[href^="partyops-client://official-format/"]')).toBeNull();
+    clicked.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("公文排版页在浏览器缺少安全随机数时拒绝构造深链", async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "crypto");
+    Object.defineProperty(window, "crypto", { configurable: true, value: {} });
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    try {
+      const wrapper = await mount(OfficialFormatView as typeof MemoView, "/official-format");
+      state(wrapper).launchFormatter();
+      expect(clicked).not.toHaveBeenCalled();
+      wrapper.unmount();
+    } finally {
+      clicked.mockRestore();
+      if (descriptor) Object.defineProperty(window, "crypto", descriptor);
+    }
+  });
+
+  it("发展党员材料页区分标准异常与非标准异常", async () => {
+    apiMocks.get.mockRejectedValueOnce(new Error("材料服务离线"));
+    const wrapper = await mount(PartyDevelopmentMaterialsView as typeof MemoView, "/party-development/materials");
+    const vm = state(wrapper);
+    expect(vm.loading).toBe(false);
+    apiMocks.get.mockRejectedValueOnce("非标准错误");
+    await vm.load();
+    expect(vm.loading).toBe(false);
+    apiMocks.get.mockResolvedValueOnce({
+      rule: { version: "2026.05", title: rule.title, source_url: rule.source_url },
+      disclaimer: "测试材料边界",
+      phases: [
+        { phase: "application", label: "申请入党", items: [] },
+        { phase: "activist", label: "积极分子", items: [{ name: "单位补充材料", source: "测试党委", responsible_party: "支部", guidance: "按需", required: false, national: false }] },
+      ],
+    });
+    await vm.load();
+    await flushPromises();
+    expect(wrapper.text()).toContain("单位补充 · 测试党委");
+    expect(wrapper.text()).toContain("本阶段暂无固定材料");
+    wrapper.unmount();
+  });
+
   it("备忘录在本机完成新建、清单、删除、撤销和回收站操作", async () => {
     const wrapper = await mount(MemoView, "/memos");
     const vm = state(wrapper);
@@ -143,8 +199,8 @@ describe("1.4.3 新增页面", () => {
     await vm.calculate();
     expect(apiMocks.post).toHaveBeenCalledWith("/party-development/calculate", expect.objectContaining({ name: "张三" }));
     expect(vm.result.rule_version).toBe("2026.05");
-    expect(vm.nodeDate(result.nodes[0])).toBe("2026-05-20");
-    expect(vm.nodeDate({ ...result.nodes[0], date: null })).toContain("等待组织研究");
+    expect(vm.nodeDate(result.nodes[0])).toBe("实际：2026-05-20");
+    expect(vm.nodeDate({ ...result.nodes[0], date: null, actual_at: null, reference_at: "2026-11-20", is_reference: true })).toContain("参考计划：2026-11-20");
     expect(vm.nodeDate({ ...result.nodes[0], end_date: "2026-05-25", provisional: true })).toContain("暂算");
     expect(vm.dateKindLabel("deadline")).toBe("法定截止");
     expect(vm.dateKindLabel("unknown")).toBe("unknown");

@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from "vue";
 import { Message } from "@arco-design/web-vue";
 import { api } from "../api";
+import PageHelp from "../components/PageHelp.vue";
 import type { PartyDevelopmentMaterial, PartyDevelopmentProfile, PartyDevelopmentRuleMetadata } from "../types";
 
 const profiles = ref<PartyDevelopmentProfile[]>([]);
@@ -107,7 +108,7 @@ onMounted(load);
 
 <template>
   <div class="page settings-page">
-    <header class="page-header"><div><p class="page-kicker">管理 · 单位工作口径</p><h1 class="page-title">党员发展补充材料</h1><p class="page-description">只维护本单位材料、责任主体和说明；国家规则节点与期限始终锁定。</p></div><a-button type="primary" @click="openProfile()">新建单位模板</a-button></header>
+    <header class="page-header"><div><p class="page-kicker">管理 · 单位工作口径</p><h1 class="page-title">党员发展补充材料</h1><p class="page-description">只维护本单位材料、责任主体和说明；国家规则节点与期限始终锁定。</p></div><a-space><PageHelp title="党员发展补充材料" :tips="['这里只维护本单位补充材料、责任主体和办理说明，不能改写国家规则期限。', '新模板建议先保持停用，逐项复核后再启用；停用不会删除历史记录。', '删除单位模板前应确认没有后续业务继续依赖，国家规则项不受影响。']" help-query="党员发展 单位模板 国家规则" /><a-button type="primary" @click="openProfile()">新建单位模板</a-button></a-space></header>
     <a-alert type="warning" show-icon class="locked-rule"><template #title>国家规则已锁定 · {{ rule?.title || '2026 年 5 月新版细则' }}</template>管理员不能删除、改写或缩短国家规则。此处配置只会追加到计算结果和 Word 材料清单。</a-alert>
     <section class="profile-grid" :aria-busy="loading">
       <article v-for="profile in profiles" :key="profile.id" :class="{ inactive: !profile.active }">

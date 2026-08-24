@@ -24,7 +24,16 @@ case "$PACKAGE_FORMAT" in
     ;;
 esac
 
-# 必须先完成运行时、静态资源、健康端点和 systemd 自检，再启用更新服务。
-# 任一步失败都原样返回给 dpkg/rpm，避免 GUI 在 95% 处只显示笼统异常。
-"$RUNTIME/post-install-selftest.sh" "$EXPECTED_ARCH"
+# 包管理器事务只执行安装必需的快速检查；冻结运行时启动、数据库迁移和
+# 健康检查交给下面的可观察 oneshot 服务，避免麒麟图形安装器在 1% 长时间假死。
+"$RUNTIME/post-install-selftest.sh" "$EXPECTED_ARCH" quick
 "$RUNTIME/post-install-services.sh" "$PACKAGE_FORMAT"
+systemctl daemon-reload >/dev/null 2>&1 || {
+  echo '[PACKAGE_SYSTEMD_RELOAD_FAILED] 无法刷新 PartyOps 安装后验证服务。' >&2
+  exit 2
+}
+systemctl start --no-block partyops-install-verify.service >/dev/null 2>&1 || {
+  echo '[PACKAGE_VERIFY_SERVICE_START_FAILED] 无法启动 PartyOps 安装后验证服务。' >&2
+  exit 2
+}
+printf 'PartyOps 安装事务已完成；运行验证在后台继续，状态：/var/lib/partyops/install-verification.json\n' >&2

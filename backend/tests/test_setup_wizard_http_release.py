@@ -434,3 +434,59 @@ def test_first_run_personal_http_diagnostics_errors_and_admin_retry(
     thread.join(timeout=5)
     assert not thread.is_alive() and results == [0]
     assert attempts == ["admin", "admin"]
+
+
+def test_reconfiguration_returns_same_origin_transaction_before_navigation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "personal.env"
+    config_path.write_text("PARTYOPS_PORT=18775\n", encoding="utf-8")
+    monkeypatch.setattr(setup_wizard, "write_personal_config", lambda *_args: config_path)
+    monkeypatch.setattr(
+        setup_wizard,
+        "launch_personal",
+        lambda _path: "http://127.0.0.1:18775",
+    )
+    monkeypatch.setattr(
+        setup_wizard,
+        "configured_runtime_status",
+        lambda *_args, **_kwargs: True,
+    )
+
+    url, thread, results, _opened = _start_local_tool(
+        monkeypatch,
+        lambda: setup_wizard.run_wizard(
+            True,
+            "personal",
+            reconfiguration=True,
+        ),
+    )
+    page = _request(url)[2]
+    assert "pollRuntimeTransaction" in page
+    assert "redirect:'manual'" in page
+    csrf = _csrf(page)
+    accepted = _request(
+        url,
+        "POST",
+        {
+            "csrf": csrf,
+            "mode": "personal",
+            "port": "18775",
+            "data_dir": str(tmp_path),
+        },
+    )
+    assert accepted[0] == 202, accepted[2]
+    transaction = json.loads(accepted[2])
+    poll_url = urllib.parse.urljoin(url, transaction["poll_url"])
+    for _attempt in range(20):
+        status = _request(poll_url)
+        payload = json.loads(status[2])
+        if payload["status"] == "ready":
+            break
+    else:
+        raise AssertionError("运行身份事务未进入 ready")
+    assert payload["code"] == "RUNTIME_READY"
+    assert payload["redirect_url"] == "http://127.0.0.1:18775"
+    thread.join(timeout=5)
+    assert not thread.is_alive() and results == [0]

@@ -1,0 +1,16 @@
+[Unit]
+Description=PartyOps 安装后可观察运行验证
+After=local-fs.target
+ConditionPathExists=/opt/partyops/post-install-verify.sh
+
+[Service]
+Type=oneshot
+ExecStart=/opt/partyops/post-install-verify.sh
+TimeoutStartSec=240
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/partyops /var/log /run

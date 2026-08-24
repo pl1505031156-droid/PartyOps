@@ -3,7 +3,8 @@ set -eu
 
 RUNTIME=/opt/partyops
 EXPECTED_ARCH="${1:-}"
-EXPECTED_VERSION="1.4.5-rc.1"
+MODE="${2:-full}"
+EXPECTED_VERSION="1.4.5-rc.2"
 LOG=/var/log/partyops-package-selftest.log
 mkdir -p /var/log /var/lib/partyops
 : >"$LOG"
@@ -15,7 +16,7 @@ fail() {
   shift
   # 系统内升级的自检由更新服务子进程执行；失败时保留父更新服务，才能
   # 把包配置失败返回给执行器并完成回滚。人工安装失败仍停止两个服务。
-  if [ "${PARTYOPS_IN_APP_UPDATE:-0}" = "1" ]; then
+  if [ "${PARTYOPS_IN_APP_UPDATE:-0}" = "1" ] || [ "${PARTYOPS_ASYNC_VERIFY:-0}" = "1" ]; then
     systemctl stop partyops.service >/dev/null 2>&1 || true
   else
     systemctl stop partyops.service partyops-updater.service >/dev/null 2>&1 || true
@@ -31,6 +32,10 @@ case "$(uname -m)" in
   x86_64|amd64) ACTUAL_ARCH=amd64 ;;
   aarch64|arm64) ACTUAL_ARCH=arm64 ;;
   *) fail PACKAGE_ARCH_UNSUPPORTED "不支持的处理器架构：$(uname -m)" ;;
+esac
+case "$MODE" in
+  quick|full) ;;
+  *) fail PACKAGE_SCRIPT_ARGUMENT_INVALID "安装后自检模式必须为 quick 或 full" ;;
 esac
 [ -z "$EXPECTED_ARCH" ] || [ "$EXPECTED_ARCH" = "$ACTUAL_ARCH" ] ||
   fail PACKAGE_ARCH_MISMATCH "安装包架构 $EXPECTED_ARCH 与本机 $ACTUAL_ARCH 不一致"
@@ -49,6 +54,20 @@ done
 (command -v bash >/dev/null 2>&1 &&
   bash -n "$RUNTIME/desktop-launcher.sh" "$RUNTIME/start.sh") ||
   fail PACKAGE_DESKTOP_SCRIPT_INVALID "桌面启动脚本缺失或语法检查失败"
+if [ "$MODE" = "quick" ]; then
+  for desktop_entry in \
+    /usr/share/applications/partyops.desktop \
+    /usr/share/applications/partyops-client.desktop \
+    /usr/share/applications/partyops-file.desktop; do
+    [ -r "$desktop_entry" ] ||
+      fail PACKAGE_DESKTOP_ENTRY_MISSING "缺少桌面入口：$desktop_entry"
+    grep -q '^\[Desktop Entry\]$' "$desktop_entry" &&
+      grep -q '^Type=Application$' "$desktop_entry" ||
+      fail PACKAGE_DESKTOP_ENTRY_INVALID "桌面入口格式无效：$desktop_entry"
+  done
+  printf 'PartyOps 安装必需检查通过；完整运行验证已移交后台服务。\n' >&3
+  exit 0
+fi
 runuser -u partyops -- "$RUNTIME/partyops-wizard" --runtime-layout-self-test ||
   fail PACKAGE_RUNTIME_LAYOUT_INVALID \
     "配置向导仍在临时目录解包共享库，可能被国产系统安全中心拦截"
@@ -169,7 +188,8 @@ grep -q '"fts5":true' "$TEMP_ROOT/health.json" ||
 systemctl daemon-reload >/dev/null 2>&1 || fail PACKAGE_SYSTEMD_RELOAD_FAILED "systemd 配置刷新失败"
 SYSTEMD_VERIFY_LOG="$TEMP_ROOT/systemd-verify.log"
 if ! systemd-analyze verify /lib/systemd/system/partyops.service \
-  /lib/systemd/system/partyops-updater.service >"$SYSTEMD_VERIFY_LOG" 2>&1; then
+  /lib/systemd/system/partyops-updater.service \
+  /lib/systemd/system/partyops-install-verify.service >"$SYSTEMD_VERIFY_LOG" 2>&1; then
   cat "$SYSTEMD_VERIFY_LOG" >&2 2>/dev/null || true
   fail PACKAGE_SYSTEMD_INVALID \
     "systemd 服务定义与当前麒麟/UOS版本不兼容"

@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FORMAT="${1:-}"
 ARCH="${PARTYOPS_BUILD_ARCH:-}"
-DEB_VERSION="1.4.5~rc.1"
+DEB_VERSION="1.4.5~rc.2"
 RPM_VERSION="1.4.5"
-RPM_RELEASE="0.rc.1.1"
+RPM_RELEASE="0.rc.2.1"
 ARTIFACTS="$ROOT/artifacts"
 
 if [[ -z "${PYTHON_BIN:-}" && -f "$ROOT/.partyops-build.env" ]]; then
@@ -22,7 +22,7 @@ if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
 fi
 
 "$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py" \
-  --root "$ROOT" --expected "1.4.5-rc.1"
+  --root "$ROOT" --expected "1.4.5-rc.2"
 
 [[ "$FORMAT" == "deb" || "$FORMAT" == "rpm" ]] || {
   echo "用法：build-native.sh deb|rpm（通过 PARTYOPS_BUILD_ARCH 指定 amd64/arm64）" >&2
@@ -176,6 +176,8 @@ done
 cp "$ROOT/packaging/uos/partyops.svg" "$PKG/usr/share/icons/hicolor/scalable/apps/partyops.svg"
 cp "$ROOT/packaging/uos/partyops.service" "$ROOT/packaging/uos/partyops-updater.service" \
   "$PKG/lib/systemd/system/"
+cp "$ROOT/packaging/linux/partyops-install-verify.service" \
+  "$PKG/lib/systemd/system/"
 cp "$ROOT/packaging/uos/cn.partyops.update.policy" "$PKG/usr/share/polkit-1/actions/"
 # 源码可能位于不保存 POSIX 权限的 WSL DrvFS；复制后显式收敛静态配置，
 # 避免 systemd 单元、桌面入口和 polkit 策略被误标为可执行文件。
@@ -186,14 +188,17 @@ chmod 0644 \
   "$PKG/usr/share/icons/hicolor/scalable/apps/partyops.svg" \
   "$PKG/lib/systemd/system/partyops.service" \
   "$PKG/lib/systemd/system/partyops-updater.service" \
+  "$PKG/lib/systemd/system/partyops-install-verify.service" \
   "$PKG/usr/share/polkit-1/actions/cn.partyops.update.policy"
 cp "$ROOT/packaging/linux/post-install-selftest.sh" \
   "$ROOT/packaging/linux/post-install-services.sh" \
+  "$ROOT/packaging/linux/post-install-verify.sh" \
   "$ROOT/packaging/linux/post-install-transaction.sh" \
   "$PKG/opt/partyops/"
 chmod 0755 \
   "$PKG/opt/partyops/post-install-selftest.sh" \
   "$PKG/opt/partyops/post-install-services.sh" \
+  "$PKG/opt/partyops/post-install-verify.sh" \
   "$PKG/opt/partyops/post-install-transaction.sh"
 while IFS= read -r -d '' executable; do
   case "$executable" in
@@ -208,6 +213,7 @@ while IFS= read -r -d '' executable; do
     "$PKG/opt/partyops/llama-server"|\
     "$PKG/opt/partyops/post-install-selftest.sh"|\
     "$PKG/opt/partyops/post-install-services.sh"|\
+    "$PKG/opt/partyops/post-install-verify.sh"|\
     "$PKG/opt/partyops/post-install-transaction.sh") ;;
     *)
       echo "原生包包含未授权的可执行文件：$executable" >&2
@@ -252,7 +258,7 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 echo "PartyOps 业务数据保留在 /var/lib/partyops，卸载不会自动删除。" >&2
 EOF
   chmod 0755 "$PKG/DEBIAN/preinst" "$PKG/DEBIAN/postinst" "$PKG/DEBIAN/prerm" "$PKG/DEBIAN/postrm"
-  OUTPUT="$ARTIFACTS/PartyOps_1.4.5-rc.1_linux_${ARCH}.deb"
+  OUTPUT="$ARTIFACTS/PartyOps_1.4.5-rc.2_linux_${ARCH}.deb"
   if dpkg-deb --help 2>&1 | grep -q -- '--root-owner-group'; then
     dpkg-deb --root-owner-group --build "$PKG" "$OUTPUT"
   else
@@ -322,6 +328,7 @@ fi
 /usr/share/polkit-1/actions/cn.partyops.update.policy
 /lib/systemd/system/partyops.service
 /lib/systemd/system/partyops-updater.service
+/lib/systemd/system/partyops-install-verify.service
 %if 0%{?with_rollback_cache}
 %dir %attr(0700,root,root) /var/cache/partyops
 %dir %attr(0700,root,root) /var/cache/partyops/update-transactions
@@ -334,7 +341,7 @@ EOF
   # 降级到该包；后续成功升级会用刚验证过的正式制品原子更新此缓存。
   # 回滚种子与稳定版保持同一 Version，只降低 RPM Release；这样首次安装
   # 失败可以恢复二进制，同时不会被运行时版本门禁误判成 rc 旧版本。
-  SEED_RELEASE="0.rc.1.0"
+  SEED_RELEASE="0.rc.2.0"
   rpmbuild \
     --target "$RPM_ARCH" \
     --define "_topdir $BUILD/rpmbuild" \
@@ -360,7 +367,7 @@ EOF
     --define "partyops_release $RPM_RELEASE" \
     --define "with_rollback_cache 1" \
     -bb "$BUILD/rpmbuild/SPECS/partyops.spec"
-  OUTPUT="$ARTIFACTS/PartyOps-1.4.5-0.rc.1.1.${RPM_ARCH}.rpm"
+  OUTPUT="$ARTIFACTS/PartyOps-1.4.5-0.rc.2.1.${RPM_ARCH}.rpm"
   cp "$BUILD/rpmbuild/RPMS/$RPM_ARCH/partyops-$RPM_VERSION-$RPM_RELEASE.$RPM_ARCH.rpm" "$OUTPUT"
 fi
 if [[ "$FORMAT" == deb ]]; then

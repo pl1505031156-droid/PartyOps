@@ -21,7 +21,7 @@ from ..config import get_settings
 from ..content_security import may_render_inline
 from ..database import db_runtime, get_session
 from ..device_versions import request_device
-from ..enums import TransferStatus
+from ..enums import TransferStatus, UserRole
 from ..models import (
     BackgroundJob,
     Device,
@@ -44,6 +44,7 @@ from ..problems import ProblemException
 from ..platform_info import detect_platform_info
 from ..schemas import (
     BackgroundJobOut,
+    FileOpenGrantCompletion,
     LocalShareActionOut,
     RuntimeContextOut,
     UserOut,
@@ -985,15 +986,16 @@ def create_local_open_link(
     resolve_workspace_path(root, item.relative_path)
     token = secrets.token_urlsafe(32)
     expires_at = utcnow() + timedelta(minutes=5)
-    db.add(
-        FileOpenGrant(
-            token_hash=hash_token(token),
-            file_id=item.id,
-            created_by=user.id,
-            open_method="local_helper",
-            expires_at=expires_at,
-        )
+    grant = FileOpenGrant(
+        token_hash=hash_token(token),
+        file_id=item.id,
+        created_by=user.id,
+        target_device_id=device_id,
+        open_method="local_helper",
+        status="created",
+        expires_at=expires_at,
     )
+    db.add(grant)
     write_audit(
         db,
         user,
@@ -1005,11 +1007,47 @@ def create_local_open_link(
     )
     db.commit()
     return {
+        "grant_id": grant.id,
         "open_uri": f"partyops-file://open/{token}",
         "expires_at": expires_at.isoformat(),
         "expires_in_seconds": 300,
         "open_method": "local_helper",
+        "status": "created",
+        "status_url": f"/api/v1/files/open-grants/{grant.id}",
     }
+
+
+def _open_grant_status(grant: FileOpenGrant) -> dict[str, object]:
+    status = grant.status or "created"
+    expires_at = grant.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if status == "created" and expires_at <= utcnow():
+        status = "expired"
+    return {
+        "grant_id": grant.id,
+        "status": status,
+        "result_code": grant.result_code,
+        "result_detail": grant.result_detail,
+        "expires_at": expires_at.isoformat(),
+        "redeemed_at": grant.redeemed_at.isoformat() if grant.redeemed_at else None,
+        "opened_at": grant.opened_at.isoformat() if grant.opened_at else None,
+        "completed_at": grant.completed_at.isoformat() if grant.completed_at else None,
+    }
+
+
+@router.get("/files/open-grants/{grant_id}", response_model=dict)
+def get_local_open_status(
+    grant_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    """让发起页面准确区分等待助手、已兑换、已打开、失败和过期。"""
+
+    grant = db.get(FileOpenGrant, grant_id)
+    if not grant or (grant.created_by != user.id and user.role != UserRole.ADMIN):
+        raise ProblemException(404, "OPEN_GRANT_NOT_FOUND", "文件打开任务不存在", "请重新发起打开。")
+    return _open_grant_status(grant)
 
 
 @router.get("/workspace/open-tokens/{token}", response_class=PlainTextResponse)
@@ -1053,7 +1091,7 @@ def resolve_local_open_token(
             FileOpenGrant.revoked_at.is_(None),
             FileOpenGrant.expires_at > consumed_at,
         )
-        .values(used_at=consumed_at)
+        .values(used_at=consumed_at, redeemed_at=consumed_at, status="redeemed")
         .execution_options(synchronize_session=False)
     )
     if consumed.rowcount != 1:
@@ -1066,7 +1104,40 @@ def resolve_local_open_token(
             raise ProblemException(410, "OPEN_GRANT_ALREADY_USED", "文件打开授权已使用", "一次性打开链接不能重复使用，请重新点击打开。")
         raise ProblemException(410, "OPEN_GRANT_EXPIRED", "文件打开授权已过期", "请回到原始文件中心重新点击打开。")
     db.commit()
-    return PlainTextResponse(str(path), media_type="text/plain; charset=utf-8")
+    response = PlainTextResponse(str(path), media_type="text/plain; charset=utf-8")
+    response.headers["X-PartyOps-Open-Grant-Id"] = grant.id
+    return response
+
+
+@router.post("/workspace/open-tokens/{token}/complete", response_model=dict)
+def complete_local_open_token(
+    token: str,
+    payload: FileOpenGrantCompletion,
+    request: Request,
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    """本机助手使用原一次性令牌回执打开结果，不接收文件信息。"""
+
+    if not is_host_local_request(request):
+        raise ProblemException(403, "LOCAL_OPEN_HOST_ONLY", "拒绝远程回执", "文件打开结果只能由主机本机助手提交。")
+    if len(token) > 128 or not token.replace("-", "").replace("_", "").isalnum():
+        raise ProblemException(400, "OPEN_TOKEN_INVALID", "打开链接无效", "请重新发起打开。")
+    grant = db.scalar(select(FileOpenGrant).where(FileOpenGrant.token_hash == hash_token(token)))
+    if not grant:
+        raise ProblemException(404, "OPEN_GRANT_INVALID", "文件打开任务不存在", "请重新发起打开。")
+    if grant.used_at is None:
+        raise ProblemException(409, "OPEN_GRANT_NOT_REDEEMED", "文件尚未兑换", "本机助手必须先取得文件路径。")
+    if grant.completed_at is not None:
+        return _open_grant_status(grant)
+    completed_at = utcnow()
+    successful = payload.result_code == "OPENED"
+    grant.status = "completed" if successful else "failed"
+    grant.opened_at = completed_at if successful else None
+    grant.completed_at = completed_at
+    grant.result_code = payload.result_code
+    grant.result_detail = payload.detail.strip()
+    db.commit()
+    return _open_grant_status(grant)
 
 
 @router.get("/workspace/files/{file_id}/download")

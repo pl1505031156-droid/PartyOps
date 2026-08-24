@@ -18,7 +18,7 @@ cp "$ROOT/packaging/linux/post-install-services.sh" "$RUNTIME/"
 
 cat >"$RUNTIME/post-install-selftest.sh" <<'EOF'
 #!/usr/bin/env sh
-echo "selftest:$1" >>"$PARTYOPS_TEST_CALLS"
+echo "selftest:$1:$2" >>"$PARTYOPS_TEST_CALLS"
 [ "${FAIL_SELFTEST:-0}" != "1" ] || {
   echo '[PACKAGE_RUNTIME_SELFTEST_FAILED] 模拟运行时自检失败' >&2
   exit 2
@@ -45,9 +45,10 @@ export PATH="$BIN:$PATH"
 : >"$PARTYOPS_TEST_CALLS"
 touch "$TEST_ROOT/run/partyops/restart-after-upgrade"
 "$RUNTIME/post-install-transaction.sh" amd64 deb >/dev/null 2>&1
-grep -qx 'selftest:amd64' "$PARTYOPS_TEST_CALLS"
+grep -qx 'selftest:amd64:quick' "$PARTYOPS_TEST_CALLS"
 grep -q 'systemctl:enable partyops-updater.service' "$PARTYOPS_TEST_CALLS"
-grep -q 'systemctl:restart partyops.service' "$PARTYOPS_TEST_CALLS"
+grep -q 'systemctl:restart --no-block partyops.service' "$PARTYOPS_TEST_CALLS"
+grep -q 'systemctl:start --no-block partyops-install-verify.service' "$PARTYOPS_TEST_CALLS"
 [[ ! -e "$TEST_ROOT/run/partyops/restart-after-upgrade" ]]
 
 : >"$PARTYOPS_TEST_CALLS"
@@ -85,4 +86,4 @@ grep -q 'PACKAGE_HOST_RESTART_FAILED' "$TEST_ROOT/restart.out"
 grep -q '重新安装当前 RPM' "$TEST_ROOT/restart.out"
 [[ -e "$TEST_ROOT/run/partyops/restart-after-upgrade" ]]
 
-printf 'Linux 安装后事务回归通过：自检、服务启用、升级恢复与失败诊断均正常。\n'
+printf 'Linux 安装后事务回归通过：30 秒内快速检查、服务启用、后台验证与失败诊断均正常。\n'

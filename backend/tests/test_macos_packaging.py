@@ -45,6 +45,8 @@ def test_macos_python_entrypoints_parse_and_use_native_user_paths() -> None:
     assert "app_version" in launcher and "payload.get(\"mode\")" in launcher
     assert "_consume_reconfigure_request" in launcher
     assert "partyops-client://reconfigure" in launcher
+    assert "partyops-client://official-format/" in launcher
+    assert 'str(_runtime_root() / "partyops-wizard")' in launcher
     assert "os.execve" in agent
     assert 'not key.startswith("PARTYOPS_")' in agent
     assert ".partyops-personal-process.json" in agent
@@ -79,7 +81,7 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "MACOS_ARCH_MISMATCH" in validation
     assert 'bundle_identifier="cn.partyops.desktop"' in spec
     assert '"CFBundleExecutable": "partyops-desktop"' in spec
-    assert '"CFBundleVersion": "1.4.5.1"' in spec
+    assert '"CFBundleVersion": "1.4.5.2"' in spec
     assert '"LSMinimumSystemVersion": "11.0"' in spec
     assert "target_arch=target_arch" in spec
     assert 'name="partyops-updater"' in spec

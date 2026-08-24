@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
-VERSION = "1.4.5-rc.1"
+VERSION = "1.4.5-rc.2"
 TARGETS = (
     ("windows", "amd64"),
     ("windows7", "amd64"),
@@ -29,14 +29,13 @@ TARGETS = (
     ("macos", "arm64"),
 )
 RELEASE_NOTES = [
-    "新增“三会一课”独立工作台、年度台账、四类模板、出席记录和决议落实闭环",
-    "新增党委（党组）理论学习中心组年度计划、季度专题、学习场次、成果转化和专属台账",
-    "发展党员只填申请书日期即可生成参考计划，并严格区分实际日期、法定边界和内部参考日期",
-    "今日工作台新增党务季度缺口、待归档会议、逾期决议和发展党员关键提醒",
-    "设置中新增重新启动配置向导，可在个人、主机和协同机角色之间重新选择并保留业务数据",
-    "修复官网社群与赞助二维码无法移入操作的问题，支持点击固定、键盘切换和触屏底部面板",
-    "加强党务台账的越权防护、公式注入防护、导出审计、敏感响应缓存和 AI 数据隔离",
-    "修复 macOS 原生入口在继承异常冻结环境时提前退出，并强化启动前诊断和最低系统版本门禁",
+    "新增公文规范排版中心：文件仅在本机离线诊断、排版、复检和导出，不进入数据库或网络",
+    "协同地址改为可回滚事务，严格区分回环浏览、监听、自动探测和对外公布地址",
+    "修复原始文件中心 PDF 预览、WPS 降级和一次性本机打开授权，错误原因分别显示",
+    "发展党员快速测算生成全部后续参考节点，实际日期、法定边界和人工调整继续分开保存",
+    "修复麒麟安装器卡住、Windows CHILD_EXITED、macOS 启动前无日志和安全卸载回退",
+    "官方更新新增 DNS、TLS、代理、超时、HTTP、清单、签名、哈希和平台诊断",
+    "补齐新增业务页面的本页帮助，并允许具备权限的协同用户共同新建和办理业务",
 ]
 
 
@@ -137,7 +136,7 @@ def generate_catalog(
         "format_version": 3,
         "release": {
             "version": VERSION,
-            "title": "PartyOps 多系统适配与专业级应用内升级",
+            "title": "PartyOps 公文排版与协同可靠性升级",
             "release_notes": RELEASE_NOTES,
             "published_at": published_at,
             "platform_packages": platform_packages,

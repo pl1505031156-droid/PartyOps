@@ -1,10 +1,10 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.5-rc.1"
+#define MyAppVersion "1.4.5-rc.2"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
 #ifndef PartyOpsOutputBase
-  #define PartyOpsOutputBase "PartyOps_1.4.5-rc.1_windows_amd64"
+  #define PartyOpsOutputBase "PartyOps_1.4.5-rc.2_windows_amd64"
 #endif
 
 [Setup]
@@ -12,7 +12,7 @@ AppId={{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
-VersionInfoVersion=1.4.5.1
+VersionInfoVersion=1.4.5.2
 AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://www.partyops.cn/
 AppSupportURL=https://www.partyops.cn/guide
@@ -54,7 +54,7 @@ WizardSmallImageFile={#BuildRoot}\partyops-1024.png
 Name: "chinesesimp"; MessagesFile: "{#SourcePath}\languages\ChineseSimplified.isl"
 
 [Messages]
-BeveledLabel=PartyOps 1.4.5-rc.1 · 未签名候选版
+BeveledLabel=PartyOps 1.4.5-rc.2 · 未签名候选版
 #ifdef PartyOpsLegacy
 WinVersionTooLowError=此 Windows 7 专用安装包要求 Windows 7 SP1 或更高版本。请先安装 SP1 后重试。
 #else
@@ -613,7 +613,7 @@ begin
   InAppServiceUpdate := CompareText(
     ExpandConstant('{param:INAPPUPDATE|0}'), '1'
   ) = 0;
-  WizardForm.Caption := '党建智办 PartyOps 1.4.5-rc.1 安装向导';
+  WizardForm.Caption := '党建智办 PartyOps 1.4.5-rc.2 安装向导';
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     '选择 PartyOps 业务数据目录',
@@ -1225,12 +1225,12 @@ begin
   begin
     if not RunDataCleanup('all', True) then
     begin
+      DeleteAllDataOnUninstall := False;
       MsgBox(
-        '[UNINSTALL_DATA_PREFLIGHT_FAILED] 本机 PartyOps 数据目录未通过完整安全检查。为防止误删，卸载尚未开始；可改选“仅删除程序”保留数据。',
-        mbError, MB_OK
+        '[UNINSTALL_DATA_PREFLIGHT_FAILED] 本机 PartyOps 数据目录未通过完整安全检查。' +
+        '为防止误删，本次已自动改为“仅删除程序并保留数据”；程序卸载将继续，业务数据不会被删除。',
+        mbInformation, MB_OK
       );
-      Result := False;
-      exit;
     end;
   end;
   Result := True;

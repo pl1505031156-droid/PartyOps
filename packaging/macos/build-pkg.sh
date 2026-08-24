@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-VERSION='1.4.5-rc.1'
-PACKAGE_VERSION='1.4.5.1'
+VERSION='1.4.5-rc.2'
+PACKAGE_VERSION='1.4.5.2'
 MODE='release'
 TARGET_ARCH=''
 while (($#)); do
@@ -526,7 +526,7 @@ Path(path).write_text(
         {
             "format_version": 1,
             "product": "PartyOps",
-            "version": "1.4.5-rc.1",
+            "version": "1.4.5-rc.2",
             "architecture": architecture,
             "source_commit": source_commit,
             "workflow_commit": workflow_commit,

@@ -1819,9 +1819,16 @@ class FileOpenGrant(Base):
         ForeignKey("workspace_files.id", ondelete="CASCADE"), index=True
     )
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    target_device_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
     open_method: Mapped[str] = mapped_column(String(24), default="local_helper")
+    status: Mapped[str] = mapped_column(String(24), default="created", index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    redeemed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    result_code: Mapped[str] = mapped_column(String(64), default="")
+    result_detail: Mapped[str] = mapped_column(Text, default="")
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

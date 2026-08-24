@@ -32,6 +32,7 @@ from app.windows_host_status import (
     service_log_path,
     tail_service_log,
     write_service_status,
+    classify_runtime_failure,
 )
 
 
@@ -69,14 +70,7 @@ def _safe_append_service_log(data_dir: Path, message: str) -> None:
 
 
 def _classify_child_failure(log_tail: str) -> str:
-    lowered = log_tail.lower()
-    if any(marker in lowered for marker in ("address already in use", "winerror 10048", "端口", "占用")):
-        return PORT_IN_USE
-    if any(marker in lowered for marker in ("permission denied", "access is denied", "拒绝访问", "权限")):
-        return DATA_DIR_DENIED
-    if any(marker in lowered for marker in ("ssl", "tls", "certificate", "证书", "内部 ca")):
-        return TLS_INIT_FAILED
-    return CHILD_EXITED
+    return classify_runtime_failure(log_tail)
 
 
 def _safe_write_service_status(data_dir: Path, **values) -> None:
@@ -265,7 +259,7 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
                     code = existing_code
                     detail = str((existing or {}).get("detail", "")) or detail
                 else:
-                    code = _classify_child_failure(detail)
+                    code = classify_runtime_failure(detail, exit_code=exit_code)
                 _safe_write_service_status(
                     data_dir,
                     stage="child_exited",
@@ -353,7 +347,10 @@ class PartyOpsHostService(win32serviceutil.ServiceFramework):
                 self.health_timeout_pid = None
             except OSError as exc:
                 self._close_output_stream()
-                code = DATA_DIR_DENIED if isinstance(exc, PermissionError) else CHILD_EXITED
+                code = classify_runtime_failure(
+                    str(exc),
+                    winerror=getattr(exc, "winerror", None),
+                )
                 _safe_write_service_status(
                     data_dir,
                     stage="child_exited",

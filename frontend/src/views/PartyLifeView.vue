@@ -5,6 +5,7 @@ import { Message } from "@arco-design/web-vue";
 import { api, saveBlobDownload } from "../api";
 import { formatServerTime, localInputToUtc, localNowInput } from "../utils/datetime";
 import type { User } from "../types";
+import PageHelp from "../components/PageHelp.vue";
 
 interface Overview {
   year: number;
@@ -233,7 +234,7 @@ onMounted(load);
   <div class="page party-life-page">
     <header class="page-header">
       <div><p class="page-kicker">党务 · 组织生活闭环</p><h1 class="page-title">“三会一课”统一入口与年度台账</h1><p class="page-description">从计划、准备、召开和记录，到决议落实与归档，一次录入贯穿全流程；频次和人数只做风险提示，不替代党组织判断。</p></div>
-      <a-space><a-button @click="exportLedger('docx')"><template #icon><IconDownload /></template>Word 台账</a-button><a-button @click="exportLedger('xlsx')"><template #icon><IconDownload /></template>Excel 台账</a-button><a-button type="primary" @click="openCreate"><template #icon><IconPlus /></template>新建会议</a-button></a-space>
+      <a-space><PageHelp title="三会一课" :tips="['计划、出席、材料、决议落实和归档使用同一会议记录。', '有对应权限的协同用户可新建会议、补录人员和完成落实项。', '频次和材料缺口是辅助提示，最终以党组织审核和实际材料为准。']" help-query="三会一课 协同 台账" /><a-button @click="exportLedger('docx')"><template #icon><IconDownload /></template>Word 台账</a-button><a-button @click="exportLedger('xlsx')"><template #icon><IconDownload /></template>Excel 台账</a-button><a-button type="primary" @click="openCreate"><template #icon><IconPlus /></template>新建会议</a-button></a-space>
     </header>
 
     <section class="filters"><a-input-number v-model="year" :min="2000" :max="2200" /><a-input v-model="organization" allow-clear placeholder="按党组织筛选" @press-enter="load" /><a-button :loading="loading" @click="load"><template #icon><IconRefresh /></template>刷新</a-button></section>

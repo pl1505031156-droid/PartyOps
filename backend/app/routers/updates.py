@@ -16,6 +16,8 @@ import sys
 import unicodedata
 import zipfile
 import secrets
+import socket
+import ssl
 import threading
 import urllib.error
 import urllib.parse
@@ -109,6 +111,10 @@ V3_PLATFORM_ARTIFACTS = {
         "arm64": ".aarch64.rpm",
     },
 }
+
+
+class _DuplicateJSONFieldError(ValueError):
+    """签名 JSON 出现重复字段，避免不同解析器产生歧义。"""
 V4_PLATFORM_ARTIFACTS = {
     **V3_PLATFORM_ARTIFACTS,
     "macos": {
@@ -169,7 +175,7 @@ def _reject_duplicate_json(pairs: list[tuple[str, object]]) -> dict[str, object]
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"JSON 包含重复字段：{key}")
+            raise _DuplicateJSONFieldError(f"JSON 包含重复字段：{key}")
         result[key] = value
     return result
 
@@ -239,6 +245,56 @@ def _open_partial_download(path: Path, *, offset: int):
     return os.fdopen(descriptor, "ab" if offset else "wb")
 
 
+def _catalog_network_problem(exc: BaseException) -> ProblemException:
+    """把官方更新故障分类为可执行的脱敏诊断，不暴露代理或本机路径。"""
+
+    if isinstance(exc, urllib.error.HTTPError):
+        return ProblemException(
+            502,
+            "UPDATE_CATALOG_HTTP_ERROR",
+            f"官方更新服务返回 HTTP {exc.code}",
+            "当前版本不会受到影响；请稍后重试，并把该状态码提供给技术支持。",
+        )
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    reason_text = str(reason).lower()
+    if isinstance(reason, socket.gaierror):
+        return ProblemException(
+            502,
+            "UPDATE_CATALOG_DNS_FAILED",
+            "无法解析官方更新域名",
+            "请检查 DNS、网关或单位网络策略；当前版本不会受到影响。",
+        )
+    if isinstance(reason, (ssl.SSLError, ssl.CertificateError)) or any(
+        marker in reason_text for marker in ("certificate verify", "ssl", "tls")
+    ):
+        return ProblemException(
+            502,
+            "UPDATE_CATALOG_TLS_FAILED",
+            "官方更新 TLS 校验失败",
+            "请检查系统时间、根证书和单位 HTTPS 检查策略；系统不会绕过证书校验。",
+        )
+    if isinstance(reason, (TimeoutError, socket.timeout)) or "timed out" in reason_text:
+        return ProblemException(
+            504,
+            "UPDATE_CATALOG_TIMEOUT",
+            "读取官方更新信息超时",
+            "请检查网络稳定性后重试；当前版本不会受到影响。",
+        )
+    if "proxy" in reason_text or "tunnel" in reason_text:
+        return ProblemException(
+            502,
+            "UPDATE_CATALOG_PROXY_FAILED",
+            "单位代理未能连接官方更新服务",
+            "请核对系统代理和单位网络放行策略；诊断不会显示代理凭据。",
+        )
+    return ProblemException(
+        502,
+        "UPDATE_CATALOG_NETWORK_FAILED",
+        "官方更新网络连接失败",
+        "请检查网络后重试；当前版本不会受到影响。",
+    )
+
+
 def fetch_online_update_catalog() -> dict[str, object]:
     """读取并验证官网更新目录；目录签名与包内签名是两道独立门禁。"""
 
@@ -255,19 +311,22 @@ def fetch_online_update_catalog() -> dict[str, object]:
         catalog = json.loads(
             raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_json
         )
-    except (
-        OSError,
-        ValueError,
-        UnicodeDecodeError,
-        json.JSONDecodeError,
-        urllib.error.URLError,
-    ) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, _DuplicateJSONFieldError) as exc:
         raise ProblemException(
             502,
-            "UPDATE_CATALOG_UNAVAILABLE",
-            "暂时无法读取官方更新信息",
-            "请检查网络后重试；当前版本不会受到影响。",
+            "UPDATE_CATALOG_FORMAT_INVALID",
+            "官方更新清单不是有效 JSON",
+            "官网可能错误返回了网页内容；系统已拒绝使用，当前版本不会受到影响。",
         ) from exc
+    except ValueError as exc:
+        raise ProblemException(
+            502,
+            "UPDATE_CATALOG_RESPONSE_INVALID",
+            "官方更新响应格式异常",
+            "响应状态、压缩方式或字段编码不符合更新协议，系统已拒绝使用。",
+        ) from exc
+    except (OSError, urllib.error.URLError) as exc:
+        raise _catalog_network_problem(exc) from exc
     catalog_format_version = (
         catalog.get("format_version") if isinstance(catalog, dict) else None
     )

@@ -687,7 +687,7 @@ wheels = [
 
 [[package]]
 name = "partyops"
-version = "1.4.5rc1"
+version = "1.4.5rc2"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },

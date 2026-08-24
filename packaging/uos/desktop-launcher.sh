@@ -191,7 +191,7 @@ read_local_tool_url() {
   local marker="$1" url=""
   [[ -r "$marker" ]] || return 1
   IFS= read -r url <"$marker" || true
-  [[ "$url" =~ ^http://127\.0\.0\.1:[0-9]{1,5}/?$ ]] || return 1
+  [[ "$url" =~ ^http://127\.0\.0\.1:[0-9]{1,5}/?(\?t=[0-9a-fA-F-]{36})?$ ]] || return 1
   printf '%s' "$url"
 }
 
@@ -221,7 +221,7 @@ open_browser_url() {
 
 open_local_tool_url() {
   local url="$1"
-  [[ "$url" =~ ^http://127\.0\.0\.1:[0-9]{1,5}/?$ ]] || return 1
+  [[ "$url" =~ ^http://127\.0\.0\.1:[0-9]{1,5}/?(\?t=[0-9a-fA-F-]{36})?$ ]] || return 1
   open_browser_url "$url"
 }
 
@@ -303,6 +303,9 @@ launch_browser_tool() {
       case "$argument" in
         partyops-client://reconfigure|partyops-client://reconfigure/)
           marker_name="wizard.url"
+          ;;
+        partyops-client://official-format/*)
+          marker_name="official-format.url"
           ;;
       esac
     done
