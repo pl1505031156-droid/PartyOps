@@ -289,6 +289,12 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "MACOS_OPENSSL_LEGACY_PROVIDER_REFERENCED" in build
     assert "MACOS_OPENSSL_LEGACY_PROVIDER_REMAINED" in build
     assert "/bin/rm -f \"$LEGACY_OPENSSL_PROVIDER\"" in build
+    assert "OPENSSL_VERSION='3.5.7'" in build
+    assert "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8" in build
+    assert "OPENSSL_STATIC=1 OPENSSL_DIR=\"$OPENSSL_PREFIX\"" in build
+    assert "--no-binary-package cryptography" in build
+    assert "MACOS_CRYPTOGRAPHY_OPENSSL_MISMATCH" in build
+    assert "MACOS_CRYPTOGRAPHY_DYNAMIC_OPENSSL" in build
     assert "gh release" not in workflow
     action_lines = [
         line.strip() for line in workflow.splitlines() if line.strip().startswith("uses:")

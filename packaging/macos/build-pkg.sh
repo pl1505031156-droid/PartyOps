@@ -56,7 +56,7 @@ OUTPUT_DIR="$ROOT/artifacts/release-$VERSION-final"
 OCR_RUNTIME="${PARTYOPS_MACOS_OCR_RUNTIME:-}"
 LLAMA_RUNTIME="${PARTYOPS_MACOS_LLAMA_RUNTIME:-}"
 for command in python3.11 uv node corepack sips iconutil pkgbuild pkgutil spctl xcrun \
-  curl ditto gzip tar shasum file otool codesign; do
+  curl ditto gzip tar shasum file otool codesign make perl; do
   if ! command -v "$command" >/dev/null 2>&1; then
     printf '[MACOS_BUILD_TOOL_MISSING] 缺少构建工具：%s\n' "$command" >&2
     exit 2
@@ -112,7 +112,59 @@ trap cleanup EXIT
 
 VENV="$BUILD_ROOT/venv"
 python3.11 -m venv "$VENV"
-UV_PROJECT_ENVIRONMENT="$VENV" uv sync --project "$ROOT/backend" --frozen --no-dev
+
+# GitHub 的 Intel 原生 Runner 同时存在 Homebrew OpenSSL 与 setup-python
+# 自带 OpenSSL。若让 cryptography 从源码自动探测，编译时可能使用前者、
+# PyInstaller 却收集后者，最终在用户双击启动时因 EVP_DigestSqueeze 等符号
+# 不一致而退出。Intel 构建固定使用经哈希验证、macOS 11 基线的 OpenSSL
+# 3.5 LTS 静态闭包；这样 cryptography 不再依赖 Runner 上任意动态 OpenSSL。
+if [[ "$TARGET_ARCH" == 'x86_64' ]]; then
+  OPENSSL_VERSION='3.5.7'
+  OPENSSL_SOURCE_NAME="openssl-$OPENSSL_VERSION.tar.gz"
+  OPENSSL_SOURCE_URL="https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/$OPENSSL_SOURCE_NAME"
+  OPENSSL_SOURCE_SHA256='a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8'
+  OPENSSL_SOURCE_DIR="$BUILD_ROOT/openssl-source"
+  OPENSSL_SOURCE="$OPENSSL_SOURCE_DIR/$OPENSSL_SOURCE_NAME"
+  OPENSSL_PREFIX="$BUILD_ROOT/openssl-static"
+  /bin/mkdir -p "$OPENSSL_SOURCE_DIR"
+  curl --fail --location --silent --show-error --retry 1 \
+    "$OPENSSL_SOURCE_URL" --output "$OPENSSL_SOURCE.download"
+  OPENSSL_ACTUAL_SHA256="$(shasum -a 256 "$OPENSSL_SOURCE.download" | awk '{print $1}')"
+  if [[ "$OPENSSL_ACTUAL_SHA256" != "$OPENSSL_SOURCE_SHA256" ]]; then
+    printf '[MACOS_OPENSSL_SOURCE_HASH_MISMATCH] 期望 %s，实际 %s。\n' \
+      "$OPENSSL_SOURCE_SHA256" "$OPENSSL_ACTUAL_SHA256" >&2
+    exit 2
+  fi
+  /bin/mv "$OPENSSL_SOURCE.download" "$OPENSSL_SOURCE"
+  gzip -dc "$OPENSSL_SOURCE" | python3.11 \
+    "$ROOT/scripts/validate-portable-tar.py" \
+    --expected-root "openssl-$OPENSSL_VERSION" \
+    --max-members 100000 --max-bytes 1073741824 --allow-implicit-root
+  /bin/mkdir -p "$OPENSSL_SOURCE_DIR/unpacked"
+  tar -xzf "$OPENSSL_SOURCE" -C "$OPENSSL_SOURCE_DIR/unpacked"
+  (
+    cd "$OPENSSL_SOURCE_DIR/unpacked/openssl-$OPENSSL_VERSION"
+    ./Configure darwin64-x86_64-cc no-shared no-tests \
+      -mmacosx-version-min=11.0 \
+      --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
+    make -j"${PARTYOPS_BUILD_JOBS:-2}"
+    make install_sw
+  )
+  OPENSSL_STATIC=1 OPENSSL_DIR="$OPENSSL_PREFIX" \
+    UV_PROJECT_ENVIRONMENT="$VENV" uv sync --project "$ROOT/backend" \
+      --frozen --no-dev --no-cache --no-binary-package cryptography
+  CRYPTOGRAPHY_OPENSSL_VERSION="$(
+    "$VENV/bin/python" -c \
+      'from cryptography.hazmat.backends.openssl.backend import backend; print(backend.openssl_version_text())'
+  )"
+  if [[ "$CRYPTOGRAPHY_OPENSSL_VERSION" != "OpenSSL $OPENSSL_VERSION "* ]]; then
+    printf '[MACOS_CRYPTOGRAPHY_OPENSSL_MISMATCH] 期望 OpenSSL %s，实际 %s。\n' \
+      "$OPENSSL_VERSION" "$CRYPTOGRAPHY_OPENSSL_VERSION" >&2
+    exit 2
+  fi
+else
+  UV_PROJECT_ENVIRONMENT="$VENV" uv sync --project "$ROOT/backend" --frozen --no-dev
+fi
 # 主线锁文件中的 numpy/onnxruntime 官方新 wheel 超出 macOS 11 基线，不能
 # 跟随应用进入安装包。这里使用单独、带哈希的 macOS 运行时锁覆盖它们；
 # 不解析依赖，其他依赖仍完全来自主线 uv.lock。
@@ -240,6 +292,23 @@ export PARTYOPS_MACOS_TARGET_ARCH="$TARGET_ARCH"
   --distpath "$BUILD_ROOT/dist" --workpath "$BUILD_ROOT/work" \
   "$SCRIPT_DIR/partyops.spec"
 APP="$BUILD_ROOT/dist/PartyOps.app"
+# Intel cryptography 必须把固定 OpenSSL 静态收入 Rust 扩展；如果这里仍出现
+# libssl/libcrypto 动态依赖，用户电脑就可能再次遇到构建库与随包库不一致。
+CRYPTOGRAPHY_RUST_BINDING="$(
+  /usr/bin/find "$APP/Contents/Frameworks/cryptography" -type f \
+    -name '_rust.abi3.so' -print -quit
+)"
+if [[ ! -f "$CRYPTOGRAPHY_RUST_BINDING" ]]; then
+  printf '%s\n' '[MACOS_CRYPTOGRAPHY_BINDING_MISSING] 冻结包缺少 cryptography Rust 绑定。' >&2
+  exit 2
+fi
+if [[ "$TARGET_ARCH" == 'x86_64' ]] &&
+  otool -L "$CRYPTOGRAPHY_RUST_BINDING" |
+    /usr/bin/grep -Eq 'lib(ssl|crypto)\.3\.dylib'; then
+  printf '%s\n' '[MACOS_CRYPTOGRAPHY_DYNAMIC_OPENSSL] Intel 冻结包仍动态依赖 Runner OpenSSL。' >&2
+  otool -L "$CRYPTOGRAPHY_RUST_BINDING" >&2
+  exit 2
+fi
 # setup-python 的 Intel 运行时可能携带仅供旧算法按需加载的 OpenSSL legacy
 # provider；runner 上的该插件以 macOS 15 为最低目标，但 PartyOps 只使用
 # 默认 provider 和现代算法。先证明没有 Mach-O 对它形成链接依赖，再从应用
