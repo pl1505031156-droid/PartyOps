@@ -496,14 +496,19 @@ elif [[ "$MODE" == 'unsigned-candidate' ]]; then
   pkgbuild --root "$PAYLOAD_ROOT" \
     --scripts "$PKG_SCRIPTS" --install-location / --ownership recommended \
     --identifier cn.partyops.desktop --version "$PACKAGE_VERSION" "$OUTPUT"
-  SOURCE_COMMIT="${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD)}"
+  # GITHUB_SHA 是触发工作流的提交；手动发布工作流会再检出固定的实际构建
+  # 提交，两者不能混写。source_commit 必须取工作树真实 HEAD，另行记录
+  # workflow_commit，保证同版本补充制品的来源可以独立复核。
+  SOURCE_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
+  WORKFLOW_COMMIT="${GITHUB_SHA:-$SOURCE_COMMIT}"
   GENERATED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-  python3.11 - "$OUTPUT.attestation.json" "$TARGET_ARCH" "$SOURCE_COMMIT" "$GENERATED_AT" <<'PY'
+  python3.11 - "$OUTPUT.attestation.json" "$TARGET_ARCH" "$SOURCE_COMMIT" \
+    "$WORKFLOW_COMMIT" "$GENERATED_AT" <<'PY'
 import json
 from pathlib import Path
 import sys
 
-path, architecture, source_commit, generated_at = sys.argv[1:]
+path, architecture, source_commit, workflow_commit, generated_at = sys.argv[1:]
 Path(path).write_text(
     json.dumps(
         {
@@ -512,6 +517,7 @@ Path(path).write_text(
             "version": "1.4.5-rc.1",
             "architecture": architecture,
             "source_commit": source_commit,
+            "workflow_commit": workflow_commit,
             "generated_at_utc": generated_at,
             "code_signature": "ad-hoc",
             "developer_id_signed": False,

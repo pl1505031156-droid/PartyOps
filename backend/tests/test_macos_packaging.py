@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import plistlib
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -258,7 +259,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "contents: read" in workflow
     assert "macos-15-intel" in workflow and "macos-15" in workflow
     assert "BUILD-UNSIGNED-145-RC1" in workflow
-    assert "ref: 95a048b441024488b53bdbe29bdcba91d81784fd" in workflow
+    assert re.search(r"ref: [0-9a-f]{40}", workflow)
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1
     assert workflow.count("install_package") == 3
@@ -295,6 +296,9 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "--no-binary-package cryptography" in build
     assert "MACOS_CRYPTOGRAPHY_OPENSSL_MISMATCH" in build
     assert "MACOS_CRYPTOGRAPHY_DYNAMIC_OPENSSL" in build
+    assert 'SOURCE_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"' in build
+    assert 'WORKFLOW_COMMIT="${GITHUB_SHA:-$SOURCE_COMMIT}"' in build
+    assert '"workflow_commit": workflow_commit' in build
     assert "gh release" not in workflow
     action_lines = [
         line.strip() for line in workflow.splitlines() if line.strip().startswith("uses:")
