@@ -182,6 +182,7 @@ def test_selftest_and_cli_success_and_failure(
         "onnxruntime": "1.0",
         "tokenizers": "1.0",
     }
+    assert result["crypto"] == "tls-ed25519-passed"
     ocr_environment = calls[0]["env"]
     assert isinstance(ocr_environment, dict)
     assert ocr_environment["TESSDATA_PREFIX"] == str(runtime / "ocr" / "tessdata")

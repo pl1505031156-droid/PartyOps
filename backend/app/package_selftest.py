@@ -6,6 +6,7 @@ import importlib
 import json
 import os
 import re
+import ssl
 import subprocess
 import sys
 from pathlib import Path
@@ -96,6 +97,15 @@ def run_selftest(runtime: Path) -> dict[str, object]:
     for package in ("numpy", "onnxruntime", "tokenizers"):
         module = importlib.import_module(package)
         smart_versions[package] = str(getattr(module, "__version__", "unknown"))
+    # macOS Intel 的 setup-python 可能携带只服务旧算法的 OpenSSL legacy
+    # provider；发布包会剔除它。这里显式验证 PartyOps 实际使用的现代 TLS 与
+    # Ed25519 签名链，防止闭包瘦身造成“能安装但加密功能启动时才失败”。
+    ssl.create_default_context()
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    crypto_key = Ed25519PrivateKey.generate()
+    crypto_payload = b"PartyOps package self-test"
+    crypto_key.public_key().verify(crypto_key.sign(crypto_payload), crypto_payload)
     llama = _native_executable(runtime, "llama-server")
     if not llama.is_file():
         raise RuntimeError("本地 LLM 运行时缺失")
@@ -122,6 +132,7 @@ def run_selftest(runtime: Path) -> dict[str, object]:
         "frontend_assets": len(ASSET_PATTERN.findall(html)),
         "ocr": "chi_sim",
         "smart_runtime": smart_versions,
+        "crypto": "tls-ed25519-passed",
         "llama": "passed",
     }
 

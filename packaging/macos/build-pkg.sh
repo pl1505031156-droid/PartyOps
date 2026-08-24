@@ -240,6 +240,33 @@ export PARTYOPS_MACOS_TARGET_ARCH="$TARGET_ARCH"
   --distpath "$BUILD_ROOT/dist" --workpath "$BUILD_ROOT/work" \
   "$SCRIPT_DIR/partyops.spec"
 APP="$BUILD_ROOT/dist/PartyOps.app"
+# setup-python 的 Intel 运行时可能携带仅供旧算法按需加载的 OpenSSL legacy
+# provider；runner 上的该插件以 macOS 15 为最低目标，但 PartyOps 只使用
+# 默认 provider 和现代算法。先证明没有 Mach-O 对它形成链接依赖，再从应用
+# 闭包移除；随后冻结程序的 Ed25519、TLS 与全部包级自检会再次验证密码能力。
+LEGACY_OPENSSL_PROVIDER="$APP/Contents/Frameworks/ossl-modules/legacy.dylib"
+if [[ -f "$LEGACY_OPENSSL_PROVIDER" ]]; then
+  legacy_inbound_dependency=''
+  while IFS= read -r -d '' candidate; do
+    [[ "$candidate" == "$LEGACY_OPENSSL_PROVIDER" ]] && continue
+    [[ "$(file -b "$candidate" 2>/dev/null || true)" == *Mach-O* ]] || continue
+    if otool -L "$candidate" 2>/dev/null | /usr/bin/grep -Fq 'legacy.dylib'; then
+      legacy_inbound_dependency="$candidate"
+      break
+    fi
+  done < <(/usr/bin/find "$APP/Contents" -type f -print0)
+  if [[ -n "$legacy_inbound_dependency" ]]; then
+    printf '[MACOS_OPENSSL_LEGACY_PROVIDER_REFERENCED] %s 仍依赖 legacy.dylib。\n' \
+      "$legacy_inbound_dependency" >&2
+    exit 2
+  fi
+  /bin/rm -f "$LEGACY_OPENSSL_PROVIDER"
+fi
+if /usr/bin/find "$APP/Contents" -type f -name 'legacy.dylib' -print -quit |
+  /usr/bin/grep -q .; then
+  printf '%s\n' '[MACOS_OPENSSL_LEGACY_PROVIDER_REMAINED] 应用仍包含旧算法 provider。' >&2
+  exit 2
+fi
 # Finder/LaunchServices 先进入一个独立、极小的原生 Mach-O，再 exec 冻结的
 # Python 桌面启动器。原生入口会在 Python 引导前写 launch-probe.log，避免
 # bootloader 或签名加载失败时继续出现“无窗口、无日志、无证据”。
