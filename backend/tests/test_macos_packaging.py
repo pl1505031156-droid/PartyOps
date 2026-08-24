@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ast
+import base64
+import hashlib
 import importlib.util
 import plistlib
 import re
@@ -175,8 +177,12 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert '(str(llama_runtime), ".")' not in spec
     update_key = ROOT / "packaging" / "uos" / "update-public-key.txt"
     assert update_key.is_file()
-    assert update_key.read_text(encoding="ascii").strip() == (
-        "fEbQCm6VLHYv7f8pKYIeGGD+gkW6EHz/W/ODs5DoGkc="
+    update_key_raw = base64.b64decode(
+        update_key.read_text(encoding="ascii").strip(), validate=True
+    )
+    assert len(update_key_raw) == 32
+    assert hashlib.sha256(update_key_raw).hexdigest() == (
+        "7d9d69a006ab26add736a16d0f9eb4f3667343c63da18d7672daf5d6fa2de2a3"
     )
     assert "独立 onefile" in spec
     assert "MACOS_UPDATE_TRUST_ROOT_MISSING" in validation

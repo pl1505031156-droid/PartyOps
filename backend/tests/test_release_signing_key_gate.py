@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "verify-release-signing-key.py"
+GENERATOR = ROOT / "scripts" / "generate-update-key.py"
 SPEC = importlib.util.spec_from_file_location("partyops_release_signing_gate", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -61,3 +62,14 @@ def test_mismatched_or_linked_release_key_is_rejected(tmp_path: Path) -> None:
         return
     with pytest.raises(ValueError, match="普通文件"):
         MODULE.verify(link, other_public)
+
+
+def test_key_generator_fails_closed_when_windows_acl_cannot_be_restricted() -> None:
+    source = GENERATOR.read_text(encoding="utf-8")
+    assert '"icacls.exe"' in source
+    assert '"/inheritance:r"' in source
+    assert '"/grant:r"' in source
+    assert "check=True" in source
+    assert "os.replace(public_next_path, public_path)" in source
+    assert "private_path.unlink(missing_ok=True)" in source
+    assert "无法收紧生产私钥 ACL" in source
