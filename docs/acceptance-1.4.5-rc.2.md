@@ -25,22 +25,27 @@
 | 新生产信任根 | 通过 | 本机生成新 Ed25519 私钥并收紧 ACL；公私钥匹配通过，公钥指纹 `7d9d69a006ab26add736a16d0f9eb4f3667343c63da18d7672daf5d6fa2de2a3` |
 | 公文排版专项 | 通过 | 44 项专项/分支测试覆盖 OOXML、角色识别、网格、页码、表格、转换和本机数据边界 |
 | 正式模型包 | 通过 | 四个包与新信任根匹配；BGE、Qwen2.5 0.5B、Qwen3 0.6B、DeepSeek R1 Distill 1.5B 均走正式上传接口完成验签、启用和真实运行 |
+| 更新清单与模型地址门禁 | 通过 | 独立 Cloud Studio `/downloads/` 地址逐文件校验 HTTPS、无凭据/参数、文件名一致；签名清单标明 rc.2 信任根迁移 |
+| Cloud Studio 公网回读 | 通过 | 9 个安装包、9 个签名更新包和 4 个签名模型包共 22 项均从独立 `/downloads/<冻结文件名>` 完整读到 EOF，长度、文件头和 SHA-256 与本地冻结制品一致 |
+| Windows x64 | 通过自动门禁 | 最终安装器 `PartyOps_1.4.5-rc.2_windows_amd64.exe` 已冻结，完成冻结 EXE 启动、健康检查和安装器门禁；未商业签名，未在独立 Win10/11 设备验收 |
+| Windows 7 x64/x86 | 通过自动门禁 | Python 3.8、UCRT、密码库和最终安装器通过；分别检查 266/162 个 PE 文件；未在 Win7 SP1 独立设备验收 |
+| Linux x64 | 通过自动门禁 | glibc 2.17 原生环境中最终 DEB/RPM 均完成解包、包自检、健康启动、桌面入口和启动失败诊断门禁；未在麒麟/UOS/openEuler 图形桌面真机验收 |
+| Linux ARM64 | 通过模拟目标门禁 | ARM64 Python/GCC 原生依赖闭包生成最终 DEB/RPM；QEMU 成品门禁通过架构、TLS/Ed25519、SQLite 3.51.3/FTS5、前端资源、本地 LLM、中文 OCR、配置向导与健康启动；桌面 PID 归属仍需真实 ARM 内核复核 |
+| macOS 双架构 | 通过原生门禁 | GitHub 原生运行 `32716711611` 的 `macos-15` 与 `macos-15-intel` 均完成安装、LaunchServices 注册及 `open -na` 自检；未 Developer ID 签名、未公证 |
+| 最终 rc.2 实景 | 通过 | 使用脱敏种子数据拍摄公文排版、原始文件中心、发展党员预测、网络与协同、协同业务、会议、更新诊断和帮助共 8 张真实界面 |
 
 扫描和覆盖率原始输出属于本地验收证据，不进入源码提交或公开制品。
 
-## 3. 尚未通过、禁止对外发布的门禁
+## 3. 仍需公开发布链完成的门禁
 
-1. Windows、Linux 与 macOS rc.2 原生安装包尚未完成构建、安装、启动、升级和卸载验收；支持矩阵保持 `unavailable`。
-2. macOS 工作流已固化为手动原生 Darwin 构建，待新信任根提交推送后从固定源码重新构建。
-3. 官网 rc.2 实景截图必须来自最终 rc.2 运行界面；当前没有合格截图，禁止用效果图或 rc.1 图片冒充。
-4. Cloud Studio 公开回读、GitHub 预发布、EdgeOne preview 和 production 尚未执行。
+1. GitHub 预发布、EdgeOne preview 和 production 尚未执行。
+2. Windows、Win7、国产 Linux 和 macOS 均缺少独立用户目标设备的交互验收，因此本次只能标为 `preview`，不能标为 `stable`。
+3. Windows 未商业签名；macOS 未 Developer ID 签名或公证，平台信誉提示不能被软件逻辑消除。
 
 ## 4. 后续固定顺序
 
-1. 在对应原生系统生成制品并完成目标系统验收，逐项更新机器可读支持矩阵。
-2. 使用正式密钥签署更新清单、模型目录和发布清单；模型目录引用的四个包须先完成公网完整回读。
-3. 经 Cloud Studio 受控后台上传 `/downloads/`，从公开地址完整回读校验长度、SHA-256、文件头和版本。
-4. 创建 GitHub `v1.4.5-rc.2` 预发布。
-5. 用脱敏数据拍摄最终 rc.2 实景，更新本地官网后完成 EdgeOne preview 与 production 验收。
+1. 生成引用 22 个真实公网 URL 的签名更新目录、模型目录和发布总清单。
+2. 创建 GitHub `v1.4.5-rc.2` 预发布。
+3. 更新本地官网后完成 EdgeOne preview 与 production 验收。
 
 任何一步失败都停止后续步骤，上一条生产版本继续对外提供。

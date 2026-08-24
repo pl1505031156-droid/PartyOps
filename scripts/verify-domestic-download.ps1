@@ -52,8 +52,13 @@ function Assert-ControlledDownloadUri {
     if (-not $decodedPath.Equals($expectedPath, [StringComparison]::Ordinal)) {
         throw "下载地址不在受控路径或文件名不一致：期望 $expectedPath，实际 $decodedPath。"
     }
-    if ($ExpectedFileName.IndexOf($ExpectedVersion, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
-        throw "冻结文件名未包含期望版本 $ExpectedVersion：$ExpectedFileName。"
+    $fileVersion = $ExpectedVersion
+    if ($PackageType -eq 'rpm' -and $ExpectedVersion.Contains('-')) {
+        $parts = $ExpectedVersion.Split('-', 2)
+        $fileVersion = "$($parts[0])-0.$($parts[1])"
+    }
+    if ($ExpectedFileName.IndexOf($fileVersion, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "冻结文件名未包含期望版本映射 $fileVersion：$ExpectedFileName。"
     }
 }
 

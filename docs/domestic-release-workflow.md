@@ -81,6 +81,19 @@ Cloud Studio 只承载冻结二进制制品，官网源码仍从本地构建后�
 
 脚本对 HTTP 429 固定等待 20 秒；HTTP 5xx/超时等待 2 秒后最多重试一次。仍失败则阻断该文件。验证结果保存到当次发布记录，时间统一为北京时间。
 
+签名更新包和正式模型包使用同一受控路径，并执行完整 ZIP 回读：
+
+```powershell
+.\scripts\verify-domestic-asset.ps1 `
+  -Url 'https://<受控下载域名>/downloads/<冻结文件名>' `
+  -ExpectedBytes <冻结字节数> `
+  -ExpectedSha256 '<冻结 SHA-256>' `
+  -AssetType update `
+  -ExpectedFileName '<冻结文件名>'
+```
+
+`modelpack` 与 `update` 两类均要求精确 `/downloads/<文件名>`、HTTPS、无查询参数或用户凭据、非 HTML、完整长度、SHA-256 和 ZIP 文件头一致。公网回读哈希与已经完成 Ed25519 包内验签的本地冻结文件一致，才可写入官网签名目录。
+
 ## 五、GitHub Release
 
 1. 产品源码和发布文档形成干净提交；官网源码按项目约定不提交；

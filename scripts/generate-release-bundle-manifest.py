@@ -14,7 +14,6 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-
 INSTALLERS = {
     "PartyOps_1.4.5-rc.2_windows_amd64.exe": "windows/amd64",
     "PartyOps_1.4.5-rc.2_windows7_amd64.exe": "windows7/amd64",
@@ -49,7 +48,7 @@ def _verified_key(private_key_path: Path, public_key_path: Path) -> tuple[Ed2551
     except ValueError:
         key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(data.strip(), validate=True))
     if not isinstance(key, Ed25519PrivateKey):
-        raise ValueError("正式发布私钥必须使用 Ed25519")
+        raise TypeError("正式发布私钥必须使用 Ed25519")
     trusted = public_key_path.read_text(encoding="ascii").strip()
     actual = base64.b64encode(
         key.public_key().public_bytes(

@@ -1,0 +1,34 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:f295b43e-a9be-40d8-9d5f-61ed9d7e8c20",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-08-24T11:25:00Z",
+    "component": {
+      "type": "application",
+      "name": "PartyOps",
+      "version": "1.4.5-rc.2",
+      "bom-ref": "pkg:generic/PartyOps@1.4.5-rc.2"
+    }
+  },
+  "vulnerabilities": [],
+  "properties": [
+    {
+      "name": "partyops:dependency-audit",
+      "value": "pip-audit 与前端、官网生产依赖审计在 2026-08-24 未发现已知高危漏洞"
+    },
+    {
+      "name": "partyops:sast",
+      "value": "Bandit 高危级别扫描与 gitleaks 密钥扫描均无发现"
+    },
+    {
+      "name": "partyops:source-commit",
+      "value": "f6ddf83117d2b1c5f0386d24d4c110c481a6aa2e"
+    },
+    {
+      "name": "partyops:scope",
+      "value": "本 VEX 对应随 v1.4.5-rc.2 发布的 Python、前端和官网 CycloneDX 1.6 SBOM；仅表示扫描时未发现已知漏洞，不替代目标环境风险评估"
+    }
+  ]
+}

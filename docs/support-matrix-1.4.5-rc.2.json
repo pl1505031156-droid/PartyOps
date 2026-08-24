@@ -2,22 +2,22 @@
   "schema_version": 2,
   "product_version": "1.4.5-rc.2",
   "release_tag": "v1.4.5-rc.2",
-  "updated_at": "2026-08-24T15:00:00+08:00",
+  "updated_at": "2026-08-24T20:05:00+08:00",
   "levels": {
     "stable": "已完成原生构建和目标系统用户验收",
     "preview": "已完成原生构建与自动门禁，仍有明确的真机或签名限制",
     "unavailable": "没有完成对应原生构建、目标系统门禁或正式签名发布条件"
   },
   "targets": [
-    {"id": "windows-x64", "os": "Windows 10/11", "arch": "x86_64", "level": "unavailable", "artifact": null, "reason": "rc.2 冻结安装包和安装后真实启动门禁尚未完成"},
-    {"id": "windows7-x64", "os": "Windows 7 SP1", "arch": "x86_64", "level": "unavailable", "artifact": null, "reason": "rc.2 Legacy 冻结运行时和目标系统门禁尚未完成"},
-    {"id": "windows7-x86", "os": "Windows 7 SP1", "arch": "x86", "level": "unavailable", "artifact": null, "reason": "rc.2 Legacy x86 冻结运行时和目标系统门禁尚未完成"},
-    {"id": "linux-deb-amd64", "os": "麒麟/UOS/deepin", "arch": "x86_64", "level": "unavailable", "artifact": null, "reason": "rc.2 原生 DEB 构建及图形安装后验证门禁尚未完成"},
-    {"id": "linux-deb-arm64", "os": "麒麟/UOS/deepin", "arch": "aarch64", "level": "unavailable", "artifact": null, "reason": "rc.2 原生 ARM64 DEB 构建和目标系统门禁尚未完成"},
-    {"id": "linux-rpm-amd64", "os": "openEuler", "arch": "x86_64", "level": "unavailable", "artifact": null, "reason": "rc.2 原生 RPM 构建和目标系统门禁尚未完成"},
-    {"id": "linux-rpm-arm64", "os": "openEuler", "arch": "aarch64", "level": "unavailable", "artifact": null, "reason": "rc.2 原生 ARM64 RPM 构建和目标系统门禁尚未完成"},
-    {"id": "macos-arm64", "os": "macOS 11+", "arch": "arm64", "level": "unavailable", "artifact": null, "reason": "rc.2 Apple Silicon 原生 Darwin 构建和 LaunchServices 门禁尚未完成"},
-    {"id": "macos-x86_64", "os": "macOS 11+", "arch": "x86_64", "level": "unavailable", "artifact": null, "reason": "rc.2 Intel 原生 Darwin 构建和 LaunchServices 门禁尚未完成"},
+    {"id": "windows-x64", "os": "Windows 10/11", "arch": "x86_64", "level": "preview", "artifact": "PartyOps_1.4.5-rc.2_windows_amd64.exe", "reason": "已在 Windows x64 原生环境完成冻结 EXE、安装器及启动门禁；未商业签名，尚无 Win10/11 独立目标机验收"},
+    {"id": "windows7-x64", "os": "Windows 7 SP1", "arch": "x86_64", "level": "preview", "artifact": "PartyOps_1.4.5-rc.2_windows7_amd64.exe", "reason": "已完成 Python 3.8/UCRT/密码库、266 个 PE 文件和最终安装器门禁；尚无 Win7 SP1 目标机验收"},
+    {"id": "windows7-x86", "os": "Windows 7 SP1", "arch": "x86", "level": "preview", "artifact": "PartyOps_1.4.5-rc.2_windows7_x86.exe", "reason": "已完成 32 位依赖闭包、密码库、162 个 PE 文件和最终安装器门禁；尚无 Win7 SP1 目标机验收"},
+    {"id": "linux-deb-amd64", "os": "麒麟/UOS/deepin", "arch": "x86_64", "level": "preview", "artifact": "PartyOps_1.4.5-rc.2_linux_amd64.deb", "reason": "已在 glibc 2.17 x86_64 原生环境完成最终 DEB 解包、运行时自检、健康启动和故障注入；尚无目标商业系统图形安装验收"},
+    {"id": "linux-deb-arm64", "os": "麒麟/UOS/deepin", "arch": "aarch64", "level": "preview", "artifact": "PartyOps_1.4.5-rc.2_linux_arm64.deb", "reason": "已使用 ARM64 Python/GCC 原生依赖闭包构建并执行 QEMU 动态门禁；桌面 PID 归属仍需真实 ARM 内核复核"},
+    {"id": "linux-rpm-amd64", "os": "openEuler", "arch": "x86_64", "level": "preview", "artifact": "PartyOps-1.4.5-0.rc.2.1.x86_64.rpm", "reason": "已在 glibc 2.17 x86_64 原生环境完成最终 RPM 解包、运行时自检、健康启动和故障注入；尚无 openEuler 图形安装验收"},
+    {"id": "linux-rpm-arm64", "os": "openEuler", "arch": "aarch64", "level": "preview", "artifact": "PartyOps-1.4.5-0.rc.2.1.aarch64.rpm", "reason": "已使用 ARM64 Python/GCC 原生依赖闭包构建并执行 QEMU 动态门禁；尚无 openEuler ARM64 真机验收"},
+    {"id": "macos-arm64", "os": "macOS 11+", "arch": "arm64", "level": "preview", "artifact": "PartyOps_1.4.5-rc.2_macos_arm64.pkg", "reason": "已在 GitHub macos-15 Apple Silicon 原生主机完成安装、LaunchServices 注册及 open -na 自检；未 Developer ID 签名或公证"},
+    {"id": "macos-x86_64", "os": "macOS 11+", "arch": "x86_64", "level": "preview", "artifact": "PartyOps_1.4.5-rc.2_macos_x86_64.pkg", "reason": "已在 GitHub macos-15-intel 原生主机完成安装、LaunchServices 注册及 open -na 自检；未 Developer ID 签名或公证"},
     {"id": "windows-arm64", "os": "Windows 11", "arch": "arm64", "level": "unavailable", "artifact": null, "reason": "没有原生托管构建与真机验证，不提供伪兼容包"},
     {"id": "linux-other", "os": "Linux", "arch": "i686/armv7/loongarch64/riscv64", "level": "unavailable", "artifact": null, "reason": "没有对应原生依赖闭包与真机门禁，不提供伪兼容包"}
   ]

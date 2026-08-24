@@ -158,7 +158,10 @@ http.createServer(async (request, response) => {
     ) {
       return serveFile(request, response);
     }
-    if (request.method === "GET" && url.pathname === "/health") {
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/" || url.pathname === "/health")
+    ) {
       return sendJson(response, 200, {
         ok: true,
         version: VERSION,
