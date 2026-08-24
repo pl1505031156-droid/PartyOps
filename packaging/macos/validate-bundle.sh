@@ -89,7 +89,10 @@ while IFS= read -r -d '' candidate; do
   if ! [[ "$deployment_major" =~ ^[0-9]+$ && "$deployment_minor" =~ ^[0-9]+$ ]] ||
     ((deployment_major > 11)) ||
     ((deployment_major == 11 && deployment_minor > 0)); then
-    bad_deployment_target="$candidate: min macOS $deployment_target（发布基线为 11.0）"
+    # 在未显式设置 UTF-8 locale 的 Darwin bash 中，紧邻变量名的全角
+    # 括号会被旧版词法器误并入参数名，触发 set -u。使用花括号和 ASCII
+    # 分隔符，确保安装器校验在 Finder、终端与 GitHub runner 中一致。
+    bad_deployment_target="${candidate}: min macOS ${deployment_target} (发布基线为 11.0)"
     break
   fi
 done < <(/usr/bin/find "$APP_PATH/Contents" -type f -print0)

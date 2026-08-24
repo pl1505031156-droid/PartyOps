@@ -278,6 +278,8 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "PYTHONHOME='/tmp/forged-python-home'" in workflow
     assert "MACOSX_DEPLOYMENT_TARGET: '11.0'" in workflow
     assert "MACOS_DEPLOYMENT_TARGET_TOO_NEW" in validation
+    assert '${deployment_target} (发布基线为 11.0)' in validation
+    assert "$deployment_target（" not in validation
     assert "gh release" not in workflow
     action_lines = [
         line.strip() for line in workflow.splitlines() if line.strip().startswith("uses:")
