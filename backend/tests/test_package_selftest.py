@@ -53,6 +53,27 @@ def test_macos_ocr_uses_standard_bundle_resource_layout(
     assert library == runtime.parent / "Resources" / "ocr" / "lib"
 
 
+def test_macos_native_helpers_strip_frozen_loader_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(package_selftest.sys, "platform", "darwin")
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", "/tmp/partyops-onefile")
+    monkeypatch.setenv("PYTHONHOME", "/tmp/python-home")
+    monkeypatch.setenv("PYTHONPATH", "/tmp/python-path")
+    monkeypatch.setenv("DYLD_LIBRARY_PATH", "/tmp/dyld")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/ld")
+
+    environment = package_selftest._native_child_environment(tmp_path)
+
+    assert "_PYI_APPLICATION_HOME_DIR" not in environment
+    assert "PYTHONHOME" not in environment
+    assert "PYTHONPATH" not in environment
+    assert "DYLD_LIBRARY_PATH" not in environment
+    assert "LD_LIBRARY_PATH" not in environment
+    assert environment["PATH"] == "/usr/bin:/bin:/usr/sbin:/sbin"
+    assert package_selftest._native_runtime_timeout() == 120
+
+
 def test_selftest_rejects_missing_frontend_assets_and_sqlite(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -189,6 +210,7 @@ def test_selftest_and_cli_success_and_failure(
     assert ocr_environment["LD_LIBRARY_PATH"].split(os.pathsep)[0] == str(
         runtime / "ocr" / "lib"
     )
+    assert calls[1]["timeout"] == 30
 
     monkeypatch.setattr(package_selftest, "run_selftest", lambda _runtime: result)
     assert package_selftest.main(runtime) == 0

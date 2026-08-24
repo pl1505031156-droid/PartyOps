@@ -383,7 +383,19 @@ fi
 }
 TESSDATA_PREFIX="$APP/Contents/Resources/ocr/tessdata" \
   "$APP/Contents/MacOS/tesseract" --list-langs | /usr/bin/grep -qx 'chi_sim'
-"$APP/Contents/MacOS/llama-server" --version >/dev/null
+# Intel 首次加载嵌入的 Metal 运行时在原生 Runner 上实测可能超过 30 秒；
+# 使用 120 秒有界探测，既不把正确程序误判为失败，也不允许构建无限挂死。
+"$VENV/bin/python" - "$APP/Contents/MacOS/llama-server" <<'PY'
+import subprocess
+import sys
+
+subprocess.run(
+    [sys.argv[1], "--version"],
+    check=True,
+    stdout=subprocess.DEVNULL,
+    timeout=120,
+)
+PY
 "$SCRIPT_DIR/validate-bundle.sh" "$APP" "$TARGET_ARCH"
 
 # PKG 载荷只携带 App 的不透明 ZIP，不直接携带 .app 目录。pkgbuild 会递归

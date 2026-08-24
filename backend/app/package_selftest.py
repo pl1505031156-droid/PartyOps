@@ -45,6 +45,46 @@ def _ocr_runtime(runtime: Path) -> tuple[Path, Path, Path]:
     return _native_executable(runtime, "ocr/bin/tesseract"), root / "tessdata", root / "lib"
 
 
+def _native_child_environment(runtime: Path, library: Path | None = None) -> dict[str, str]:
+    """为随包原生助手构造不受冻结引导器污染的环境。"""
+
+    environment = os.environ.copy()
+    for key in tuple(environment):
+        if key.startswith("_PYI_") or key in {
+            "PYTHONHOME",
+            "PYTHONPATH",
+            "PYTHONEXECUTABLE",
+            "LD_PRELOAD",
+        }:
+            environment.pop(key, None)
+    if sys.platform == "darwin":
+        # PyInstaller onefile 会设置 _PYI_*，启动上下文还可能携带 DYLD_*。
+        # 这些变量不得泄漏给独立 Mach-O；否则 Intel 辅助程序可能加载临时
+        # 解包目录中的错误动态库，出现启动变慢、退出或只在 Finder 下失败。
+        for key in tuple(environment):
+            if key.startswith("DYLD_"):
+                environment.pop(key, None)
+        environment.pop("LD_LIBRARY_PATH", None)
+        environment["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+    else:
+        library_path = library or runtime
+        environment["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part
+            for part in (
+                str(library_path),
+                environment.get("LD_LIBRARY_PATH", ""),
+            )
+            if part
+        )
+    return environment
+
+
+def _native_runtime_timeout() -> int:
+    """macOS Intel 首次初始化嵌入 Metal 运行时可能超过 30 秒。"""
+
+    return 120 if sys.platform == "darwin" else 30
+
+
 def run_selftest(runtime: Path) -> dict[str, object]:
     """验证冻结资源、数据库、OCR 与本地智能运行时，任一失败即抛错。"""
 
@@ -70,16 +110,8 @@ def run_selftest(runtime: Path) -> dict[str, object]:
     language = tessdata / "chi_sim.traineddata"
     if not ocr.is_file() or not language.is_file():
         raise RuntimeError("中文 OCR 运行时不完整")
-    ocr_environment = os.environ.copy()
+    ocr_environment = _native_child_environment(runtime, ocr_library)
     ocr_environment["TESSDATA_PREFIX"] = str(language.parent)
-    ocr_environment["LD_LIBRARY_PATH"] = os.pathsep.join(
-        part
-        for part in (
-            str(ocr_library),
-            ocr_environment.get("LD_LIBRARY_PATH", ""),
-        )
-        if part
-    )
     ocr_result = subprocess.run(
         [str(ocr), "--list-langs"],
         check=False,
@@ -109,18 +141,13 @@ def run_selftest(runtime: Path) -> dict[str, object]:
     llama = _native_executable(runtime, "llama-server")
     if not llama.is_file():
         raise RuntimeError("本地 LLM 运行时缺失")
-    llama_environment = os.environ.copy()
-    llama_environment["LD_LIBRARY_PATH"] = os.pathsep.join(
-        part
-        for part in (str(runtime), llama_environment.get("LD_LIBRARY_PATH", ""))
-        if part
-    )
+    llama_environment = _native_child_environment(runtime)
     llama_result = subprocess.run(
         [str(llama), "--version"],
         check=False,
         capture_output=True,
         env=llama_environment,
-        timeout=30,
+        timeout=_native_runtime_timeout(),
     )
     if llama_result.returncode != 0:
         raise RuntimeError("本地 LLM 运行时无法启动")

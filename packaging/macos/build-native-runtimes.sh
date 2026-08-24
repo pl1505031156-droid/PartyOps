@@ -247,7 +247,17 @@ strip -x "$LLAMA_RUNTIME/llama-server"
 chmod 0755 "$LLAMA_RUNTIME/llama-server"
 assert_thin_architecture "$LLAMA_RUNTIME/llama-server"
 assert_system_dependencies_only "$LLAMA_RUNTIME/llama-server"
-"$LLAMA_RUNTIME/llama-server" --version >/dev/null
+python3 - "$LLAMA_RUNTIME/llama-server" <<'PY'
+import subprocess
+import sys
+
+subprocess.run(
+    [sys.argv[1], "--version"],
+    check=True,
+    stdout=subprocess.DEVNULL,
+    timeout=120,
+)
+PY
 
 printf 'macOS %s 原生 OCR 与 llama.cpp 运行时已生成：%s\n' \
   "$TARGET_ARCH" "$OUTPUT_ROOT"
