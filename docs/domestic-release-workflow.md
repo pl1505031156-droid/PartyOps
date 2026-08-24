@@ -1,19 +1,19 @@
 # PartyOps 国内下载、GitHub 与官网固化发布流程
 
-最后修订：2026-08-21（北京时间，UTC+8）
+最后修订：2026-08-24（北京时间，UTC+8）
 适用范围：PartyOps `v1.4.4` 及后续版本
 
 ## 前置说明
 
-安装包只允许通过 WorkBuddy 内置的 `workbuddy_cloudstudio_deploy` Cloud Studio 后台发布程序上传，公开路径必须位于 `/downloads/`。这里是本机后台程序调用，不向 WorkBuddy 会话发送部署消息，也不使用浏览器项目上传页。聊天附件、临时网盘、GitHub 代理或未经完整回读的镜像不得进入官网主下载链。
+安装包、签名更新包及官网直接提供的正式签名模型包只允许通过 WorkBuddy 内置的 `workbuddy_cloudstudio_deploy` Cloud Studio 后台发布程序上传，公开路径必须位于 `/downloads/`。这里是本机后台程序调用，不向 WorkBuddy 会话发送部署消息，也不使用浏览器项目上传页。聊天附件、临时网盘、GitHub 代理或未经完整回读的镜像不得进入官网主下载链。
 
 本文只描述发布顺序和门禁，不保存 Cloud Studio、GitHub 或 EdgeOne 的令牌、Cookie、验证码和账号信息。上传界面返回的公开域名、对象标识和时间写入当次发布记录，不硬编码到本流程。
 
 ## 一、不可变发布顺序
 
 1. 冻结源码提交、版本、支持矩阵和制品清单；
-2. 将通过门禁的安装包上传到 Cloud Studio 受控 `/downloads/`；
-3. 从公开 HTTPS 地址完整回读每个安装包；
+2. 将通过门禁的安装包、更新包和正式模型包上传到 Cloud Studio 受控 `/downloads/`；
+3. 从公开 HTTPS 地址完整回读每个制品；
 4. 核对字节数、SHA-256、文件头、文件名和版本；
 5. 把同一批冻结制品上传 GitHub Release；
 6. 更新官网版本、清单、FAQ 和下载映射；
@@ -45,7 +45,7 @@ git tag --points-at HEAD
 ## 三、Cloud Studio `/downloads/` 上传
 
 1. 确认本机 WorkBuddy 后台连接可用；如登录态确需验证码，只在官方登录页完成，不把验证码或会话凭据写入仓库。
-2. 为每个冻结制品建立最小静态目录，只包含必要首页和 `/downloads/<冻结文件名>`，然后直接调用 `workbuddy_cloudstudio_deploy`。
+2. 为每个冻结制品建立最小静态目录，只包含必要首页和 `/downloads/<冻结文件名>`，然后直接调用 `workbuddy_cloudstudio_deploy`。超过后台单请求上限的制品使用 `scripts/prepare-cloudstudio-chunk-deployment.ps1` 生成固定元数据接收器，再由同一后台程序部署。
 3. 不通过 WorkBuddy 聊天消息触发发布，也不依赖 Cloud Studio 网页普通项目列表；后台返回的受管应用在 WorkBuddy「设置 - 数据管理 - 我发布的应用」中管理。
 4. 每次只选择冻结清单中的文件；不得上传调试目录、旧版安装包、临时归档或私钥。
 5. 上传结束后记录公开 HTTPS 地址和北京时间。临时令牌只能保存在本地发布暂存目录，验证结束后不得写入仓库或公开日志。
@@ -53,7 +53,7 @@ git tag --points-at HEAD
 7. 公开 URL 的路径必须精确为 `/downloads/<冻结文件名>`；若后台返回不同文件名、登录页、临时签名 URL 或 HTML 中转页，该文件不合格。
 8. 官网只挂载当前公开版本；历史版本由 GitHub Release 保留审计记录。
 
-Cloud Studio 只承载安装包，官网源码仍从本地构建后直接部署到 EdgeOne Makers 项目 `partyops-cn-overseas`，两条上传链路不得混用。
+Cloud Studio 只承载冻结二进制制品，官网源码仍从本地构建后直接部署到 EdgeOne Makers 项目 `partyops-cn-overseas`，两条上传链路不得混用。
 
 ## 四、公开地址完整回读
 
@@ -61,12 +61,12 @@ Cloud Studio 只承载安装包，官网源码仍从本地构建后直接部署�
 
 ```powershell
 .\scripts\verify-domestic-download.ps1 `
-  -Url 'https://<受控下载域名>/downloads/PartyOps_1.4.4_windows_amd64.exe' `
+  -Url 'https://<受控下载域名>/downloads/PartyOps_1.4.5-rc.2_windows_amd64.exe' `
   -ExpectedBytes <冻结字节数> `
   -ExpectedSha256 '<冻结 SHA-256>' `
   -PackageType exe `
-  -ExpectedFileName 'PartyOps_1.4.4_windows_amd64.exe' `
-  -ExpectedVersion '1.4.4'
+  -ExpectedFileName 'PartyOps_1.4.5-rc.2_windows_amd64.exe' `
+  -ExpectedVersion '1.4.5-rc.2'
 ```
 
 验证项：
@@ -146,7 +146,7 @@ npx -y edgeone@1.6.28 makers deploy website/dist/edgeone -n partyops-cn-overseas
 只有以下证据同时存在，才能宣布发布完成：
 
 1. 冻结源码提交与机器可读制品/支持清单；
-2. 每个公开安装包的 Cloud Studio `/downloads/` 完整回读记录；
+2. 每个公开安装包、更新包和正式模型包的 Cloud Studio `/downloads/` 完整回读记录；
 3. GitHub Release 同批资产一致性记录；
 4. 官网测试、构建与 preview 验收记录；
 5. EdgeOne production Deployment ID；

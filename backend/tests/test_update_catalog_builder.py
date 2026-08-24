@@ -11,7 +11,6 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "generate-update-catalog.py"
 SPEC = importlib.util.spec_from_file_location("partyops_update_catalog_builder", SCRIPT)
 assert SPEC and SPEC.loader
@@ -58,6 +57,7 @@ def test_catalog_selectors_are_complete_and_signature_is_verifiable(tmp_path: Pa
     assert catalog["format_version"] == 3
     release = catalog["release"]
     assert isinstance(release, dict)
+    assert release["min_version"] == catalog_builder.VERSION
     packages = release["platform_packages"]
     assert isinstance(packages, dict)
     assert set(packages) == {platform for platform, _architecture in catalog_builder.TARGETS}
@@ -127,3 +127,72 @@ def test_catalog_target_parser_rejects_unknown_and_duplicate_values() -> None:
     for values in (["missing"], ["windows/amd64", "windows/amd64"]):
         with pytest.raises(ValueError):
             catalog_builder.resolve_targets(values)
+
+
+def test_catalog_accepts_independent_cloud_studio_urls(tmp_path: Path) -> None:
+    private_path, public_path, _key = _keys(tmp_path)
+    targets = (("windows", "amd64"), ("linux-deb", "arm64"))
+    url_map: dict[str, str] = {}
+    for platform_name, architecture in targets:
+        filename = f"partyops_{catalog_builder.VERSION}_{platform_name}_{architecture}.partyops-update"
+        (tmp_path / filename).write_bytes(b"eligible")
+        url_map[f"{platform_name}/{architecture}"] = (
+            f"https://release.example.cn/downloads/{filename}"
+        )
+    catalog = catalog_builder.generate_catalog(
+        packages_dir=tmp_path,
+        private_key_path=private_path,
+        public_key_path=public_path,
+        package_base_url=None,
+        package_url_map=url_map,
+        published_at="2026-08-24T19:00:00+08:00",
+        targets=targets,
+    )
+    assert (
+        catalog["release"]["platform_packages"]["linux-deb"]["arm64"]["package_url"]
+        == url_map["linux-deb/arm64"]
+    )
+
+    invalid_maps = (
+        {"windows/amd64": url_map["windows/amd64"]},
+        {**url_map, "linux-deb/arm64": "http://release.example.cn/downloads/file"},
+        {**url_map, "linux-deb/arm64": "https://release.example.cn/files/wrong.partyops-update"},
+    )
+    for invalid_map in invalid_maps:
+        with pytest.raises(ValueError, match="地址"):
+            catalog_builder.generate_catalog(
+                packages_dir=tmp_path,
+                private_key_path=private_path,
+                public_key_path=public_path,
+                package_base_url=None,
+                package_url_map=invalid_map,
+                published_at="2026-08-24T19:00:00+08:00",
+                targets=targets,
+            )
+
+
+def test_catalog_rejects_ambiguous_or_missing_url_source(tmp_path: Path) -> None:
+    private_path, public_path, _key = _keys(tmp_path)
+    filename = f"partyops_{catalog_builder.VERSION}_windows_amd64.partyops-update"
+    (tmp_path / filename).write_bytes(b"eligible")
+    common = {
+        "packages_dir": tmp_path,
+        "private_key_path": private_path,
+        "public_key_path": public_path,
+        "published_at": "2026-08-24T19:00:00+08:00",
+        "targets": (("windows", "amd64"),),
+    }
+    with pytest.raises(ValueError, match="必须且只能"):
+        catalog_builder.generate_catalog(
+            **common,
+            package_base_url=None,
+            package_url_map=None,
+        )
+    with pytest.raises(ValueError, match="必须且只能"):
+        catalog_builder.generate_catalog(
+            **common,
+            package_base_url="https://www.partyops.cn/releases",
+            package_url_map={
+                "windows/amd64": f"https://release.example.cn/downloads/{filename}"
+            },
+        )

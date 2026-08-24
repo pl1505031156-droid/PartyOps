@@ -15,7 +15,6 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-
 _VALIDATOR_PATH = Path(__file__).with_name("validate-partyops-update.py")
 _VALIDATOR_SPEC = importlib.util.spec_from_file_location(
     "partyops_update_validator", _VALIDATOR_PATH
@@ -82,7 +81,7 @@ def _private_key(path: Path) -> Ed25519PrivateKey:
     except ValueError:
         key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(data.strip(), validate=True))
     if not isinstance(key, Ed25519PrivateKey):
-        raise ValueError("更新签名必须使用 Ed25519 私钥")
+        raise TypeError("更新签名必须使用 Ed25519 私钥")
     return key
 
 
@@ -107,8 +106,9 @@ def _signed_manifest(
         "format_version": 4,
         "package_role": "platform-update",
         "version": VERSION,
-        # 本版延续安装器内置信任根，只允许 rc.1 及以后直接使用系统内更新。
-        "min_version": "1.4.5-rc.1",
+        # 原生产私钥不可恢复后，rc.2 显式轮换了客户端信任根。rc.1 及更早
+        # 客户端无法验证本包，必须先使用 rc.2 完整安装器原位升级。
+        "min_version": "1.4.5-rc.2",
         "schema_revision": "0023",
         "release_title": "公文排版与协同可靠性升级",
         "target_platform": platform_name,
@@ -173,7 +173,7 @@ def build_package(
                     f"党建智办 PartyOps {VERSION} 应用内更新包\n"
                     f"目标：{platform_name}/{architecture}\n"
                     "签名校验通过后执行原位升级；失败自动回滚程序并保留数据。\n"
-                ).encode("utf-8"),
+                ).encode(),
             )
             with artifact.open("rb") as source, archive.open(_zip_info(artifact.name), "w") as target:
                 for chunk in iter(lambda: source.read(1024 * 1024), b""):

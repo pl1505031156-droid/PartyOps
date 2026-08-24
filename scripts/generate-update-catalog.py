@@ -15,7 +15,6 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-
 VERSION = "1.4.5-rc.2"
 TARGETS = (
     ("windows", "amd64"),
@@ -54,7 +53,7 @@ def _load_key(path: Path) -> Ed25519PrivateKey:
     except ValueError:
         key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(data.strip(), validate=True))
     if not isinstance(key, Ed25519PrivateKey):
-        raise ValueError("更新目录签名必须使用 Ed25519 私钥")
+        raise TypeError("更新目录签名必须使用 Ed25519 私钥")
     return key
 
 
@@ -82,6 +81,34 @@ def _validated_base_url(value: str) -> str:
     return value.rstrip("/")
 
 
+def _validated_package_url(value: str, filename: str) -> str:
+    """校验 Cloud Studio 为单个制品返回的独立公网下载地址。"""
+
+    parsed = urllib.parse.urlparse(value)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port not in {None, 443}
+        or parsed.query
+        or parsed.fragment
+        or urllib.parse.unquote(Path(parsed.path).name) != filename
+        or "/downloads/" not in parsed.path
+    ):
+        raise ValueError(f"更新包地址必须是指向 /downloads/{filename} 的标准 HTTPS 地址")
+    return value
+
+
+def _load_package_url_map(path: Path) -> dict[str, str]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in payload.items()
+    ):
+        raise ValueError("更新包地址映射必须是字符串键值 JSON 对象")
+    return payload
+
+
 def resolve_targets(values: list[str] | None) -> tuple[tuple[str, str], ...]:
     """解析显式目录目标；默认完整矩阵，显式模式用于独立阻断单个制品。"""
 
@@ -104,7 +131,8 @@ def generate_catalog(
     packages_dir: Path,
     private_key_path: Path,
     public_key_path: Path,
-    package_base_url: str,
+    package_base_url: str | None,
+    package_url_map: dict[str, str] | None = None,
     published_at: str,
     targets: tuple[tuple[str, str], ...] = TARGETS,
 ) -> dict[str, object]:
@@ -115,7 +143,9 @@ def generate_catalog(
     public_key = _public_key(key)
     if public_key != public_key_path.read_text(encoding="ascii").strip():
         raise ValueError("发布私钥与安装包信任公钥不匹配")
-    base_url = _validated_base_url(package_base_url)
+    if (package_base_url is None) == (package_url_map is None):
+        raise ValueError("更新包基础地址与独立地址映射必须且只能提供一个")
+    base_url = _validated_base_url(package_base_url) if package_base_url is not None else None
     if not targets or any(target not in TARGETS for target in targets) or len(set(targets)) != len(targets):
         raise ValueError("更新目录目标必须是非空、无重复的受支持平台集合")
     platform_packages: dict[str, dict[str, dict[str, object]]] = {}
@@ -124,8 +154,17 @@ def generate_catalog(
         package = packages_dir / filename
         if not package.is_file():
             raise FileNotFoundError(f"缺少单平台签名更新包：{filename}")
+        if package_url_map is not None:
+            target_key = f"{platform_name}/{architecture}"
+            try:
+                package_url = _validated_package_url(package_url_map[target_key], filename)
+            except KeyError as exc:
+                raise ValueError(f"更新包地址映射缺少目标：{target_key}") from exc
+        else:
+            assert base_url is not None
+            package_url = f"{base_url}/{urllib.parse.quote(filename)}"
         platform_packages.setdefault(platform_name, {})[architecture] = {
-            "package_url": f"{base_url}/{urllib.parse.quote(filename)}",
+            "package_url": package_url,
             "package_size": package.stat().st_size,
             "package_sha256": _hash(package),
         }
@@ -136,6 +175,8 @@ def generate_catalog(
         "format_version": 3,
         "release": {
             "version": VERSION,
+            # rc.2 轮换正式信任根；旧客户端须先使用完整安装器升级。
+            "min_version": VERSION,
             "title": "PartyOps 公文排版与协同可靠性升级",
             "release_notes": RELEASE_NOTES,
             "published_at": published_at,
@@ -158,7 +199,13 @@ def main() -> int:
     parser.add_argument("--packages-dir", type=Path, required=True)
     parser.add_argument("--private-key", type=Path, required=True)
     parser.add_argument("--public-key", type=Path, required=True)
-    parser.add_argument("--package-base-url", required=True)
+    url_group = parser.add_mutually_exclusive_group(required=True)
+    url_group.add_argument("--package-base-url")
+    url_group.add_argument(
+        "--package-url-map",
+        type=Path,
+        help="平台/架构到 Cloud Studio 独立 /downloads/ HTTPS 地址的 JSON 映射。",
+    )
     parser.add_argument("--published-at", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -177,6 +224,11 @@ def main() -> int:
         private_key_path=args.private_key.resolve(),
         public_key_path=args.public_key.resolve(),
         package_base_url=args.package_base_url,
+        package_url_map=(
+            _load_package_url_map(args.package_url_map.resolve())
+            if args.package_url_map is not None
+            else None
+        ),
         published_at=args.published_at,
         targets=targets,
     )
