@@ -96,7 +96,7 @@ def test_model_catalog_generation_and_member_tamper_rejection(
             "--public-key",
             str(public_path),
             "--asset-url",
-            f"{pack.name}=https://downloads.example.invalid/{pack.name}",
+            f"{pack.name}=https://downloads.example.invalid/downloads/{pack.name}",
             "--release-version",
             "1.4.5-rc.2",
             "--generated-at",
@@ -116,3 +116,19 @@ def test_model_catalog_generation_and_member_tamper_rejection(
     _pack(tampered, key, payload=b"gguf", written=b"evil")
     with pytest.raises(ValueError, match="成员校验失败"):
         module._read_pack(tampered, public_raw)
+
+
+def test_model_catalog_rejects_non_download_or_credentialed_urls() -> None:
+    module = _module()
+    filename = "sample.partyops-modelpack"
+    expected = f"https://downloads.example.invalid/downloads/{filename}"
+    assert module._validated_asset_url(expected, filename) == expected
+    for invalid in (
+        f"http://downloads.example.invalid/downloads/{filename}",
+        f"https://user:secret@downloads.example.invalid/downloads/{filename}",
+        f"https://downloads.example.invalid/files/{filename}",
+        "https://downloads.example.invalid/downloads/wrong.partyops-modelpack",
+        f"https://downloads.example.invalid/downloads/{filename}?token=secret",
+    ):
+        with pytest.raises(ValueError, match="/downloads/"):
+            module._validated_asset_url(invalid, filename)

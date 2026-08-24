@@ -10,7 +10,7 @@ import json
 import re
 import zipfile
 from pathlib import Path, PurePosixPath
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -123,6 +123,23 @@ def _read_pack(path: Path, trusted_public_raw: bytes) -> dict[str, object]:
     }
 
 
+def _validated_asset_url(value: str, filename: str) -> str:
+    parsed = urlparse(value)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port not in {None, 443}
+        or parsed.query
+        or parsed.fragment
+        or "/downloads/" not in parsed.path
+        or unquote(PurePosixPath(parsed.path).name) != filename
+    ):
+        raise ValueError(f"模型地址必须是指向 /downloads/{filename} 的标准 HTTPS 地址")
+    return value
+
+
 def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="生成 PartyOps 官网签名模型目录")
     parser.add_argument("--pack", type=Path, action="append", required=True, help="最终 .partyops-modelpack，可重复")
@@ -147,8 +164,17 @@ def main() -> None:
         raise SystemExit("必须提供 --base-url 或每个模型的 --asset-url")
     if args.base_url:
         parsed = urlparse(args.base_url)
-        if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
-            raise SystemExit("模型下载基址必须是无查询参数的 HTTPS 地址")
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.port not in {None, 443}
+            or parsed.query
+            or parsed.fragment
+            or not parsed.path.rstrip("/").endswith("/downloads")
+        ):
+            raise SystemExit("模型下载基址必须是无凭据、无参数且以 /downloads 结尾的 HTTPS 地址")
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", args.release_version):
         raise SystemExit("发布版本格式无效")
     key = _private_key(args.private_key)
@@ -163,9 +189,12 @@ def main() -> None:
     asset_urls: dict[str, str] = {}
     for value in args.asset_url:
         filename, separator, url = value.partition("=")
-        parsed = urlparse(url)
-        if not separator or not filename or parsed.scheme != "https" or not parsed.netloc:
+        if not separator or not filename:
             raise SystemExit(f"模型公网地址格式无效：{value}")
+        try:
+            url = _validated_asset_url(url, filename)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
         if filename in asset_urls:
             raise SystemExit(f"模型公网地址重复：{filename}")
         asset_urls[filename] = url
