@@ -280,6 +280,11 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "MACOS_DEPLOYMENT_TARGET_TOO_NEW" in validation
     assert '${deployment_target} (发布基线为 11.0)' in validation
     assert "$deployment_target（" not in validation
+    runtime_lock = (MACOS / "requirements-runtime.txt").read_text(encoding="utf-8")
+    assert "onnxruntime==1.19.2" in runtime_lock
+    assert "sha256:d863e8acdc7232d705d49e41087e10b274c42f09e259016a46f32c34e06dc4fd" in runtime_lock
+    assert '--requirement "$SCRIPT_DIR/requirements-runtime.txt"' in build
+    assert "--require-hashes" in build and "--no-deps" in build
     assert "gh release" not in workflow
     action_lines = [
         line.strip() for line in workflow.splitlines() if line.strip().startswith("uses:")

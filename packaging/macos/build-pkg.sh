@@ -113,6 +113,11 @@ trap cleanup EXIT
 VENV="$BUILD_ROOT/venv"
 python3.11 -m venv "$VENV"
 UV_PROJECT_ENVIRONMENT="$VENV" uv sync --project "$ROOT/backend" --frozen --no-dev
+# 主线锁文件中的 onnxruntime 1.22.1 官方 macOS wheel 需要 macOS 13，不能
+# 跟随应用进入声明支持 macOS 11 的安装包。这里使用单独、带哈希的 macOS
+# 运行时锁覆盖它；不解析依赖，其他依赖仍完全来自主线 uv.lock。
+uv pip install --python "$VENV/bin/python" --no-deps --require-hashes \
+  --requirement "$SCRIPT_DIR/requirements-runtime.txt"
 uv pip install --python "$VENV/bin/python" \
   --requirement "$SCRIPT_DIR/requirements-build.txt"
 
