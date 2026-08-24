@@ -1,11 +1,11 @@
-# PartyOps 1.4.5-rc.1 macOS 原生构建与验收
+# PartyOps 1.4.5-rc.2 macOS 原生构建与验收
 
 macOS 制品不使用 Docker，也不在 Windows/Linux 上交叉冻结。Apple Silicon 和 Intel 必须分别在对应架构的真实 Mac 上构建，防止 Rosetta、Python wheel、OCR 和 llama.cpp 混入错误架构。
 
 ## 目标制品
 
-- `PartyOps_1.4.5-rc.1_macos_arm64.pkg`：macOS 11+ Apple Silicon。
-- `PartyOps_1.4.5-rc.1_macos_x86_64.pkg`：macOS 11+ Intel。
+- `PartyOps_1.4.5-rc.2_macos_arm64.pkg`：macOS 11+ Apple Silicon。
+- `PartyOps_1.4.5-rc.2_macos_x86_64.pkg`：macOS 11+ Intel。
 
 ## 构建前提
 
@@ -33,11 +33,11 @@ export PARTYOPS_MACOS_NOTARY_PROFILE='partyops-notary'
 
 ## 无证书测试候选
 
-仓库提供只允许手动触发的 `.github/workflows/build-macos-1.4.5-rc.1.yml`。它分别使用 GitHub 原生 `macos-15` Apple Silicon 与 `macos-15-intel` runner，从锁定源码构建 OCR 和 llama.cpp，再生成逐架构 PKG。任务只上传待人工审核的 workflow artifact，不会自动写入 Release 或官网。
+仓库提供只允许手动触发的 `.github/workflows/build-macos-1.4.5-rc.2.yml`。它分别使用 GitHub 原生 `macos-15` Apple Silicon 与 `macos-15-intel` runner，从锁定源码提交 `797690947b818dccae40850b39c8b37856c763f5` 构建 OCR 和 llama.cpp，再生成逐架构 PKG。任务只上传待人工审核的 workflow artifact，不会自动写入 Release 或官网。
 
-没有 Apple Developer 证书时可使用 `--unsigned-candidate`：应用内所有 Mach-O 使用 ad-hoc 签名，旁边生成机器可读 attestation，明确记录 `developer_id_signed=false`、`notarized=false` 和 `real_device_validation=false`。这种包只能作为 1.4.5-rc.1 未签名公开候选，必须在下载页显著提示“未签名、未公证、未用户真机验证”，不能称为已签名或已通过用户实机验收。
+没有 Apple Developer 证书时可使用 `--unsigned-candidate`：应用内所有 Mach-O 使用 ad-hoc 签名，旁边生成机器可读 attestation，明确记录 `developer_id_signed=false`、`notarized=false` 和 `real_device_validation=false`。这种包只能作为 1.4.5-rc.2 未签名公开候选，必须在下载页显著提示“未签名、未公证、未用户真机验证”，不能称为已签名或已通过用户实机验收。
 
-手动触发时必须输入 `BUILD-UNSIGNED-145-RC1`。工作流固定检出 `1.4.5-rc.1` 的源码实现与 macOS 校验修复提交，不随默认分支漂移；固定提交以工作流 `actions/checkout` 的 `ref` 为唯一依据。Intel 构建会从官方固定哈希源码生成 macOS 11 基线的 OpenSSL 3.5 LTS 静态闭包，并拒绝 `cryptography` 继续动态依赖 Runner 的 `libssl/libcrypto`。构建成功后仍要下载两个 workflow artifact，在本机比对 SHA-256 与 attestation，再人工上传；构建任务没有 Release 写权限。
+手动触发时必须输入 `BUILD-UNSIGNED-145-RC2`。工作流固定检出 `1.4.5-rc.2` 的源码冻结提交，不随默认分支漂移；固定提交以工作流 `actions/checkout` 的 `ref` 为唯一依据。Intel 构建会从官方固定哈希源码生成 macOS 11 基线的 OpenSSL 3.5 LTS 静态闭包，并拒绝 `cryptography` 继续动态依赖 Runner 的 `libssl/libcrypto`。构建成功后仍要下载两个 workflow artifact，在本机比对 SHA-256 与 attestation，再人工上传；构建任务没有 Release 写权限。
 
 PKG 不把 `.app` 目录直接交给 `pkgbuild` 组件分析。PyInstaller 内嵌的 `Python.framework` 会被 Installer 识别为第二个可重定位组件，在部分系统上破坏 Bundle。构建脚本改为携带经过 ZIP 往返校验的原始 App；`postinstall` 完整解包并验证 Bundle ID、主程序权限和代码签名后，才事务式替换 `/Applications/PartyOps.app`。升级失败会恢复旧 App，用户业务数据不参与该事务。
 

@@ -227,7 +227,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     runtimes = (MACOS / "build-native-runtimes.sh").read_text(encoding="utf-8")
     validation = (MACOS / "validate-bundle.sh").read_text(encoding="utf-8")
     workflow = (
-        ROOT / ".github" / "workflows" / "build-macos-1.4.5-rc.1.yml"
+        ROOT / ".github" / "workflows" / "build-macos-1.4.5-rc.2.yml"
     ).read_text(encoding="utf-8")
 
     assert "--unsigned-candidate" in build
@@ -260,7 +260,8 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "push:" not in workflow and "pull_request:" not in workflow
     assert "contents: read" in workflow
     assert "macos-15-intel" in workflow and "macos-15" in workflow
-    assert "BUILD-UNSIGNED-145-RC1" in workflow
+    assert "BUILD-UNSIGNED-145-RC2" in workflow
+    assert "ref: 797690947b818dccae40850b39c8b37856c763f5" in workflow
     assert re.search(r"ref: [0-9a-f]{40}", workflow)
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1
