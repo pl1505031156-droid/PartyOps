@@ -6,7 +6,7 @@
 
 - 分支：`release/1.4.5-rc.2`
 - rc.1 基线：`9f45cbcb6c293baf88693a5b6ddc045f11d75ab3`
-- rc.2 源码冻结：`797690947b818dccae40850b39c8b37856c763f5`
+- rc.2 源码冻结：`ce2788c196835b8bba8c4da36e226569e30e4a24`
 - 数据库迁移：`0023_file_open_grant_lifecycle`
 - macOS 原生构建工作流只检出上述源码冻结提交，不跟随分支漂移。
 

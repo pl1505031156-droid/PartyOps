@@ -37,7 +37,7 @@ jobs:
       - name: 检出固定提交
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 797690947b818dccae40850b39c8b37856c763f5
+          ref: ce2788c196835b8bba8c4da36e226569e30e4a24
           persist-credentials: false
 
       - name: 配置 Python 3.11
