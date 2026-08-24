@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
 import pytest
-
 from app import local_ai
 from app.enums import ModelPackStatus
 from app.problems import ProblemException
@@ -121,9 +118,10 @@ def test_embedding_mean_pooling_dimension_and_unload(
     tokenizer_file.write_text("{}", encoding="utf-8")
 
     class Encoded:
-        ids = [1, 2]
-        attention_mask = [1, 1]
-        type_ids = [0, 0]
+        def __init__(self) -> None:
+            self.ids = [1, 2]
+            self.attention_mask = [1, 1]
+            self.type_ids = [0, 0]
 
     class Tokenizer:
         def encode_batch(self, texts):

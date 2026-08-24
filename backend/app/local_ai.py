@@ -29,7 +29,6 @@ from .model_packs import active_model_pack, model_pack_root, verify_installed_pa
 from .models import AIModelPack, BackgroundJob, Transfer
 from .problems import ProblemException
 
-
 BUSY_JOB_TYPES = {"backup", "restore", "update", "workspace_scan", "transfer"}
 BUSY_JOB_STATES = {"running", "applying", "transferring"}
 

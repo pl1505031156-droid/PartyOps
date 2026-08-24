@@ -14,7 +14,10 @@ from urllib.parse import quote, urlparse
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -36,7 +39,7 @@ def _private_key(path: Path) -> Ed25519PrivateKey:
     except ValueError:
         key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(data.strip(), validate=True))
     if not isinstance(key, Ed25519PrivateKey):
-        raise ValueError("模型目录签名必须使用 Ed25519 私钥")
+        raise TypeError("模型目录签名必须使用 Ed25519 私钥")
     return key
 
 
@@ -63,7 +66,7 @@ def _read_pack(path: Path, trusted_public_raw: bytes) -> dict[str, object]:
             raise ValueError(f"模型包成员与签名清单不一致：{path.name}")
         for filename, metadata in files.items():
             if not isinstance(filename, str):
-                raise ValueError(f"模型包成员路径无效：{path.name}")
+                raise TypeError(f"模型包成员路径无效：{path.name}")
             pure = PurePosixPath(filename)
             if (
                 pure.is_absolute()
