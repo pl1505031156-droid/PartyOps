@@ -57,7 +57,7 @@ if [[ "$ACTION" == deb ]]; then
     cd "$ROOT"
     export PYTHON_BIN="$HOST_PYTHON_BIN"
     export PARTYOPS_BUILD_ARCH=arm64
-    export PARTYOPS_BUILD_BASE=/tmp/partyops-build-arm64-package
+    export PARTYOPS_NATIVE_BUILD_BASE=/tmp/partyops-build-arm64-package
     # 本入口的 portable 阶段只会在上方受控 ARM64 chroot 中成功产出；
     # 普通 build-native 直接交叉封装仍保持默认拒绝。
     export PARTYOPS_ALLOW_CROSS_PACKAGE=1
@@ -119,6 +119,7 @@ chroot "$ROOTFS" /bin/bash -lc "
   export PYTHON_BIN=/opt/partyops-python-3.11.15-arm64/bin/python3.11
   export PARTYOPS_BUILD_ARCH=arm64
   export PARTYOPS_BUILD_BASE=/tmp/partyops-build-arm64
+  export PARTYOPS_NATIVE_BUILD_BASE=/tmp/partyops-native-build-arm64
   case '$ACTION' in
     portable) bash packaging/uos/build-portable.sh ;;
     rpm) bash packaging/linux/build-native.sh rpm ;;
@@ -128,7 +129,7 @@ chroot "$ROOTFS" /bin/bash -lc "
       ;;
     test-rpm)
       bash scripts/test-native-package-runtime.sh \
-        artifacts/PartyOps-1.4.5-0.rc.1.1.aarch64.rpm arm64
+        artifacts/PartyOps-1.4.5-0.rc.2.1.aarch64.rpm arm64
       ;;
   esac
 "

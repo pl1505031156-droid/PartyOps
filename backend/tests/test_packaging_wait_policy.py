@@ -1085,9 +1085,13 @@ def test_arm64_native_package_is_host_wrapped_then_chroot_tested() -> None:
     assert "HOST_PYTHON_BIN=" in script
     assert 'if [[ "$ACTION" == deb ]]' in script
     assert "PARTYOPS_ALLOW_CROSS_PACKAGE=1" in script
+    assert "PARTYOPS_NATIVE_BUILD_BASE=/tmp/partyops-build-arm64-package" in script
+    assert "PARTYOPS_NATIVE_BUILD_BASE=/tmp/partyops-native-build-arm64" in script
     assert "bash packaging/linux/build-native.sh deb" in script
     assert "rpm) bash packaging/linux/build-native.sh rpm" in script
     assert "test-native-package-runtime.sh" in script
+    assert "artifacts/PartyOps-1.4.5-0.rc.2.1.aarch64.rpm arm64" in script
+    assert "artifacts/PartyOps-1.4.5-0.rc.1.1.aarch64.rpm" not in script
     assert "deb|rpm) bash packaging/linux/build-native.sh '$ACTION'" not in script
 
 
