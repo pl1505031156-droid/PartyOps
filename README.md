@@ -18,7 +18,7 @@
 </div>
 
 > [!IMPORTANT]
-> 当前源码版本为 `1.4.5-rc.1`，数据库模式为 `0022`。本版把“三会一课”、党委（党组）理论学习中心组和发展党员升级为独立党务模块，并加入多文件资料队列、30 天可恢复删除、运行身份重新配置、本机硬件检测及 12 档本地模型推荐。本轮公开 Windows 10/11 x64、Windows 7 SP1 x64/x86、麒麟/UOS/deepin 双架构 DEB 和 openEuler 双架构 RPM 共七个候选安装包；macOS 源码适配已保留，但因当前没有对应原生构建环境，本版不提供 PKG，也不复用旧包。实际可下载项以[机器可读支持矩阵](docs/support-matrix-1.4.5-rc.1.json)和发布清单为准。详见[1.4.5-rc.1 发布说明](docs/release-notes-v1.4.5-rc.1.md)。
+> 当前源码版本为 `1.4.5-rc.1`，数据库模式为 `0022`。本版把“三会一课”、党委（党组）理论学习中心组和发展党员升级为独立党务模块，并加入多文件资料队列、30 天可恢复删除、运行身份重新配置、本机硬件检测及 12 档本地模型推荐。本轮公开 Windows 10/11 x64、Windows 7 SP1 x64/x86、麒麟/UOS/deepin 双架构 DEB、openEuler 双架构 RPM，以及 macOS Apple Silicon/Intel PKG，共九个候选安装包。macOS 双架构均在对应原生 Darwin 主机完成全新构建、安装、重复自检和真实 LaunchServices 启动门禁；仍未使用 Developer ID、未公证，且尚无用户设备交互验收。实际可下载项以[机器可读支持矩阵](docs/support-matrix-1.4.5-rc.1.json)和发布清单为准。详见[1.4.5-rc.1 发布说明](docs/release-notes-v1.4.5-rc.1.md)。
 
 ## 当前公开发布
 
@@ -28,10 +28,10 @@
 | 发布时间 | 以 GitHub Release 与官网显示的北京时间为准 |
 | 冻结源码 | 不可变标签 [`v1.4.5-rc.1`](https://github.com/pl1505031156-droid/PartyOps/tree/v1.4.5-rc.1) |
 | 官方网站 | [https://www.partyops.cn/](https://www.partyops.cn/) |
-| 制品校验 | 当前七个 Windows/Linux 主安装包以同一 Release、官网和机器可读清单为准 |
+| 制品校验 | 当前九个 Windows/Linux/macOS 主安装包以同一 Release、官网和机器可读清单为准 |
 | 发布边界 | 只有完成对应原生构建和目标系统门禁的制品才提供下载；缺少商业签名或用户真机交互验收的平台标为 preview，未构建架构标为 unavailable |
 
-Release 当前提供七个 Windows/Linux 主安装包、可选 `.sha256`、构建证明、发布清单、SBOM、安全门禁和验收记录。在线更新包只能由现有离线 Ed25519 私钥签发；私钥未挂载时不生成替代签名或轮换信任根。macOS 两个目标保持 `unavailable`，待对应原生架构完成构建、LaunchServices 自检和哈希冻结后再单独补发。历史版本变化仍在 `CHANGELOG.md` 中追溯。
+Release 当前提供九个 Windows/Linux/macOS 主安装包、可选 `.sha256`、构建证明、发布清单、SBOM、安全门禁和验收记录。在线更新包只能由现有离线 Ed25519 私钥签发；私钥未挂载时不生成替代签名或轮换信任根。macOS 两个目标为 `preview`：原生构建与自动启动门禁已通过，但签名、公证和用户设备验证边界仍须如实保留。历史版本变化仍在 `CHANGELOG.md` 中追溯。
 
 ## 30 秒了解 PartyOps
 
@@ -184,6 +184,8 @@ flowchart LR
 - [麒麟/UOS/deepin ARM64 DEB](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps_1.4.5-rc.1_linux_arm64.deb)
 - [openEuler x86_64 RPM](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps-1.4.5-0.rc.1.1.x86_64.rpm)
 - [openEuler ARM64 RPM](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps-1.4.5-0.rc.1.1.aarch64.rpm)
+- [macOS 11+ Apple Silicon PKG](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps_1.4.5-rc.1_macos_arm64.pkg)
+- [macOS 11+ Intel PKG](https://github.com/pl1505031156-droid/PartyOps/releases/download/v1.4.5-rc.1/PartyOps_1.4.5-rc.1_macos_x86_64.pkg)
 
 普通 Windows 用户只需下载一个 EXE。安装器会校验其内部载荷；最终文件大小与 SHA-256 直接显示在 Release 和官网，无需再下载第二个“校验包”。同名 `.sha256` 仅为自动化工具提供，不是安装必需步骤。
 
@@ -191,7 +193,7 @@ flowchart LR
 
 Windows 7 x64 提供完整主机、协同、OCR、语义重排和本地 LLM；x86 提供核心主机、协同、数据库、文件、档案、备份和 OCR，受 32 位地址空间限制不启用语义重排与本地 LLM。两者均使用独立 Python 3.8 Legacy 锁、经证据校验的安全回移组件和 Microsoft 官方 app-local UCRT；由于没有 Win7 真机，仍不能把静态/冻结验证表述为真机通过。
 
-macOS 1.4.5-rc.1 本轮没有公开安装包。只有在 Apple Silicon 与 Intel 原生 macOS 上分别完成构建、LaunchServices 启动门禁和哈希冻结后才会补发；不要把旧 PKG 改名当作本版，也不要全局关闭 Gatekeeper。
+macOS 1.4.5-rc.1 提供 Apple Silicon 与 Intel 两个原生 PKG。两者分别在 `macos-15` 与 `macos-15-intel` 原生主机完成安装、干净环境/污染环境重复自检、LaunchAgent 启动和真实 `open -na` LaunchServices 门禁；针对用户日志中“原生入口进入后桌面子进程以 255 退出”的故障，入口会清理 PyInstaller/Python/DYLD 继承环境，并把标准错误和退出码写入诊断日志。安装包采用 ad-hoc 签名、未公证，首次安装须先核对 SHA-256，再按 macOS“隐私与安全”界面放行；不要全局关闭 Gatekeeper。
 
 ## 安装教程
 
@@ -275,7 +277,7 @@ sudo dnf install ./PartyOps-1.4.5-0.rc.1.1.x86_64.rpm
 1. 点击苹果菜单 → “关于本机”：Apple M 系列下载 `macos_arm64.pkg`，Intel 处理器下载 `macos_x86_64.pkg`；终端 `uname -m` 也会分别显示 `arm64` 或 `x86_64`。
 2. 用 `shasum -a 256 <文件名>` 核对官网或 Release 显示的 SHA-256。当前候选包没有 Developer ID 和公证：在 Finder 按住 Control 点击下载的 PKG →“打开”；若仍被阻止，先尝试打开一次，再到“系统设置 → 隐私与安全性”点击对应的“仍要打开”，完成管理员授权并安装到 `/Applications`。
 3. 安装完成后，在 Finder 的“应用程序”中按住 Control 点击“党建智办”并选择“打开”；如系统再次拦截，按同样方式在“隐私与安全性”确认。不要执行全局关闭 Gatekeeper 的命令。
-4. 选择个人、主机或协同模式并等待页面就绪。未打开时先查看 `~/Library/Logs/PartyOps/launch-probe.log`，再查看同目录 `launcher.log`；前者即使冻结向导尚未启动也会由原生 Finder 入口创建。反馈 Mac 型号、芯片、macOS 版本和日志末尾，不要上传真实业务数据。
+4. 选择个人、主机或协同模式并等待页面就绪。未打开时依次查看 `~/Library/Logs/PartyOps/launch-probe.log`、`launcher.log` 与 `launch-stderr.log`；前置探针会在冻结向导启动前创建日志，并保留子进程 PID、架构、退出码和标准错误。反馈 Mac 型号、芯片、macOS 版本及脱敏后的日志末尾，不要上传真实业务数据。
 
 ### 首次组网与目录共享
 

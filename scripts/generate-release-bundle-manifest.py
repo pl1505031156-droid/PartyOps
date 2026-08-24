@@ -19,14 +19,11 @@ INSTALLERS = {
     "PartyOps_1.4.5-rc.1_linux_arm64.deb": "linux-deb/arm64",
     "PartyOps-1.4.5-0.rc.1.1.x86_64.rpm": "linux-rpm/amd64",
     "PartyOps-1.4.5-0.rc.1.1.aarch64.rpm": "linux-rpm/arm64",
-}
-
-# macOS 只能在对应原生 macOS 架构上生成并执行 LaunchServices 门禁。
-# 当前发布机是 Windows/WSL，禁止复用旧 PKG 或把非 macOS 载荷改名后补齐数量。
-UNAVAILABLE_INSTALLERS = {
     "PartyOps_1.4.5-rc.1_macos_x86_64.pkg": "macos/amd64",
     "PartyOps_1.4.5-rc.1_macos_arm64.pkg": "macos/arm64",
 }
+
+UNAVAILABLE_INSTALLERS: dict[str, str] = {}
 
 
 def sha256(path: Path) -> str:
@@ -43,6 +40,9 @@ def build_manifest(
     output: Path,
     source_commit: str,
     tooling_commit: str,
+    macos_source_commit: str,
+    macos_workflow_commit: str,
+    macos_build_run: str,
     generated_at: str,
 ) -> dict[str, object]:
     timestamp = datetime.fromisoformat(generated_at)
@@ -75,6 +75,14 @@ def build_manifest(
         "release_tag": "v1.4.5-rc.1",
         "source_commit": source_commit,
         "release_tooling_commit": tooling_commit,
+        "supplemental_sources": [
+            {
+                "scope": ["macos/amd64", "macos/arm64"],
+                "source_commit": macos_source_commit,
+                "workflow_commit": macos_workflow_commit,
+                "native_build_run": macos_build_run,
+            }
+        ],
         "generated_at": generated_at,
         "timezone": "Asia/Shanghai (UTC+8)",
         "release_type": "ordinary",
@@ -84,14 +92,14 @@ def build_manifest(
         "packaged_platforms": list(INSTALLERS.values()),
         "unavailable_platforms": list(UNAVAILABLE_INSTALLERS.values()),
         "verified_platforms": [],
-        "native_verified_platforms": [],
+        "native_verified_platforms": ["macos/amd64", "macos/arm64"],
         "emulated_verified_platforms": ["linux-deb/arm64", "linux-rpm/arm64"],
         "native_machine_validation": False,
         "limitations": [
             "Windows 7 与国产 Linux 尚未在对应真机运行验收",
             "Windows 安装器尚无商业代码签名",
             "ARM64 Linux 成品已通过 QEMU 动态门禁，但桌面 PID 归属仍需真实 ARM 内核复核",
-            "macOS 两个目标缺少对应原生构建环境，本次不发布 PKG，也不复用历史制品",
+            "macOS 双架构已在对应原生 Darwin 主机完成安装和 LaunchServices 门禁，但未使用 Developer ID、未公证且尚无用户设备交互验收",
         ],
         "assets": assets,
     }
@@ -103,6 +111,9 @@ def main() -> int:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--tooling-commit", required=True)
+    parser.add_argument("--macos-source-commit", required=True)
+    parser.add_argument("--macos-workflow-commit", required=True)
+    parser.add_argument("--macos-build-run", required=True)
     parser.add_argument("--generated-at", required=True)
     args = parser.parse_args()
     root = args.root.resolve()
@@ -112,6 +123,9 @@ def main() -> int:
         output=output,
         source_commit=args.source_commit,
         tooling_commit=args.tooling_commit,
+        macos_source_commit=args.macos_source_commit,
+        macos_workflow_commit=args.macos_workflow_commit,
+        macos_build_run=args.macos_build_run,
         generated_at=args.generated_at,
     )
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -30,6 +30,9 @@ def test_manifest_requires_only_current_installers(tmp_path: Path) -> None:
         output=output,
         source_commit="a" * 40,
         tooling_commit="b" * 40,
+        macos_source_commit="c" * 40,
+        macos_workflow_commit="d" * 40,
+        macos_build_run="32681880115",
         generated_at="2026-08-18T10:00:00+08:00",
     )
     assert payload["schema_version"] == 4
@@ -37,7 +40,16 @@ def test_manifest_requires_only_current_installers(tmp_path: Path) -> None:
     assert payload["make_latest"] is False
     assert payload["packaged_platforms"] == list(MODULE.INSTALLERS.values())
     assert payload["verified_platforms"] == []
-    assert payload["native_verified_platforms"] == []
+    assert payload["native_verified_platforms"] == ["macos/amd64", "macos/arm64"]
+    assert payload["unavailable_platforms"] == []
+    assert payload["supplemental_sources"] == [
+        {
+            "scope": ["macos/amd64", "macos/arm64"],
+            "source_commit": "c" * 40,
+            "workflow_commit": "d" * 40,
+            "native_build_run": "32681880115",
+        }
+    ]
     assert {asset["filename"] for asset in payload["assets"]} == set(MODULE.INSTALLERS)
 
 
@@ -50,6 +62,9 @@ def test_manifest_rejects_old_installer(tmp_path: Path) -> None:
             output=tmp_path / "manifest.json",
             source_commit="a" * 40,
             tooling_commit="b" * 40,
+            macos_source_commit="c" * 40,
+            macos_workflow_commit="d" * 40,
+            macos_build_run="32681880115",
             generated_at="2026-08-18T10:00:00+08:00",
         )
 
