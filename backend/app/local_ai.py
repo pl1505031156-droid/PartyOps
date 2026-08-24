@@ -525,6 +525,10 @@ class LocalLlmRuntime:
                         "model": pack.model_id,
                         "temperature": 0.2,
                         "max_tokens": 1200,
+                        # Qwen3 默认会先生成思考片段；短办公草稿可能因此耗尽
+                        # token 预算并返回空正文。发布内置 llama.cpp 支持按请求
+                        # 关闭该模式，Qwen2.5 等非推理模型会安全忽略此参数。
+                        "chat_template_kwargs": {"enable_thinking": False},
                         "messages": [
                             {
                                 "role": "system",

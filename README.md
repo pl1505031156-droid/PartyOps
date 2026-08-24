@@ -320,9 +320,9 @@ sudo dnf install ./PartyOps-1.4.5-0.rc.1.1.x86_64.rpm
 
 - 受控意图：Needle 2 用于把中文指令整理为事项预览、字段和提醒建议；任何新增、修改、删除、发送、导出和身份切换都必须由用户明确确认。
 - 中文检索：BGE Small、Base、Large 三档，用于事项、档案、知识和已授权共享目录的语义检索。
-- 本地草稿：Qwen3 0.6B、1.7B、4B、8B、14B、30B-A3B、32B 和 235B-A22B，覆盖普通办公电脑、高端工作站到多 GPU 服务器。4B 及以上大模型不在官网重复存储，统一从 Qwen 官方仓库获取并通过本机 OpenAI 兼容服务接入。
+- 本地草稿：官网签名直导档包括 Qwen2.5 0.5B、Qwen3 0.6B 和 DeepSeek R1 Distill Qwen 1.5B；更大的 Qwen3 与 DeepSeek R1 Distill 7B 及以上模型从发布方官方仓库取得，通过本机 OpenAI 兼容服务接入。
 
-体积适中的模型只有在来源、许可证、逐文件 SHA-256、Ed25519 签名和平台运行门禁全部完成后，才通过官网 `.partyops-modelpack` 直接下载。大模型不复制到官网：从 Qwen 官方仓库取得 GGUF 后，使用官方 `llama.cpp` 的 `llama-server` 在本机提供 OpenAI 兼容接口，再在 PartyOps AI 配置中接入。不得把来源不明的 GGUF 或运行器直接导入系统。
+体积适中的模型只有在来源、许可证、逐文件 SHA-256、Ed25519 签名和平台运行门禁全部完成后，才通过官网 `.partyops-modelpack` 直接下载。大模型不复制到官网：从 Qwen 或 DeepSeek 官方仓库取得权重后，使用官方 `llama.cpp` 的 `llama-server` 在本机提供 OpenAI 兼容接口，再在 PartyOps AI 配置中接入。未签名模型包会被拒绝；普通 GGUF 只能作为可信回环服务接入，不得绕过验签或把未认证端口开放到网络。
 
 本地 LLM 只生成带来源的草稿，不自动修改事项、档案或文件权限；未获正文索引授权的共享内容不会进入提示词。模型不存在、资源不足或推理失败时，系统自动降级为规则推荐与普通检索。完整分档与新手接入说明见[官网本地模型页](https://www.partyops.cn/models)。
 
