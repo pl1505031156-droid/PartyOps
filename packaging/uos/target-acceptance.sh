@@ -17,7 +17,7 @@ mkdir -p "$ROOT/artifacts"
   esac
   echo "architecture=$ARCH"
   VERSION="${PARTYOPS_VERSION:-1.4.5-rc.3}"
-  PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.5~rc.2}"
+  PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.5~rc.3}"
   INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' partyops)"
   INSTALLED_ARCH="$(dpkg-query -W -f='${Architecture}' partyops)"
   echo "installed_version=$INSTALLED_VERSION"

@@ -27,6 +27,8 @@ VERSION_INPUTS = (
     "packaging/linux/build-native.sh",
     "packaging/uos/build-portable.sh",
     "packaging/linux/post-install-selftest.sh",
+    "packaging/uos/one-click-install.sh",
+    "packaging/uos/target-acceptance.sh",
     "scripts/build-platform-update-packages.py",
     "scripts/generate-release-bundle-manifest.py",
 )
@@ -74,4 +76,27 @@ def test_linux_installed_runtime_version_mismatch_is_rejected(tmp_path: Path) ->
     )
 
     with pytest.raises(ValueError, match="Linux 安装后自检版本不一致"):
+        MODULE.verify(tmp_path, "1.4.5-rc.3")
+
+
+@pytest.mark.parametrize(
+    ("relative", "label"),
+    (
+        ("packaging/uos/one-click-install.sh", "Linux 一键安装包版本"),
+        ("packaging/uos/target-acceptance.sh", "Linux 目标机验收包版本"),
+    ),
+)
+def test_linux_package_version_defaults_are_frozen(
+    tmp_path: Path,
+    relative: str,
+    label: str,
+) -> None:
+    _copy_version_inputs(tmp_path)
+    target = tmp_path / relative
+    target.write_text(
+        target.read_text(encoding="utf-8").replace("1.4.5~rc.3", "1.4.5~rc.2", 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=label):
         MODULE.verify(tmp_path, "1.4.5-rc.3")

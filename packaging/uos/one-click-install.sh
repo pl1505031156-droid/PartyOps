@@ -193,7 +193,7 @@ if [[ "$ARCH" != "amd64" && "$ARCH" != "arm64" ]]; then
   exit 2
 fi
 VERSION="${PARTYOPS_VERSION:-1.4.5-rc.3}"
-PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.5~rc.2}"
+PACKAGE_VERSION="${PARTYOPS_PACKAGE_VERSION:-1.4.5~rc.3}"
 DEB="$ARTIFACTS/PartyOps_${VERSION}_linux_${ARCH}.deb"
 
 if [[ -f "$DEB" && "$FORCE_REBUILD" != "1" ]]; then

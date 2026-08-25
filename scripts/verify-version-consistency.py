@@ -114,6 +114,18 @@ def verify(root: Path, expected: str) -> None:
             "Linux 安装后自检",
             expected,
         ),
+        (
+            "packaging/uos/one-click-install.sh",
+            r'^PACKAGE_VERSION="\$\{PARTYOPS_PACKAGE_VERSION:-([^}]+)\}"',
+            "Linux 一键安装包版本",
+            expected.replace("-rc.", "~rc."),
+        ),
+        (
+            "packaging/uos/target-acceptance.sh",
+            r'^\s*PACKAGE_VERSION="\$\{PARTYOPS_PACKAGE_VERSION:-([^}]+)\}"',
+            "Linux 目标机验收包版本",
+            expected.replace("-rc.", "~rc."),
+        ),
     ):
         _expect(
             pattern,
