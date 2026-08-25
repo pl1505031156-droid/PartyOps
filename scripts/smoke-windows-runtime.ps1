@@ -68,7 +68,7 @@ try {
   }
   $revision = & $Python -c "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute('select version_num from alembic_version').fetchone()[0])" (Join-Path $DataRoot "partyops.db")
   if ($LASTEXITCODE -ne 0) { throw "无法读取冒烟数据库迁移版本。" }
-  if ($revision -ne "0023") { throw "冻结主程序数据库版本为 $revision，不是 0023。" }
+  if ($revision -ne "0024") { throw "冻结主程序数据库版本为 $revision，不是 0024。" }
   if ([version]$health.sqlite.version -lt [version]"3.51.3") {
     throw "冻结主程序 SQLite 为 $($health.sqlite.version)，低于 3.51.3。"
   }

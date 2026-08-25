@@ -62,7 +62,7 @@ $savedDataDir = $env:PARTYOPS_DATA_DIR
 try {
   $env:PARTYOPS_DATA_DIR = $legacySchemaRoot
   $legacySchema = & $pythonPath -c "import pathlib,sqlite3,sys; sys.path.insert(0, str(pathlib.Path(sys.argv[1]))); from app.database import DatabaseRuntime; DatabaseRuntime().create_schema(); db=sqlite3.connect(str(pathlib.Path(sys.argv[2])/'partyops.db')); print(db.execute('select version_num from alembic_version').fetchone()[0])" $backendRoot $legacySchemaRoot
-  if ($LASTEXITCODE -ne 0 -or $legacySchema -notcontains "0023") {
+  if ($LASTEXITCODE -ne 0 -or $legacySchema -notcontains "0024") {
     throw "Win7 $Architecture Python 3.8 数据库迁移链初始化门禁失败，拒绝继续冻结安装包。"
   }
 } finally {
