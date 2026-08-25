@@ -1,7 +1,7 @@
 # PartyOps 公文排版技术来源与规则追溯
 
 更新时间：2026-08-24（北京时间）
-适用版本：PartyOps 1.4.5-rc.2
+适用版本：PartyOps 1.4.5-rc.3
 
 研究冻结点：2026-08-24；上游公开页面显示主线社区版 `v1.8.8.3`、55 个提交。只读取 README、LICENSE、LICENSE-HISTORY、DISCLAIMER、公开测试文件名和 Issues 标题，不下载或审阅实现源码。
 

@@ -9,7 +9,7 @@ from typing import Any, List
 from urllib.parse import quote
 
 from docx import Document
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Body, Depends, Header, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -22,6 +22,8 @@ from ..models import (
     BusinessDocument,
     BusinessDocumentRevision,
     BusinessMeeting,
+    MeetingAction,
+    MeetingAttendee,
     MeetingTopic,
     StudyPlan,
     Task,
@@ -33,7 +35,6 @@ from ..models import (
 from ..problems import ProblemException
 from ..security import get_current_user, require_admin
 from .router_utils import client_ip, parse_if_match
-
 
 router = APIRouter(tags=["business-workflows"])
 
@@ -92,6 +93,14 @@ class TopicInput(BaseModel):
     amount_confirmed: bool = False
 
 
+class TopicPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=240)
+    review_result: str | None = Field(default=None, max_length=20_000)
+    amount: str | None = None
+    reviewed: bool | None = None
+    amount_confirmed: bool | None = None
+
+
 class DocumentInput(BaseModel):
     meeting_id: str | None = None
     task_step_id: str | None = None
@@ -106,6 +115,10 @@ class DocumentPatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=240)
     content: dict[str, Any] | None = None
     change_note: str = Field(default="", max_length=500)
+
+
+class LifecycleReason(BaseModel):
+    reason: str = Field(min_length=2, max_length=1000)
 
 
 def ensure_committee_template(db: Session, user: User) -> WorkflowTemplate:
@@ -157,6 +170,8 @@ def meeting_out(db: Session, item: BusinessMeeting) -> dict[str, Any]:
         "scheduled_at": item.scheduled_at,
         "completed_at": item.completed_at,
         "status": item.status,
+        "archived_at": item.archived_at,
+        "archive_reason": item.archive_reason,
         "workflow_template_id": item.workflow_template_id,
         "host_id": item.host_id,
         "recorder_id": item.recorder_id,
@@ -171,11 +186,36 @@ def meeting_out(db: Session, item: BusinessMeeting) -> dict[str, Any]:
             {"id": step.id, "title": step.title, "assignee_id": step.assignee_id, "due_at": step.due_at, "done": step.done, "version": step.version}
             for step in steps
         ],
-        "topics": [
-            {"id": topic.id, "title": topic.title, "review_result": topic.review_result, "amount": f"{Decimal(topic.amount_cents) / 100:.2f}", "reviewed": topic.reviewed, "amount_confirmed": topic.amount_confirmed, "version": topic.version}
-            for topic in topics
-        ],
+        "topics": [_topic_out(topic) for topic in topics if not topic.archived_at],
+        "archived_topics": [_topic_out(topic) for topic in topics if topic.archived_at],
     }
+
+
+def _topic_out(topic: MeetingTopic) -> dict[str, Any]:
+    return {
+        "id": topic.id,
+        "title": topic.title,
+        "review_result": topic.review_result,
+        "amount": f"{Decimal(topic.amount_cents) / 100:.2f}",
+        "reviewed": topic.reviewed,
+        "amount_confirmed": topic.amount_confirmed,
+        "archived_at": topic.archived_at,
+        "archive_reason": topic.archive_reason,
+        "version": topic.version,
+    }
+
+
+def _amount_cents(value: str) -> int:
+    try:
+        amount = Decimal(value)
+        if not amount.is_finite() or amount != amount.quantize(Decimal("0.01")):
+            raise InvalidOperation
+        amount_cents = int(amount * 100)
+    except (InvalidOperation, ValueError):
+        raise ProblemException(422, "MEETING_AMOUNT_INVALID", "议题金额无效", "请输入最多两位小数的非负金额。") from None
+    if amount_cents < 0 or amount_cents > 9_000_000_000_000_000:
+        raise ProblemException(422, "MEETING_AMOUNT_INVALID", "议题金额无效", "金额必须为非负数且不能超过系统统计上限。")
+    return amount_cents
 
 
 def _can_modify_meeting(db: Session, meeting: BusinessMeeting, user: User) -> bool:
@@ -368,12 +408,16 @@ def generate_due_recurring_meetings(
 
 @router.get("/workflow-templates", response_model=List[dict])
 def list_workflow_templates(
+    include_archived: bool = False,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[dict[str, Any]]:
     ensure_committee_template(db, user)
     db.commit()
-    return [template_out(item) for item in db.scalars(select(WorkflowTemplate).where(WorkflowTemplate.active.is_(True)).order_by(WorkflowTemplate.name)).all()]
+    query = select(WorkflowTemplate)
+    if not include_archived:
+        query = query.where(WorkflowTemplate.active.is_(True))
+    return [template_out(item) for item in db.scalars(query.order_by(WorkflowTemplate.name)).all()]
 
 
 @router.post("/workflow-templates", response_model=dict, status_code=201)
@@ -397,17 +441,44 @@ def create_workflow_template(
 def archive_workflow_template(
     template_id: str,
     request: Request,
+    payload: LifecycleReason | None = Body(default=None),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     item = db.get(WorkflowTemplate, template_id)
     if not item:
         raise ProblemException(404, "WORKFLOW_TEMPLATE_NOT_FOUND", "流程模板不存在", "请刷新后重试。")
+    if item.built_in:
+        raise ProblemException(409, "BUILT_IN_TEMPLATE_ARCHIVE_FORBIDDEN", "内置模板不能归档", "内置流程用于系统业务，可复制后维护自定义版本。")
     item.active = False
+    item.archived_at = utcnow()
+    item.archived_by = admin.id
+    item.archive_reason = payload.reason.strip() if payload else "管理员归档自定义流程模板"
     item.version += 1
-    write_audit(db, admin, "workflow_template.archive", "workflow_template", item.id, {}, client_ip(request))
+    write_audit(db, admin, "workflow_template.archive", "workflow_template", item.id, {"reason": item.archive_reason}, client_ip(request))
     db.commit()
     return {"archived": True, "id": item.id}
+
+
+@router.post("/workflow-templates/{template_id}/restore", response_model=dict)
+def restore_workflow_template(
+    template_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    item = db.get(WorkflowTemplate, template_id)
+    if not item:
+        raise ProblemException(404, "WORKFLOW_TEMPLATE_NOT_FOUND", "流程模板不存在", "请刷新后重试。")
+    item.active = True
+    item.archived_at = None
+    item.archived_by = None
+    item.archive_reason = ""
+    item.version += 1
+    write_audit(db, admin, "workflow_template.restore", "workflow_template", item.id, {"reason": payload.reason.strip()}, client_ip(request))
+    db.commit()
+    return template_out(item)
 
 
 @router.get("/business-meetings", response_model=List[dict])
@@ -416,10 +487,15 @@ def list_meetings(
     organization: str = "",
     meeting_type: str = "",
     scope: str = Query(default="", pattern=r"^(|other)$"),
+    lifecycle: str = Query(default="active", pattern=r"^(active|archived|all)$"),
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[dict[str, Any]]:
     query = select(BusinessMeeting)
+    if lifecycle == "active":
+        query = query.where(BusinessMeeting.archived_at.is_(None))
+    elif lifecycle == "archived":
+        query = query.where(BusinessMeeting.archived_at.is_not(None))
     if scope == "other":
         query = query.where(
             BusinessMeeting.meeting_type.not_in(
@@ -433,6 +509,85 @@ def list_meetings(
     if year:
         query = query.where(BusinessMeeting.scheduled_at >= datetime(year, 1, 1, tzinfo=timezone.utc), BusinessMeeting.scheduled_at < datetime(year + 1, 1, 1, tzinfo=timezone.utc))
     return [meeting_out(db, item) for item in db.scalars(query.order_by(BusinessMeeting.scheduled_at.desc())).all()]
+
+
+@router.get("/business-meetings/{meeting_id}/deletion-impact", response_model=dict)
+def meeting_deletion_impact(
+    meeting_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    item = db.get(BusinessMeeting, meeting_id)
+    if not item:
+        raise ProblemException(404, "MEETING_NOT_FOUND", "会议不存在", "请刷新后重试。")
+    _require_modify_meeting(db, item, user)
+    steps = db.scalar(select(func.count(TaskStep.id)).where(TaskStep.task_id == item.task_id)) or 0
+    topics = db.scalar(select(func.count(MeetingTopic.id)).where(MeetingTopic.meeting_id == item.id)) or 0
+    documents = db.scalar(select(func.count(BusinessDocument.id)).where(BusinessDocument.meeting_id == item.id)) or 0
+    attendees = db.scalar(select(func.count(MeetingAttendee.id)).where(MeetingAttendee.meeting_id == item.id)) or 0
+    actions = db.scalar(select(func.count(MeetingAction.id)).where(MeetingAction.meeting_id == item.id)) or 0
+    return {"steps": steps, "topics": topics, "documents": documents, "attendees": attendees, "actions": actions, "recoverable": True, "physical_delete": False}
+
+
+@router.delete("/business-meetings/{meeting_id}", response_model=dict)
+def archive_meeting(
+    meeting_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    item = db.get(BusinessMeeting, meeting_id)
+    if not item:
+        raise ProblemException(404, "MEETING_NOT_FOUND", "会议不存在", "请刷新后重试。")
+    _require_modify_meeting(db, item, user)
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "会议已更新", "请刷新后重试。")
+    if item.archived_at:
+        return meeting_out(db, item)
+    item.status_before_archive = item.status
+    item.status = "archived"
+    item.archived_at = utcnow()
+    item.archived_by = user.id
+    item.archive_reason = payload.reason.strip()
+    item.version += 1
+    if item.task_id and (task := db.get(Task, item.task_id)):
+        task.status = TaskStatus.ARCHIVED
+        task.version += 1
+    write_audit(db, user, "business_meeting.archive", "business_meeting", item.id, {"reason": item.archive_reason}, client_ip(request))
+    db.commit()
+    return meeting_out(db, item)
+
+
+@router.post("/business-meetings/{meeting_id}/restore", response_model=dict)
+def restore_meeting(
+    meeting_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    item = db.get(BusinessMeeting, meeting_id)
+    if not item:
+        raise ProblemException(404, "MEETING_NOT_FOUND", "会议不存在", "请刷新后重试。")
+    _require_modify_meeting(db, item, user)
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "会议已更新", "请刷新后重试。")
+    if not item.archived_at:
+        return meeting_out(db, item)
+    item.status = item.status_before_archive if item.status_before_archive != "archived" else "planned"
+    item.archived_at = None
+    item.archived_by = None
+    item.archive_reason = ""
+    item.version += 1
+    if item.task_id and (task := db.get(Task, item.task_id)):
+        task.status = TaskStatus.COMPLETED if item.status == "completed" else TaskStatus.IN_PROGRESS
+        task.version += 1
+    write_audit(db, user, "business_meeting.restore", "business_meeting", item.id, {"reason": payload.reason.strip()}, client_ip(request))
+    db.commit()
+    return meeting_out(db, item)
 
 
 @router.post("/business-meetings", response_model=dict, status_code=201)
@@ -558,21 +713,121 @@ def create_topic(
     if not meeting:
         raise ProblemException(404, "MEETING_NOT_FOUND", "会议不存在", "请刷新后重试。")
     _require_modify_meeting(db, meeting, user)
-    try:
-        amount = Decimal(payload.amount)
-        if not amount.is_finite() or amount != amount.quantize(Decimal("0.01")):
-            raise InvalidOperation
-        amount_cents = int(amount * 100)
-    except (InvalidOperation, ValueError):
-        raise ProblemException(422, "MEETING_AMOUNT_INVALID", "议题金额无效", "请输入最多两位小数的非负金额。")
-    if amount_cents < 0 or amount_cents > 9_000_000_000_000_000:
-        raise ProblemException(422, "MEETING_AMOUNT_INVALID", "议题金额无效", "金额必须为非负数且不能超过系统统计上限。")
+    if meeting.archived_at:
+        raise ProblemException(409, "MEETING_ARCHIVED", "会议已归档", "请先恢复会议，再新增议题。")
+    amount_cents = _amount_cents(payload.amount)
     item = MeetingTopic(meeting_id=meeting_id, title=payload.title.strip(), review_result=payload.review_result, amount_cents=amount_cents, reviewed=payload.reviewed, amount_confirmed=payload.amount_confirmed)
     db.add(item)
     db.flush()
     write_audit(db, user, "meeting_topic.create", "meeting_topic", item.id, {"meeting_id": meeting_id}, client_ip(request))
     db.commit()
-    return {"id": item.id, "meeting_id": meeting_id, "version": item.version}
+    return {**_topic_out(item), "meeting_id": meeting_id}
+
+
+def _meeting_topic(
+    db: Session,
+    meeting_id: str,
+    topic_id: str,
+    user: User,
+) -> tuple[BusinessMeeting, MeetingTopic]:
+    meeting = db.get(BusinessMeeting, meeting_id)
+    topic = db.get(MeetingTopic, topic_id)
+    if not meeting:
+        raise ProblemException(404, "MEETING_NOT_FOUND", "会议不存在", "请刷新后重试。")
+    if not topic or topic.meeting_id != meeting.id:
+        raise ProblemException(404, "MEETING_TOPIC_NOT_FOUND", "会议议题不存在", "请刷新后重试。")
+    _require_modify_meeting(db, meeting, user)
+    return meeting, topic
+
+
+@router.get("/business-meetings/{meeting_id}/topics/{topic_id}/deletion-impact", response_model=dict)
+def meeting_topic_deletion_impact(
+    meeting_id: str,
+    topic_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    _meeting, topic = _meeting_topic(db, meeting_id, topic_id, user)
+    return {
+        "annual_statistics": bool(topic.reviewed or topic.amount_confirmed),
+        "confirmed_amount": bool(topic.amount_confirmed and topic.amount_cents),
+        "recoverable": True,
+        "physical_delete": False,
+    }
+
+
+@router.patch("/business-meetings/{meeting_id}/topics/{topic_id}", response_model=dict)
+def patch_meeting_topic(
+    meeting_id: str,
+    topic_id: str,
+    payload: TopicPatch,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    meeting, topic = _meeting_topic(db, meeting_id, topic_id, user)
+    if meeting.archived_at or topic.archived_at:
+        raise ProblemException(409, "MEETING_TOPIC_ARCHIVED", "议题已归档", "请先恢复会议和议题，再继续修改。")
+    if topic.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "议题已更新", "请刷新后重试。")
+    changes = payload.model_dump(exclude_unset=True)
+    if "amount" in changes:
+        topic.amount_cents = _amount_cents(str(changes.pop("amount")))
+    for key, value in changes.items():
+        setattr(topic, key, value.strip() if isinstance(value, str) else value)
+    topic.version += 1
+    write_audit(db, user, "meeting_topic.update", "meeting_topic", topic.id, {"fields": sorted(payload.model_fields_set)}, client_ip(request))
+    db.commit()
+    return _topic_out(topic)
+
+
+@router.delete("/business-meetings/{meeting_id}/topics/{topic_id}", response_model=dict)
+def archive_meeting_topic(
+    meeting_id: str,
+    topic_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    meeting, topic = _meeting_topic(db, meeting_id, topic_id, user)
+    if topic.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "议题已更新", "请刷新后重试。")
+    if not topic.archived_at:
+        topic.archived_at = utcnow()
+        topic.archived_by = user.id
+        topic.archive_reason = payload.reason.strip()
+        topic.version += 1
+        write_audit(db, user, "meeting_topic.archive", "meeting_topic", topic.id, {"reason": topic.archive_reason}, client_ip(request))
+        db.commit()
+    return _topic_out(topic)
+
+
+@router.post("/business-meetings/{meeting_id}/topics/{topic_id}/restore", response_model=dict)
+def restore_meeting_topic(
+    meeting_id: str,
+    topic_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    meeting, topic = _meeting_topic(db, meeting_id, topic_id, user)
+    if meeting.archived_at:
+        raise ProblemException(409, "MEETING_ARCHIVED", "会议仍在归档中", "请先恢复会议，再恢复议题。")
+    if topic.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "议题已更新", "请刷新后重试。")
+    if topic.archived_at:
+        topic.archived_at = None
+        topic.archived_by = None
+        topic.archive_reason = ""
+        topic.version += 1
+        write_audit(db, user, "meeting_topic.restore", "meeting_topic", topic.id, {"reason": payload.reason.strip()}, client_ip(request))
+        db.commit()
+    return _topic_out(topic)
 
 
 @router.get("/business-meetings/statistics/annual", response_model=dict)
@@ -590,7 +845,7 @@ def annual_meeting_statistics(
         query = query.where(BusinessMeeting.meeting_type == meeting_type)
     meetings = db.scalars(query).all()
     ids = [item.id for item in meetings]
-    topics = db.scalars(select(MeetingTopic).where(MeetingTopic.meeting_id.in_(ids), MeetingTopic.reviewed.is_(True))).all() if ids else []
+    topics = db.scalars(select(MeetingTopic).where(MeetingTopic.meeting_id.in_(ids), MeetingTopic.reviewed.is_(True), MeetingTopic.archived_at.is_(None))).all() if ids else []
     confirmed_cents = sum(topic.amount_cents for topic in topics if topic.amount_confirmed)
     return {"year": year, "organization": organization, "meeting_type": meeting_type, "completed_meetings": len(meetings), "reviewed_topics": len(topics), "confirmed_amount": f"{Decimal(confirmed_cents) / 100:.2f}"}
 
@@ -598,13 +853,92 @@ def annual_meeting_statistics(
 @router.get("/business-documents", response_model=List[dict])
 def list_documents(
     meeting_id: str | None = None,
+    lifecycle: str = Query(default="active", pattern=r"^(active|archived|all)$"),
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    query = select(BusinessDocument).where(BusinessDocument.archived_at.is_(None))
+    query = select(BusinessDocument)
+    if lifecycle == "active":
+        query = query.where(BusinessDocument.archived_at.is_(None))
+    elif lifecycle == "archived":
+        query = query.where(BusinessDocument.archived_at.is_not(None))
     if meeting_id:
         query = query.where(BusinessDocument.meeting_id == meeting_id)
-    return [{"id": item.id, "meeting_id": item.meeting_id, "task_step_id": item.task_step_id, "document_type": item.document_type, "title": item.title, "content": item.content, "version": item.version, "updated_at": item.updated_at} for item in db.scalars(query.order_by(BusinessDocument.updated_at.desc())).all()]
+    return [{"id": item.id, "meeting_id": item.meeting_id, "task_step_id": item.task_step_id, "document_type": item.document_type, "title": item.title, "content": item.content, "version": item.version, "archived_at": item.archived_at, "archive_reason": item.archive_reason, "updated_at": item.updated_at} for item in db.scalars(query.order_by(BusinessDocument.updated_at.desc())).all()]
+
+
+@router.get("/business-documents/{document_id}/deletion-impact", response_model=dict)
+def document_deletion_impact(
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    item = db.get(BusinessDocument, document_id)
+    if not item:
+        raise ProblemException(404, "BUSINESS_DOCUMENT_NOT_FOUND", "文档不存在", "请刷新后重试。")
+    meeting = db.get(BusinessMeeting, item.meeting_id) if item.meeting_id else None
+    if meeting:
+        _require_modify_meeting(db, meeting, user)
+    elif item.created_by != user.id and user.role != UserRole.ADMIN:
+        raise ProblemException(403, "DOCUMENT_ARCHIVE_FORBIDDEN", "没有归档此文档的权限", "仅创建人或管理员可以归档。")
+    revisions = db.scalar(select(func.count(BusinessDocumentRevision.id)).where(BusinessDocumentRevision.document_id == item.id)) or 0
+    return {"revisions": revisions, "meeting_linked": bool(item.meeting_id), "task_step_linked": bool(item.task_step_id), "recoverable": True, "physical_delete": False}
+
+
+@router.delete("/business-documents/{document_id}", response_model=dict)
+def archive_document(
+    document_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    item = db.get(BusinessDocument, document_id)
+    if not item:
+        raise ProblemException(404, "BUSINESS_DOCUMENT_NOT_FOUND", "文档不存在", "请刷新后重试。")
+    meeting = db.get(BusinessMeeting, item.meeting_id) if item.meeting_id else None
+    if meeting:
+        _require_modify_meeting(db, meeting, user)
+    elif item.created_by != user.id and user.role != UserRole.ADMIN:
+        raise ProblemException(403, "DOCUMENT_ARCHIVE_FORBIDDEN", "没有归档此文档的权限", "仅创建人或管理员可以归档。")
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "DOCUMENT_VERSION_CONFLICT", "文档已被修改", "请刷新后重试。")
+    item.archived_at = utcnow()
+    item.archived_by = user.id
+    item.archive_reason = payload.reason.strip()
+    item.version += 1
+    write_audit(db, user, "business_document.archive", "business_document", item.id, {"reason": item.archive_reason}, client_ip(request))
+    db.commit()
+    return {"id": item.id, "archived": True, "version": item.version}
+
+
+@router.post("/business-documents/{document_id}/restore", response_model=dict)
+def restore_document(
+    document_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    item = db.get(BusinessDocument, document_id)
+    if not item:
+        raise ProblemException(404, "BUSINESS_DOCUMENT_NOT_FOUND", "文档不存在", "请刷新后重试。")
+    meeting = db.get(BusinessMeeting, item.meeting_id) if item.meeting_id else None
+    if meeting:
+        _require_modify_meeting(db, meeting, user)
+    elif item.created_by != user.id and user.role != UserRole.ADMIN:
+        raise ProblemException(403, "DOCUMENT_RESTORE_FORBIDDEN", "没有恢复此文档的权限", "仅创建人或管理员可以恢复。")
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "DOCUMENT_VERSION_CONFLICT", "文档已被修改", "请刷新后重试。")
+    item.archived_at = None
+    item.archived_by = None
+    item.archive_reason = ""
+    item.version += 1
+    write_audit(db, user, "business_document.restore", "business_document", item.id, {"reason": payload.reason.strip()}, client_ip(request))
+    db.commit()
+    return {"id": item.id, "archived": False, "version": item.version}
 
 
 @router.post("/business-documents", response_model=dict, status_code=201)
@@ -648,6 +982,13 @@ def update_document(
     meeting = db.get(BusinessMeeting, item.meeting_id) if item.meeting_id else None
     if meeting:
         _require_modify_meeting(db, meeting, user)
+    elif item.created_by != user.id and user.role != UserRole.ADMIN:
+        raise ProblemException(
+            403,
+            "DOCUMENT_MODIFY_FORBIDDEN",
+            "没有修改此文档的权限",
+            "仅创建人或管理员可以修改未关联会议的独立文档。",
+        )
     if item.version != parse_if_match(if_match):
         raise ProblemException(409, "DOCUMENT_VERSION_CONFLICT", "文档已被其他人修改", "请刷新并合并修改后重试。", extra={"current_version": item.version})
     if payload.title is not None:
@@ -668,7 +1009,7 @@ def document_revisions(
     db: Session = Depends(get_session),
 ) -> list[dict[str, Any]]:
     item = db.get(BusinessDocument, document_id)
-    if not item or item.archived_at:
+    if not item:
         raise ProblemException(404, "BUSINESS_DOCUMENT_NOT_FOUND", "文档不存在", "请刷新后重试。")
     return [{"id": row.id, "revision_no": row.revision_no, "content": row.content, "change_note": row.change_note, "created_by": row.created_by, "created_at": row.created_at} for row in db.scalars(select(BusinessDocumentRevision).where(BusinessDocumentRevision.document_id == document_id).order_by(BusinessDocumentRevision.revision_no.desc())).all()]
 

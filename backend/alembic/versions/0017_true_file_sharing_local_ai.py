@@ -4,9 +4,10 @@ Revision ID: 0017
 Revises: 0016
 """
 
-from alembic import op
-import sqlalchemy as sa
+from __future__ import annotations
 
+import sqlalchemy as sa
+from alembic import op
 
 revision = "0017"
 down_revision = "0016"
@@ -15,29 +16,57 @@ depends_on = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("devices") as batch:
-        batch.add_column(
-            sa.Column("allow_user_shares", sa.Boolean(), nullable=False, server_default=sa.true())
-        )
+    bind = op.get_bind()
 
-    with op.batch_alter_table("workspace_roots") as batch:
-        batch.add_column(sa.Column("published_by_user_id", sa.String(length=36), nullable=True))
-        batch.add_column(
-            sa.Column("share_scope", sa.String(length=16), nullable=False, server_default="team")
-        )
-        batch.add_column(
-            sa.Column("semantic_content_enabled", sa.Boolean(), nullable=False, server_default=sa.false())
-        )
-        batch.add_column(sa.Column("published_at", sa.DateTime(timezone=True), nullable=True))
-        batch.create_foreign_key(
-            "fk_workspace_roots_published_by_users",
-            "users",
-            ["published_by_user_id"],
-            ["id"],
-            ondelete="SET NULL",
-        )
-        batch.create_index("ix_workspace_roots_published_by_user_id", ["published_by_user_id"])
-        batch.create_index("ix_workspace_roots_share_scope", ["share_scope"])
+    def columns(table: str) -> set[str]:
+        return {item["name"] for item in sa.inspect(bind).get_columns(table)}
+
+    if "allow_user_shares" not in columns("devices"):
+        with op.batch_alter_table("devices") as batch:
+            batch.add_column(
+                sa.Column(
+                    "allow_user_shares",
+                    sa.Boolean(),
+                    nullable=False,
+                    server_default=sa.true(),
+                )
+            )
+
+    if "published_by_user_id" not in columns("workspace_roots"):
+        with op.batch_alter_table("workspace_roots") as batch:
+            batch.add_column(
+                sa.Column("published_by_user_id", sa.String(length=36), nullable=True)
+            )
+            batch.add_column(
+                sa.Column(
+                    "share_scope",
+                    sa.String(length=16),
+                    nullable=False,
+                    server_default="team",
+                )
+            )
+            batch.add_column(
+                sa.Column(
+                    "semantic_content_enabled",
+                    sa.Boolean(),
+                    nullable=False,
+                    server_default=sa.false(),
+                )
+            )
+            batch.add_column(
+                sa.Column("published_at", sa.DateTime(timezone=True), nullable=True)
+            )
+            batch.create_foreign_key(
+                "fk_workspace_roots_published_by_users",
+                "users",
+                ["published_by_user_id"],
+                ["id"],
+                ondelete="SET NULL",
+            )
+            batch.create_index(
+                "ix_workspace_roots_published_by_user_id", ["published_by_user_id"]
+            )
+            batch.create_index("ix_workspace_roots_share_scope", ["share_scope"])
 
     # 既有设备根继续沿用原授权，避免升级时意外扩大历史共享范围。
     op.execute("UPDATE workspace_roots SET share_scope='selected' WHERE lower(source)='device'")
@@ -83,25 +112,81 @@ def upgrade() -> None:
     op.create_index("ix_local_share_actions_user_id", "local_share_actions", ["user_id"])
     op.create_index("ix_local_share_actions_expires_at", "local_share_actions", ["expires_at"])
 
-    with op.batch_alter_table("transfers") as batch:
-        batch.add_column(
-            sa.Column("delivery_mode", sa.String(length=24), nullable=False, server_default="managed_inbox")
-        )
-        batch.add_column(
-            sa.Column("bundle_mode", sa.String(length=24), nullable=False, server_default="single")
-        )
-        batch.add_column(sa.Column("item_ids", sa.JSON(), nullable=False, server_default="[]"))
-        batch.add_column(sa.Column("result_name", sa.String(length=255), nullable=False, server_default=""))
-        batch.add_column(sa.Column("result_sha256", sa.String(length=64), nullable=False, server_default=""))
+    if "delivery_mode" not in columns("transfers"):
+        with op.batch_alter_table("transfers") as batch:
+            batch.add_column(
+                sa.Column(
+                    "delivery_mode",
+                    sa.String(length=24),
+                    nullable=False,
+                    server_default="managed_inbox",
+                )
+            )
+            batch.add_column(
+                sa.Column(
+                    "bundle_mode",
+                    sa.String(length=24),
+                    nullable=False,
+                    server_default="single",
+                )
+            )
+            batch.add_column(
+                sa.Column("item_ids", sa.JSON(), nullable=False, server_default="[]")
+            )
+            batch.add_column(
+                sa.Column(
+                    "result_name",
+                    sa.String(length=255),
+                    nullable=False,
+                    server_default="",
+                )
+            )
+            batch.add_column(
+                sa.Column(
+                    "result_sha256",
+                    sa.String(length=64),
+                    nullable=False,
+                    server_default="",
+                )
+            )
 
-    with op.batch_alter_table("ai_model_packs") as batch:
-        batch.add_column(sa.Column("capabilities", sa.JSON(), nullable=False, server_default="[]"))
-        batch.add_column(
-            sa.Column("min_runtime_version", sa.String(length=32), nullable=False, server_default="1.4.1")
-        )
-        batch.add_column(sa.Column("estimated_memory_mb", sa.Integer(), nullable=False, server_default="0"))
-        batch.add_column(sa.Column("model_source", sa.String(length=500), nullable=False, server_default=""))
-        batch.add_column(sa.Column("license_name", sa.String(length=80), nullable=False, server_default=""))
+    if "capabilities" not in columns("ai_model_packs"):
+        with op.batch_alter_table("ai_model_packs") as batch:
+            batch.add_column(
+                sa.Column("capabilities", sa.JSON(), nullable=False, server_default="[]")
+            )
+            batch.add_column(
+                sa.Column(
+                    "min_runtime_version",
+                    sa.String(length=32),
+                    nullable=False,
+                    server_default="1.4.1",
+                )
+            )
+            batch.add_column(
+                sa.Column(
+                    "estimated_memory_mb",
+                    sa.Integer(),
+                    nullable=False,
+                    server_default="0",
+                )
+            )
+            batch.add_column(
+                sa.Column(
+                    "model_source",
+                    sa.String(length=500),
+                    nullable=False,
+                    server_default="",
+                )
+            )
+            batch.add_column(
+                sa.Column(
+                    "license_name",
+                    sa.String(length=80),
+                    nullable=False,
+                    server_default="",
+                )
+            )
 
     op.execute("UPDATE ai_model_packs SET capabilities='[\"embedding\", \"llm\"]'")
     op.create_table(
@@ -121,28 +206,59 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("ai_model_activations")
-    with op.batch_alter_table("ai_model_packs") as batch:
-        batch.drop_column("license_name")
-        batch.drop_column("model_source")
-        batch.drop_column("estimated_memory_mb")
-        batch.drop_column("min_runtime_version")
-        batch.drop_column("capabilities")
-    with op.batch_alter_table("transfers") as batch:
-        batch.drop_column("result_sha256")
-        batch.drop_column("result_name")
-        batch.drop_column("item_ids")
-        batch.drop_column("bundle_mode")
-        batch.drop_column("delivery_mode")
-    op.drop_table("local_share_actions")
-    op.drop_table("workspace_root_members")
-    with op.batch_alter_table("workspace_roots") as batch:
-        batch.drop_index("ix_workspace_roots_share_scope")
-        batch.drop_index("ix_workspace_roots_published_by_user_id")
-        batch.drop_constraint("fk_workspace_roots_published_by_users", type_="foreignkey")
-        batch.drop_column("published_at")
-        batch.drop_column("semantic_content_enabled")
-        batch.drop_column("share_scope")
-        batch.drop_column("published_by_user_id")
-    with op.batch_alter_table("devices") as batch:
-        batch.drop_column("allow_user_shares")
+    bind = op.get_bind()
+    tables = set(sa.inspect(bind).get_table_names())
+    if "ai_model_activations" in tables:
+        op.drop_table("ai_model_activations")
+    if "capabilities" in {
+        item["name"] for item in sa.inspect(bind).get_columns("ai_model_packs")
+    }:
+        with op.batch_alter_table("ai_model_packs") as batch:
+            batch.drop_column("license_name")
+            batch.drop_column("model_source")
+            batch.drop_column("estimated_memory_mb")
+            batch.drop_column("min_runtime_version")
+            batch.drop_column("capabilities")
+    if "delivery_mode" in {
+        item["name"] for item in sa.inspect(bind).get_columns("transfers")
+    }:
+        with op.batch_alter_table("transfers") as batch:
+            batch.drop_column("result_sha256")
+            batch.drop_column("result_name")
+            batch.drop_column("item_ids")
+            batch.drop_column("bundle_mode")
+            batch.drop_column("delivery_mode")
+    if "local_share_actions" in tables:
+        op.drop_table("local_share_actions")
+    if "workspace_root_members" in tables:
+        op.drop_table("workspace_root_members")
+    inspector = sa.inspect(bind)
+    if "published_by_user_id" in {
+        item["name"] for item in inspector.get_columns("workspace_roots")
+    }:
+        with op.batch_alter_table("workspace_roots") as batch:
+            indexes = {
+                item["name"] for item in inspector.get_indexes("workspace_roots")
+            }
+            foreign_keys = {
+                item["name"]
+                for item in inspector.get_foreign_keys("workspace_roots")
+                if item["name"]
+            }
+            if "ix_workspace_roots_share_scope" in indexes:
+                batch.drop_index("ix_workspace_roots_share_scope")
+            if "ix_workspace_roots_published_by_user_id" in indexes:
+                batch.drop_index("ix_workspace_roots_published_by_user_id")
+            if "fk_workspace_roots_published_by_users" in foreign_keys:
+                batch.drop_constraint(
+                    "fk_workspace_roots_published_by_users", type_="foreignkey"
+                )
+            batch.drop_column("published_at")
+            batch.drop_column("semantic_content_enabled")
+            batch.drop_column("share_scope")
+            batch.drop_column("published_by_user_id")
+    if "allow_user_shares" in {
+        item["name"] for item in sa.inspect(bind).get_columns("devices")
+    }:
+        with op.batch_alter_table("devices") as batch:
+            batch.drop_column("allow_user_shares")

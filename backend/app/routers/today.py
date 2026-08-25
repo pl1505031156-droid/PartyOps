@@ -33,7 +33,6 @@ from ..security import get_current_user
 from ..task_service import dashboard, visible_tasks
 from .router_utils import aware_utc
 
-
 router = APIRouter(tags=["today"])
 LOCAL_TIMEZONE = timezone(timedelta(hours=8))
 OPEN_STATUSES = {
@@ -175,7 +174,7 @@ def today(
     ]
     latest_backup = db.scalar(
         select(BackupRun)
-        .where(BackupRun.status == "completed")
+        .where(BackupRun.status == "completed", BackupRun.deleted_at.is_(None))
         .order_by(BackupRun.completed_at.desc())
     )
     backup_stale = not latest_backup or (

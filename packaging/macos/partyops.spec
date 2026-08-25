@@ -25,6 +25,13 @@ common_hidden = [
     "httpx",
 ]
 
+formatter_hidden = [
+    "app.official_format",
+    "app.official_format_service",
+    "lxml",
+    "lxml.etree",
+]
+
 ai_datas = []
 ai_binaries = []
 ai_hidden = []
@@ -73,7 +80,7 @@ client_analysis = Analysis(
     pathex=[str(backend)],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=formatter_hidden,
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
@@ -99,7 +106,7 @@ wizard_analysis = Analysis(
     pathex=[str(backend)],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=formatter_hidden,
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
@@ -237,14 +244,14 @@ app = BUNDLE(
     name="PartyOps.app",
     icon=str(icon_path),
     bundle_identifier="cn.partyops.desktop",
-    version="1.4.5-rc.2",
+    version="1.4.5-rc.3",
     info_plist={
         # 多 EXE 的 COLLECT 不能依赖 PyInstaller 自动选择 Finder 主入口；
         # 自动推断曾选中后台核心 partyops，导致双击 App 绕过桌面启动器。
         "CFBundleExecutable": "partyops-desktop",
         "CFBundleDisplayName": "党建智办 PartyOps",
-        "CFBundleShortVersionString": "1.4.5-rc.2",
-        "CFBundleVersion": "1.4.5.2",
+        "CFBundleShortVersionString": "1.4.5-rc.3",
+        "CFBundleVersion": "1.4.5.3",
         "CFBundleURLTypes": [
             {
                 "CFBundleURLName": "cn.partyops.desktop.client",

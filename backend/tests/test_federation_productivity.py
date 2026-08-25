@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import io
 import base64
 import hashlib
+import io
 import json
 import zipfile
 
-from fastapi.testclient import TestClient
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from app.config import get_settings
 from app.versioning import parse_release_version
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi.testclient import TestClient
 
 
 def test_device_enrollment_heartbeat_permissions_and_workbench(
@@ -235,7 +234,7 @@ def test_update_package_validation_and_queue(client: TestClient, admin: dict, mo
         "format_version": 2,
         "version": update_version,
         "min_version": "1.1.1",
-        "schema_revision": "0023",
+        "schema_revision": "0024",
         "architecture_artifacts": {
             "amd64": f"partyops_{update_version}_amd64.deb",
             "arm64": f"partyops_{update_version}_arm64.deb",

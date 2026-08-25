@@ -15,15 +15,15 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 INSTALLERS = {
-    "PartyOps_1.4.5-rc.2_windows_amd64.exe": "windows/amd64",
-    "PartyOps_1.4.5-rc.2_windows7_amd64.exe": "windows7/amd64",
-    "PartyOps_1.4.5-rc.2_windows7_x86.exe": "windows7/x86",
-    "PartyOps_1.4.5-rc.2_linux_amd64.deb": "linux-deb/amd64",
-    "PartyOps_1.4.5-rc.2_linux_arm64.deb": "linux-deb/arm64",
-    "PartyOps-1.4.5-0.rc.2.1.x86_64.rpm": "linux-rpm/amd64",
-    "PartyOps-1.4.5-0.rc.2.1.aarch64.rpm": "linux-rpm/arm64",
-    "PartyOps_1.4.5-rc.2_macos_x86_64.pkg": "macos/amd64",
-    "PartyOps_1.4.5-rc.2_macos_arm64.pkg": "macos/arm64",
+    "PartyOps_1.4.5-rc.3_windows_amd64.exe": "windows/amd64",
+    "PartyOps_1.4.5-rc.3_windows7_amd64.exe": "windows7/amd64",
+    "PartyOps_1.4.5-rc.3_windows7_x86.exe": "windows7/x86",
+    "PartyOps_1.4.5-rc.3_linux_amd64.deb": "linux-deb/amd64",
+    "PartyOps_1.4.5-rc.3_linux_arm64.deb": "linux-deb/arm64",
+    "PartyOps-1.4.5-0.rc.3.1.x86_64.rpm": "linux-rpm/amd64",
+    "PartyOps-1.4.5-0.rc.3.1.aarch64.rpm": "linux-rpm/arm64",
+    "PartyOps_1.4.5-rc.3_macos_x86_64.pkg": "macos/amd64",
+    "PartyOps_1.4.5-rc.3_macos_arm64.pkg": "macos/arm64",
 }
 
 UNAVAILABLE_INSTALLERS: dict[str, str] = {}
@@ -132,8 +132,8 @@ def build_manifest(
     manifest: dict[str, object] = {
         "schema_version": 4,
         "product": "PartyOps",
-        "version": "1.4.5-rc.2",
-        "release_tag": "v1.4.5-rc.2",
+        "version": "1.4.5-rc.3",
+        "release_tag": "v1.4.5-rc.3",
         "source_commit": source_commit,
         "release_tooling_commit": tooling_commit,
         "supplemental_sources": [

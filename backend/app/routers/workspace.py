@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import typing
-
 import ipaddress
-import os
 import secrets
 import socket
+import typing
 from datetime import timedelta, timezone
 from pathlib import Path
 
@@ -24,7 +22,6 @@ from ..device_versions import request_device
 from ..enums import TransferStatus, UserRole
 from ..models import (
     BackgroundJob,
-    Device,
     FileOpenGrant,
     LocalShareAction,
     PeriodReport,
@@ -40,8 +37,8 @@ from ..models import (
     WorkspaceRootMember,
     utcnow,
 )
-from ..problems import ProblemException
 from ..platform_info import detect_platform_info
+from ..problems import ProblemException
 from ..schemas import (
     BackgroundJobOut,
     FileOpenGrantCompletion,
@@ -53,6 +50,7 @@ from ..schemas import (
     WorkspaceFileTagsPatch,
     WorkspaceFolderOption,
     WorkspaceRootCreate,
+    WorkspaceRootLifecycleAction,
     WorkspaceRootMemberOut,
     WorkspaceRootMembersPatch,
     WorkspaceRootOut,
@@ -64,7 +62,6 @@ from ..schemas import (
 from ..security import get_current_user, hash_token, require_admin
 from ..task_service import can_view_task
 from ..work_journal import record_system_entry
-from ..workspace_access import workspace_root_permissions
 from ..workspace import (
     file_to_out,
     freeze_workspace_file,
@@ -72,10 +69,10 @@ from ..workspace import (
     run_scan_job,
     scan_root,
     search_workspace_files,
-    validate_selection_paths,
     validate_root_path,
+    validate_selection_paths,
 )
-
+from ..workspace_access import workspace_root_permissions
 
 router = APIRouter(tags=["workspace-files"])
 
@@ -109,11 +106,15 @@ def is_host_local_request(request: Request) -> bool:
 
 def parse_version(value: str | None) -> int:
     if value is None:
-        raise ProblemException(428, "IF_MATCH_REQUIRED", "缺少版本号", "修改必须携带 If-Match。")
+        raise ProblemException(
+            428, "IF_MATCH_REQUIRED", "缺少版本号", "修改必须携带 If-Match。"
+        )
     try:
         return int(value.strip('"'))
     except ValueError as exc:
-        raise ProblemException(400, "IF_MATCH_INVALID", "版本号无效", "If-Match 必须是整数。") from exc
+        raise ProblemException(
+            400, "IF_MATCH_INVALID", "版本号无效", "If-Match 必须是整数。"
+        ) from exc
 
 
 def current_device_id(request: Request, db: Session) -> str | None:
@@ -156,10 +157,14 @@ def get_file(
 ) -> tuple[WorkspaceFile, WorkspaceRoot]:
     item = db.get(WorkspaceFile, file_id)
     if not item:
-        raise ProblemException(404, "WORKSPACE_FILE_NOT_FOUND", "文件不存在", "未找到索引文件。")
+        raise ProblemException(
+            404, "WORKSPACE_FILE_NOT_FOUND", "文件不存在", "未找到索引文件。"
+        )
     root = db.get(WorkspaceRoot, item.root_id)
     if not root or not root.enabled:
-        raise ProblemException(410, "WORKSPACE_ROOT_DISABLED", "文件目录已停用", "请联系管理员。")
+        raise ProblemException(
+            410, "WORKSPACE_ROOT_DISABLED", "文件目录已停用", "请联系管理员。"
+        )
     if not item.in_scope:
         raise ProblemException(
             403,
@@ -186,7 +191,9 @@ def require_root_manager(
 ) -> WorkspaceRoot:
     root = db.get(WorkspaceRoot, root_id)
     if not root:
-        raise ProblemException(404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到共享目录。")
+        raise ProblemException(
+            404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到共享目录。"
+        )
     if not workspace_root_permissions(db, root, user, device_id)["manage_root"]:
         raise ProblemException(
             403,
@@ -224,7 +231,11 @@ def runtime_context(
     }
     if device:
         capabilities.add("workspace.download.current_device")
-        if device.allow_user_shares and device.active and device.status not in {"revoked", "quarantined"}:
+        if (
+            device.allow_user_shares
+            and device.active
+            and device.status not in {"revoked", "quarantined"}
+        ):
             capabilities.update({"workspace.local_share", "workspace.manage_own_roots"})
     if user.role.value == "admin":
         capabilities.update(
@@ -248,7 +259,11 @@ def runtime_context(
     )
 
 
-@router.post("/workspace/local-share-actions", response_model=LocalShareActionOut, status_code=201)
+@router.post(
+    "/workspace/local-share-actions",
+    response_model=LocalShareActionOut,
+    status_code=201,
+)
 def create_local_share_action(
     request: Request,
     user: User = Depends(get_current_user),
@@ -309,26 +324,31 @@ def list_collaboration_users(
     """共享范围选择只返回系统内有效账号，不开放用户管理能力。"""
 
     return list(
-        db.scalars(select(User).where(User.active.is_(True)).order_by(User.display_name)).all()
+        db.scalars(
+            select(User).where(User.active.is_(True)).order_by(User.display_name)
+        ).all()
     )
 
 
 @router.get("/workspace/roots", response_model=typing.List[WorkspaceRootOut])
 def list_workspace_roots(
     request: Request,
+    lifecycle: str = Query(default="active", pattern=r"^(active|disabled|all)$"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[WorkspaceRootOut]:
     device_id = current_device_id(request, db)
-    roots = db.scalars(
-        select(WorkspaceRoot)
-        .where(WorkspaceRoot.enabled.is_(True))
-        .order_by(WorkspaceRoot.name)
-    ).all()
+    statement = select(WorkspaceRoot).order_by(WorkspaceRoot.name)
+    if lifecycle == "active" or user.role != UserRole.ADMIN:
+        statement = statement.where(WorkspaceRoot.enabled.is_(True))
+    elif lifecycle == "disabled":
+        statement = statement.where(WorkspaceRoot.enabled.is_(False))
+    roots = db.scalars(statement).all()
     return [
         root_to_out(db, root, user, device_id)
         for root in roots
-        if workspace_root_permissions(db, root, user, device_id)["browse"]
+        if user.role == UserRole.ADMIN
+        or workspace_root_permissions(db, root, user, device_id)["browse"]
     ]
 
 
@@ -351,14 +371,18 @@ def patch_workspace_root_sharing(
             "主机系统目录继续由管理员通过目录纳管与设备授权设置。",
         )
     if root.version != parse_version(if_match):
-        raise ProblemException(409, "VERSION_CONFLICT", "共享设置已更新", "请刷新后重试。")
+        raise ProblemException(
+            409, "VERSION_CONFLICT", "共享设置已更新", "请刷新后重试。"
+        )
     semantic_was_enabled = root.semantic_content_enabled
     root.share_scope = payload.share_scope
     root.semantic_content_enabled = payload.semantic_content_enabled
     root.version += 1
     if semantic_was_enabled and not root.semantic_content_enabled:
         file_ids = list(
-            db.scalars(select(WorkspaceFile.id).where(WorkspaceFile.root_id == root.id)).all()
+            db.scalars(
+                select(WorkspaceFile.id).where(WorkspaceFile.root_id == root.id)
+            ).all()
         )
         if file_ids:
             checkpoints = db.scalars(
@@ -407,7 +431,10 @@ def list_workspace_root_members(
     return list(
         db.scalars(
             select(WorkspaceRootMember)
-            .where(WorkspaceRootMember.root_id == root.id, WorkspaceRootMember.active.is_(True))
+            .where(
+                WorkspaceRootMember.root_id == root.id,
+                WorkspaceRootMember.active.is_(True),
+            )
             .order_by(WorkspaceRootMember.created_at)
         ).all()
     )
@@ -428,17 +455,30 @@ def replace_workspace_root_members(
     device_id = current_device_id(request, db)
     root = require_root_manager(db, root_id, user, device_id)
     if root.source.value != "device":
-        raise ProblemException(400, "ROOT_MEMBERS_UNSUPPORTED", "主机目录不使用成员表", "请使用设备授权管理。")
+        raise ProblemException(
+            400,
+            "ROOT_MEMBERS_UNSUPPORTED",
+            "主机目录不使用成员表",
+            "请使用设备授权管理。",
+        )
     if root.version != parse_version(if_match):
-        raise ProblemException(409, "VERSION_CONFLICT", "共享成员已更新", "请刷新后重试。")
+        raise ProblemException(
+            409, "VERSION_CONFLICT", "共享成员已更新", "请刷新后重试。"
+        )
     requested = {item.user_id: item for item in payload.members}
     if len(requested) != len(payload.members):
-        raise ProblemException(422, "DUPLICATE_ROOT_MEMBER", "存在重复成员", "每位成员只能配置一次。")
-    valid_user_ids = set(
-        db.scalars(
-            select(User.id).where(User.id.in_(requested), User.active.is_(True))
-        ).all()
-    ) if requested else set()
+        raise ProblemException(
+            422, "DUPLICATE_ROOT_MEMBER", "存在重复成员", "每位成员只能配置一次。"
+        )
+    valid_user_ids = (
+        set(
+            db.scalars(
+                select(User.id).where(User.id.in_(requested), User.active.is_(True))
+            ).all()
+        )
+        if requested
+        else set()
+    )
     missing = sorted(set(requested) - valid_user_ids)
     if missing:
         raise ProblemException(
@@ -485,7 +525,10 @@ def replace_workspace_root_members(
     return list(
         db.scalars(
             select(WorkspaceRootMember)
-            .where(WorkspaceRootMember.root_id == root.id, WorkspaceRootMember.active.is_(True))
+            .where(
+                WorkspaceRootMember.root_id == root.id,
+                WorkspaceRootMember.active.is_(True),
+            )
             .order_by(WorkspaceRootMember.created_at)
         ).all()
     )
@@ -511,7 +554,9 @@ def create_workspace_root(
         )
     )
     if name_in_use or (existing_path and existing_path.enabled):
-        raise ProblemException(409, "WORKSPACE_ROOT_EXISTS", "目录已经纳管", "请直接使用现有目录。")
+        raise ProblemException(
+            409, "WORKSPACE_ROOT_EXISTS", "目录已经纳管", "请直接使用现有目录。"
+        )
     if existing_path:
         root = existing_path
         root.name = payload.name.strip()
@@ -657,7 +702,9 @@ def patch_workspace_selection(
             "未找到可配置的主机目录。",
         )
     if root.version != parse_version(if_match):
-        raise ProblemException(409, "VERSION_CONFLICT", "目录配置已更新", "请刷新后重试。")
+        raise ProblemException(
+            409, "VERSION_CONFLICT", "目录配置已更新", "请刷新后重试。"
+        )
     paths = (
         ["."]
         if payload.selection_mode == "all"
@@ -714,17 +761,89 @@ def patch_workspace_root(
 ) -> WorkspaceRoot:
     root = db.get(WorkspaceRoot, root_id)
     if not root:
-        raise ProblemException(404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到纳管目录。")
+        raise ProblemException(
+            404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到纳管目录。"
+        )
     expected = parse_version(if_match)
     if root.version != expected:
-        raise ProblemException(409, "VERSION_CONFLICT", "目录配置已更新", "请刷新后重试。")
+        raise ProblemException(
+            409, "VERSION_CONFLICT", "目录配置已更新", "请刷新后重试。"
+        )
     for field in payload.model_fields_set:
         setattr(root, field, getattr(payload, field))
     root.version += 1
-    write_audit(db, admin, "workspace.root_update", "workspace_root", root.id, {"version": root.version}, client_ip(request))
+    write_audit(
+        db,
+        admin,
+        "workspace.root_update",
+        "workspace_root",
+        root.id,
+        {"version": root.version},
+        client_ip(request),
+    )
     db.commit()
     db.refresh(root)
     return root
+
+
+@router.get("/workspace/roots/{root_id}/deletion-impact", response_model=dict)
+def workspace_root_deletion_impact(
+    root_id: str,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict:
+    root = db.get(WorkspaceRoot, root_id)
+    if not root:
+        raise ProblemException(
+            404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到纳管目录。"
+        )
+    file_ids = select(WorkspaceFile.id).where(WorkspaceFile.root_id == root.id)
+    return {
+        "root_id": root.id,
+        "indexed_files": db.scalar(
+            select(func.count())
+            .select_from(WorkspaceFile)
+            .where(WorkspaceFile.root_id == root.id)
+        )
+        or 0,
+        "business_links": db.scalar(
+            select(func.count())
+            .select_from(WorkspaceLink)
+            .where(WorkspaceLink.file_id.in_(file_ids))
+        )
+        or 0,
+        "sharing_members": db.scalar(
+            select(func.count())
+            .select_from(WorkspaceRootMember)
+            .where(
+                WorkspaceRootMember.root_id == root.id,
+                WorkspaceRootMember.active.is_(True),
+            )
+        )
+        or 0,
+        "active_transfers": db.scalar(
+            select(func.count())
+            .select_from(Transfer)
+            .where(
+                Transfer.status.in_(
+                    [
+                        TransferStatus.QUEUED,
+                        TransferStatus.AWAITING_APPROVAL,
+                        TransferStatus.TRANSFERRING,
+                        TransferStatus.PAUSED,
+                    ]
+                ),
+                or_(
+                    Transfer.destination_root_id == root.id,
+                    Transfer.source_file_id.in_(file_ids),
+                ),
+            )
+        )
+        or 0,
+        "physical_delete": False,
+        "original_files_changed": False,
+        "recoverable": True,
+    }
 
 
 @router.delete("/workspace/roots/{root_id}", response_model=dict)
@@ -734,12 +853,24 @@ def delete_workspace_root(
     if_match: str | None = Header(default=None, alias="If-Match"),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
+    payload: WorkspaceRootLifecycleAction | None = None,
 ) -> dict:
     root = db.get(WorkspaceRoot, root_id)
     if not root:
-        raise ProblemException(404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到纳管目录。")
+        raise ProblemException(
+            404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到纳管目录。"
+        )
     if root.version != parse_version(if_match):
-        raise ProblemException(409, "VERSION_CONFLICT", "目录配置已更新", "请刷新后重试。")
+        raise ProblemException(
+            409, "VERSION_CONFLICT", "目录配置已更新", "请刷新后重试。"
+        )
+    if not root.enabled:
+        raise ProblemException(
+            409,
+            "WORKSPACE_ROOT_ALREADY_DISABLED",
+            "目录已经停用",
+            "可在已停用目录中恢复。",
+        )
     file_ids = select(WorkspaceFile.id).where(WorkspaceFile.root_id == root.id)
     active_transfer = db.scalar(
         select(Transfer.id)
@@ -767,8 +898,9 @@ def delete_workspace_root(
             "请等待传输完成或先取消传输，再移除共享目录。",
         )
     name = root.name
+    reason = payload.reason.strip() if payload else "管理员确认移除共享目录"
     root.enabled = False
-    root.approval_note = "管理员已移除共享目录"
+    root.approval_note = reason
     root.scan_status = "disabled"
     root.version += 1
     indexed_files = list(
@@ -793,7 +925,7 @@ def delete_workspace_root(
         "workspace.root_disable",
         "workspace_root",
         root.id,
-        {"name": name, "preserved_history": True},
+        {"name": name, "reason": reason, "preserved_history": True},
         client_ip(request),
     )
     emit_event(db, "workspace.root_deleted", root.id, {"name": name})
@@ -801,7 +933,56 @@ def delete_workspace_root(
     return {"deleted": True, "root_id": root_id, "original_files_changed": False}
 
 
-@router.post("/workspace/roots/{root_id}/scan", response_model=BackgroundJobOut, status_code=202)
+@router.post("/workspace/roots/{root_id}/restore", response_model=dict)
+def restore_workspace_root(
+    root_id: str,
+    payload: WorkspaceRootLifecycleAction,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict:
+    root = db.get(WorkspaceRoot, root_id)
+    if not root:
+        raise ProblemException(
+            404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到纳管目录。"
+        )
+    if root.version != parse_version(if_match):
+        raise ProblemException(
+            409, "VERSION_CONFLICT", "目录配置已更新", "请刷新后重试。"
+        )
+    if root.enabled:
+        raise ProblemException(
+            409, "WORKSPACE_ROOT_ALREADY_ACTIVE", "目录正在使用", "无需重复恢复。"
+        )
+    root.enabled = True
+    root.approval_note = payload.reason.strip()
+    root.scan_status = "pending"
+    root.error_message = ""
+    root.version += 1
+    write_audit(
+        db,
+        admin,
+        "workspace.root_restore",
+        "workspace_root",
+        root.id,
+        {"name": root.name, "reason": payload.reason.strip(), "scan_required": True},
+        client_ip(request),
+    )
+    emit_event(db, "workspace.root_restored", root.id, {"name": root.name})
+    db.commit()
+    return {
+        "restored": True,
+        "root_id": root.id,
+        "scan_required": True,
+        "original_files_changed": False,
+        "version": root.version,
+    }
+
+
+@router.post(
+    "/workspace/roots/{root_id}/scan", response_model=BackgroundJobOut, status_code=202
+)
 def start_workspace_scan(
     root_id: str,
     background: BackgroundTasks,
@@ -810,7 +991,9 @@ def start_workspace_scan(
 ) -> BackgroundJob:
     root = db.get(WorkspaceRoot, root_id)
     if not root or not root.enabled:
-        raise ProblemException(404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到可扫描目录。")
+        raise ProblemException(
+            404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到可扫描目录。"
+        )
     running = db.scalar(
         select(BackgroundJob).where(
             BackgroundJob.job_type == "workspace_scan",
@@ -846,7 +1029,9 @@ def scan_workspace_now(
 ) -> WorkspaceScanOut:
     root = db.get(WorkspaceRoot, root_id)
     if not root or not root.enabled:
-        raise ProblemException(404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到可扫描目录。")
+        raise ProblemException(
+            404, "WORKSPACE_ROOT_NOT_FOUND", "目录不存在", "未找到可扫描目录。"
+        )
     result = scan_root(db, root)
     write_audit(
         db,
@@ -854,7 +1039,11 @@ def scan_workspace_now(
         "workspace.scan",
         "workspace_root",
         root.id,
-        {"files": result.files, "directories": result.directories, "changed": result.changed},
+        {
+            "files": result.files,
+            "directories": result.directories,
+            "changed": result.changed,
+        },
         client_ip(request),
     )
     emit_event(db, "workspace.scan_completed", root.id, result.model_dump(mode="json"))
@@ -875,7 +1064,12 @@ def list_workspace_files(
     device_id = current_device_id(request, db)
     root = db.get(WorkspaceRoot, root_id)
     if not root or not workspace_root_permissions(db, root, user, device_id)["browse"]:
-        raise ProblemException(403, "WORKSPACE_ACCESS_DENIED", "无权访问该共享目录", "请联系管理员批准目录并授权。")
+        raise ProblemException(
+            403,
+            "WORKSPACE_ACCESS_DENIED",
+            "无权访问该共享目录",
+            "请联系管理员批准目录并授权。",
+        )
     statement = select(WorkspaceFile).where(
         WorkspaceFile.root_id == root_id,
         WorkspaceFile.parent_id == parent_id,
@@ -884,7 +1078,9 @@ def list_workspace_files(
     if not include_missing:
         statement = statement.where(WorkspaceFile.status != "missing")
     items = db.scalars(
-        statement.order_by(WorkspaceFile.is_directory.desc(), WorkspaceFile.name).limit(limit)
+        statement.order_by(WorkspaceFile.is_directory.desc(), WorkspaceFile.name).limit(
+            limit
+        )
     ).all()
     return [workspace_file_out(db, item, user, device_id) for item in items]
 
@@ -930,7 +1126,9 @@ def preview_workspace_file(
 ) -> FileResponse | PlainTextResponse:
     item, root = get_file(db, file_id, user, current_device_id(request, db), "download")
     if item.is_directory:
-        raise ProblemException(422, "DIRECTORY_PREVIEW_DENIED", "目录不能预览", "请选择文件。")
+        raise ProblemException(
+            422, "DIRECTORY_PREVIEW_DENIED", "目录不能预览", "请选择文件。"
+        )
     if root.source.value == "device":
         text_value = item.extracted_text or item.ocr_text
         if text_value:
@@ -958,7 +1156,9 @@ def preview_workspace_file(
             content_disposition_type="attachment",
         )
     text_value = item.extracted_text or item.ocr_text
-    return PlainTextResponse(text_value or "该文件不在系统内读取正文，请使用主机默认程序打开。")
+    return PlainTextResponse(
+        text_value or "该文件不在系统内读取正文，请使用主机默认程序打开。"
+    )
 
 
 @router.post("/files/{file_id}/open-grants", response_model=dict, status_code=201)
@@ -974,7 +1174,12 @@ def create_local_open_link(
     device_id = current_device_id(request, db)
     item, root = get_file(db, file_id, user, device_id)
     if item.is_directory:
-        raise ProblemException(422, "DIRECTORY_OPEN_DENIED", "目录不能按文件打开", "请在目录树中进入文件夹。")
+        raise ProblemException(
+            422,
+            "DIRECTORY_OPEN_DENIED",
+            "目录不能按文件打开",
+            "请在目录树中进入文件夹。",
+        )
     if root.source.value != "host" or not is_host_local_request(request):
         raise ProblemException(
             403,
@@ -1046,7 +1251,9 @@ def get_local_open_status(
 
     grant = db.get(FileOpenGrant, grant_id)
     if not grant or (grant.created_by != user.id and user.role != UserRole.ADMIN):
-        raise ProblemException(404, "OPEN_GRANT_NOT_FOUND", "文件打开任务不存在", "请重新发起打开。")
+        raise ProblemException(
+            404, "OPEN_GRANT_NOT_FOUND", "文件打开任务不存在", "请重新发起打开。"
+        )
     return _open_grant_status(grant)
 
 
@@ -1059,27 +1266,66 @@ def resolve_local_open_token(
     """仅供主机本地 URI 助手调用；授权持久化、一次性且五分钟过期。"""
 
     if not is_host_local_request(request):
-        raise ProblemException(403, "LOCAL_OPEN_HOST_ONLY", "拒绝远程打开", "该链接只能由主机本地桌面助手使用。")
+        raise ProblemException(
+            403,
+            "LOCAL_OPEN_HOST_ONLY",
+            "拒绝远程打开",
+            "该链接只能由主机本地桌面助手使用。",
+        )
     if len(token) > 128 or not token.replace("-", "").replace("_", "").isalnum():
-        raise ProblemException(400, "OPEN_TOKEN_INVALID", "打开链接无效", "请回到原始文件中心重新点击打开。")
-    grant = db.scalar(select(FileOpenGrant).where(FileOpenGrant.token_hash == hash_token(token)))
+        raise ProblemException(
+            400,
+            "OPEN_TOKEN_INVALID",
+            "打开链接无效",
+            "请回到原始文件中心重新点击打开。",
+        )
+    grant = db.scalar(
+        select(FileOpenGrant).where(FileOpenGrant.token_hash == hash_token(token))
+    )
     if not grant:
-        raise ProblemException(404, "OPEN_GRANT_INVALID", "文件打开授权不存在", "请回到原始文件中心重新点击打开。")
+        raise ProblemException(
+            404,
+            "OPEN_GRANT_INVALID",
+            "文件打开授权不存在",
+            "请回到原始文件中心重新点击打开。",
+        )
     if grant.revoked_at is not None:
-        raise ProblemException(410, "OPEN_GRANT_REVOKED", "文件打开授权已撤销", "文件权限可能已变化，请重新发起打开。")
+        raise ProblemException(
+            410,
+            "OPEN_GRANT_REVOKED",
+            "文件打开授权已撤销",
+            "文件权限可能已变化，请重新发起打开。",
+        )
     if grant.used_at is not None:
-        raise ProblemException(410, "OPEN_GRANT_ALREADY_USED", "文件打开授权已使用", "一次性打开链接不能重复使用，请重新点击打开。")
+        raise ProblemException(
+            410,
+            "OPEN_GRANT_ALREADY_USED",
+            "文件打开授权已使用",
+            "一次性打开链接不能重复使用，请重新点击打开。",
+        )
     expires_at = grant.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at <= utcnow():
-        raise ProblemException(410, "OPEN_GRANT_EXPIRED", "文件打开授权已过期", "请回到原始文件中心重新点击打开。")
+        raise ProblemException(
+            410,
+            "OPEN_GRANT_EXPIRED",
+            "文件打开授权已过期",
+            "请回到原始文件中心重新点击打开。",
+        )
     item = db.get(WorkspaceFile, grant.file_id)
     root = db.get(WorkspaceRoot, item.root_id) if item else None
     if not item or not root or not root.enabled or not item.in_scope:
-        raise ProblemException(410, "WORKSPACE_FILE_UNAVAILABLE", "文件已不可用", "请回到原始文件中心重新选择。")
+        raise ProblemException(
+            410,
+            "WORKSPACE_FILE_UNAVAILABLE",
+            "文件已不可用",
+            "请回到原始文件中心重新选择。",
+        )
     if item.is_directory or root.source.value != "host":
-        raise ProblemException(403, "LOCAL_OPEN_DENIED", "文件不能直接打开", "请使用系统内提供的可用操作。")
+        raise ProblemException(
+            403, "LOCAL_OPEN_DENIED", "文件不能直接打开", "请使用系统内提供的可用操作。"
+        )
     path = resolve_workspace_path(root, item.relative_path)
     consumed_at = utcnow()
     # 使用条件更新完成真正的一次性兑换，避免两个本机助手并发读取后都成功打开。
@@ -1099,10 +1345,25 @@ def resolve_local_open_token(
         db.expire_all()
         current = db.get(FileOpenGrant, grant.id)
         if current and current.revoked_at is not None:
-            raise ProblemException(410, "OPEN_GRANT_REVOKED", "文件打开授权已撤销", "文件权限可能已变化，请重新发起打开。")
+            raise ProblemException(
+                410,
+                "OPEN_GRANT_REVOKED",
+                "文件打开授权已撤销",
+                "文件权限可能已变化，请重新发起打开。",
+            )
         if current and current.used_at is not None:
-            raise ProblemException(410, "OPEN_GRANT_ALREADY_USED", "文件打开授权已使用", "一次性打开链接不能重复使用，请重新点击打开。")
-        raise ProblemException(410, "OPEN_GRANT_EXPIRED", "文件打开授权已过期", "请回到原始文件中心重新点击打开。")
+            raise ProblemException(
+                410,
+                "OPEN_GRANT_ALREADY_USED",
+                "文件打开授权已使用",
+                "一次性打开链接不能重复使用，请重新点击打开。",
+            )
+        raise ProblemException(
+            410,
+            "OPEN_GRANT_EXPIRED",
+            "文件打开授权已过期",
+            "请回到原始文件中心重新点击打开。",
+        )
     db.commit()
     response = PlainTextResponse(str(path), media_type="text/plain; charset=utf-8")
     response.headers["X-PartyOps-Open-Grant-Id"] = grant.id
@@ -1119,14 +1380,30 @@ def complete_local_open_token(
     """本机助手使用原一次性令牌回执打开结果，不接收文件信息。"""
 
     if not is_host_local_request(request):
-        raise ProblemException(403, "LOCAL_OPEN_HOST_ONLY", "拒绝远程回执", "文件打开结果只能由主机本机助手提交。")
+        raise ProblemException(
+            403,
+            "LOCAL_OPEN_HOST_ONLY",
+            "拒绝远程回执",
+            "文件打开结果只能由主机本机助手提交。",
+        )
     if len(token) > 128 or not token.replace("-", "").replace("_", "").isalnum():
-        raise ProblemException(400, "OPEN_TOKEN_INVALID", "打开链接无效", "请重新发起打开。")
-    grant = db.scalar(select(FileOpenGrant).where(FileOpenGrant.token_hash == hash_token(token)))
+        raise ProblemException(
+            400, "OPEN_TOKEN_INVALID", "打开链接无效", "请重新发起打开。"
+        )
+    grant = db.scalar(
+        select(FileOpenGrant).where(FileOpenGrant.token_hash == hash_token(token))
+    )
     if not grant:
-        raise ProblemException(404, "OPEN_GRANT_INVALID", "文件打开任务不存在", "请重新发起打开。")
+        raise ProblemException(
+            404, "OPEN_GRANT_INVALID", "文件打开任务不存在", "请重新发起打开。"
+        )
     if grant.used_at is None:
-        raise ProblemException(409, "OPEN_GRANT_NOT_REDEEMED", "文件尚未兑换", "本机助手必须先取得文件路径。")
+        raise ProblemException(
+            409,
+            "OPEN_GRANT_NOT_REDEEMED",
+            "文件尚未兑换",
+            "本机助手必须先取得文件路径。",
+        )
     if grant.completed_at is not None:
         return _open_grant_status(grant)
     completed_at = utcnow()
@@ -1150,7 +1427,9 @@ def download_workspace_file(
     device_id = current_device_id(request, db)
     item, root = get_file(db, file_id, user, device_id, "download")
     if item.is_directory:
-        raise ProblemException(422, "DIRECTORY_DOWNLOAD_DENIED", "目录不能直接下载", "请选择具体文件。")
+        raise ProblemException(
+            422, "DIRECTORY_DOWNLOAD_DENIED", "目录不能直接下载", "请选择具体文件。"
+        )
     if root.source.value == "device":
         raise ProblemException(
             409,
@@ -1185,7 +1464,9 @@ def patch_workspace_tags(
     device_id = current_device_id(request, db)
     item, _root = get_file(db, file_id, user, device_id, "share")
     if item.version != parse_version(if_match):
-        raise ProblemException(409, "VERSION_CONFLICT", "文件标签已更新", "请刷新后重试。")
+        raise ProblemException(
+            409, "VERSION_CONFLICT", "文件标签已更新", "请刷新后重试。"
+        )
     for tag in db.scalars(
         select(WorkspaceFileTag).where(WorkspaceFileTag.file_id == item.id)
     ).all():
@@ -1193,24 +1474,46 @@ def patch_workspace_tags(
     for tag in payload.tags:
         db.add(WorkspaceFileTag(file_id=item.id, tag=tag, created_by=user.id))
     item.version += 1
-    write_audit(db, user, "workspace.tags_update", "workspace_file", item.id, {"tags": payload.tags}, client_ip(request))
+    write_audit(
+        db,
+        user,
+        "workspace.tags_update",
+        "workspace_file",
+        item.id,
+        {"tags": payload.tags},
+        client_ip(request),
+    )
     emit_event(db, "workspace.file_updated", item.id, {"version": item.version})
     db.commit()
     return workspace_file_out(db, item, user, device_id)
 
 
-def validate_link_target(db: Session, payload: WorkspaceFileLinkCreate, user: User) -> None:
+def validate_link_target(
+    db: Session, payload: WorkspaceFileLinkCreate, user: User
+) -> None:
     if payload.entity_type == "task":
         target = db.get(Task, payload.entity_id)
         if not target or not can_view_task(db, target, user):
-            raise ProblemException(404, "TASK_NOT_FOUND", "事项不存在", "未找到可关联事项。")
-    elif payload.entity_type == "report" and not db.get(PeriodReport, payload.entity_id):
-        raise ProblemException(404, "PERIOD_REPORT_NOT_FOUND", "报告不存在", "未找到可关联报告。")
-    elif payload.entity_type == "journal" and not db.get(WorkJournalEntry, payload.entity_id):
-        raise ProblemException(404, "JOURNAL_NOT_FOUND", "日志不存在", "未找到可关联日志。")
+            raise ProblemException(
+                404, "TASK_NOT_FOUND", "事项不存在", "未找到可关联事项。"
+            )
+    elif payload.entity_type == "report" and not db.get(
+        PeriodReport, payload.entity_id
+    ):
+        raise ProblemException(
+            404, "PERIOD_REPORT_NOT_FOUND", "报告不存在", "未找到可关联报告。"
+        )
+    elif payload.entity_type == "journal" and not db.get(
+        WorkJournalEntry, payload.entity_id
+    ):
+        raise ProblemException(
+            404, "JOURNAL_NOT_FOUND", "日志不存在", "未找到可关联日志。"
+        )
 
 
-@router.post("/workspace/files/{file_id}/links", response_model=WorkspaceFileOut, status_code=201)
+@router.post(
+    "/workspace/files/{file_id}/links", response_model=WorkspaceFileOut, status_code=201
+)
 def link_workspace_file(
     file_id: str,
     payload: WorkspaceFileLinkCreate,
@@ -1222,7 +1525,9 @@ def link_workspace_file(
     device_id = current_device_id(request, db)
     item, _root = get_file(db, file_id, user, device_id, "share")
     if item.version != parse_version(if_match):
-        raise ProblemException(409, "VERSION_CONFLICT", "文件关联已更新", "请刷新后重试。")
+        raise ProblemException(
+            409, "VERSION_CONFLICT", "文件关联已更新", "请刷新后重试。"
+        )
     validate_link_target(db, payload, user)
     existing = db.scalar(
         select(WorkspaceLink).where(
@@ -1233,7 +1538,9 @@ def link_workspace_file(
         )
     )
     if not existing:
-        db.add(WorkspaceLink(file_id=item.id, created_by=user.id, **payload.model_dump()))
+        db.add(
+            WorkspaceLink(file_id=item.id, created_by=user.id, **payload.model_dump())
+        )
         item.version += 1
         record_system_entry(
             db,
@@ -1250,13 +1557,23 @@ def link_workspace_file(
                 "filename": item.name,
             },
         )
-        write_audit(db, user, "workspace.link_create", "workspace_file", item.id, payload.model_dump(), client_ip(request))
+        write_audit(
+            db,
+            user,
+            "workspace.link_create",
+            "workspace_file",
+            item.id,
+            payload.model_dump(),
+            client_ip(request),
+        )
         emit_event(db, "workspace.file_updated", item.id, {"version": item.version})
         db.commit()
     return workspace_file_out(db, item, user, device_id)
 
 
-@router.delete("/workspace/files/{file_id}/links/{link_id}", response_model=WorkspaceFileOut)
+@router.delete(
+    "/workspace/files/{file_id}/links/{link_id}", response_model=WorkspaceFileOut
+)
 def unlink_workspace_file(
     file_id: str,
     link_id: str,
@@ -1268,13 +1585,25 @@ def unlink_workspace_file(
     device_id = current_device_id(request, db)
     item, _root = get_file(db, file_id, user, device_id, "share")
     if item.version != parse_version(if_match):
-        raise ProblemException(409, "VERSION_CONFLICT", "文件关联已更新", "请刷新后重试。")
+        raise ProblemException(
+            409, "VERSION_CONFLICT", "文件关联已更新", "请刷新后重试。"
+        )
     link = db.get(WorkspaceLink, link_id)
     if not link or link.file_id != item.id or link.entity_type == "frozen":
-        raise ProblemException(404, "WORKSPACE_LINK_NOT_FOUND", "文件关联不存在", "未找到可移除关联。")
+        raise ProblemException(
+            404, "WORKSPACE_LINK_NOT_FOUND", "文件关联不存在", "未找到可移除关联。"
+        )
     db.delete(link)
     item.version += 1
-    write_audit(db, user, "workspace.link_delete", "workspace_file", item.id, {"link_id": link_id}, client_ip(request))
+    write_audit(
+        db,
+        user,
+        "workspace.link_delete",
+        "workspace_file",
+        item.id,
+        {"link_id": link_id},
+        client_ip(request),
+    )
     emit_event(db, "workspace.file_updated", item.id, {"version": item.version})
     db.commit()
     return workspace_file_out(db, item, user, device_id)
@@ -1291,7 +1620,9 @@ def freeze_file(
     device_id = current_device_id(request, db)
     item, root = get_file(db, file_id, user, device_id, "download")
     if item.version != parse_version(if_match):
-        raise ProblemException(409, "VERSION_CONFLICT", "原始文件已发生变化", "请刷新并确认后重新固化。")
+        raise ProblemException(
+            409, "VERSION_CONFLICT", "原始文件已发生变化", "请刷新并确认后重新固化。"
+        )
     if root.source.value == "device":
         raise ProblemException(
             409,

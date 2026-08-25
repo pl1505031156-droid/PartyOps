@@ -7,10 +7,7 @@
 
 from __future__ import annotations
 
-import typing
-
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import timedelta
 from typing import Any
 
 from fastapi import (
@@ -31,8 +28,8 @@ from sqlalchemy.orm import Session
 
 from ..archive_exporting import export_archive_package
 from ..archive_service import (
-    archive_permissions,
     archive_attachment_path,
+    archive_permissions,
     can_contribute_category,
     can_download_category,
     can_view_category,
@@ -42,8 +39,8 @@ from ..archive_service import (
     next_sequence,
     record_snapshot,
     refresh_search_index,
-    save_archive_upload,
     safe_archive_name,
+    save_archive_upload,
     validate_custom_fields,
     validate_record_mode,
 )
@@ -51,7 +48,12 @@ from ..audit import emit_event, write_audit
 from ..config import get_settings
 from ..database import db_runtime, get_session
 from ..device_versions import request_device
-from ..enums import ArchiveAccessMode, ArchiveAttachmentStatus, ArchiveRecordMode, ArchiveRecordStatus, UserRole
+from ..enums import (
+    ArchiveAttachmentStatus,
+    ArchiveRecordMode,
+    ArchiveRecordStatus,
+    UserRole,
+)
 from ..models import (
     ArchiveAccessGrant,
     ArchiveAttachment,
@@ -87,7 +89,6 @@ from ..schemas import (
 )
 from ..security import get_current_user, require_admin
 from ..storage import normalize_client_upload_id
-
 
 router = APIRouter(tags=["important-archives"])
 
@@ -337,7 +338,7 @@ def _add_revision(
     )
 
 
-@router.get("/archives/categories", response_model=typing.List[ArchiveCategoryOut])
+@router.get("/archives/categories", response_model=list[ArchiveCategoryOut])
 def list_archive_categories(
     request: Request,
     include_inactive: bool = False,
@@ -482,7 +483,7 @@ def create_archive_category_grant(
 
 @router.get(
     "/archives/categories/{category_id}/grants",
-    response_model=typing.List[ArchiveAccessGrantOut],
+    response_model=list[ArchiveAccessGrantOut],
 )
 def list_archive_category_grants(
     category_id: str,
@@ -599,7 +600,7 @@ def list_archive_years(
     return {"years": summaries}
 
 
-@router.get("/archives/records", response_model=typing.List[ArchiveRecordOut])
+@router.get("/archives/records", response_model=list[ArchiveRecordOut])
 def list_archive_records(
     request: Request,
     archive_year: int | None = Query(default=None, ge=1_000, le=9_999),
@@ -899,7 +900,7 @@ async def upload_archive_attachment(
     return _attachment_out(db, attachment)
 
 
-@router.get("/archives/records/{record_id}/attachments", response_model=typing.List[ArchiveAttachmentOut])
+@router.get("/archives/records/{record_id}/attachments", response_model=list[ArchiveAttachmentOut])
 def list_archive_attachments(
     record_id: str,
     request: Request,
@@ -1096,7 +1097,7 @@ def void_archive_attachment(
     return _attachment_out(db, attachment)
 
 
-@router.get("/archives/records/{record_id}/history", response_model=typing.List[ArchiveRevisionOut])
+@router.get("/archives/records/{record_id}/history", response_model=list[ArchiveRevisionOut])
 def archive_history(
     record_id: str,
     request: Request,
@@ -1157,7 +1158,47 @@ def link_archive_record(
     return _record_out(db, record, user, include_attachments=True, device_id=device_id)
 
 
-@router.get("/archives/search", response_model=typing.List[ArchiveRecordOut])
+@router.delete(
+    "/archives/records/{record_id}/links/{link_id}",
+    response_model=ArchiveRecordOut,
+)
+def unlink_archive_record(
+    record_id: str,
+    link_id: str,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> ArchiveRecordOut:
+    record = db.get(ArchiveRecord, record_id)
+    if not record:
+        raise ProblemException(404, "ARCHIVE_RECORD_NOT_FOUND", "档案不存在", "未找到档案记录。")
+    device_id = _request_device_id(request, db)
+    category = _category(db, record.category_id, user, device_id=device_id)
+    if not can_contribute_category(db, category, user, device_id):
+        raise ProblemException(403, "ARCHIVE_CONTRIBUTE_DENIED", "无权移除档案关联", "请联系管理员开通档案贡献权限。")
+    if record.version != parse_version(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "档案已更新", "请刷新后重试。")
+    link = db.get(ArchiveLink, link_id)
+    if not link or link.record_id != record.id:
+        raise ProblemException(404, "ARCHIVE_LINK_NOT_FOUND", "档案关联不存在", "请刷新后重试。")
+    detail = {
+        "link_id": link.id,
+        "entity_type": link.entity_type,
+        "entity_id": link.entity_id,
+        "relation": link.relation,
+        "device_id": device_id,
+    }
+    db.delete(link)
+    record.version += 1
+    record.updated_by = user.id
+    write_audit(db, user, "archive.link_delete", "archive_record", record.id, detail, client_ip(request))
+    db.commit()
+    db.refresh(record)
+    return _record_out(db, record, user, include_attachments=True, device_id=device_id)
+
+
+@router.get("/archives/search", response_model=list[ArchiveRecordOut])
 def search_archives(
     request: Request,
     keyword: str = Query(min_length=1, max_length=200),

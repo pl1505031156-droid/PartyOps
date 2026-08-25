@@ -15,7 +15,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from app import setup_wizard
 from app.windows_host_status import HEALTH_TIMEOUT, SERVICE_MISSING, SERVICE_STOPPED
 
@@ -53,6 +52,11 @@ def test_installer_defaults_private_write_and_host_selection(
     monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
     assert setup_wizard.installer_default_data_dir() == selected
     assert setup_wizard.initial_personal_data_dir() == selected
+
+    non_system_drive = Path(r"D:\党建 文档\PartyOps 数据")
+    marker.write_text(str(non_system_drive), encoding="utf-8")
+    assert setup_wizard.installer_default_data_dir() == non_system_drive
+    assert setup_wizard.initial_personal_data_dir() == non_system_drive
 
     marker.write_text("relative/path", encoding="utf-8")
     assert setup_wizard.installer_default_data_dir() == program_data / "PartyOps-Data"

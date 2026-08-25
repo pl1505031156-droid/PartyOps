@@ -184,6 +184,10 @@ export interface Backup {
   sha256: string;
   status: string;
   message: string;
+  deleted_at: string | null;
+  delete_reason: string;
+  purge_after: string | null;
+  version: number;
   created_at: string;
   completed_at: string | null;
 }
@@ -291,6 +295,9 @@ export interface WorkJournal {
   file_id: string | null;
   report_id: string | null;
   immutable: boolean;
+  archived_at: string | null;
+  archived_by: string | null;
+  archive_reason: string;
   created_by: string;
   version: number;
   created_at: string;

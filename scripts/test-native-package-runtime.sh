@@ -66,7 +66,7 @@ case "$PACKAGE" in
 esac
 
 RUNTIME="$ROOT/opt/partyops"
-[[ "$(cat "$RUNTIME/VERSION" 2>/dev/null || true)" == "1.4.5-rc.2" ]] || {
+[[ "$(cat "$RUNTIME/VERSION" 2>/dev/null || true)" == "1.4.5-rc.3" ]] || {
   echo "成品缺少正确的冻结版本标识。" >&2
   exit 2
 }

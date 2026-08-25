@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import typing
-
 import secrets
+import typing
 from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Depends, File, Header, Query, Request, UploadFile
@@ -21,51 +20,59 @@ from ..ai_service import (
     validate_provider_url,
 )
 from ..audit import emit_event, write_audit
-from ..database import get_session
 from ..config import get_settings
+from ..database import get_session
 from ..enums import RecommendationStatus
-from ..local_ai import complete_locally, embedding_runtime, local_runtime_status, llm_runtime
 from ..hardware_profile import collect_hardware_profile, run_light_benchmark
-from ..intent_preview import preview_intent
+from ..local_ai import (
+    complete_locally,
+    embedding_runtime,
+    llm_runtime,
+    local_runtime_status,
+)
 from ..model_catalog import recommend_models
 from ..model_packs import (
     activate_model_pack,
+    cleanup_model_pack_uninstall_staging,
     deactivate_model_capability,
+    finish_staged_model_pack_removal,
     install_model_pack,
     normalized_architecture,
     remove_installed_pack_files,
+    rollback_staged_model_pack_removal,
+    stage_model_pack_removal,
 )
 from ..models import (
     AIDraft,
     AIInvocation,
     AIModelActivation,
     AIModelPack,
-    AIRecommendation,
     AIPolicy,
     AIProviderConfig,
+    AIRecommendation,
     User,
     utcnow,
 )
+from ..needle_intent import needle_intent_runtime, preview_intent_with_needle
 from ..problems import ProblemException
+from ..recommendations import list_recommendations
 from ..schemas import (
     AIDraftOut,
     AIModelPackOut,
-    AIRecommendationOut,
     AIPolicyOut,
     AIPolicyPatch,
     AIProviderOut,
     AIProviderPatch,
     AIQueryRequest,
-    LocalAIRuntimeOut,
+    AIRecommendationOut,
     HardwareBenchmarkOut,
     HardwareProfileOut,
-    ModelRecommendationOut,
-    IntentPreviewRequest,
     IntentPreviewOut,
+    IntentPreviewRequest,
+    LocalAIRuntimeOut,
+    ModelRecommendationOut,
 )
-from ..recommendations import list_recommendations
 from ..security import get_current_user, require_admin
-
 
 router = APIRouter(tags=["ai"])
 
@@ -98,10 +105,11 @@ def get_model_recommendations(
 def get_intent_preview(
     payload: IntentPreviewRequest,
     _user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
 ) -> IntentPreviewOut:
     """只返回结构化预览，不执行任何模型提出的工具调用。"""
 
-    return IntentPreviewOut.model_validate(preview_intent(payload.text))
+    return IntentPreviewOut.model_validate(preview_intent_with_needle(db, payload.text))
 
 
 def client_ip(request: Request) -> str:
@@ -122,6 +130,7 @@ def list_model_packs(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> list[AIModelPackOut]:
+    cleanup_model_pack_uninstall_staging()
     active_by_pack: dict[str, list[str]] = {}
     for activation in db.scalars(select(AIModelActivation)).all():
         active_by_pack.setdefault(activation.model_pack_id, []).append(activation.capability)
@@ -195,6 +204,16 @@ def activate_local_model_pack(
         llm_runtime.stop()
     elif capability == "embedding":
         embedding_runtime.unload()
+    elif capability == "intent_router":
+        try:
+            needle_intent_runtime.probe(pack)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ProblemException(
+                409,
+                "NEEDLE_RUNTIME_INVALID",
+                "Needle 意图运行时不可用",
+                "原生库与当前平台不匹配、组件损坏或缺少必需接口。",
+            ) from exc
     pack = activate_model_pack(db, pack, capability, admin.id)
     write_audit(db, admin, "ai.model_pack_activate", "ai_model_pack", pack.id, {"model_id": pack.model_id, "capability": capability}, client_ip(request))
     emit_event(db, "ai.model_pack_activated", pack.id, {"capability": capability})
@@ -221,6 +240,8 @@ def deactivate_local_model_capability(
         llm_runtime.stop()
     elif capability == "embedding":
         embedding_runtime.unload()
+    elif capability == "intent_router":
+        needle_intent_runtime.unload()
     pack = deactivate_model_capability(db, capability)
     write_audit(
         db,
@@ -233,6 +254,66 @@ def deactivate_local_model_capability(
     )
     db.commit()
     return {"capability": capability, "active": False, "pack_id": pack.id if pack else None}
+
+
+@router.delete("/admin/ai/model-packs/{pack_id}", response_model=dict)
+def uninstall_local_model_pack(
+    pack_id: str,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    """卸载未启用的签名包；业务数据与历史调用记录不受影响。"""
+
+    pack = db.get(AIModelPack, pack_id)
+    if not pack:
+        raise ProblemException(404, "MODEL_PACK_NOT_FOUND", "模型包不存在", "请刷新模型包列表。")
+    active = list(
+        db.scalars(
+            select(AIModelActivation.capability).where(
+                AIModelActivation.model_pack_id == pack.id
+            )
+        ).all()
+    )
+    if active:
+        raise ProblemException(
+            409,
+            "MODEL_PACK_ACTIVE",
+            "模型包仍在使用",
+            "请先停用该模型包的全部能力，再执行卸载。",
+            extra={"active_capabilities": sorted(active)},
+        )
+    try:
+        stage_root, moves = stage_model_pack_removal(pack)
+    except OSError as exc:
+        raise ProblemException(
+            409,
+            "MODEL_PACK_FILES_BUSY",
+            "模型文件仍被系统占用",
+            "请确认全部模型能力已停用，重新启动 PartyOps 后再试。",
+        ) from exc
+    try:
+        write_audit(
+            db,
+            admin,
+            "ai.model_pack_uninstall",
+            "ai_model_pack",
+            pack.id,
+            {"model_id": pack.model_id, "version": pack.version},
+            client_ip(request),
+        )
+        db.delete(pack)
+        db.commit()
+    except Exception:
+        db.rollback()
+        rollback_staged_model_pack_removal(stage_root, moves)
+        raise
+    cleanup_pending = finish_staged_model_pack_removal(stage_root)
+    return {
+        "id": pack_id,
+        "uninstalled": True,
+        "cleanup_pending": cleanup_pending,
+    }
 
 
 @router.get("/ai/runtime/status", response_model=LocalAIRuntimeOut)

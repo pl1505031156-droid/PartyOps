@@ -49,7 +49,11 @@ def test_readiness_is_capability_specific_and_never_blocks_business(
     assert local_ai._system_busy(_Db([None, "transfer"])) == (True, "文件传输正在运行")
     assert local_ai._system_busy(_Db([None, None])) == (False, "")
 
-    packs: dict[str, object | None] = {"embedding": None, "llm": None}
+    packs: dict[str, object | None] = {
+        "embedding": None,
+        "llm": None,
+        "intent_router": None,
+    }
     monkeypatch.setattr(local_ai, "_system_busy", lambda _db: (False, ""))
     monkeypatch.setattr(local_ai, "active_model_pack", lambda _db, capability: packs[capability])
     missing = local_ai.local_ai_readiness(_Db())
@@ -76,8 +80,11 @@ def test_readiness_is_capability_specific_and_never_blocks_business(
     assert partial["state"] == "partial"
     assert partial["embedding_available"] is True and partial["llm_available"] is False
     monkeypatch.setattr(local_ai.LocalLlmRuntime, "_binary", staticmethod(lambda: "llama-server"))
+    packs["intent_router"] = _pack("needle-pack", estimated_memory_mb=256)
+    monkeypatch.setattr(local_ai.needle_intent_runtime, "available", lambda _pack: True)
     ready = local_ai.local_ai_readiness(_Db())
-    assert ready["state"] == "ready" and ready["llm_available"] is True
+    assert ready["state"] == "ready"
+    assert ready["llm_available"] is True and ready["intent_available"] is True
 
 
 def test_component_file_rejects_missing_and_escaping_members(

@@ -27,6 +27,7 @@ from .config import get_settings
 from .enums import ModelPackStatus, TransferStatus
 from .model_packs import active_model_pack, model_pack_root, verify_installed_pack
 from .models import AIModelPack, BackgroundJob, Transfer
+from .needle_intent import needle_intent_runtime
 from .problems import ProblemException
 
 BUSY_JOB_TYPES = {"backup", "restore", "update", "workspace_scan", "transfer"}
@@ -131,7 +132,9 @@ def local_ai_readiness(
             return {"ready": False, "state": "model_missing", "message": f"尚未启用{name}模型包"}
         if pack.status == ModelPackStatus.CORRUPT or not verify_installed_pack(pack):
             return {"ready": False, "state": "model_corrupt", "message": f"{name}模型包校验失败", "pack": pack}
-        required_memory = pack.estimated_memory_mb or (1024 if name == "embedding" else 4096)
+        required_memory = pack.estimated_memory_mb or (
+            1024 if name == "embedding" else 256 if name == "intent_router" else 4096
+        )
         if available is not None and available < required_memory:
             return {
                 "ready": False,
@@ -140,17 +143,30 @@ def local_ai_readiness(
                 "pack": pack,
                 "required_memory_mb": required_memory,
             }
-        runtime_ready = _embedding_runtime_available() if name == "embedding" else LocalLlmRuntime._binary() is not None
+        runtime_ready = (
+            _embedding_runtime_available()
+            if name == "embedding"
+            else needle_intent_runtime.available(pack)
+            if name == "intent_router"
+            else LocalLlmRuntime._binary() is not None
+        )
         if not runtime_ready:
+            message = (
+                "中文语义运行组件未安装，已退回规则推荐"
+                if name == "embedding"
+                else "Needle 原生库与当前平台不匹配，意图识别已退回规则"
+                if name == "intent_router"
+                else "llama.cpp 运行组件未安装，LLM 草稿已停用"
+            )
             return {
                 "ready": False,
                 "state": f"{name}_runtime_missing",
-                "message": "中文语义运行组件未安装，已退回规则推荐" if name == "embedding" else "llama.cpp 运行组件未安装，LLM 草稿已停用",
+                "message": message,
                 "pack": pack,
             }
         return {"ready": True, "state": "ready", "message": f"{name}能力可用", "pack": pack}
 
-    if capability in {"embedding", "llm"}:
+    if capability in {"embedding", "llm", "intent_router"}:
         state = capability_state(capability)
         pack = state.pop("pack", None)
         return {
@@ -160,20 +176,33 @@ def local_ai_readiness(
             "available_memory_mb": available,
             "embedding_available": state["ready"] if capability == "embedding" else False,
             "llm_available": state["ready"] if capability == "llm" else False,
+            "intent_available": state["ready"] if capability == "intent_router" else False,
         }
     embedding = capability_state("embedding")
     llm = capability_state("llm")
+    intent = capability_state("intent_router")
     embedding_pack = embedding.pop("pack", None)
     llm_pack = llm.pop("pack", None)
-    ready = bool(embedding["ready"] or llm["ready"])
+    intent_pack = intent.pop("pack", None)
+    ready = bool(embedding["ready"] or llm["ready"] or intent["ready"])
     if ready:
-        overall_state = "ready" if embedding["ready"] and llm["ready"] else "partial"
+        overall_state = (
+            "ready"
+            if embedding["ready"] and llm["ready"] and intent["ready"]
+            else "partial"
+        )
     else:
-        states = {str(embedding["state"]), str(llm["state"])}
+        states = {str(embedding["state"]), str(llm["state"]), str(intent["state"])}
         overall_state = next(
             (
                 state
-                for state in ("model_corrupt", "memory_low", "embedding_runtime_missing", "llm_runtime_missing")
+                for state in (
+                    "model_corrupt",
+                    "memory_low",
+                    "embedding_runtime_missing",
+                    "intent_router_runtime_missing",
+                    "llm_runtime_missing",
+                )
                 if state in states
             ),
             "model_missing",
@@ -181,14 +210,16 @@ def local_ai_readiness(
     return {
         "ready": ready,
         "state": overall_state,
-        "message": f"中文向量：{embedding['message']}；本地 LLM：{llm['message']}",
-        "model_pack_id": (embedding_pack or llm_pack).id if (embedding_pack or llm_pack) else None,
-        "model_id": (embedding_pack or llm_pack).model_id if (embedding_pack or llm_pack) else None,
+        "message": f"中文向量：{embedding['message']}；Needle：{intent['message']}；本地 LLM：{llm['message']}",
+        "model_pack_id": (embedding_pack or intent_pack or llm_pack).id if (embedding_pack or intent_pack or llm_pack) else None,
+        "model_id": (embedding_pack or intent_pack or llm_pack).model_id if (embedding_pack or intent_pack or llm_pack) else None,
         "embedding_pack_id": embedding_pack.id if embedding_pack else None,
         "llm_pack_id": llm_pack.id if llm_pack else None,
+        "intent_pack_id": intent_pack.id if intent_pack else None,
         "available_memory_mb": available,
         "embedding_available": bool(embedding["ready"]),
         "llm_available": bool(llm["ready"]),
+        "intent_available": bool(intent["ready"]),
     }
 
 

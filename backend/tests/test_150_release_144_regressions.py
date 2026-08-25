@@ -9,8 +9,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from alembic import command
-from sqlalchemy import inspect, select, text
-
 from app import client_agent
 from app.config import Settings
 from app.database import DatabaseRuntime, db_runtime
@@ -23,7 +21,6 @@ from app.models import (
     Task,
     User,
 )
-from app.security import hash_token
 from app.notifications import (
     _refresh_daily,
     desktop_notifications_allowed,
@@ -31,6 +28,8 @@ from app.notifications import (
     refresh_notifications,
     refresh_party_development_notifications,
 )
+from app.security import hash_token
+from sqlalchemy import inspect, select, text
 
 from .conftest import create_task
 
@@ -148,7 +147,7 @@ def test_device_403_marks_reauthorization_and_stops_agent(
     assert saved["authentication_state"] == "reauth_required"
     assert saved["last_agent_error"] == "heartbeat"
     assert saved["protocol_version"] == 2
-    assert saved["runtime_version"] == "1.4.5-rc.2"
+    assert saved["runtime_version"] == "1.4.5-rc.3"
 
 
 def test_legacy_pairing_403_stops_backup_retry_loop(

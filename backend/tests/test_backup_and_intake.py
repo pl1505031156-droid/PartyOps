@@ -5,11 +5,10 @@ from __future__ import annotations
 import io
 import zipfile
 
-from fastapi.testclient import TestClient
-
 from app.backups import verify_backup
 from app.config import get_settings
 from app.problems import ProblemException
+from fastapi.testclient import TestClient
 
 
 def test_intake_text_is_candidate_only(client: TestClient, admin: dict) -> None:
@@ -35,7 +34,7 @@ def test_backup_manifest_pairing_and_admin_download(
     path = get_settings().backups_dir / backup["filename"]
     manifest = verify_backup(path)
     assert manifest["format"] == "partyops-backup"
-    assert manifest["schema_version"] == "0023"
+    assert manifest["schema_version"] == "0024"
 
     admin_download = client.get(f"/api/v1/backups/{backup['id']}/download")
     assert admin_download.status_code == 200

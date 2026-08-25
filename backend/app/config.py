@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import json
+import os
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "党建智办"
-    app_version: str = "1.4.5-rc.2"
+    app_version: str = "1.4.5-rc.3"
     mode: Literal["host", "personal", "client"] = "host"
     # 未显式配置时按生产边界运行。开发脚本和自动化测试会主动设置
     # development/test，避免开源用户直接启动时意外开启调试与弱校验。
@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     backup_minute: int = 30
     backup_daily_keep: int = 14
     backup_weekly_keep: int = 8
+    deleted_backup_retention_days: int = Field(default=30, ge=7, le=365)
     # 导入包与解压后数据分别设上限，防止超大上传、ZIP 炸弹耗尽磁盘或内存。
     # 大型部署可通过环境变量显式调高，但不能依赖请求自行声明大小。
     backup_import_max_gb: int = Field(default=100, ge=1, le=2048)
@@ -88,6 +89,8 @@ class Settings(BaseSettings):
     )
     model_pack_public_key: str = ""
     local_ai_port: int = 18767
+    # 公文排版只监听当前电脑回环地址，固定端口便于实施精确 CSP/PNA。
+    official_format_port: int = Field(default=18768, ge=1024, le=65535)
     local_ai_max_threads: int = 4
     local_ai_memory_limit_mb: int = 3584
     max_devices: int = 20

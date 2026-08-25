@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import fcntl
 import json
-import os
 import shlex
 import ssl
 import subprocess
@@ -15,8 +14,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-
-VERSION = "1.4.5-rc.2"
+VERSION = "1.4.5-rc.3"
 
 
 def _config_root() -> Path:

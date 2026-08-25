@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FORMAT="${1:-}"
 ARCH="${PARTYOPS_BUILD_ARCH:-}"
-DEB_VERSION="1.4.5~rc.2"
+DEB_VERSION="1.4.5~rc.3"
 RPM_VERSION="1.4.5"
-RPM_RELEASE="0.rc.2.1"
+RPM_RELEASE="0.rc.3.1"
 ARTIFACTS="$ROOT/artifacts"
 
 if [[ -z "${PYTHON_BIN:-}" && -f "$ROOT/.partyops-build.env" ]]; then
@@ -22,7 +22,7 @@ if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
 fi
 
 "$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py" \
-  --root "$ROOT" --expected "1.4.5-rc.2"
+  --root "$ROOT" --expected "1.4.5-rc.3"
 
 [[ "$FORMAT" == "deb" || "$FORMAT" == "rpm" ]] || {
   echo "用法：build-native.sh deb|rpm（通过 PARTYOPS_BUILD_ARCH 指定 amd64/arm64）" >&2
@@ -258,7 +258,7 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 echo "PartyOps 业务数据保留在 /var/lib/partyops，卸载不会自动删除。" >&2
 EOF
   chmod 0755 "$PKG/DEBIAN/preinst" "$PKG/DEBIAN/postinst" "$PKG/DEBIAN/prerm" "$PKG/DEBIAN/postrm"
-  OUTPUT="$ARTIFACTS/PartyOps_1.4.5-rc.2_linux_${ARCH}.deb"
+  OUTPUT="$ARTIFACTS/PartyOps_1.4.5-rc.3_linux_${ARCH}.deb"
   if dpkg-deb --help 2>&1 | grep -q -- '--root-owner-group'; then
     dpkg-deb --root-owner-group --build "$PKG" "$OUTPUT"
   else
@@ -367,7 +367,7 @@ EOF
     --define "partyops_release $RPM_RELEASE" \
     --define "with_rollback_cache 1" \
     -bb "$BUILD/rpmbuild/SPECS/partyops.spec"
-  OUTPUT="$ARTIFACTS/PartyOps-1.4.5-0.rc.2.1.${RPM_ARCH}.rpm"
+  OUTPUT="$ARTIFACTS/PartyOps-1.4.5-0.rc.3.1.${RPM_ARCH}.rpm"
   cp "$BUILD/rpmbuild/RPMS/$RPM_ARCH/partyops-$RPM_VERSION-$RPM_RELEASE.$RPM_ARCH.rpm" "$OUTPUT"
 fi
 if [[ "$FORMAT" == deb ]]; then

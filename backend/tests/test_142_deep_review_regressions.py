@@ -17,18 +17,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
-from openpyxl import load_workbook
-from sqlalchemy import event, func, select
-
 from app import backups as backups_module
 from app import main as main_module
 from app import networking as networking_module
-from app import scheduler
 from app import notifications as notifications_module
 from app import projections as projections_module
 from app import recommendations as recommendations_module
 from app import reports as reports_module
+from app import scheduler
 from app import workspace as workspace_module
 from app.config import Settings, get_settings
 from app.database import db_runtime
@@ -52,11 +48,15 @@ from app.models import (
     WorkspaceRoot,
 )
 from app.problems import ProblemException
-from app.routers import fleet
 from app.routers import admin as admin_router_module
+from app.routers import fleet
 from app.schemas import TaskUpdate
 from app.task_service import update_task
 from app.workspace import scan_root
+from fastapi.testclient import TestClient
+from openpyxl import load_workbook
+from sqlalchemy import event, func, select
+
 from .conftest import create_task
 
 
@@ -241,8 +241,14 @@ def test_material_rollback_creates_audited_new_final_without_deleting_history(
     assert [version["version_no"] for version in versions] == [3, 2, 1]
     assert [version["is_final"] for version in versions] == [True, False, False]
     assert versions[0]["note"] == "回退至 v1：终稿内容有误，恢复首版"
-    assert client.get(f"/api/v1/attachments/{versions[0]['id']}/download").content == b"version-one"
-    assert client.get(f"/api/v1/attachments/{versions[1]['id']}/download").content == b"version-two"
+    assert (
+        client.get(f"/api/v1/attachments/{versions[0]['id']}/download").content
+        == b"version-one"
+    )
+    assert (
+        client.get(f"/api/v1/attachments/{versions[1]['id']}/download").content
+        == b"version-two"
+    )
     already_final = client.post(
         f"/api/v1/tasks/{task['id']}/materials/{material_id}/versions/{versions[0]['id']}/rollback",
         headers={"If-Match": str(rolled_back.json()["version"])},
@@ -266,7 +272,9 @@ def _completed_inbox_transfer(admin_id: str, content: bytes, name: str) -> Trans
         db.add(transfer)
         db.commit()
         transfer_id = transfer.id
-    get_settings().inbox_dir.joinpath(f"{transfer_id}-{fleet.safe_name(name)}").write_bytes(content)
+    get_settings().inbox_dir.joinpath(
+        f"{transfer_id}-{fleet.safe_name(name)}"
+    ).write_bytes(content)
     with db_runtime.session_factory() as db:
         return db.get(Transfer, transfer_id)
 
@@ -301,14 +309,20 @@ def test_inbox_attach_cannot_bypass_final_or_archive_lock(
     assert denied.status_code == 409, denied.text
     assert denied.json()["code"] == "FINAL_VERSION_LOCKED"
 
-    assert client.post(
-        f"/api/v1/tasks/{task['id']}/actions",
-        json={"action": "complete", "note": "办理完成"},
-    ).status_code == 200
-    assert client.post(
-        f"/api/v1/tasks/{task['id']}/actions",
-        json={"action": "archive", "note": "完成归档"},
-    ).status_code == 200
+    assert (
+        client.post(
+            f"/api/v1/tasks/{task['id']}/actions",
+            json={"action": "complete", "note": "办理完成"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/tasks/{task['id']}/actions",
+            json={"action": "archive", "note": "完成归档"},
+        ).status_code
+        == 200
+    )
     late = _completed_inbox_transfer(admin["id"], b"late", "归档后补件.txt")
     archived = client.post(
         f"/api/v1/transfers/{late.id}/attach",
@@ -359,9 +373,12 @@ def test_transfer_retention_reclaims_expired_part(admin: dict) -> None:
         db.refresh(transfer)
         assert transfer.status == "expired"
         assert transfer.completed_chunks == 0
-        assert db.scalar(
-            select(TransferChunk.id).where(TransferChunk.transfer_id == transfer.id)
-        ) is None
+        assert (
+            db.scalar(
+                select(TransferChunk.id).where(TransferChunk.transfer_id == transfer.id)
+            )
+            is None
+        )
     assert not part.exists()
 
 
@@ -394,25 +411,44 @@ def test_runtime_retention_bounds_database_and_disk_growth(
 
     with db_runtime.session_factory() as db:
         read_notice = Notification(
-            user_id=admin["id"], notification_type="test", title="旧已读",
-            dedupe_key=f"retention-read-{uuid.uuid4().hex}", read_at=old, created_at=old,
+            user_id=admin["id"],
+            notification_type="test",
+            title="旧已读",
+            dedupe_key=f"retention-read-{uuid.uuid4().hex}",
+            read_at=old,
+            created_at=old,
         )
         unread_notice = Notification(
-            user_id=admin["id"], notification_type="test", title="旧未读",
-            dedupe_key=f"retention-unread-{uuid.uuid4().hex}", created_at=old,
+            user_id=admin["id"],
+            notification_type="test",
+            title="旧未读",
+            dedupe_key=f"retention-unread-{uuid.uuid4().hex}",
+            created_at=old,
         )
         session = LoginSession(
             token_hash=hashlib.sha256(uuid.uuid4().bytes).hexdigest(),
-            user_id=admin["id"], expires_at=old, last_seen_at=old, created_at=old,
+            user_id=admin["id"],
+            expires_at=old,
+            last_seen_at=old,
+            created_at=old,
         )
         handled = Transfer(
-            direction="device_to_host", status="completed", original_name="已处理.txt",
-            requested_by=admin["id"], expires_at=now + timedelta(days=1),
-            handled_by=admin["id"], handled_at=old, created_at=old,
+            direction="device_to_host",
+            status="completed",
+            original_name="已处理.txt",
+            requested_by=admin["id"],
+            expires_at=now + timedelta(days=1),
+            handled_by=admin["id"],
+            handled_at=old,
+            created_at=old,
         )
         unhandled = Transfer(
-            direction="device_to_host", status="completed", original_name="未处理.txt",
-            requested_by=admin["id"], expires_at=now + timedelta(days=1), created_at=old,
+            direction="device_to_host",
+            status="completed",
+            original_name="未处理.txt",
+            requested_by=admin["id"],
+            expires_at=now + timedelta(days=1),
+            created_at=old,
         )
         db.add_all([read_notice, unread_notice, session, handled, unhandled])
         db.commit()
@@ -636,7 +672,12 @@ def test_archive_record_survives_removed_template_field(
             "record_mode": "document",
             "access_mode": "all_users",
             "field_schema": [
-                {"key": "legacy_field", "label": "历史字段", "type": "text", "required": False}
+                {
+                    "key": "legacy_field",
+                    "label": "历史字段",
+                    "type": "text",
+                    "required": False,
+                }
             ],
         },
     )
@@ -734,7 +775,9 @@ def test_invalid_trace_id_is_replaced(client: TestClient) -> None:
         headers={"X-Trace-Id": 'forged"trace'},
     )
     assert response.status_code == 200
-    assert str(uuid.UUID(response.headers["X-Trace-Id"])) == response.headers["X-Trace-Id"]
+    assert (
+        str(uuid.UUID(response.headers["X-Trace-Id"])) == response.headers["X-Trace-Id"]
+    )
 
 
 def test_production_lan_rejects_plain_http() -> None:
@@ -764,7 +807,9 @@ def test_system_status_reports_low_disk_as_degraded(
     monkeypatch.setattr(
         admin_router_module.shutil,
         "disk_usage",
-        lambda _path: SimpleNamespace(total=10 * 1024**3, used=9 * 1024**3, free=512 * 1024**2),
+        lambda _path: SimpleNamespace(
+            total=10 * 1024**3, used=9 * 1024**3, free=512 * 1024**2
+        ),
     )
     response = client.get("/api/v1/admin/system-status")
     assert response.status_code == 200, response.text
@@ -814,12 +859,15 @@ def test_login_throttle_flood_does_not_evict_locked_account(tmp_path) -> None:
             now=4.0 + index / 1000,
             settings=settings,
         )
-    assert throttle.retry_after(
-        "protected-admin",
-        "192.0.2.10",
-        now=5.0,
-        settings=settings,
-    ) > 0
+    assert (
+        throttle.retry_after(
+            "protected-admin",
+            "192.0.2.10",
+            now=5.0,
+            settings=settings,
+        )
+        > 0
+    )
     assert len(throttle._states) <= settings.login_throttle_max_entries
 
 
@@ -827,7 +875,9 @@ def test_exclusive_maintenance_waits_and_rejects_new_sessions(admin: dict) -> No
     """恢复闸门必须等待在途事务，并在换库窗口拒绝新数据库访问。"""
 
     active_db = db_runtime.session_factory()
-    assert active_db.scalar(select(User.id).where(User.id == admin["id"])) == admin["id"]
+    assert (
+        active_db.scalar(select(User.id).where(User.id == admin["id"])) == admin["id"]
+    )
     entered = threading.Event()
     release = threading.Event()
     failures: list[BaseException] = []
@@ -938,7 +988,9 @@ async def test_scheduler_cycle_does_not_block_event_loop(monkeypatch) -> None:
             return True
 
     monkeypatch.setattr(scheduler.db_runtime, "session_factory", fake_session_factory)
-    monkeypatch.setattr(scheduler, "refresh_notifications", lambda _db: time.sleep(0.15))
+    monkeypatch.setattr(
+        scheduler, "refresh_notifications", lambda _db: time.sleep(0.15)
+    )
 
     started = time.perf_counter()
     task = asyncio.create_task(scheduler.scheduler_loop(OneCycleStop()))
@@ -950,7 +1002,9 @@ async def test_scheduler_cycle_does_not_block_event_loop(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_final_hash_does_not_block_event_loop(tmp_path, monkeypatch) -> None:
+async def test_upload_final_hash_does_not_block_event_loop(
+    tmp_path, monkeypatch
+) -> None:
     """末块整文件校验和落盘必须离开事件循环。"""
 
     content = b"deep-review"
@@ -1016,7 +1070,9 @@ async def test_upload_final_hash_does_not_block_event_loop(tmp_path, monkeypatch
         "authenticated_device",
         lambda _token, _db: SimpleNamespace(id="review-device"),
     )
-    monkeypatch.setattr(fleet, "transfer_sources_still_allowed", lambda _db, _transfer: True)
+    monkeypatch.setattr(
+        fleet, "transfer_sources_still_allowed", lambda _db, _transfer: True
+    )
     monkeypatch.setattr(fleet, "ensure_transfer_storage_available", lambda _size: None)
     monkeypatch.setattr(fleet, "get_settings", lambda: settings)
     monkeypatch.setattr(fleet, "sha256_path", slow_sha256_path)
@@ -1301,8 +1357,7 @@ def test_published_report_is_immutable_and_exports_its_snapshot(
         exported = reports_module.export_period_xlsx(db, stored)
         workbook = load_workbook(exported, read_only=True)
         values = [
-            row[1]
-            for row in workbook.active.iter_rows(min_row=2, values_only=True)
+            row[1] for row in workbook.active.iter_rows(min_row=2, values_only=True)
         ]
         workbook.close()
         exported.unlink(missing_ok=True)
@@ -1323,7 +1378,10 @@ def test_workspace_root_delete_rejects_active_transfer_and_preserves_history(
     root_path.mkdir()
     created = client.post(
         "/api/v1/workspace/roots",
-        json={"name": f"活动传输-{uuid.uuid4().hex[:8]}", "absolute_path": str(root_path)},
+        json={
+            "name": f"活动传输-{uuid.uuid4().hex[:8]}",
+            "absolute_path": str(root_path),
+        },
     )
     assert created.status_code == 201, created.text
     root = created.json()
@@ -1340,9 +1398,16 @@ def test_workspace_root_delete_rejects_active_transfer_and_preserves_history(
         db.commit()
         transfer_id = transfer.id
 
-    denied = client.delete(
+    impact = client.get(f"/api/v1/workspace/roots/{root['id']}/deletion-impact")
+    assert impact.status_code == 200, impact.text
+    assert impact.json()["active_transfers"] == 1
+    assert impact.json()["physical_delete"] is False
+
+    denied = client.request(
+        "DELETE",
         f"/api/v1/workspace/roots/{root['id']}",
         headers={"If-Match": str(root["version"])},
+        json={"reason": "目录改由新的共享位置承接"},
     )
     assert denied.status_code == 409
     assert denied.json()["code"] == "ROOT_HAS_ACTIVE_TRANSFERS"
@@ -1352,9 +1417,11 @@ def test_workspace_root_delete_rejects_active_transfer_and_preserves_history(
         assert transfer is not None
         transfer.status = TransferStatus.COMPLETED
         db.commit()
-    removed = client.delete(
+    removed = client.request(
+        "DELETE",
         f"/api/v1/workspace/roots/{root['id']}",
         headers={"If-Match": str(root["version"])},
+        json={"reason": "目录改由新的共享位置承接"},
     )
     assert removed.status_code == 200, removed.text
     with db_runtime.session_factory() as db:
@@ -1364,13 +1431,20 @@ def test_workspace_root_delete_rejects_active_transfer_and_preserves_history(
         preserved_root = db.get(WorkspaceRoot, root["id"])
         assert preserved_root is not None
         assert preserved_root.enabled is False
+    disabled = client.get("/api/v1/workspace/roots", params={"lifecycle": "disabled"})
+    assert disabled.status_code == 200, disabled.text
+    assert root["id"] in [item["id"] for item in disabled.json()]
+
     restored = client.post(
-        "/api/v1/workspace/roots",
-        json={"name": root["name"], "absolute_path": str(root_path)},
+        f"/api/v1/workspace/roots/{root['id']}/restore",
+        headers={"If-Match": str(root["version"] + 1)},
+        json={"reason": "管理员核对路径后恢复目录"},
     )
-    assert restored.status_code == 201, restored.text
-    assert restored.json()["id"] == root["id"]
-    assert restored.json()["enabled"] is True
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["root_id"] == root["id"]
+    assert restored.json()["scan_required"] is True
+    with db_runtime.session_factory() as db:
+        assert db.get(WorkspaceRoot, root["id"]).enabled is True
 
 
 def test_global_search_pushes_task_limit_into_sql(
@@ -1392,7 +1466,9 @@ def test_global_search_pushes_task_limit_into_sql(
         bind = db.get_bind()
     event.listen(bind, "before_cursor_execute", capture)
     try:
-        response = client.get("/api/v1/global-search", params={"q": "检索下推", "limit": 5})
+        response = client.get(
+            "/api/v1/global-search", params={"q": "检索下推", "limit": 5}
+        )
     finally:
         event.remove(bind, "before_cursor_execute", capture)
 

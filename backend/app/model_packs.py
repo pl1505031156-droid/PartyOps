@@ -163,12 +163,19 @@ def _validate_manifest(manifest: dict, archive: zipfile.ZipFile) -> tuple[dict, 
                 raise ProblemException(422, "MODEL_PACK_EMBEDDING_INVALID", "向量模型配置无效", f"{field} 超出允许范围。")
     if isinstance(intent_router, dict):
         capabilities.append("intent_router")
-        required.update(
-            {
-                str(intent_router.get("runtime_file", "")),
-                str(intent_router.get("model_file", "")),
-            }
-        )
+        # Needle 2 基础运行时把权重烘焙在各平台原生库中；只有经过
+        # PartyOps 单独微调的包才额外携带可选 .cact 权重文件。
+        required.add(str(intent_router.get("runtime_file", "")))
+        model_file = intent_router.get("model_file")
+        if model_file is not None:
+            if not isinstance(model_file, str) or not model_file.strip():
+                raise ProblemException(
+                    422,
+                    "MODEL_PACK_INTENT_INVALID",
+                    "意图模型配置无效",
+                    "model_file 省略时使用 Needle 2 基座；填写时必须是模型包内文件。",
+                )
+            required.add(model_file)
     if not capabilities:
         raise ProblemException(
             422,
@@ -431,6 +438,92 @@ def remove_installed_pack_files(pack: AIModelPack) -> None:
     packages_root = (get_settings().models_dir / "packages").resolve()
     if package.parent == packages_root:
         package.unlink(missing_ok=True)
+
+
+def stage_model_pack_removal(pack: AIModelPack) -> tuple[Path, list[tuple[Path, Path]]]:
+    """先把模型文件原子移入受控暂存区，数据库提交失败时可完整恢复。"""
+
+    settings = get_settings()
+    models_root = settings.models_dir.resolve()
+    packages_root = (settings.models_dir / "packages").resolve()
+    package = (packages_root / pack.filename).resolve()
+    if package.parent != packages_root:
+        raise ProblemException(
+            500,
+            "MODEL_PACK_PATH_INVALID",
+            "模型安装记录异常",
+            "模型原包路径不在受管目录内，请重新导入模型包。",
+        )
+    stage_parent = models_root / ".uninstall-staging"
+    stage_root = stage_parent / secrets.token_hex(16)
+    moves: list[tuple[Path, Path]] = []
+    try:
+        stage_root.mkdir(parents=True, exist_ok=False)
+        for source, name in (
+            (model_pack_root(pack), "runtime"),
+            (package, "package.partyops-modelpack"),
+        ):
+            if not source.exists():
+                continue
+            target = stage_root / name
+            os.replace(source, target)
+            moves.append((source, target))
+    except Exception:
+        rollback_staged_model_pack_removal(stage_root, moves)
+        raise
+    with _verification_lock:
+        _verification_cache.pop(pack.id, None)
+    return stage_root, moves
+
+
+def rollback_staged_model_pack_removal(
+    stage_root: Path,
+    moves: list[tuple[Path, Path]],
+) -> None:
+    """数据库事务失败时把暂存文件移回原位。"""
+
+    for source, target in reversed(moves):
+        if target.exists() and not source.exists():
+            source.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(target, source)
+    if stage_root.exists():
+        shutil.rmtree(stage_root)
+
+
+def finish_staged_model_pack_removal(stage_root: Path) -> bool:
+    """提交后清理暂存区；返回是否仍有被操作系统占用的残留。"""
+
+    try:
+        shutil.rmtree(stage_root)
+        stage_root.parent.rmdir()
+        return False
+    except OSError:
+        return True
+
+
+def cleanup_model_pack_uninstall_staging() -> int:
+    """模型管理页打开时重试清理上次因文件占用遗留的受控暂存目录。"""
+
+    stage_parent = (get_settings().models_dir / ".uninstall-staging").resolve()
+    if not stage_parent.is_dir() or stage_parent.is_symlink():
+        return 0
+    pending = 0
+    for child in stage_parent.iterdir():
+        try:
+            if child.is_symlink() or child.resolve().parent != stage_parent:
+                pending += 1
+                continue
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        except OSError:
+            pending += 1
+    try:
+        stage_parent.rmdir()
+    except OSError:
+        pass
+    return pending
 
 
 def verify_installed_pack(pack: AIModelPack) -> bool:

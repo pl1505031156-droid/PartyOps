@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 import errno
 import ipaddress
-import os
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -23,6 +23,7 @@ from fastapi.encoders import ENCODERS_BY_TYPE
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
 
 from . import __version__
 from .config import get_settings
@@ -36,23 +37,45 @@ from .device_versions import (
     request_device,
     verify_device_context_token,
 )
-from .problems import install_problem_handlers
-from .routers import admin, ai, archives, auth, bootstrap, business, events, fleet, integration, operations, party_development, party_work, productivity, support, tasks, updates, workspace
-from .scheduler import scheduler_loop
-from .seed import seed_templates
-from .models import User, utcnow
 from .enums import UserRole
-from .networking import discover_lan_addresses, validate_bind_host, validate_transport_security
+from .models import User, utcnow
+from .networking import (
+    discover_lan_addresses,
+    validate_bind_host,
+    validate_transport_security,
+)
+from .problems import install_problem_handlers
+from .routers import (
+    admin,
+    ai,
+    archives,
+    auth,
+    bootstrap,
+    business,
+    events,
+    fleet,
+    integration,
+    ledger_imports,
+    official_format,
+    operations,
+    party_development,
+    party_work,
+    productivity,
+    support,
+    tasks,
+    updates,
+    workspace,
+)
+from .scheduler import scheduler_loop
 from .schemas import serialize_api_datetime
-from sqlalchemy import select
+from .seed import seed_templates
+from .startup_diagnostics import classify_database_startup_error
 from .upgrades import (
     create_pre_upgrade_backup,
     record_upgrade,
     restore_database_from_upgrade_backup,
     upgrade_required,
 )
-from .startup_diagnostics import classify_database_startup_error
-
 
 settings = get_settings()
 
@@ -267,8 +290,20 @@ async def lifespan(_app: FastAPI):
     instance_lock.acquire()
     scheduler: asyncio.Task | None = None
     stop_event: asyncio.Event | None = None
+    local_formatter = None
     try:
         _initialize_runtime()
+        # 主机/个人模式在同一用户进程内启动无窗口回环服务；协同模式由
+        # client_agent 使用设备令牌摘要启动同一服务。
+        from .official_format_service import OfficialFormatLocalService
+
+        with db_runtime.session_factory() as db:
+            local_formatter = OfficialFormatLocalService(
+                secret=ensure_device_context_secret(db),
+                config_dir=settings.data_dir / "logs",
+                port=settings.official_format_port,
+            ).start()
+            db.commit()
         stop_event = asyncio.Event()
         scheduler = asyncio.create_task(scheduler_loop(stop_event))
     except BaseException:
@@ -283,6 +318,8 @@ async def lifespan(_app: FastAPI):
         try:
             await scheduler
         finally:
+            if local_formatter is not None:
+                local_formatter.close()
             db_runtime.dispose()
             instance_lock.release()
 
@@ -329,7 +366,8 @@ def _apply_security_headers(response, request: Request):
         f"default-src 'self'; base-uri 'self'; frame-ancestors {frame_ancestors}; "
         "form-action 'self'; object-src 'none'; script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
-        "font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:"
+        f"font-src 'self' data:; connect-src 'self' http://127.0.0.1:{settings.official_format_port}; "
+        "worker-src 'self' blob:"
     )
     if settings.tls_enabled:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
@@ -523,6 +561,8 @@ app.include_router(events.router, prefix=api_prefix)
 app.include_router(operations.router, prefix=api_prefix)
 app.include_router(workspace.router, prefix=api_prefix)
 app.include_router(archives.router, prefix=api_prefix)
+app.include_router(ledger_imports.router, prefix=api_prefix)
+app.include_router(official_format.router, prefix=api_prefix)
 app.include_router(ai.router, prefix=api_prefix)
 app.include_router(fleet.router, prefix=api_prefix)
 app.include_router(productivity.router, prefix=api_prefix)

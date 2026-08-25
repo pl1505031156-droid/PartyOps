@@ -6,8 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
-$releaseVersion = "1.4.5-rc.2"
-$releaseTag = "v1.4.5-rc.2"
+$releaseVersion = "1.4.5-rc.3"
+$releaseTag = "v1.4.5-rc.3"
 $runtimeRoot = Join-Path $repoRoot "artifacts\windows-runtime"
 $artifactRoot = Join-Path $repoRoot "artifacts"
 $bundleRoot = Join-Path $artifactRoot "PartyOps-$releaseVersion-windows-amd64"
@@ -173,7 +173,7 @@ if ($LASTEXITCODE -ne 0) {
   throw "Inno Setup 安装器构建失败，退出码：$LASTEXITCODE"
 }
 
-$installer = Join-Path $artifactRoot "PartyOps_1.4.5-rc.2_windows_amd64.exe"
+$installer = Join-Path $artifactRoot "PartyOps_1.4.5-rc.3_windows_amd64.exe"
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"
 }
@@ -200,7 +200,7 @@ $candidate = [ordered]@{
   limitations = @("Windows 10 未实机验证", "未签名候选版")
 }
 [System.IO.File]::WriteAllText(
-  (Join-Path $artifactRoot "PartyOps_1.4.5-rc.2_windows_amd64.candidate.json"),
+  (Join-Path $artifactRoot "PartyOps_1.4.5-rc.3_windows_amd64.candidate.json"),
   ($candidate | ConvertTo-Json -Depth 5),
   (New-Object System.Text.UTF8Encoding($false))
 )

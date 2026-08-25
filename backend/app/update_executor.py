@@ -7,20 +7,21 @@ systemd 服务调用，业务进程本身不获得 root 权限。
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
-import os
-import base64
 import logging
+import os
 import platform
 import plistlib
 import re
 import secrets
 import shlex
-import sqlite3
 import shutil
 import signal
+import sqlite3
+import ssl
 import stat
 import subprocess
 import sys
@@ -29,21 +30,20 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
-import ssl
 from os import fsync as _fsync
 from os import getenv as _getenv
 from os import replace as _atomic_replace
 from pathlib import Path, PurePosixPath
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .backups import verify_backup
 from .config import get_settings
 from .database import db_runtime
-from .models import BackupRun, DeviceCommand, UpdatePackage, UpdateRun, utcnow
 from .enums import UpdateStatus
+from .models import BackupRun, UpdatePackage, UpdateRun, utcnow
 from .platform_info import (
     detect_platform_info,
     normalize_architecture,
@@ -2440,14 +2440,18 @@ def execute_linux_personal_update(run_id: str) -> bool:
         package_id = package.id
         created_by = run.created_by
         backup = db.scalar(
-            select(BackupRun)
+            select(BackupRun).where(BackupRun.deleted_at.is_(None))
             .where(
                 BackupRun.kind == "pre-upgrade",
                 BackupRun.status == "completed",
             )
             .order_by(BackupRun.completed_at.desc(), BackupRun.created_at.desc())
         )
-        backup_path = settings.backups_dir / backup.filename if backup else None
+        backup_path = (
+            settings.backups_dir / backup.filename
+            if backup and getattr(backup, "deleted_at", None) is None
+            else None
+        )
     if not package_path.is_file() or not hmac.compare_digest(
         _hash(package_path), expected_hash
     ):
@@ -2585,7 +2589,7 @@ def execute_macos_update(run_id: str) -> bool:
         run = db.get(UpdateRun, run_id)
         package = db.get(UpdatePackage, run.package_id) if run else None
         backup = db.scalar(
-            select(BackupRun)
+            select(BackupRun).where(BackupRun.deleted_at.is_(None))
             .where(
                 BackupRun.kind == "pre-upgrade",
                 BackupRun.status == "completed",
@@ -2604,7 +2608,11 @@ def execute_macos_update(run_id: str) -> bool:
         expected_hash = package.sha256
         package_id = package.id
         created_by = run.created_by
-        backup_path = settings.backups_dir / backup.filename if backup else None
+        backup_path = (
+            settings.backups_dir / backup.filename
+            if backup and getattr(backup, "deleted_at", None) is None
+            else None
+        )
     if (
         not package_path.is_file()
         or not hmac.compare_digest(_hash(package_path), expected_hash)

@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import typing
-
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..audit import emit_event, write_audit
 from ..database import db_runtime, get_session
-from ..enums import PeriodReportStatus, PeriodType, ReportSection, UserRole
+from ..enums import PeriodReportStatus, PeriodType, UserRole
 from ..models import (
     ArchiveTemplate,
     Notification,
@@ -39,6 +38,7 @@ from ..reports import (
 from ..schemas import (
     ArchiveTemplateCreate,
     ArchiveTemplateOut,
+    ArchiveTemplatePatch,
     NotificationOut,
     PeriodReportAction,
     PeriodReportCreate,
@@ -48,8 +48,8 @@ from ..schemas import (
     PeriodReportOut,
     PeriodReportPatch,
     ReportTemplateCreate,
-    ReportTemplatePatch,
     ReportTemplateOut,
+    ReportTemplatePatch,
     WorkJournalCreate,
     WorkJournalOut,
     WorkJournalPatch,
@@ -60,8 +60,13 @@ from ..security import get_current_user
 from ..task_service import can_view_task
 from ..work_journal import journal_to_out, record_system_entry
 
-
 router = APIRouter(tags=["period-reports-journal"])
+
+
+class LifecycleReason(BaseModel):
+    """可恢复归档必须留下人工原因。"""
+
+    reason: str = Field(min_length=2, max_length=1000)
 
 
 def client_ip(request: Request) -> str:
@@ -108,7 +113,7 @@ def require_report_draft(report: PeriodReport, operation: str) -> None:
         )
 
 
-@router.get("/period-reports", response_model=typing.List[PeriodReportOut])
+@router.get("/period-reports", response_model=list[PeriodReportOut])
 def list_period_reports(
     period_type: PeriodType | None = None,
     limit: int = Query(default=100, ge=1, le=500),
@@ -124,7 +129,7 @@ def list_period_reports(
     return [report_to_out(db, report) for report in reports]
 
 
-@router.post("/period-reports/ensure-current", response_model=typing.List[PeriodReportOut])
+@router.post("/period-reports/ensure-current", response_model=list[PeriodReportOut])
 def ensure_current_period_reports(
     request: Request,
     user: User = Depends(get_current_user),
@@ -487,7 +492,7 @@ def download_period_xlsx(
     return FileResponse(path, filename=path.name)
 
 
-@router.get("/report-templates", response_model=typing.List[ReportTemplateOut])
+@router.get("/report-templates", response_model=list[ReportTemplateOut])
 def list_report_templates(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -545,7 +550,7 @@ def patch_report_template(
     return template
 
 
-@router.get("/archive-templates", response_model=typing.List[ArchiveTemplateOut])
+@router.get("/archive-templates", response_model=list[ArchiveTemplateOut])
 def list_archive_templates(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -574,6 +579,130 @@ def create_archive_template(
     return template
 
 
+def _archive_template_for_update(
+    db: Session,
+    template_id: str,
+    user: User,
+) -> ArchiveTemplate:
+    template = db.get(ArchiveTemplate, template_id)
+    if not template:
+        raise ProblemException(404, "ARCHIVE_TEMPLATE_NOT_FOUND", "归档模板不存在", "未找到该归档模板。")
+    if template.created_by != user.id and user.role != UserRole.ADMIN:
+        raise ProblemException(403, "ARCHIVE_TEMPLATE_EDIT_DENIED", "无权修改归档模板", "请由模板创建人或管理员操作。")
+    return template
+
+
+@router.patch("/archive-templates/{template_id}", response_model=ArchiveTemplateOut)
+def patch_archive_template(
+    template_id: str,
+    payload: ArchiveTemplatePatch,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> ArchiveTemplate:
+    template = _archive_template_for_update(db, template_id, user)
+    require_version(template.version, if_match)
+    changes = payload.model_dump(exclude_unset=True)
+    if "name" in changes:
+        changes["name"] = str(changes["name"]).strip()
+        duplicate = db.scalar(
+            select(ArchiveTemplate.id).where(
+                ArchiveTemplate.name == changes["name"],
+                ArchiveTemplate.id != template.id,
+            )
+        )
+        if duplicate:
+            raise ProblemException(409, "TEMPLATE_EXISTS", "模板名称已存在", "请使用其他名称。")
+    for field, value in changes.items():
+        setattr(template, field, value)
+    template.version += 1
+    write_audit(
+        db,
+        user,
+        "archive_template.update",
+        "archive_template",
+        template.id,
+        {"fields": sorted(changes)},
+        client_ip(request),
+    )
+    db.commit()
+    db.refresh(template)
+    return template
+
+
+@router.get("/archive-templates/{template_id}/deletion-impact", response_model=dict)
+def archive_template_deletion_impact(
+    template_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    template = _archive_template_for_update(db, template_id, user)
+    return {
+        "id": template.id,
+        "active": template.active,
+        "existing_archives_changed": False,
+        "recoverable": True,
+        "physical_delete": False,
+    }
+
+
+@router.delete("/archive-templates/{template_id}", response_model=ArchiveTemplateOut)
+def deactivate_archive_template(
+    template_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> ArchiveTemplate:
+    template = _archive_template_for_update(db, template_id, user)
+    require_version(template.version, if_match)
+    if template.active:
+        template.active = False
+        template.version += 1
+        write_audit(
+            db,
+            user,
+            "archive_template.deactivate",
+            "archive_template",
+            template.id,
+            {"reason": payload.reason.strip()},
+            client_ip(request),
+        )
+        db.commit()
+        db.refresh(template)
+    return template
+
+
+@router.post("/archive-templates/{template_id}/restore", response_model=ArchiveTemplateOut)
+def restore_archive_template(
+    template_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> ArchiveTemplate:
+    template = _archive_template_for_update(db, template_id, user)
+    require_version(template.version, if_match)
+    if not template.active:
+        template.active = True
+        template.version += 1
+        write_audit(
+            db,
+            user,
+            "archive_template.restore",
+            "archive_template",
+            template.id,
+            {"reason": payload.reason.strip()},
+            client_ip(request),
+        )
+        db.commit()
+        db.refresh(template)
+    return template
+
+
 def journal_visible(db: Session, entry: WorkJournalEntry, user: User) -> bool:
     if not entry.task_id:
         return True
@@ -581,7 +710,7 @@ def journal_visible(db: Session, entry: WorkJournalEntry, user: User) -> bool:
     return bool(task and can_view_task(db, task, user))
 
 
-@router.get("/work-journal", response_model=typing.List[WorkJournalOut])
+@router.get("/work-journal", response_model=list[WorkJournalOut])
 def list_work_journal(
     task_id: str | None = None,
     created_by: str | None = None,
@@ -590,8 +719,13 @@ def list_work_journal(
     limit: int = Query(default=200, ge=1, le=1000),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
+    lifecycle: str = Query(default="active", pattern=r"^(active|archived|all)$"),
 ) -> list[WorkJournalOut]:
     statement = select(WorkJournalEntry)
+    if lifecycle == "active":
+        statement = statement.where(WorkJournalEntry.archived_at.is_(None))
+    elif lifecycle == "archived":
+        statement = statement.where(WorkJournalEntry.archived_at.is_not(None))
     if task_id:
         statement = statement.where(WorkJournalEntry.task_id == task_id)
     if created_by:
@@ -655,6 +789,8 @@ def patch_work_journal(
         raise ProblemException(404, "JOURNAL_NOT_FOUND", "工作日志不存在", "未找到该日志。")
     if entry.immutable:
         raise ProblemException(409, "JOURNAL_IMMUTABLE", "系统日志不可修改", "系统事件只允许追加。")
+    if getattr(entry, "archived_at", None):
+        raise ProblemException(409, "JOURNAL_ARCHIVED", "工作日志已归档", "请先恢复后再修订。")
     if entry.created_by != user.id and user.role != UserRole.ADMIN:
         raise ProblemException(403, "JOURNAL_EDIT_DENIED", "无权修改", "只能修改自己记录的工作日志。")
     require_version(entry.version, if_match)
@@ -694,9 +830,112 @@ def patch_work_journal(
     return journal_to_out(db, entry)
 
 
+def require_journal_lifecycle(entry: WorkJournalEntry, user: User) -> None:
+    if entry.immutable:
+        raise ProblemException(
+            409,
+            "JOURNAL_IMMUTABLE",
+            "系统事件不可删除",
+            "系统事件属于审计留痕，只允许追加；人工日志可归档。",
+        )
+    if entry.created_by != user.id and user.role != UserRole.ADMIN:
+        raise ProblemException(403, "JOURNAL_EDIT_DENIED", "无权归档", "只能归档自己记录的工作日志。")
+
+
+@router.get("/work-journal/{entry_id}/deletion-impact", response_model=dict)
+def work_journal_deletion_impact(
+    entry_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, int | bool]:
+    entry = db.get(WorkJournalEntry, entry_id)
+    if not entry or not journal_visible(db, entry, user):
+        raise ProblemException(404, "JOURNAL_NOT_FOUND", "工作日志不存在", "未找到该日志。")
+    require_journal_lifecycle(entry, user)
+    revisions = db.scalar(
+        select(func.count(WorkJournalRevision.id)).where(
+            WorkJournalRevision.entry_id == entry.id
+        )
+    ) or 0
+    return {
+        "revisions": int(revisions),
+        "task_link": bool(entry.task_id),
+        "file_link": bool(entry.file_id),
+        "report_link": bool(entry.report_id),
+        "recoverable": True,
+        "physical_delete": False,
+    }
+
+
+@router.delete("/work-journal/{entry_id}", response_model=WorkJournalOut)
+def archive_work_journal(
+    entry_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> WorkJournalOut:
+    entry = db.get(WorkJournalEntry, entry_id)
+    if not entry or not journal_visible(db, entry, user):
+        raise ProblemException(404, "JOURNAL_NOT_FOUND", "工作日志不存在", "未找到该日志。")
+    require_journal_lifecycle(entry, user)
+    require_version(entry.version, if_match)
+    if not entry.archived_at:
+        entry.archived_at = utcnow()
+        entry.archived_by = user.id
+        entry.archive_reason = payload.reason.strip()
+        entry.version += 1
+        write_audit(
+            db,
+            user,
+            "work_journal.archive",
+            "work_journal",
+            entry.id,
+            {"reason": entry.archive_reason},
+            client_ip(request),
+        )
+        db.commit()
+        db.refresh(entry)
+    return journal_to_out(db, entry)
+
+
+@router.post("/work-journal/{entry_id}/restore", response_model=WorkJournalOut)
+def restore_work_journal(
+    entry_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> WorkJournalOut:
+    entry = db.get(WorkJournalEntry, entry_id)
+    if not entry or not journal_visible(db, entry, user):
+        raise ProblemException(404, "JOURNAL_NOT_FOUND", "工作日志不存在", "未找到该日志。")
+    require_journal_lifecycle(entry, user)
+    require_version(entry.version, if_match)
+    if entry.archived_at:
+        entry.archived_at = None
+        entry.archived_by = None
+        entry.archive_reason = ""
+        entry.version += 1
+        write_audit(
+            db,
+            user,
+            "work_journal.restore",
+            "work_journal",
+            entry.id,
+            {"reason": payload.reason.strip()},
+            client_ip(request),
+        )
+        db.commit()
+        db.refresh(entry)
+    return journal_to_out(db, entry)
+
+
 @router.get(
     "/work-journal/{entry_id}/history",
-    response_model=typing.List[WorkJournalRevisionOut],
+    response_model=list[WorkJournalRevisionOut],
 )
 def work_journal_history(
     entry_id: str,
@@ -717,7 +956,7 @@ def work_journal_history(
     )
 
 
-@router.get("/notifications", response_model=typing.List[NotificationOut])
+@router.get("/notifications", response_model=list[NotificationOut])
 def list_notifications(
     unread_only: bool = False,
     notification_type: str | None = Query(default=None, max_length=48),

@@ -128,6 +128,11 @@ const tab = ref(props.initialTab);
 const health = ref<Record<string, unknown>>({});
 const users = ref<User[]>([]);
 const backups = ref<Backup[]>([]);
+const backupLifecycle = ref<"active" | "deleted">("active");
+const backupDeleteVisible = ref(false);
+const backupDeleteTarget = ref<Backup | null>(null);
+const backupDeleteReason = ref("");
+const backupDeletionImpact = ref<{ size_bytes: number; remaining_completed_backups: number; recoverable_days: number } | null>(null);
 const audits = ref<Audit[]>([]);
 const pairings = ref<Pairing[]>([]);
 const diagnostics = ref<Diagnostics | null>(null);
@@ -136,6 +141,7 @@ const network = ref<NetworkConfiguration | null>(null);
 const networkActionLoading = ref(false);
 const aiProvider = ref<AIProvider | null>(null);
 const aiPolicies = ref<AIPolicy[]>([]);
+const editingPolicyId = ref("");
 const workspaceRoots = ref<WorkspaceRoot[]>([]);
 const reminder = ref<ReminderPreference | null>(null);
 const logs = ref("");
@@ -282,6 +288,24 @@ const diskUsage = computed(() => {
   const total = diagnostics.value.disk.total_bytes / 1024 / 1024 / 1024;
   return `${free.toFixed(1)} GB 可用 / ${total.toFixed(1)} GB`;
 });
+
+function resetPolicyForm(policy?: AIPolicy) {
+  Object.assign(policyForm, policy ? {
+    name: policy.name,
+    allowed_root_ids: [...policy.allowed_root_ids],
+    allowed_task_categories_text: policy.allowed_task_categories.join("、"),
+    allowed_file_types_text: policy.allowed_file_types.join(","),
+    capabilities: [...policy.capabilities],
+    active: policy.active,
+  } : {
+    name: "默认只读策略",
+    allowed_root_ids: [],
+    allowed_task_categories_text: "",
+    allowed_file_types_text: ".docx,.pdf,.xlsx,.txt,.md,.png,.jpg,.jpeg",
+    capabilities: ["search", "summarize", "classify", "draft_report", "suggest_breakdown", "check_materials"],
+    active: true,
+  });
+}
 const runtimeModeLabel = computed(() => {
   if (health.value.mode === "host") return "主机模式";
   if (health.value.mode === "personal") return "个人模式";
@@ -348,7 +372,7 @@ async function load() {
   if (session.user?.role === "admin") {
     const results = await Promise.allSettled([
       api.get<User[]>("/admin/users"),
-      api.get<Backup[]>("/backups"),
+      api.get<Backup[]>(`/backups?lifecycle=${backupLifecycle.value}`),
       api.get<Audit[]>("/admin/audit?limit=100"),
       api.get<Pairing[]>("/admin/pairings"),
       api.get<Diagnostics>("/admin/diagnostics"),
@@ -411,16 +435,11 @@ async function load() {
         timeout_seconds: aiProvider.value.timeout_seconds,
       });
     }
-    const policy = aiPolicies.value[0];
+    const policy = aiPolicies.value.find((item) => item.id === editingPolicyId.value)
+      || aiPolicies.value[0];
     if (policy) {
-      Object.assign(policyForm, {
-        name: policy.name,
-        allowed_root_ids: [...policy.allowed_root_ids],
-        allowed_task_categories_text: policy.allowed_task_categories.join("、"),
-        allowed_file_types_text: policy.allowed_file_types.join(","),
-        capabilities: [...policy.capabilities],
-        active: policy.active,
-      });
+      editingPolicyId.value = policy.id;
+      resetPolicyForm(policy);
     }
   }
   loadWarning.value = failures.length
@@ -877,7 +896,7 @@ async function saveAIPolicy() {
     active: policyForm.active,
   };
   try {
-    const current = aiPolicies.value[0];
+    const current = aiPolicies.value.find((item) => item.id === editingPolicyId.value);
     if (current) {
       await api.patch(`/ai/policies/${current.id}`, payload, { "If-Match": String(current.version) });
     } else {
@@ -935,6 +954,58 @@ async function saveUserEdit() {
     await load();
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "用户更新失败");
+  }
+}
+
+function editAIPolicy(policy: AIPolicy) {
+  editingPolicyId.value = policy.id;
+  resetPolicyForm(policy);
+}
+
+function newAIPolicy() {
+  editingPolicyId.value = "";
+  resetPolicyForm();
+}
+
+async function toggleAIPolicy(policy: AIPolicy) {
+  try {
+    await api.patch(
+      `/ai/policies/${policy.id}`,
+      {
+        name: policy.name,
+        allowed_root_ids: policy.allowed_root_ids,
+        allowed_task_categories: policy.allowed_task_categories,
+        allowed_file_types: policy.allowed_file_types,
+        capabilities: policy.capabilities,
+        allow_restricted: false,
+        active: !policy.active,
+      },
+      { "If-Match": String(policy.version) },
+    );
+    Message.success(policy.active ? "AI 白名单已停用，历史草稿和审计保留" : "AI 白名单已恢复启用");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "AI 白名单状态更新失败");
+  }
+}
+
+async function uninstallModelPack(pack: AIModelPack) {
+  if (pack.active_capabilities.length) {
+    Message.warning("请先停用这个模型包的全部能力");
+    return;
+  }
+  try {
+    const result = await api.delete<{ cleanup_pending: boolean }>(
+      `/admin/ai/model-packs/${pack.id}`,
+    );
+    Message.success(
+      result.cleanup_pending
+        ? "模型包已卸载；被系统占用的残留文件将在下次启动时清理"
+        : "模型包已从本机安全卸载",
+    );
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "模型包卸载失败");
   }
 }
 
@@ -1057,6 +1128,60 @@ async function restoreBackup(backup: Backup) {
     window.location.assign("/login");
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "恢复失败，现有数据未改变");
+  }
+}
+
+async function loadBackups() {
+  try {
+    backups.value = await api.get<Backup[]>(`/backups?lifecycle=${backupLifecycle.value}`);
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "备份记录读取失败");
+  }
+}
+
+async function openBackupDelete(backup: Backup) {
+  try {
+    backupDeleteTarget.value = backup;
+    backupDeletionImpact.value = await api.get(
+      `/admin/backups/${backup.id}/deletion-impact`,
+    );
+    backupDeleteReason.value = "";
+    backupDeleteVisible.value = true;
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "无法读取备份移除影响");
+  }
+}
+
+async function deleteBackup() {
+  if (!backupDeleteTarget.value || backupDeleteReason.value.trim().length < 2) {
+    Message.warning("请填写至少两个字的移除原因");
+    return;
+  }
+  try {
+    await api.deleteBody(
+      `/admin/backups/${backupDeleteTarget.value.id}`,
+      { reason: backupDeleteReason.value.trim() },
+      { "If-Match": String(backupDeleteTarget.value.version) },
+    );
+    backupDeleteVisible.value = false;
+    Message.success("备份已移入回收站，可在保留期内恢复");
+    await loadBackups();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "备份移除失败");
+  }
+}
+
+async function restoreDeletedBackup(backup: Backup) {
+  try {
+    await api.post(
+      `/admin/backups/${backup.id}/restore`,
+      { reason: "管理员复核后恢复备份文件" },
+      { "If-Match": String(backup.version) },
+    );
+    Message.success("备份已恢复到可用列表");
+    await loadBackups();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "备份恢复失败");
   }
 }
 
@@ -1467,7 +1592,7 @@ onBeforeUnmount(() => {
             </a-form>
           </section>
           <section>
-            <h3>AI 只读白名单</h3>
+            <div class="policy-heading"><div><h3>AI 只读白名单</h3><p>共 {{ aiPolicies.length }} 条；每条均可单独编辑、停用和恢复。</p></div><a-button size="small" @click="newAIPolicy"><template #icon><IconPlus /></template>新建策略</a-button></div>
             <a-form :model="policyForm" layout="vertical">
               <a-form-item label="策略名称"><a-input v-model="policyForm.name" /></a-form-item>
               <a-form-item label="允许的原始目录">
@@ -1488,8 +1613,16 @@ onBeforeUnmount(() => {
                 </a-checkbox-group>
               </a-form-item>
               <a-alert type="warning">敏感事项和附件固定禁止进入 AI，此限制不能在界面中关闭。</a-alert>
-              <a-button type="primary" class="policy-save" @click="saveAIPolicy">保存白名单</a-button>
+              <a-form-item v-if="editingPolicyId" label="策略状态"><a-switch v-model="policyForm.active" checked-text="启用" unchecked-text="停用" /><span class="inline-note">停用不会删除历史草稿或审计记录。</span></a-form-item>
+              <a-button type="primary" class="policy-save" @click="saveAIPolicy">{{ editingPolicyId ? "保存白名单" : "创建白名单" }}</a-button>
             </a-form>
+            <div class="policy-list">
+              <article v-for="policy in aiPolicies" :key="policy.id" :class="{ inactive: !policy.active, selected: editingPolicyId === policy.id }">
+                <div><strong>{{ policy.name }}</strong><small>{{ policy.active ? "启用" : "已停用" }} · {{ policy.capabilities.length }} 项能力 · {{ policy.allowed_root_ids.length }} 个目录</small></div>
+                <a-space><a-button size="mini" type="text" @click="editAIPolicy(policy)">编辑</a-button><a-popconfirm :content="policy.active ? '停用后不再授权新的 AI 请求，历史草稿和审计继续保留。确认停用？' : '确认恢复这条 AI 白名单？'" @ok="toggleAIPolicy(policy)"><a-button size="mini" type="text" :status="policy.active ? 'danger' : 'normal'">{{ policy.active ? "停用" : "恢复" }}</a-button></a-popconfirm></a-space>
+              </article>
+              <p v-if="!aiPolicies.length" class="muted">尚未建立 AI 白名单；默认拒绝读取任何业务目录。</p>
+            </div>
           </section>
           <section class="local-ai-section">
             <div class="local-ai-heading">
@@ -1543,7 +1676,7 @@ onBeforeUnmount(() => {
                 <a-table-column title="架构" data-index="architecture" :width="100" />
                 <a-table-column title="签名" :width="100"><template #cell="{ record }">{{ record.signature_valid ? "已验证" : "开发包" }}</template></a-table-column>
                 <a-table-column title="资源" :width="120"><template #cell="{ record }">{{ record.estimated_memory_mb ? `${(record.estimated_memory_mb / 1024).toFixed(1)}GB` : '按运行时判断' }}</template></a-table-column>
-                <a-table-column title="操作" :width="300"><template #cell="{ record }"><a-space wrap><a-button v-if="record.capabilities.includes('embedding')" size="mini" :type="record.active_capabilities.includes('embedding') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('embedding') ? deactivateModelCapability('embedding') : activateModelPack(record, 'embedding')">{{ record.active_capabilities.includes('embedding') ? '停用向量' : '启用向量' }}</a-button><a-button v-if="record.capabilities.includes('llm')" size="mini" :type="record.active_capabilities.includes('llm') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('llm') ? deactivateModelCapability('llm') : activateModelPack(record, 'llm')">{{ record.active_capabilities.includes('llm') ? '停用 LLM' : '启用 LLM' }}</a-button><a-button v-if="record.capabilities.includes('intent_router')" size="mini" :type="record.active_capabilities.includes('intent_router') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('intent_router') ? deactivateModelCapability('intent_router') : activateModelPack(record, 'intent_router')">{{ record.active_capabilities.includes('intent_router') ? '停用意图' : '启用意图' }}</a-button></a-space></template></a-table-column>
+                <a-table-column title="操作" :width="360"><template #cell="{ record }"><a-space wrap><a-button v-if="record.capabilities.includes('embedding')" size="mini" :type="record.active_capabilities.includes('embedding') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('embedding') ? deactivateModelCapability('embedding') : activateModelPack(record, 'embedding')">{{ record.active_capabilities.includes('embedding') ? '停用向量' : '启用向量' }}</a-button><a-button v-if="record.capabilities.includes('llm')" size="mini" :type="record.active_capabilities.includes('llm') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('llm') ? deactivateModelCapability('llm') : activateModelPack(record, 'llm')">{{ record.active_capabilities.includes('llm') ? '停用 LLM' : '启用 LLM' }}</a-button><a-button v-if="record.capabilities.includes('intent_router')" size="mini" :type="record.active_capabilities.includes('intent_router') ? 'outline' : 'primary'" @click="record.active_capabilities.includes('intent_router') ? deactivateModelCapability('intent_router') : activateModelPack(record, 'intent_router')">{{ record.active_capabilities.includes('intent_router') ? '停用意图' : '启用意图' }}</a-button><a-popconfirm v-if="!record.active_capabilities.length" content="卸载只删除本机模型文件，不影响业务数据和历史审计。确认继续？" @ok="uninstallModelPack(record)"><a-button size="mini" type="text" status="danger">卸载</a-button></a-popconfirm></a-space></template></a-table-column>
               </template>
             </a-table>
             <p v-if="!modelPacks.length" class="empty-state">尚未导入本地模型包。规则推荐不依赖模型，仍可正常工作。</p>
@@ -1568,6 +1701,7 @@ onBeforeUnmount(() => {
         <div class="tab-toolbar">
           <p>数据库、附件与配置打包校验；恢复前会自动再备份当前数据。</p>
           <a-space>
+            <a-radio-group v-model="backupLifecycle" type="button" @change="loadBackups"><a-radio value="active">可用备份</a-radio><a-radio value="deleted">回收站</a-radio></a-radio-group>
             <a-button @click="pairingVisible = true">配置协同终端</a-button>
             <a-button @click="importInput?.click()"><template #icon><IconUpload /></template>导入灾备包</a-button>
             <input ref="importInput" type="file" accept=".partyops-backup" hidden @change="importBackup(($event.target as HTMLInputElement).files?.[0] || null)" />
@@ -1584,11 +1718,13 @@ onBeforeUnmount(() => {
             <a-table-column title="操作" :width="260">
               <template #cell="{ record }">
                 <a-space>
-                  <a-button size="mini" :href="downloadUrl(`/backups/${record.id}/download`)" target="_blank"><template #icon><IconDownload /></template>下载</a-button>
-                  <a-button size="mini" @click="verifyBackup(record)">校验</a-button>
-                  <a-popconfirm content="恢复会替换当前数据；系统会先自动备份现状。确认继续？" @ok="restoreBackup(record)">
-                    <a-button size="mini" status="danger">恢复</a-button>
+                  <a-button v-if="!record.deleted_at" size="mini" :href="downloadUrl(`/backups/${record.id}/download`)" target="_blank"><template #icon><IconDownload /></template>下载</a-button>
+                  <a-button v-if="!record.deleted_at" size="mini" @click="verifyBackup(record)">校验</a-button>
+                  <a-popconfirm v-if="!record.deleted_at" content="恢复会替换当前数据；系统会先自动备份现状。确认继续？" @ok="restoreBackup(record)">
+                    <a-button size="mini" status="danger">恢复数据</a-button>
                   </a-popconfirm>
+                  <a-button v-if="!record.deleted_at" size="mini" type="text" status="danger" @click="openBackupDelete(record)">移入回收站</a-button>
+                  <a-button v-else size="mini" type="text" @click="restoreDeletedBackup(record)">恢复备份</a-button>
                 </a-space>
               </template>
             </a-table-column>
@@ -1630,6 +1766,12 @@ onBeforeUnmount(() => {
         </a-form-item>
         <a-form-item label="角色"><a-select v-model="userForm.role"><a-option value="staff">协同人员</a-option><a-option value="admin">管理员</a-option></a-select></a-form-item>
       </a-form>
+    </a-modal>
+
+    <a-modal v-model:visible="backupDeleteVisible" title="将备份移入回收站" ok-text="确认移除" @ok="deleteBackup">
+      <a-alert type="warning">不会立即删除文件，{{ backupDeletionImpact?.recoverable_days || 30 }} 天内可恢复。系统禁止移除最后一个可用备份。</a-alert>
+      <p v-if="backupDeletionImpact" class="impact-summary">文件大小 {{ (backupDeletionImpact.size_bytes / 1024 / 1024).toFixed(2) }} MB；移除后仍有 {{ backupDeletionImpact.remaining_completed_backups }} 个可用恢复点。</p>
+      <a-form-item label="移除原因" required><a-textarea v-model="backupDeleteReason" /></a-form-item>
     </a-modal>
 
     <a-modal v-model:visible="userEditVisible" title="用户权限与密码" @ok="saveUserEdit">
@@ -2035,6 +2177,24 @@ onBeforeUnmount(() => {
 .policy-save {
   margin-top: 16px;
 }
+
+.policy-heading,
+.policy-list article {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.policy-heading h3 { margin-bottom: 4px; }
+.policy-heading p { margin: 0; color: var(--muted); font-size: 10px; }
+.policy-list { display: grid; gap: 8px; margin-top: 18px; }
+.policy-list article { align-items: center; padding: 12px; background: #fffaf0; border: 1px solid var(--line-light); }
+.policy-list article.selected { border-color: rgba(180, 35, 24, 0.48); box-shadow: inset 3px 0 var(--cinnabar); }
+.policy-list article.inactive { opacity: 0.64; }
+.policy-list strong,
+.policy-list small { display: block; }
+.policy-list small { margin-top: 4px; color: var(--muted); font-size: 10px; }
 
 .network-address-ledger {
   display: grid;

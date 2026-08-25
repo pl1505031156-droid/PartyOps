@@ -12,10 +12,11 @@ import {
   IconSearch,
   IconUpload,
 } from "@arco-design/web-vue/es/icon";
-import { Message } from "@arco-design/web-vue";
+import { Message, Modal } from "@arco-design/web-vue";
 import { ApiError, api, downloadUrl, uploadFormWithProgress } from "../api";
 import PageHelp from "../components/PageHelp.vue";
 import BusinessUploadQueue from "../components/BusinessUploadQueue.vue";
+import LedgerImportWizard from "../components/LedgerImportWizard.vue";
 import { useUploadQueue } from "../composables/useUploadQueue";
 import { useSessionStore } from "../stores/session";
 import type {
@@ -55,6 +56,7 @@ const archiveQueueTargetId = ref("");
 const deleteAttachmentVisible = ref(false);
 const deleteAttachmentTarget = ref<ArchiveAttachment | null>(null);
 const deleteAttachmentReason = ref("");
+const ledgerImportVisible = ref(false);
 const fieldErrors = ref<Record<string, string>>({});
 const grants = ref<ArchiveAccessGrant[]>([]);
 const grantUsers = ref<User[]>([]);
@@ -121,6 +123,7 @@ const categoryForm = reactive({
   directory_pattern: "{year}/{category}",
   access_mode: "all_users" as ArchiveCategory["access_mode"],
   allow_device_access: true,
+  active: true,
 });
 const categoryFields = ref<ArchiveFieldDefinition[]>([]);
 const editingCategory = ref<ArchiveCategory | null>(null);
@@ -140,6 +143,7 @@ const formCategory = computed(() =>
 );
 const visibleYears = computed(() => years.value.map((item) => item.year));
 const canManage = computed(() => session.user?.role === "admin");
+const activeCategories = computed(() => categories.value.filter((item) => item.active));
 const canCreate = computed(() => categories.value.some((item) => Boolean(item.permissions?.contribute)));
 const canContributeSelected = computed(() => Boolean(selectedRecord.value?.permissions?.contribute));
 const assessmentField = computed(() =>
@@ -188,8 +192,12 @@ function setCustomField(key: string, value: unknown) {
 }
 
 async function loadCategories() {
-  categories.value = await api.get<ArchiveCategory[]>("/archives/categories");
-  if (!selectedCategoryId.value) selectedCategoryId.value = categories.value[0]?.id || "";
+  categories.value = await api.get<ArchiveCategory[]>(
+    `/archives/categories${canManage.value ? "?include_inactive=true" : ""}`,
+  );
+  if (!activeCategories.value.some((item) => item.id === selectedCategoryId.value)) {
+    selectedCategoryId.value = activeCategories.value[0]?.id || "";
+  }
 }
 
 async function loadGrantOptions() {
@@ -260,6 +268,32 @@ async function load() {
 async function selectRecord(item: ArchiveRecord) {
   selectedRecord.value = await api.get<ArchiveRecord>(`/archives/records/${item.id}`);
   await router.replace({ query: { ...route.query, record: item.id } });
+}
+
+function relationLabel(type: string) {
+  return ({ task: "事项", report: "周期报告", journal: "工作日志", knowledge: "知识条目" } as Record<string, string>)[type] || "业务对象";
+}
+
+function removeArchiveLink(link: ArchiveRecord["links"][number]) {
+  if (!selectedRecord.value) return;
+  const record = selectedRecord.value;
+  Modal.confirm({
+    title: "移除档案关联",
+    content: `确认移除与${relationLabel(link.entity_type)}的关联？原业务对象和档案内容都不会删除。`,
+    okText: "确认移除",
+    onOk: async () => {
+      try {
+        selectedRecord.value = await api.delete<ArchiveRecord>(
+          `/archives/records/${record.id}/links/${link.id}`,
+          { "If-Match": String(record.version) },
+        );
+        Message.success("关联已移除，原业务数据保持不变");
+      } catch (error) {
+        Message.error(error instanceof Error ? error.message : "档案关联移除失败");
+        throw error;
+      }
+    },
+  });
 }
 
 function chooseYear(year: number) {
@@ -400,6 +434,7 @@ async function openCategoryManager() {
     directory_pattern: "{year}/{category}",
     access_mode: "all_users",
     allow_device_access: true,
+    active: true,
   });
   categoryFields.value = [];
   grants.value = [];
@@ -417,6 +452,7 @@ async function editCategory(category: ArchiveCategory) {
     directory_pattern: category.directory_pattern,
     access_mode: category.access_mode,
     allow_device_access: category.allow_device_access,
+    active: category.active,
   });
   categoryFields.value = category.field_schema.map((field) => ({ ...field }));
   await Promise.all([loadGrantOptions(), loadGrants(category.id)]);
@@ -502,6 +538,7 @@ async function saveCategory(): Promise<boolean> {
           directory_pattern: categoryForm.directory_pattern,
           access_mode: categoryForm.access_mode,
           allow_device_access: categoryForm.allow_device_access,
+          active: categoryForm.active,
           field_schema: categoryFields.value,
         },
         { "If-Match": String(editingCategory.value.version) },
@@ -685,6 +722,7 @@ onMounted(load);
           help-query="重要档案"
         />
         <a-button @click="exportYear"><template #icon><IconDownload /></template>导出年度档案包</a-button>
+        <a-button v-if="canCreate" :disabled="!selectedCategoryId" @click="ledgerImportVisible = true"><template #icon><IconUpload /></template>导入本地台账</a-button>
         <a-button v-if="canManage" @click="openCategoryManager"><template #icon><IconPlus /></template>管理档案类别</a-button>
         <a-button v-if="canCreate" type="primary" @click="openCreate"><template #icon><IconPlus /></template>新建档案</a-button>
       </a-space>
@@ -718,7 +756,7 @@ onMounted(load);
         <p v-if="!years.length" class="muted">尚未建立档案，可直接输入历史或未来年度。</p>
         <h3 class="category-heading">档案类别</h3>
         <button
-          v-for="category in categories"
+          v-for="category in activeCategories"
           :key="category.id"
           type="button"
           class="category-item"
@@ -797,6 +835,13 @@ onMounted(load);
               <a-button v-if="canManage || attachment.uploaded_by === session.user?.id" size="mini" @click="restoreAttachment(attachment)">恢复</a-button>
             </div>
           </details>
+          <section v-if="(selectedRecord.links || []).length" class="archive-links">
+            <div class="attachment-heading"><b>业务关联（{{ selectedRecord.links.length }}）</b><small>移除关联不会删除任一侧业务数据</small></div>
+            <div v-for="link in selectedRecord.links" :key="link.id" class="archive-link-row">
+              <span><b>{{ relationLabel(link.entity_type) }}</b><small>{{ link.relation }} · {{ link.entity_id }}</small></span>
+              <a-button v-if="canContributeSelected" size="mini" type="text" status="danger" @click="removeArchiveLink(link)">移除关联</a-button>
+            </div>
+          </section>
           <div class="detail-footer">版本 {{ selectedRecord.version }} · 最后修改 {{ formatDate(selectedRecord.updated_at) }}</div>
         </template>
         <div v-else class="inspector-empty"><IconArchive /><p>从左侧选择档案，查看目录字段和扫描件。</p></div>
@@ -840,7 +885,7 @@ onMounted(load);
       <div class="category-manager-list">
         <a-button size="small" :type="editingCategory ? 'outline' : 'primary'" @click="openCategoryManager">新建类别</a-button>
         <a-button v-for="category in categories" :key="category.id" size="small" :type="editingCategory?.id === category.id ? 'primary' : 'outline'" @click="editCategory(category)">
-          {{ category.name }}
+          {{ category.name }}{{ category.active ? "" : "（已停用）" }}
         </a-button>
       </div>
       <a-form :model="categoryForm" layout="vertical" class="archive-form">
@@ -853,6 +898,7 @@ onMounted(load);
         <a-form-item label="归档说明"><a-textarea v-model="categoryForm.description" /></a-form-item>
         <a-form-item label="目录命名规则"><a-input v-model="categoryForm.directory_pattern" /></a-form-item>
         <a-form-item label="允许协同设备访问"><a-switch v-model="categoryForm.allow_device_access" /><span class="switch-note">关闭后，设备授权也不会生效。</span></a-form-item>
+        <a-form-item v-if="editingCategory" label="类别状态"><a-switch v-model="categoryForm.active" checked-text="启用" unchecked-text="停用" /><span class="switch-note">停用后不再允许新建或导入，已有档案、扫描件和审计全部保留，可随时恢复。</span></a-form-item>
         <div class="field-builder">
           <div class="field-builder-head"><b>自定义字段</b><a-button size="small" @click="addField"><template #icon><IconPlus /></template>添加字段</a-button></div>
           <div v-for="field in categoryFields" :key="field.key" class="field-chip">{{ field.label }}（{{ field.key }} · {{ zhLabel(field.type, "自定义字段") }}）</div>
@@ -897,6 +943,13 @@ onMounted(load);
       <a-alert type="warning" show-icon>扫描件会保留 30 天并可恢复，不会影响本批次中其他文件。</a-alert>
       <a-form :model="{ reason: deleteAttachmentReason }" layout="vertical" class="delete-attachment-form"><a-form-item label="删除原因（必填）"><a-textarea v-model="deleteAttachmentReason" :max-length="2000" show-word-limit :auto-size="{ minRows: 3, maxRows: 6 }" /></a-form-item></a-form>
     </a-modal>
+    <LedgerImportWizard
+      v-model:visible="ledgerImportVisible"
+      target-type="archive"
+      :target-id="selectedCategoryId"
+      :target-label="categories.find((item) => item.id === selectedCategoryId)?.name || '重要档案'"
+      @completed="load"
+    />
 
     <a-modal v-model:visible="historyVisible" title="档案修订历史" :width="720">
       <div v-for="item in history" :key="item.revision_no" class="history-row">
@@ -944,6 +997,10 @@ onMounted(load);
 .archive-recycle-bin { margin-top: 12px; padding: 10px 12px; color: var(--muted); background: rgba(98,84,66,.045); border-left: 2px solid var(--line); }
 .archive-recycle-bin summary { cursor: pointer; font-size: 12px; }
 .attachment-row.recycled { padding-bottom: 2px; }
+.archive-links { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.archive-link-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(50,40,30,.08); }
+.archive-link-row span { display: grid; gap: 2px; min-width: 0; }
+.archive-link-row small { color: var(--muted); overflow-wrap: anywhere; }
 .delete-attachment-form { margin-top: 14px; }
 .detail-footer { margin-top: 22px; color: var(--muted); font-size: 11px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }

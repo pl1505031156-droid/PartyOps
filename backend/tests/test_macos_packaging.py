@@ -14,7 +14,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from app import package_selftest, update_executor
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -83,7 +82,7 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert "MACOS_ARCH_MISMATCH" in validation
     assert 'bundle_identifier="cn.partyops.desktop"' in spec
     assert '"CFBundleExecutable": "partyops-desktop"' in spec
-    assert '"CFBundleVersion": "1.4.5.2"' in spec
+    assert '"CFBundleVersion": "1.4.5.3"' in spec
     assert '"LSMinimumSystemVersion": "11.0"' in spec
     assert "target_arch=target_arch" in spec
     assert 'name="partyops-updater"' in spec
@@ -267,7 +266,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "contents: read" in workflow
     assert "macos-15-intel" in workflow and "macos-15" in workflow
     assert "BUILD-UNSIGNED-145-RC2" in workflow
-    assert "ref: ce2788c196835b8bba8c4da36e226569e30e4a24" in workflow
+    assert "ref: f6ddf83117d2b1c5f0386d24d4c110c481a6aa2e" in workflow
     assert re.search(r"ref: [0-9a-f]{40}", workflow)
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1

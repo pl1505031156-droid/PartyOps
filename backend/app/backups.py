@@ -9,7 +9,7 @@ import shutil
 import stat
 import tempfile
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from sqlalchemy import select
@@ -21,9 +21,8 @@ from .database import db_runtime, sqlite3_dbapi
 from .models import BackupRun, User, utcnow
 from .problems import ProblemException
 
-
 FORMAT_VERSION = 1
-SCHEMA_VERSION = "0023"
+SCHEMA_VERSION = "0024"
 MAX_BACKUP_MANIFEST_BYTES = 1024 * 1024
 _WINDOWS_RESERVED_NAMES = {
     "con",
@@ -517,9 +516,24 @@ def restore_backup(path: Path, actor_id: str | None = None) -> None:
 
 def apply_retention(db: Session) -> None:
     settings = get_settings()
+    now = utcnow()
+    deleted = db.scalars(
+        select(BackupRun).where(
+            BackupRun.deleted_at.is_not(None),
+            BackupRun.purge_after.is_not(None),
+            BackupRun.purge_after <= now,
+        )
+    ).all()
+    for item in deleted:
+        (settings.backups_dir / item.filename).unlink(missing_ok=True)
+        db.delete(item)
     automatic = db.scalars(
         select(BackupRun)
-        .where(BackupRun.kind == "automatic", BackupRun.status == "completed")
+        .where(
+            BackupRun.kind == "automatic",
+            BackupRun.status == "completed",
+            BackupRun.deleted_at.is_(None),
+        )
         .order_by(BackupRun.created_at.desc())
     ).all()
     keep_ids = {item.id for item in automatic[: settings.backup_daily_keep]}

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "partyops"
-version = "1.4.5rc2"
+version = "1.4.5rc3"
 description = "党建智办：基层党建工作闭环协同系统"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -23,6 +23,7 @@ dependencies = [
   "lxml==6.1.1",
   "PyMuPDF==1.26.0",
   "openpyxl==3.1.5",
+  "python-calamine==0.8.2",
   "Pillow==12.3.0",
   "pytesseract==0.3.13",
   "cryptography==50.0.0",

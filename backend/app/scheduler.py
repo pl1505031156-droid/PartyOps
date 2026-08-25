@@ -15,10 +15,11 @@ from .compat import to_thread
 from .config import get_settings
 from .database import db_runtime
 from .enums import UserRole
+from .local_ai import llm_runtime
 from .models import (
     AutomationRule,
-    BackupRun,
     BackgroundJob,
+    BackupRun,
     Device,
     DeviceCommand,
     DeviceEnrollment,
@@ -38,7 +39,6 @@ from .notifications import refresh_notifications
 from .projections import process_report_projection
 from .recommendations import index_semantic_batch, refresh_rule_recommendations
 from .recurrence import run_due_rules
-from .local_ai import llm_runtime
 from .routers.business import generate_due_recurring_meetings
 from .storage import purge_expired_deleted_attachments
 
@@ -385,7 +385,10 @@ def _run_scheduler_cycle(settings, now: datetime, last_backup_day: str | None) -
         with db_runtime.session_factory() as db:
             latest = db.scalar(
                 select(BackupRun)
-                .where(BackupRun.kind == "automatic")
+                .where(
+                    BackupRun.kind == "automatic",
+                    BackupRun.deleted_at.is_(None),
+                )
                 .order_by(BackupRun.created_at.desc())
             )
             if not latest or latest.created_at.date() != now.date():

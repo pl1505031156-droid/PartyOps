@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import date as dt_date, datetime, timezone
+from datetime import UTC, datetime
+from datetime import date as dt_date
 from typing import Any
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, Field, field_serializer, field_validator
 
 from .enums import (
+    AiCapability,
     ArchiveAccessMode,
     ArchiveAttachmentStatus,
     ArchiveRecordMode,
     ArchiveRecordStatus,
-    AiCapability,
     ArtLevel,
     CalendarEventType,
     ContentIndexStatus,
@@ -26,13 +27,13 @@ from .enums import (
     PeriodReportStatus,
     PeriodType,
     Priority,
-    RecurrenceExceptionAction,
-    RecurrenceKind,
     RecommendationGenerator,
     RecommendationStatus,
+    RecurrenceExceptionAction,
+    RecurrenceKind,
     ReportSection,
-    Sensitivity,
     SeasonTheme,
+    Sensitivity,
     TaskStatus,
     TaskType,
     UserRole,
@@ -42,8 +43,8 @@ from .enums import (
 def serialize_api_datetime(value: datetime) -> str:
     """所有接口时间统一输出 RFC 3339 UTC，旧库无时区值按 UTC 解释。"""
 
-    aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
-    return aware.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    aware = value.replace(tzinfo=UTC) if value.tzinfo is None else value
+    return aware.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 class BaseModel(PydanticBaseModel):
@@ -543,8 +544,16 @@ class BackupOut(ORMModel):
     sha256: str
     status: str
     message: str
+    deleted_at: datetime | None
+    delete_reason: str
+    purge_after: datetime | None
+    version: int
     created_at: datetime
     completed_at: datetime | None
+
+
+class BackupLifecycleRequest(BaseModel):
+    reason: str = Field(min_length=2, max_length=1000)
 
 
 class PairingCreate(BaseModel):
@@ -589,7 +598,9 @@ class ReminderPreferencePatch(BaseModel):
     enabled: bool | None = None
     advance_days: int | None = Field(default=None, ge=0, le=30)
     reminder_days: list[int] | None = Field(default=None, max_length=10)
-    quiet_start: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    quiet_start: str | None = Field(
+        default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$"
+    )
     quiet_end: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     desktop_enabled: bool | None = None
     remind_overdue: bool | None = None
@@ -703,9 +714,7 @@ class ReportTemplateCreate(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     period_type: PeriodType = PeriodType.WEEK
     description: str = Field(default="", max_length=5_000)
-    sections: list[ReportSection] = Field(
-        default_factory=lambda: list(ReportSection)
-    )
+    sections: list[ReportSection] = Field(default_factory=lambda: list(ReportSection))
 
 
 class ReportTemplateOut(ORMModel):
@@ -766,6 +775,9 @@ class WorkJournalOut(ORMModel):
     file_id: str | None
     report_id: str | None
     immutable: bool
+    archived_at: datetime | None = None
+    archived_by: str | None = None
+    archive_reason: str = ""
     created_by: str
     version: int
     created_at: datetime
@@ -793,6 +805,10 @@ class WorkspaceRootCreate(BaseModel):
 class WorkspaceRootPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=160)
     enabled: bool | None = None
+
+
+class WorkspaceRootLifecycleAction(BaseModel):
+    reason: str = Field(min_length=2, max_length=1_000)
 
 
 class WorkspaceRootOut(ORMModel):
@@ -834,7 +850,9 @@ class WorkspaceRootMemberInput(BaseModel):
 
 
 class WorkspaceRootMembersPatch(BaseModel):
-    members: list[WorkspaceRootMemberInput] = Field(default_factory=list, max_length=500)
+    members: list[WorkspaceRootMemberInput] = Field(
+        default_factory=list, max_length=500
+    )
 
 
 class WorkspaceRootMemberOut(ORMModel):
@@ -948,7 +966,9 @@ class ArchiveCategoryCreate(BaseModel):
     )
     description: str = Field(default="", max_length=5_000)
     record_mode: ArchiveRecordMode = ArchiveRecordMode.DOCUMENT
-    field_schema: list[ArchiveFieldDefinition] = Field(default_factory=list, max_length=50)
+    field_schema: list[ArchiveFieldDefinition] = Field(
+        default_factory=list, max_length=50
+    )
     directory_pattern: str = Field(default="{year}/{category}", max_length=255)
     access_mode: ArchiveAccessMode = ArchiveAccessMode.ALL_USERS
     allow_device_access: bool = True
@@ -957,7 +977,9 @@ class ArchiveCategoryCreate(BaseModel):
 class ArchiveCategoryPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=160)
     description: str | None = Field(default=None, max_length=5_000)
-    field_schema: list[ArchiveFieldDefinition] | None = Field(default=None, max_length=50)
+    field_schema: list[ArchiveFieldDefinition] | None = Field(
+        default=None, max_length=50
+    )
     directory_pattern: str | None = Field(default=None, max_length=255)
     access_mode: ArchiveAccessMode | None = None
     allow_device_access: bool | None = None
@@ -1004,7 +1026,9 @@ class ArchiveRecordCreate(BaseModel):
     @field_validator("involved_persons")
     @classmethod
     def normalize_people(cls, values: list[str]) -> list[str]:
-        return list(dict.fromkeys(item.strip()[:120] for item in values if item.strip()))
+        return list(
+            dict.fromkeys(item.strip()[:120] for item in values if item.strip())
+        )
 
     @field_validator("tags")
     @classmethod
@@ -1146,6 +1170,17 @@ class ArchiveTemplateCreate(BaseModel):
     description: str = Field(default="", max_length=5_000)
     structure: list[dict[str, Any]] = Field(default_factory=list)
     material_rules: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ArchiveTemplatePatch(BaseModel):
+    """旧归档模板的可维护生命周期；停用不会改写既有档案。"""
+
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    category: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=5_000)
+    structure: list[dict[str, Any]] | None = None
+    material_rules: list[dict[str, Any]] | None = None
+    active: bool | None = None
 
 
 class ArchiveTemplateOut(ORMModel):
@@ -1304,11 +1339,13 @@ class LocalAIRuntimeOut(BaseModel):
     model_id: str | None = None
     embedding_pack_id: str | None = None
     llm_pack_id: str | None = None
+    intent_pack_id: str | None = None
     available_memory_mb: int | None = None
     llm_running: bool = False
     embedding_loaded: bool = False
     embedding_available: bool = False
     llm_available: bool = False
+    intent_available: bool = False
     worker_scope: str = "host"
     max_threads: int = 4
     memory_limit_mb: int = 3584
@@ -1629,7 +1666,9 @@ class DeviceRemoteRootPatch(BaseModel):
 
 class RemoteRootPatch(BaseModel):
     enabled: bool | None = None
-    approval_status: str | None = Field(default=None, pattern=r"^(pending|approved|rejected)$")
+    approval_status: str | None = Field(
+        default=None, pattern=r"^(pending|approved|rejected)$"
+    )
     approval_note: str | None = Field(default=None, max_length=2_000)
 
 
@@ -1655,7 +1694,9 @@ class RemoteIndexDelta(BaseModel):
 
 
 class TransferCreate(BaseModel):
-    direction: str = Field(pattern=r"^(device_to_host|host_to_device|device_to_device)$")
+    direction: str = Field(
+        pattern=r"^(device_to_host|host_to_device|device_to_device)$"
+    )
     source_file_id: str | None = None
     source_device_id: str | None = None
     destination_device_id: str | None = None
@@ -1704,7 +1745,9 @@ class TransferOut(ORMModel):
 
 class WorkspaceDownloadCreate(BaseModel):
     item_ids: list[str] = Field(min_length=1, max_length=500)
-    bundle_mode: str = Field(default="single", pattern=r"^(single|selection_zip|folder_zip)$")
+    bundle_mode: str = Field(
+        default="single", pattern=r"^(single|selection_zip|folder_zip)$"
+    )
     delivery: str = Field(default="browser", pattern=r"^(browser|current_device)$")
 
 
@@ -1847,9 +1890,7 @@ class WorkCalendarEntryOut(ORMModel):
 
 
 class CalendarPreferencePatch(BaseModel):
-    default_view: str | None = Field(
-        default=None, pattern=r"^(week|month|year)$"
-    )
+    default_view: str | None = Field(default=None, pattern=r"^(week|month|year)$")
     week_starts_on: int | None = Field(default=None, ge=1, le=7)
     visible_event_types: list[CalendarEventType] | None = None
     compact_weekends: bool | None = None
@@ -1898,7 +1939,9 @@ class PartyDevelopmentActualDates(BaseModel):
 class PartyDevelopmentCalculateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     application_date: dt_date
-    actual_dates: PartyDevelopmentActualDates = Field(default_factory=PartyDevelopmentActualDates)
+    actual_dates: PartyDevelopmentActualDates = Field(
+        default_factory=PartyDevelopmentActualDates
+    )
     profile_ids: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("name")
@@ -1981,7 +2024,96 @@ class PartyDevelopmentCasePatch(BaseModel):
     probationary_date: dt_date | None = None
     converted_date: dt_date | None = None
     stage: str | None = Field(default=None, max_length=48)
-    status: str | None = Field(default=None, pattern=r"^(active|completed|archived|void)$")
+    status: str | None = Field(
+        default=None, pattern=r"^(active|completed|archived|void)$"
+    )
+
+
+class PartyDevelopmentProgressEventCreate(BaseModel):
+    """发展党员真实进度事实；计划日期不得通过该接口冒充事实。"""
+
+    milestone_type: str = Field(min_length=1, max_length=48, pattern=r"^[a-z0-9_]+$")
+    actual_date: dt_date
+    evidence_note: str = Field(default="", max_length=2_000)
+    source_entity_type: str = Field(default="", max_length=32)
+    source_entity_id: str | None = Field(default=None, max_length=36)
+
+
+class PartyDevelopmentProgressEventCorrect(BaseModel):
+    actual_date: dt_date
+    evidence_note: str = Field(min_length=1, max_length=2_000)
+
+
+class PartyDevelopmentProgressEventVoid(BaseModel):
+    reason: str = Field(min_length=2, max_length=1_000)
+
+
+class PartyDevelopmentCaseLifecycleAction(BaseModel):
+    reason: str = Field(min_length=2, max_length=1_000)
+
+
+class PartyDevelopmentFromCalculationCreate(PartyDevelopmentCaseCreate):
+    """把未建档快速测算转换为人员档案，并保存已确认的详细事实。"""
+
+    actual_dates: PartyDevelopmentActualDates = Field(
+        default_factory=PartyDevelopmentActualDates
+    )
+
+
+class LedgerColumnMapping(BaseModel):
+    source_column: str = Field(min_length=1, max_length=160)
+    action: str = Field(pattern=r"^(map|create|ignore)$")
+    target_field: str | None = Field(
+        default=None, max_length=96, pattern=r"^[a-z][a-z0-9_]*$"
+    )
+    create_label: str | None = Field(default=None, max_length=80)
+    create_type: str | None = Field(
+        default=None, pattern=r"^(text|textarea|number|date|select)$"
+    )
+    confirmed: bool = False
+
+
+class LedgerImportMappingPatch(BaseModel):
+    sheet_name: str = Field(min_length=1, max_length=160)
+    header_row: int = Field(ge=1, le=50)
+    mappings: list[LedgerColumnMapping] = Field(min_length=1, max_length=200)
+    version: int = Field(ge=1)
+
+
+class LedgerImportProfilePatch(BaseModel):
+    sheet_name: str = Field(min_length=1, max_length=160)
+    header_row: int = Field(ge=1, le=50)
+    version: int = Field(ge=1)
+
+
+class LedgerImportValidateRequest(BaseModel):
+    version: int = Field(ge=1)
+    row_actions: dict[str, str] = Field(default_factory=dict, max_length=50_000)
+
+
+class LedgerImportCommitRequest(BaseModel):
+    version: int = Field(ge=1)
+    confirm_shared_storage: bool = False
+    confirm_new_fields: bool = False
+    row_actions: dict[str, str] = Field(default_factory=dict, max_length=50_000)
+
+
+class LedgerImportUndoRequest(BaseModel):
+    version: int = Field(ge=1)
+
+
+class LedgerImportTemplateCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    target_type: str = Field(pattern=r"^(party_development|archive)$")
+    target_id: str | None = Field(default=None, max_length=36)
+    header_signature: str = Field(pattern=r"^[a-f0-9]{64}$")
+    mapping: dict[str, Any] = Field(default_factory=dict)
+
+
+class LedgerImportTemplatePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    active: bool | None = None
+    version: int = Field(ge=1)
 
 
 class PartyDevelopmentMilestonePatch(BaseModel):
@@ -2027,7 +2159,9 @@ class PartyDevelopmentProfileCreate(BaseModel):
     description: str = Field(default="", max_length=2_000)
     source_label: str = Field(default="本单位补充", max_length=255)
     active: bool = False
-    items: list[PartyDevelopmentMaterialInput] = Field(default_factory=list, max_length=200)
+    items: list[PartyDevelopmentMaterialInput] = Field(
+        default_factory=list, max_length=200
+    )
 
 
 class PartyDevelopmentProfilePatch(BaseModel):

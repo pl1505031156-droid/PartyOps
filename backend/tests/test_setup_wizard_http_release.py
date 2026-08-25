@@ -12,13 +12,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from app import setup_wizard
 
 
 def _request(url: str, method: str = "GET", form: dict[str, str] | None = None):
     parsed = urllib.parse.urlparse(url)
-    connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+    # 全量发布门禁会在真实模型包导入/推理后紧接着驱动本机向导；
+    # Windows 防病毒扫描和模型运行时释放 CPU 时，5 秒会产生与产品无关的
+    # 偶发超时。15 秒仍能迅速发现无响应，同时不把机器负载误报成向导故障。
+    connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=15)
     body = urllib.parse.urlencode(form or {}).encode("utf-8") if form is not None else None
     headers = {"Content-Type": "application/x-www-form-urlencoded"} if form is not None else {}
     connection.request(method, parsed.path or "/", body=body, headers=headers)

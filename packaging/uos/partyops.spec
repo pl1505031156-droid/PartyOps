@@ -20,6 +20,15 @@ common_hidden = [
     "httpx",
 ]
 
+# client_agent 和旧版协议兼容入口按需导入本机排版服务；显式收集可避免
+# 冻结包“页面按钮有入口，但子进程缺模块后静默退出”。
+formatter_hidden = [
+    "app.official_format",
+    "app.official_format_service",
+    "lxml",
+    "lxml.etree",
+]
+
 # 本地智能依赖在业务代码中按需导入，PyInstaller 无法通过静态分析发现。
 # 由规范文件集中收集，避免在业务模块中加入仅为打包服务的强耦合导入。
 ai_datas = []
@@ -78,7 +87,7 @@ client_analysis = Analysis(
     pathex=[str(backend)],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=formatter_hidden,
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
@@ -103,7 +112,7 @@ wizard_analysis = Analysis(
     pathex=[str(backend)],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=formatter_hidden,
     hookspath=[],
     runtime_hooks=[],
     excludes=[],

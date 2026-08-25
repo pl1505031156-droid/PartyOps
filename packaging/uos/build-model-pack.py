@@ -76,14 +76,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if not args.llm and not args.embedding and not (args.intent_runtime and args.intent_model):
-        raise SystemExit("必须至少提供 --embedding、--llm 或完整的 Needle 意图组件")
+    if not args.llm and not args.embedding and not args.intent_runtime:
+        raise SystemExit("必须至少提供 --embedding、--llm 或 Needle 原生运行时")
     if args.embedding and not args.tokenizer:
         raise SystemExit("中文向量包必须同时提供 --tokenizer")
     if args.tokenizer and not args.embedding:
         raise SystemExit("--tokenizer 只能与 --embedding 一起使用")
-    if bool(args.intent_runtime) != bool(args.intent_model):
-        raise SystemExit("Needle 意图包必须同时提供 --intent-runtime 与 --intent-model")
+    if args.intent_model and not args.intent_runtime:
+        raise SystemExit("--intent-model 只能与 --intent-runtime 一起使用")
     if args.estimated_memory_mb < 0:
         raise SystemExit("--estimated-memory-mb 不能为负数")
     if not 8 <= args.max_length <= 512 or args.dimension <= 0:
@@ -95,7 +95,8 @@ def main() -> None:
     inputs = [
         *([args.llm] if args.llm else []),
         *([args.embedding, args.tokenizer] if args.embedding else []),
-        *([args.intent_runtime, args.intent_model] if args.intent_runtime else []),
+        *([args.intent_runtime] if args.intent_runtime else []),
+        *([args.intent_model] if args.intent_model else []),
         *args.license,
         args.private_key,
         args.public_key,
@@ -125,16 +126,18 @@ def main() -> None:
             "max_length": args.max_length,
             "dimension": args.dimension,
         }
-    if args.intent_runtime and args.intent_model:
+    if args.intent_runtime:
         runtime_name = f"models/intent/{safe_basename(args.intent_runtime)}"
-        intent_model_name = f"models/intent/{safe_basename(args.intent_model)}"
-        entries.extend([(args.intent_runtime, runtime_name), (args.intent_model, intent_model_name)])
+        entries.append((args.intent_runtime, runtime_name))
         components["intent_router"] = {
             "runtime_file": runtime_name,
-            "model_file": intent_model_name,
             "confidence_threshold": 0.82,
             "write_requires_confirmation": True,
         }
+        if args.intent_model:
+            intent_model_name = f"models/intent/{safe_basename(args.intent_model)}"
+            entries.append((args.intent_model, intent_model_name))
+            components["intent_router"]["model_file"] = intent_model_name
     used_names: set[str] = {item[1] for item in entries}
     license_names: list[str] = []
     for index, path in enumerate(args.license, start=1):

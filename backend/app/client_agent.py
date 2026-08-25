@@ -14,13 +14,12 @@ import os
 import platform
 import secrets
 import shutil
-import socket
 import ssl
 import stat
 import subprocess
 import sys
-import threading
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -29,8 +28,7 @@ import webbrowser
 import zipfile
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -39,11 +37,9 @@ from cryptography.x509.oid import NameOID
 
 from .enrollment_codes import normalize_enrollment_code as _normalize_enrollment_code
 from .platform_info import detect_platform_info
-
 from .schemas import serialize_api_datetime
 
-
-AGENT_VERSION = "1.4.5-rc.2"
+AGENT_VERSION = "1.4.5-rc.3"
 AGENT_PROTOCOL_VERSION = 2
 AUTHENTICATION_EXIT_CODE = 4
 _ACTIVE_SSL_CONTEXT = None
@@ -2331,6 +2327,7 @@ def run(
     device_auth = bool(config.get("device_token"))
     heartbeat_stop = threading.Event()
     heartbeat_thread: threading.Thread | None = None
+    formatter_service = None
     if device_auth:
         # 第一次心跳同步发送，确保刚入网的设备立即出现在主机设备中心。
         try:
@@ -2341,6 +2338,21 @@ def run(
             _record_agent_failure(config_path, config, "heartbeat", exc)
             print("协同凭据已失效，请由主机管理员重新授权。", file=sys.stderr)
             return AUTHENTICATION_EXIT_CODE
+        if not once:
+            try:
+                from .official_format_service import OfficialFormatLocalService
+
+                formatter_service = OfficialFormatLocalService(
+                    # 主机只保存同一摘要；票据可由主机签发并由本机独立验证，
+                    # 原始设备令牌不会进入浏览器或排版服务日志。
+                    secret=hashlib.sha256(token.encode("utf-8")).hexdigest(),
+                    config_dir=config_path.parent / "logs",
+                ).start()
+            except Exception as exc:  # noqa: BLE001 - 排版服务失败不能拖死心跳与灾备。
+                logger.error(
+                    "official_format_service_failed code=%s",
+                    getattr(exc, "code", type(exc).__name__),
+                )
         if not once:
             heartbeat_thread = threading.Thread(
                 target=_heartbeat_loop,
@@ -2448,6 +2460,8 @@ def run(
         heartbeat_stop.set()
         if heartbeat_thread is not None:
             heartbeat_thread.join(timeout=2)
+        if formatter_service is not None:
+            formatter_service.close()
 
 
 def main() -> None:

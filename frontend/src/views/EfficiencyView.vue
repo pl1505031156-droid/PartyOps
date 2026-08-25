@@ -24,6 +24,7 @@ interface TopicSpace {
   file_ids: string[];
   journal_ids: string[];
   contact_ids: string[];
+  active: boolean;
   version: number;
 }
 
@@ -98,6 +99,11 @@ const duplicates = ref<DuplicateGroup[]>([]);
 const reportTemplates = ref<ReportTemplate[]>([]);
 const approvals = ref<AIDraft[]>([]);
 const topicVisible = ref(false);
+const topicLifecycle = ref<"active" | "archived">("active");
+const topicArchiveVisible = ref(false);
+const topicArchiveTarget = ref<TopicSpace | null>(null);
+const topicArchiveReason = ref("");
+const topicDeletionImpact = ref<{ tasks: number; files: number; journals: number; contacts: number } | null>(null);
 const ruleVisible = ref(false);
 const calendarVisible = ref(false);
 const templateVisible = ref(false);
@@ -141,6 +147,7 @@ const templateForm = reactive({
   period_type: "week" as PeriodType,
   description: "",
   sections: ["completed", "next_plan", "carry_over", "risk", "coordination"] as ReportSection[],
+  active: true,
 });
 
 const sectionOptions: Array<{ value: ReportSection; label: string }> = [
@@ -182,7 +189,7 @@ async function load() {
           api.get<WorkspaceFile[]>("/workspace/search?limit=200"),
           api.get<Contact[]>("/contacts"),
           api.get<WorkJournal[]>("/work-journal?limit=200"),
-          api.get<TopicSpace[]>("/topics"),
+          api.get<TopicSpace[]>(`/topics?lifecycle=${topicLifecycle.value}`),
         ]);
       tasks.value = taskResult.items;
       files.value = fileResult.filter((item) => !item.is_directory);
@@ -239,6 +246,51 @@ async function createTopic() {
   topicVisible.value = false;
   Message.success("专题工作空间已建立");
   await load();
+}
+
+async function openArchiveTopic(topic: TopicSpace) {
+  try {
+    topicArchiveTarget.value = topic;
+    topicDeletionImpact.value = await api.get(`/topics/${topic.id}/deletion-impact`);
+    topicArchiveReason.value = "";
+    topicArchiveVisible.value = true;
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "专题归档影响读取失败");
+  }
+}
+
+async function archiveTopic() {
+  const topic = topicArchiveTarget.value;
+  if (!topic || topicArchiveReason.value.trim().length < 2) {
+    Message.warning("请填写至少两个字的归档原因");
+    return;
+  }
+  try {
+    await api.deleteBody(
+      `/topics/${topic.id}`,
+      { reason: topicArchiveReason.value.trim() },
+      { "If-Match": String(topic.version) },
+    );
+    topicArchiveVisible.value = false;
+    Message.success("专题已归档，关联任务、文件、日志和联系人均未删除");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "专题归档失败");
+  }
+}
+
+async function restoreTopic(topic: TopicSpace) {
+  try {
+    await api.post(
+      `/topics/${topic.id}/restore`,
+      { reason: "经办人核对关联内容后恢复专题" },
+      { "If-Match": String(topic.version) },
+    );
+    Message.success("专题工作空间已恢复");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "专题恢复失败");
+  }
 }
 
 async function createRule() {
@@ -367,6 +419,7 @@ function editTemplate(template: ReportTemplate) {
     period_type: template.period_type,
     description: template.description,
     sections: [...template.sections],
+    active: template.active,
   });
   templateVisible.value = true;
 }
@@ -381,7 +434,7 @@ async function saveTemplate() {
     if (!current) return;
     await api.patch(
       `/report-templates/${current.id}`,
-      { name: templateForm.name.trim(), description: templateForm.description.trim(), sections: templateForm.sections },
+      { name: templateForm.name.trim(), description: templateForm.description.trim(), sections: templateForm.sections, active: templateForm.active },
       { "If-Match": String(current.version) },
     );
   } else {
@@ -394,7 +447,7 @@ async function saveTemplate() {
   }
   templateVisible.value = false;
   editingTemplateId.value = "";
-  Object.assign(templateForm, { name: "", period_type: "week", description: "", sections: ["completed", "next_plan", "carry_over", "risk", "coordination"] });
+  Object.assign(templateForm, { name: "", period_type: "week", description: "", sections: ["completed", "next_plan", "carry_over", "risk", "coordination"], active: true });
   Message.success("报告模板已保存");
   await load();
 }
@@ -430,12 +483,12 @@ onMounted(load);
       <a-tab-pane key="topics" title="专题空间">
         <div class="section-toolbar">
           <div><h2>专题工作空间</h2><p>把同一专项的任务、文件、日志和联系人放在一个虚拟空间，不复制原件。</p></div>
-          <a-button type="primary" @click="topicVisible = true">新建专题</a-button>
+          <a-space><a-radio-group v-model="topicLifecycle" type="button" @change="load"><a-radio value="active">使用中</a-radio><a-radio value="archived">已归档</a-radio></a-radio-group><a-button type="primary" @click="topicVisible = true">新建专题</a-button></a-space>
         </div>
         <div class="topic-grid">
           <article v-for="topic in topics" :key="topic.id">
             <span>TOPIC / {{ topic.id.slice(0, 6) }}</span><h3>{{ topic.name }}</h3><p>{{ topic.description || "暂无说明" }}</p>
-            <div><b>{{ topic.task_ids.length }}</b>任务 <b>{{ topic.file_ids.length }}</b>文件 <b>{{ topic.journal_ids.length }}</b>日志 <b>{{ topic.contact_ids.length }}</b>联系人</div>
+            <div class="topic-facts"><span><b>{{ topic.task_ids.length }}</b>任务 <b>{{ topic.file_ids.length }}</b>文件 <b>{{ topic.journal_ids.length }}</b>日志 <b>{{ topic.contact_ids.length }}</b>联系人</span><a-button v-if="topic.active" size="mini" type="text" status="danger" @click="openArchiveTopic(topic)">归档</a-button><a-button v-else size="mini" type="text" @click="restoreTopic(topic)">恢复</a-button></div>
           </article>
           <div v-if="!topics.length" class="empty-panel">建立专题后，专项资料不再散落在多个文件夹和群聊中。</div>
         </div>
@@ -507,7 +560,7 @@ onMounted(load);
         </div>
         <div class="template-grid">
           <article v-for="template in reportTemplates" :key="template.id">
-            <span>{{ zhLabel(template.period_type, "周期") }}</span><h3>{{ template.name }}</h3><p>{{ template.description || "暂无说明" }}</p>
+            <span>{{ zhLabel(template.period_type, "周期") }} · {{ template.active ? "启用" : "已停用" }}</span><h3>{{ template.name }}</h3><p>{{ template.description || "暂无说明" }}</p>
             <ol><li v-for="section in template.sections" :key="section">{{ sectionOptions.find((item) => item.value === section)?.label }}</li></ol>
             <a-button size="small" @click="editTemplate(template)">编辑栏目</a-button>
           </article>
@@ -540,6 +593,7 @@ onMounted(load);
         </div>
       </a-form>
     </a-modal>
+    <a-modal v-model:visible="topicArchiveVisible" title="归档专题工作空间" ok-text="确认归档" @ok="archiveTopic"><a-alert type="warning">归档只隐藏专题容器，不会删除任何原任务、文件、日志或联系人。</a-alert><div v-if="topicDeletionImpact" class="topic-impact"><span>任务 <b>{{ topicDeletionImpact.tasks }}</b></span><span>文件 <b>{{ topicDeletionImpact.files }}</b></span><span>日志 <b>{{ topicDeletionImpact.journals }}</b></span><span>联系人 <b>{{ topicDeletionImpact.contacts }}</b></span></div><a-form-item label="归档原因" required><a-textarea v-model="topicArchiveReason" /></a-form-item></a-modal>
 
     <a-modal v-model:visible="ruleVisible" title="新建自动建议规则" width="650px" @ok="createRule">
       <a-form :model="ruleForm" layout="vertical">
@@ -567,6 +621,7 @@ onMounted(load);
       <a-form :model="templateForm" layout="vertical">
         <div class="two-columns"><a-form-item label="模板名称"><a-input v-model="templateForm.name" /></a-form-item><a-form-item label="周期"><a-select v-model="templateForm.period_type" :disabled="Boolean(editingTemplateId)"><a-option value="week">周</a-option><a-option value="month">月</a-option><a-option value="quarter">季度</a-option><a-option value="year">年度</a-option></a-select></a-form-item></div>
         <a-form-item label="用途说明"><a-input v-model="templateForm.description" /></a-form-item>
+        <a-form-item v-if="editingTemplateId" label="模板状态"><a-switch v-model="templateForm.active" checked-text="启用" unchecked-text="停用" /><small class="muted">停用后不能新建报告，已有报告和历史数据保留。</small></a-form-item>
         <a-form-item label="栏目及顺序">
           <div class="section-designer">
             <button v-for="option in sectionOptions" :key="option.value" type="button" :class="{ selected: templateForm.sections.includes(option.value) }" @click="toggleTemplateSection(option.value)">{{ option.label }}</button>
@@ -586,7 +641,7 @@ onMounted(load);
 .efficiency-tabs :deep(.arco-tabs-content) { padding-top: 1px; }
 .section-toolbar { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin:22px 0 18px; }
 .section-toolbar.compact { margin-top:0; }.section-toolbar h2{margin:0;font-size:20px}.section-toolbar p{margin:5px 0 0;color:var(--muted);font-size:11px}
-.topic-grid,.template-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.topic-grid article,.template-grid article{min-height:190px;padding:20px;background:var(--surface);border:1px solid var(--line)}.topic-grid article>span,.template-grid article>span{color:var(--cinnabar);font:10px Georgia,serif;letter-spacing:.12em}.topic-grid h3,.template-grid h3{margin:12px 0 8px}.topic-grid p,.template-grid p{min-height:44px;color:var(--muted);font-size:11px;line-height:1.7}.topic-grid article>div{display:flex;gap:7px;padding-top:12px;border-top:1px solid var(--line-light);font-size:10px}.topic-grid b{color:var(--cinnabar)}
+.topic-grid,.template-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.topic-grid article,.template-grid article{min-height:190px;padding:20px;background:var(--surface);border:1px solid var(--line)}.topic-grid article>span,.template-grid article>span{color:var(--cinnabar);font:10px Georgia,serif;letter-spacing:.12em}.topic-grid h3,.template-grid h3{margin:12px 0 8px}.topic-grid p,.template-grid p{min-height:44px;color:var(--muted);font-size:11px;line-height:1.7}.topic-grid article>div{display:flex;gap:7px;padding-top:12px;border-top:1px solid var(--line-light);font-size:10px}.topic-grid b{color:var(--cinnabar)}.topic-facts{align-items:center;justify-content:space-between}.topic-impact{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin:16px 0;background:var(--line);border:1px solid var(--line)}.topic-impact span{padding:12px;background:#fffaf0;color:var(--muted);font-size:11px}.topic-impact b{display:block;margin-top:4px;color:var(--charcoal);font:20px Georgia,serif}
 .empty-panel{display:grid;min-height:120px;place-items:center;padding:20px;color:var(--muted);font-size:12px;text-align:center;border:1px dashed var(--line)}
 .rule-list article,.calendar-list article{display:grid;align-items:center;gap:14px;padding:13px 10px;border-top:1px solid var(--line-light)}.rule-list article{grid-template-columns:10px minmax(0,1fr) 44px 48px}.rule-list i{width:8px;height:8px;background:#999;border-radius:50%}.rule-list i.enabled{background:#3c8b5b}.rule-list strong,.rule-list small,.calendar-list strong,.calendar-list small{display:block}.rule-list small,.calendar-list small{margin-top:3px;color:var(--muted);font-size:10px}.calendar-list article{grid-template-columns:80px 88px minmax(0,1fr) 50px}.calendar-list time{font:16px Georgia,serif}.calendar-list>article>span{padding:3px 7px;color:#a43b32;font-size:10px;background:#f6e4df}.calendar-list>article>span.workday{color:#2d7047;background:#dfefe5}
 .document-grid{display:grid;grid-template-columns:360px minmax(0,1fr);gap:20px;margin-top:22px}.document-grid>section{padding:20px;background:var(--surface);border:1px solid var(--line)}.diff-panel header{display:flex;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid var(--line)}.diff-panel header span{color:var(--cinnabar);font-size:11px}.diff-panel pre{max-height:380px;margin:12px 0 0;overflow:auto;font:11px/1.65 Consolas,monospace;white-space:pre-wrap}.diff-panel code{display:block}.diff-panel code.add{color:#287047;background:#e8f3ec}.diff-panel code.remove{color:#a62c24;background:#f7e6e3}.duplicate-heading{margin-top:28px}.duplicate-list article{display:grid;grid-template-columns:90px 1fr;gap:16px;padding:12px;border-top:1px solid var(--line-light)}.duplicate-list article>span{color:var(--cinnabar);font-size:11px}.duplicate-list strong{display:block;margin-bottom:5px;font-size:12px}

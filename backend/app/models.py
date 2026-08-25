@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
-    BigInteger,
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     Enum,
@@ -25,30 +25,31 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 from .enums import (
     AiCapability,
-    ArtLevel,
     ArchiveAccessMode,
     ArchiveAttachmentStatus,
     ArchiveRecordMode,
     ArchiveRecordStatus,
+    ArtLevel,
     CalendarEventType,
     ContentIndexStatus,
     DeviceStatus,
-    FileIndexStatus,
     FileAvailability,
+    FileIndexStatus,
     LinkType,
     MaterialStage,
+    ModelPackStatus,
     ObjectType,
     ParticipantRole,
     PeriodReportStatus,
     PeriodType,
     Priority,
-    RecurrenceExceptionAction,
     RecommendationGenerator,
     RecommendationStatus,
+    RecurrenceExceptionAction,
     RecurrenceKind,
     ReportSection,
-    Sensitivity,
     SeasonTheme,
+    Sensitivity,
     TaskStatus,
     TaskType,
     TransferDirection,
@@ -56,7 +57,6 @@ from .enums import (
     UpdateStatus,
     UserRole,
     WorkspaceRootSource,
-    ModelPackStatus,
 )
 
 
@@ -627,7 +627,16 @@ class BackupRun(Base):
     sha256: Mapped[str] = mapped_column(String(64), default="")
     status: Mapped[str] = mapped_column(String(24), default="running")
     message: Mapped[str] = mapped_column(Text, default="")
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    deleted_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    delete_reason: Mapped[str] = mapped_column(Text, default="")
+    purge_after: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"))
+    version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
@@ -962,6 +971,9 @@ class ArchiveRecord(Base):
     assessment_result: Mapped[str] = mapped_column(String(80), default="")
     tags: Mapped[List[str]] = mapped_column(JSON, default=list)
     custom_fields: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    import_batch_id: Mapped[Optional[str]] = mapped_column(
+        String(36), nullable=True, index=True
+    )
     search_text: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[ArchiveRecordStatus] = mapped_column(
         Enum(ArchiveRecordStatus, **enum_kwargs),
@@ -1117,6 +1129,13 @@ class WorkJournalEntry(Base):
         ForeignKey("period_reports.id"), index=True
     )
     immutable: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    archived_by: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    archive_reason: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1846,6 +1865,9 @@ class WorkflowTemplate(Base):
     steps: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     recurrence: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    archived_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    archive_reason: Mapped[str] = mapped_column(Text, default="")
     built_in: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     template_version: Mapped[str] = mapped_column(String(32), default="1.0")
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -1866,6 +1888,10 @@ class BusinessMeeting(Base):
     scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     status: Mapped[str] = mapped_column(String(24), default="planned", index=True)
+    status_before_archive: Mapped[str] = mapped_column(String(24), default="planned")
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    archived_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    archive_reason: Mapped[str] = mapped_column(Text, default="")
     workflow_template_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("workflow_templates.id"), nullable=True, index=True
     )
@@ -1911,6 +1937,11 @@ class MeetingTopic(Base):
     amount_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     amount_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    archived_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    archive_reason: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -1934,6 +1965,11 @@ class MeetingAttendee(Base):
     )
     voting_eligible: Mapped[bool] = mapped_column(Boolean, default=False)
     note: Mapped[str] = mapped_column(Text, default="")
+    archived_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    archived_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    archive_reason: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -1961,7 +1997,13 @@ class MeetingAction(Base):
         ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    task_status_before_archive: Mapped[str] = mapped_column(String(24), default="")
     note: Mapped[str] = mapped_column(Text, default="")
+    archived_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    archived_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    archive_reason: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -1986,6 +2028,10 @@ class StudyPlan(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    status_before_archive: Mapped[str] = mapped_column(String(24), default="draft")
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    archived_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    archive_reason: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
@@ -2029,6 +2075,8 @@ class BusinessDocument(Base):
     content: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     version: Mapped[int] = mapped_column(Integer, default=1)
     archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    archived_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    archive_reason: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -2050,6 +2098,109 @@ class BusinessDocumentRevision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (UniqueConstraint("document_id", "revision_no"),)
+
+
+class LedgerImportJob(Base):
+    """一次可校验、可提交、可撤销的台账导入事务。"""
+
+    __tablename__ = "ledger_import_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    target_type: Mapped[str] = mapped_column(String(48), index=True)
+    target_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    source_format: Mapped[str] = mapped_column(String(16), default="")
+    sheet_name: Mapped[str] = mapped_column(String(160), default="")
+    header_row: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(24), default="inspected", index=True)
+    mapping: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    profile: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    validation: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    total_rows: Mapped[int] = mapped_column(Integer, default=0)
+    valid_rows: Mapped[int] = mapped_column(Integer, default=0)
+    warning_rows: Mapped[int] = mapped_column(Integer, default=0)
+    error_rows: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    committed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    undone_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class LedgerImportMappingTemplate(Base):
+    """按目标、人员和规范化表头复用已人工确认的字段映射。"""
+
+    __tablename__ = "ledger_import_mapping_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    target_type: Mapped[str] = mapped_column(String(48), index=True)
+    target_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    header_signature: Mapped[str] = mapped_column(String(64), index=True)
+    mapping: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "target_type", "target_id", "header_signature", "created_by"
+        ),
+    )
+
+
+class LedgerImportChange(Base):
+    """导入行产生的业务变更；保存撤销所需的最小快照。"""
+
+    __tablename__ = "ledger_import_changes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("ledger_import_jobs.id", ondelete="CASCADE"), index=True
+    )
+    row_number: Mapped[int] = mapped_column(Integer)
+    entity_type: Mapped[str] = mapped_column(String(48), index=True)
+    entity_id: Mapped[str] = mapped_column(String(36), index=True)
+    action: Mapped[str] = mapped_column(String(24))
+    before_snapshot: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    after_version: Mapped[int] = mapped_column(Integer, default=1)
+    new_field_keys: Mapped[List[str]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    reverted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("job_id", "row_number", "entity_type", "entity_id"),
+        Index("ix_ledger_import_change_entity", "entity_type", "entity_id"),
+    )
+
+
+class PartyDevelopmentFieldDefinition(Base):
+    """发展党员台账的可扩展字段，不动态增加数据库列。"""
+
+    __tablename__ = "party_development_field_definitions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(80))
+    field_type: Mapped[str] = mapped_column(String(24), default="text")
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    options: Mapped[List[str]] = mapped_column(JSON, default=list)
+    aliases: Mapped[List[str]] = mapped_column(JSON, default=list)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class PartyDevelopmentCase(Base):
@@ -2081,6 +2232,10 @@ class PartyDevelopmentCase(Base):
         index=True,
     )
     planning_profile_snapshot: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    extra_fields: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    import_batch_id: Mapped[Optional[str]] = mapped_column(
+        String(36), nullable=True, index=True
+    )
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -2111,6 +2266,46 @@ class PartyDevelopmentMilestone(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (UniqueConstraint("case_id", "milestone_type"),)
+
+
+class PartyDevelopmentProgressEvent(Base):
+    """真实发生进度的追加式事实记录；纠正通过 supersedes 链留痕。"""
+
+    __tablename__ = "party_development_progress_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("party_development_cases.id", ondelete="CASCADE"), index=True
+    )
+    milestone_type: Mapped[str] = mapped_column(String(48), index=True)
+    actual_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    evidence_note: Mapped[str] = mapped_column(Text, default="")
+    source_entity_type: Mapped[str] = mapped_column(String(32), default="")
+    source_entity_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(24), default="confirmed", index=True)
+    supersedes_event_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("party_development_progress_events.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    import_job_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("ledger_import_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index(
+            "ix_party_development_progress_case_type_status",
+            "case_id",
+            "milestone_type",
+            "status",
+        ),
+    )
 
 
 class PartyDevelopmentPlanProfile(Base):

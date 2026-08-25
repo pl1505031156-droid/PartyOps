@@ -26,26 +26,26 @@ _VALIDATOR_SPEC.loader.exec_module(_VALIDATOR)
 validate_package = _VALIDATOR.validate_package
 
 
-VERSION = "1.4.5-rc.2"
+VERSION = "1.4.5-rc.3"
 PLATFORMS = {
-    ("windows", "amd64"): "PartyOps_1.4.5-rc.2_windows_amd64.exe",
-    ("windows7", "amd64"): "PartyOps_1.4.5-rc.2_windows7_amd64.exe",
-    ("windows7", "x86"): "PartyOps_1.4.5-rc.2_windows7_x86.exe",
-    ("linux-deb", "amd64"): "PartyOps_1.4.5-rc.2_linux_amd64.deb",
-    ("linux-deb", "arm64"): "PartyOps_1.4.5-rc.2_linux_arm64.deb",
-    ("linux-rpm", "amd64"): "PartyOps-1.4.5-0.rc.2.1.x86_64.rpm",
-    ("linux-rpm", "arm64"): "PartyOps-1.4.5-0.rc.2.1.aarch64.rpm",
-    ("macos", "amd64"): "PartyOps_1.4.5-rc.2_macos_x86_64.pkg",
-    ("macos", "arm64"): "PartyOps_1.4.5-rc.2_macos_arm64.pkg",
+    ("windows", "amd64"): "PartyOps_1.4.5-rc.3_windows_amd64.exe",
+    ("windows7", "amd64"): "PartyOps_1.4.5-rc.3_windows7_amd64.exe",
+    ("windows7", "x86"): "PartyOps_1.4.5-rc.3_windows7_x86.exe",
+    ("linux-deb", "amd64"): "PartyOps_1.4.5-rc.3_linux_amd64.deb",
+    ("linux-deb", "arm64"): "PartyOps_1.4.5-rc.3_linux_arm64.deb",
+    ("linux-rpm", "amd64"): "PartyOps-1.4.5-0.rc.3.1.x86_64.rpm",
+    ("linux-rpm", "arm64"): "PartyOps-1.4.5-0.rc.3.1.aarch64.rpm",
+    ("macos", "amd64"): "PartyOps_1.4.5-rc.3_macos_x86_64.pkg",
+    ("macos", "arm64"): "PartyOps_1.4.5-rc.3_macos_arm64.pkg",
 }
 RELEASE_NOTES = [
-    "新增公文规范排版中心：文件仅在本机离线诊断、排版、复检和导出，不进入数据库或网络",
-    "协同地址改为可回滚事务，严格区分回环浏览、监听、自动探测和对外公布地址",
-    "修复原始文件中心 PDF 预览、WPS 降级和一次性本机打开授权，错误原因分别显示",
-    "发展党员快速测算生成全部后续参考节点，实际日期、法定边界和人工调整继续分开保存",
-    "修复麒麟安装器卡住、Windows CHILD_EXITED、macOS 启动前无日志和安全卸载回退",
-    "官方更新新增 DNS、TLS、代理、超时、HTTP、清单、签名、哈希和平台诊断",
-    "补齐新增业务页面的本页帮助，并允许具备权限的协同用户共同新建和办理业务",
+    "公文规范排版改为系统内嵌流程，文件只在当前电脑诊断、排版、复检和导出",
+    "新增通用台账导入：全量剖析、字段确认、重复处置、原子提交与安全撤销",
+    "发展党员使用真实进度时间轴，已发生事实不覆盖，未来节点按法规和参考规则重算",
+    "补齐发展党员、会议、文档、学习、工作日志、目录、备份和模型包生命周期闭环",
+    "修复跨账号自定义程序目录 ACL 交接及非 C 盘数据目录安全接管",
+    "Needle 2 仅提供签名原生平台包，意图结果只生成需要用户确认的安全预览",
+    "任务、党务、周期与桌面提醒完成改期、去重、静默时段和协同隐私回归",
 ]
 
 
@@ -106,11 +106,11 @@ def _signed_manifest(
         "format_version": 4,
         "package_role": "platform-update",
         "version": VERSION,
-        # 原生产私钥不可恢复后，rc.2 显式轮换了客户端信任根。rc.1 及更早
-        # 客户端无法验证本包，必须先使用 rc.2 完整安装器原位升级。
+        # rc.2 已显式轮换客户端信任根。rc.1 及更早客户端不能直接验证
+        # rc.3 更新包，必须先使用 rc.2 或 rc.3 完整安装器原位升级。
         "min_version": "1.4.5-rc.2",
-        "schema_revision": "0023",
-        "release_title": "公文排版与协同可靠性升级",
+        "schema_revision": "0024",
+        "release_title": "台账导入、真实进度与全链路可靠性升级",
         "target_platform": platform_name,
         "target_architecture": architecture,
         "platform_artifacts": {platform_name: {architecture: artifact.name}},

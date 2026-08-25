@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { IconClockCircle, IconEdit, IconPlus, IconRefresh } from "@arco-design/web-vue/es/icon";
+import { IconClockCircle, IconDelete, IconEdit, IconPlus, IconRefresh } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { api } from "../api";
 import PageHelp from "../components/PageHelp.vue";
@@ -15,8 +15,13 @@ const actorFilter = ref("");
 const typeFilter = ref("");
 const dateRange = ref<string[]>([]);
 const loading = ref(false);
+const lifecycle = ref<"active" | "archived">("active");
 const visible = ref(false);
 const editing = ref<WorkJournal | null>(null);
+const archiveVisible = ref(false);
+const archiveTarget = ref<WorkJournal | null>(null);
+const archiveReason = ref("");
+const deletionImpact = ref<{ revisions: number; task_link: boolean; file_link: boolean; report_link: boolean } | null>(null);
 const form = reactive({
   title: "",
   content: "",
@@ -61,7 +66,7 @@ async function load() {
   loading.value = true;
   try {
     const [journal, taskList] = await Promise.all([
-      api.get<WorkJournal[]>("/work-journal?limit=500"),
+      api.get<WorkJournal[]>(`/work-journal?limit=500&lifecycle=${lifecycle.value}`),
       api.get<{ items: Task[] }>("/tasks?page_size=100"),
     ]);
     entries.value = journal;
@@ -124,6 +129,51 @@ async function saveEntry() {
   }
 }
 
+async function openArchive(entry: WorkJournal) {
+  try {
+    archiveTarget.value = entry;
+    deletionImpact.value = await api.get(`/work-journal/${entry.id}/deletion-impact`);
+    archiveReason.value = "";
+    archiveVisible.value = true;
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "工作日志归档影响读取失败");
+  }
+}
+
+async function archiveEntry() {
+  const entry = archiveTarget.value;
+  if (!entry || archiveReason.value.trim().length < 2) {
+    Message.warning("请填写至少两个字的归档原因");
+    return;
+  }
+  try {
+    await api.deleteBody(
+      `/work-journal/${entry.id}`,
+      { reason: archiveReason.value.trim() },
+      { "If-Match": String(entry.version) },
+    );
+    archiveVisible.value = false;
+    Message.success("人工日志已归档，历史修订和关联记录全部保留");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "工作日志归档失败");
+  }
+}
+
+async function restoreEntry(entry: WorkJournal) {
+  try {
+    await api.post(
+      `/work-journal/${entry.id}/restore`,
+      { reason: "记录人核对后恢复人工日志" },
+      { "If-Match": String(entry.version) },
+    );
+    Message.success("人工日志已恢复");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "工作日志恢复失败");
+  }
+}
+
 onMounted(load);
 </script>
 
@@ -157,6 +207,7 @@ onMounted(load);
             <a-option value="system">系统事件</a-option>
           </a-select>
           <a-range-picker v-model="dateRange" value-format="YYYY-MM-DD" />
+          <a-radio-group v-model="lifecycle" type="button" @change="load"><a-radio value="active">当前日志</a-radio><a-radio value="archived">已归档</a-radio></a-radio-group>
           <div class="journal-legend"><span class="manual"></span>人工日志 <span class="system"></span>系统事件</div>
         </div>
         <a-spin :loading="loading">
@@ -174,14 +225,12 @@ onMounted(load);
                       <span>{{ entry.entry_type === "system" ? "系统事件" : "人工日志" }} · {{ entry.actor_name }}（{{ entry.actor_role_label }}）</span>
                       <h3>{{ entry.title }}</h3>
                     </div>
-                    <a-button v-if="!entry.immutable" type="text" size="mini" @click="openEdit(entry)">
-                      <template #icon><IconEdit /></template>修订
-                    </a-button>
+                    <a-space v-if="!entry.immutable"><a-button v-if="!entry.archived_at" type="text" size="mini" @click="openEdit(entry)"><template #icon><IconEdit /></template>修订</a-button><a-button v-if="!entry.archived_at" type="text" size="mini" status="danger" @click="openArchive(entry)"><template #icon><IconDelete /></template>归档</a-button><a-button v-else type="text" size="mini" @click="restoreEntry(entry)">恢复</a-button></a-space>
                   </div>
                 </section>
                 <section class="journal-detail">
                   <p class="event-summary">{{ eventSummary(entry) }}</p>
-                  <p v-if="entry.content">{{ localizeEmbeddedCodes(entry.content) }}</p>
+                  <p v-if="entry.content">{{ localizeEmbeddedCodes(entry.content) }}</p><small v-if="entry.archived_at" class="archive-note">归档原因：{{ entry.archive_reason }}</small>
                 </section>
                 <aside class="journal-meta">
                   <span class="meta-label">追溯信息</span>
@@ -213,10 +262,12 @@ onMounted(load);
         <a-form-item v-if="editing" label="修订说明"><a-textarea v-model="form.change_note" placeholder="说明本次修订内容，原版本会自动保留" /></a-form-item>
       </a-form>
     </a-modal>
+    <a-modal v-model:visible="archiveVisible" title="归档人工工作日志" ok-text="确认归档" @ok="archiveEntry"><a-alert type="warning">系统事件属于审计记录不可删除；人工日志归档后可恢复，修订历史与事项/文件/报告关联不会移除。</a-alert><div v-if="deletionImpact" class="journal-impact"><span>修订版本 <b>{{ deletionImpact.revisions }}</b></span><span>关联事项 <b>{{ deletionImpact.task_link ? 1 : 0 }}</b></span><span>关联文件 <b>{{ deletionImpact.file_link ? 1 : 0 }}</b></span><span>关联报告 <b>{{ deletionImpact.report_link ? 1 : 0 }}</b></span></div><a-form-item label="归档原因" required><a-textarea v-model="archiveReason" /></a-form-item></a-modal>
   </div>
 </template>
 
 <style scoped>
+.journal-impact{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin:16px 0;background:var(--line);border:1px solid var(--line)}.journal-impact span{padding:12px;background:#fffaf0;color:var(--muted);font-size:11px}.journal-impact b{display:block;margin-top:4px;color:var(--charcoal);font:20px Georgia,serif}.archive-note{display:block;margin-top:8px;color:var(--cinnabar)}
 .page-kicker {
   margin: 0 0 8px;
   color: var(--cinnabar);

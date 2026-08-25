@@ -35,7 +35,6 @@ from ..security import get_current_user
 from .business import _create_meeting_record, meeting_out
 from .router_utils import client_ip, parse_if_match
 
-
 router = APIRouter(tags=["party-work"])
 
 PARTY_LIFE_TYPES = {
@@ -200,6 +199,10 @@ class StudyTopicPatch(BaseModel):
     sort_order: int | None = Field(default=None, ge=0, le=1000)
 
 
+class LifecycleReason(BaseModel):
+    reason: str = Field(min_length=2, max_length=1000)
+
+
 def ensure_party_work_templates(db: Session, user: User) -> list[WorkflowTemplate]:
     """幂等补齐内置模板；只升级系统模板，不覆盖用户自建模板。"""
 
@@ -304,6 +307,8 @@ def _attendee_out(item: MeetingAttendee) -> dict[str, Any]:
         "attendance_status": item.attendance_status,
         "voting_eligible": item.voting_eligible,
         "note": item.note,
+        "archived_at": item.archived_at,
+        "archive_reason": item.archive_reason,
         "version": item.version,
     }
 
@@ -318,19 +323,27 @@ def _action_out(item: MeetingAction) -> dict[str, Any]:
         "task_id": item.task_id,
         "status": item.status,
         "note": item.note,
+        "archived_at": item.archived_at,
+        "archive_reason": item.archive_reason,
         "version": item.version,
     }
 
 
 def _ledger_row(db: Session, meeting: BusinessMeeting) -> dict[str, Any]:
     attendees = db.scalars(
-        select(MeetingAttendee).where(MeetingAttendee.meeting_id == meeting.id)
+        select(MeetingAttendee).where(
+            MeetingAttendee.meeting_id == meeting.id,
+            MeetingAttendee.archived_at.is_(None),
+        )
     ).all()
     documents = db.scalar(
         select(func.count(BusinessDocument.id)).where(BusinessDocument.meeting_id == meeting.id)
     ) or 0
     actions = db.scalars(
-        select(MeetingAction).where(MeetingAction.meeting_id == meeting.id)
+        select(MeetingAction).where(
+            MeetingAction.meeting_id == meeting.id,
+            MeetingAction.archived_at.is_(None),
+        )
     ).all()
     now = utcnow()
     scheduled = meeting.scheduled_at
@@ -376,8 +389,12 @@ def _ledger_row(db: Session, meeting: BusinessMeeting) -> dict[str, Any]:
     }
 
 
-def _meeting_query(types: set[str], year: int | None, organization: str):
+def _meeting_query(
+    types: set[str], year: int | None, organization: str, *, include_archived: bool = False
+):
     query = select(BusinessMeeting).where(BusinessMeeting.meeting_type.in_(types))
+    if not include_archived:
+        query = query.where(BusinessMeeting.archived_at.is_(None))
     if organization:
         query = query.where(BusinessMeeting.organization == organization)
     if year:
@@ -458,10 +475,19 @@ def party_life_overview(
 def party_life_meetings(
     year: int | None = Query(default=None, ge=2000, le=2200),
     organization: str = "",
+    lifecycle: str = Query(default="active", pattern=r"^(active|archived|all)$"),
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    return [_ledger_row(db, item) for item in db.scalars(_meeting_query(set(PARTY_LIFE_TYPES), year, organization)).all()]
+    query = _meeting_query(
+        set(PARTY_LIFE_TYPES),
+        year,
+        organization,
+        include_archived=lifecycle != "active",
+    )
+    if lifecycle == "archived":
+        query = query.where(BusinessMeeting.archived_at.is_not(None))
+    return [_ledger_row(db, item) for item in db.scalars(query).all()]
 
 
 @router.post("/party-life/meetings", response_model=dict, status_code=201)
@@ -493,8 +519,13 @@ def list_study_plans(
     organization: str = "",
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
+    lifecycle: str = Query(default="active", pattern=r"^(active|archived|all)$"),
 ) -> list[dict[str, Any]]:
     query = select(StudyPlan)
+    if lifecycle == "active":
+        query = query.where(StudyPlan.archived_at.is_(None))
+    elif lifecycle == "archived":
+        query = query.where(StudyPlan.archived_at.is_not(None))
     if year:
         query = query.where(StudyPlan.year == year)
     if organization:
@@ -510,6 +541,8 @@ def list_study_plans(
             "group_leader_id": item.group_leader_id,
             "secretary_id": item.secretary_id,
             "status": item.status,
+            "archived_at": item.archived_at,
+            "archive_reason": item.archive_reason,
             "notes": item.notes,
             "version": item.version,
             "created_by": item.created_by,
@@ -525,6 +558,69 @@ def list_study_plans(
             } for topic in topics],
         })
     return result
+
+
+@router.get("/study-center/plans/{plan_id}/deletion-impact", response_model=dict)
+def study_plan_deletion_impact(
+    plan_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    plan = _study_plan(db, plan_id)
+    _require_study_plan_modify(plan, user)
+    topics = db.scalar(select(func.count(StudyPlanTopic.id)).where(StudyPlanTopic.plan_id == plan.id)) or 0
+    meetings = db.scalar(select(func.count(BusinessMeeting.id)).where(BusinessMeeting.study_plan_id == plan.id)) or 0
+    documents = db.scalar(select(func.count(BusinessDocument.id)).join(BusinessMeeting, BusinessDocument.meeting_id == BusinessMeeting.id).where(BusinessMeeting.study_plan_id == plan.id)) or 0
+    return {"topics": topics, "meetings": meetings, "documents": documents, "recoverable": True, "physical_delete": False}
+
+
+@router.delete("/study-center/plans/{plan_id}", response_model=dict)
+def archive_study_plan(
+    plan_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    plan = _study_plan(db, plan_id)
+    _require_study_plan_modify(plan, user)
+    if plan.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "年度学习计划已更新", "请刷新后重试。")
+    if not plan.archived_at:
+        plan.status_before_archive = plan.status
+        plan.status = "archived"
+        plan.archived_at = utcnow()
+        plan.archived_by = user.id
+        plan.archive_reason = payload.reason.strip()
+        plan.version += 1
+        write_audit(db, user, "study_center.plan_archive", "study_plan", plan.id, {"reason": plan.archive_reason}, client_ip(request))
+        db.commit()
+    return {"id": plan.id, "archived": True, "version": plan.version}
+
+
+@router.post("/study-center/plans/{plan_id}/restore", response_model=dict)
+def restore_study_plan(
+    plan_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    plan = _study_plan(db, plan_id)
+    _require_study_plan_modify(plan, user)
+    if plan.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "年度学习计划已更新", "请刷新后重试。")
+    if plan.archived_at:
+        plan.status = plan.status_before_archive if plan.status_before_archive != "archived" else "draft"
+        plan.archived_at = None
+        plan.archived_by = None
+        plan.archive_reason = ""
+        plan.version += 1
+        write_audit(db, user, "study_center.plan_restore", "study_plan", plan.id, {"reason": payload.reason.strip()}, client_ip(request))
+        db.commit()
+    return {"id": plan.id, "archived": False, "version": plan.version}
 
 
 @router.post("/study-center/plans", response_model=dict, status_code=201)
@@ -551,7 +647,13 @@ def create_study_plan(
     db.flush()
     write_audit(db, user, "study_center.plan_create", "study_plan", item.id, {"year": item.year}, client_ip(request))
     db.commit()
-    return list_study_plans(item.year, item.organization, user, db)[0]
+    return list_study_plans(
+        year=item.year,
+        organization=item.organization,
+        lifecycle="active",
+        _user=user,
+        db=db,
+    )[0]
 
 
 @router.patch("/study-center/plans/{plan_id}", response_model=dict)
@@ -601,7 +703,13 @@ def patch_study_plan(
         client_ip(request),
     )
     db.commit()
-    return list_study_plans(plan.year, plan.organization, user, db)[0]
+    return list_study_plans(
+        year=plan.year,
+        organization=plan.organization,
+        lifecycle="active",
+        _user=user,
+        db=db,
+    )[0]
 
 
 @router.post("/study-center/plans/{plan_id}/topics", response_model=dict, status_code=201)
@@ -690,10 +798,19 @@ def delete_study_topic(
 def list_study_sessions(
     year: int | None = Query(default=None, ge=2000, le=2200),
     organization: str = "",
+    lifecycle: str = Query(default="active", pattern=r"^(active|archived|all)$"),
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    return [_ledger_row(db, item) for item in db.scalars(_meeting_query({STUDY_CENTER_TYPE}, year, organization)).all()]
+    query = _meeting_query(
+        {STUDY_CENTER_TYPE},
+        year,
+        organization,
+        include_archived=lifecycle != "active",
+    )
+    if lifecycle == "archived":
+        query = query.where(BusinessMeeting.archived_at.is_not(None))
+    return [_ledger_row(db, item) for item in db.scalars(query).all()]
 
 
 @router.post("/study-center/sessions", response_model=dict, status_code=201)
@@ -722,11 +839,17 @@ def study_center_ledger(
 @router.get("/business-meetings/{meeting_id}/attendees", response_model=List[Dict])
 def list_attendees(
     meeting_id: str,
+    lifecycle: str = Query(default="active", pattern=r"^(active|archived|all)$"),
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[dict[str, Any]]:
     _meeting(db, meeting_id)
-    return [_attendee_out(item) for item in db.scalars(select(MeetingAttendee).where(MeetingAttendee.meeting_id == meeting_id).order_by(MeetingAttendee.created_at)).all()]
+    query = select(MeetingAttendee).where(MeetingAttendee.meeting_id == meeting_id)
+    if lifecycle == "active":
+        query = query.where(MeetingAttendee.archived_at.is_(None))
+    elif lifecycle == "archived":
+        query = query.where(MeetingAttendee.archived_at.is_not(None))
+    return [_attendee_out(item) for item in db.scalars(query.order_by(MeetingAttendee.created_at)).all()]
 
 
 @router.post("/business-meetings/{meeting_id}/attendees", response_model=dict, status_code=201)
@@ -739,11 +862,12 @@ def add_attendee(
 ) -> dict[str, Any]:
     meeting = _meeting(db, meeting_id)
     require_meeting_modify(db, meeting, user)
+    if meeting.archived_at:
+        raise ProblemException(409, "MEETING_ARCHIVED", "会议已归档", "请先恢复会议，再添加出席记录。")
     if payload.user_id and not db.get(User, payload.user_id):
         raise ProblemException(422, "ATTENDEE_USER_INVALID", "参会账号不存在", "可以清空账号并只记录姓名。")
     item = MeetingAttendee(meeting_id=meeting.id, **payload.model_dump())
     db.add(item)
-    meeting.version += 1
     write_audit(db, user, "meeting.attendee_create", "business_meeting", meeting.id, {"role": item.role}, client_ip(request))
     db.commit()
     return _attendee_out(item)
@@ -764,25 +888,108 @@ def patch_attendee(
     item = db.get(MeetingAttendee, attendee_id)
     if not item or item.meeting_id != meeting.id:
         raise ProblemException(404, "ATTENDEE_NOT_FOUND", "参会记录不存在", "请刷新后重试。")
+    if meeting.archived_at or item.archived_at:
+        raise ProblemException(409, "ATTENDEE_ARCHIVED", "出席记录已归档", "请先恢复会议和出席记录。")
     if item.version != parse_if_match(if_match):
         raise ProblemException(409, "VERSION_CONFLICT", "参会记录已更新", "请刷新后重试。")
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, key, value)
     item.version += 1
-    meeting.version += 1
     write_audit(db, user, "meeting.attendee_update", "business_meeting", meeting.id, {"attendee_id": item.id}, client_ip(request))
     db.commit()
+    return _attendee_out(item)
+
+
+@router.get("/business-meetings/{meeting_id}/attendees/{attendee_id}/deletion-impact", response_model=dict)
+def attendee_deletion_impact(
+    meeting_id: str,
+    attendee_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, bool]:
+    meeting = _meeting(db, meeting_id)
+    require_meeting_modify(db, meeting, user)
+    item = db.get(MeetingAttendee, attendee_id)
+    if not item or item.meeting_id != meeting.id:
+        raise ProblemException(404, "ATTENDEE_NOT_FOUND", "参会记录不存在", "请刷新后重试。")
+    return {
+        "attendance_statistics": item.attendance_status == "present",
+        "voting_record": item.voting_eligible,
+        "recoverable": True,
+        "physical_delete": False,
+    }
+
+
+@router.delete("/business-meetings/{meeting_id}/attendees/{attendee_id}", response_model=dict)
+def archive_attendee(
+    meeting_id: str,
+    attendee_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    meeting = _meeting(db, meeting_id)
+    require_meeting_modify(db, meeting, user)
+    item = db.get(MeetingAttendee, attendee_id)
+    if not item or item.meeting_id != meeting.id:
+        raise ProblemException(404, "ATTENDEE_NOT_FOUND", "参会记录不存在", "请刷新后重试。")
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "出席记录已更新", "请刷新后重试。")
+    if not item.archived_at:
+        item.archived_at = utcnow()
+        item.archived_by = user.id
+        item.archive_reason = payload.reason.strip()
+        item.version += 1
+        write_audit(db, user, "meeting.attendee_archive", "business_meeting", meeting.id, {"attendee_id": item.id, "reason": item.archive_reason}, client_ip(request))
+        db.commit()
+    return _attendee_out(item)
+
+
+@router.post("/business-meetings/{meeting_id}/attendees/{attendee_id}/restore", response_model=dict)
+def restore_attendee(
+    meeting_id: str,
+    attendee_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    meeting = _meeting(db, meeting_id)
+    require_meeting_modify(db, meeting, user)
+    if meeting.archived_at:
+        raise ProblemException(409, "MEETING_ARCHIVED", "会议仍在归档中", "请先恢复会议，再恢复出席记录。")
+    item = db.get(MeetingAttendee, attendee_id)
+    if not item or item.meeting_id != meeting.id:
+        raise ProblemException(404, "ATTENDEE_NOT_FOUND", "参会记录不存在", "请刷新后重试。")
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "出席记录已更新", "请刷新后重试。")
+    if item.archived_at:
+        item.archived_at = None
+        item.archived_by = None
+        item.archive_reason = ""
+        item.version += 1
+        write_audit(db, user, "meeting.attendee_restore", "business_meeting", meeting.id, {"attendee_id": item.id, "reason": payload.reason.strip()}, client_ip(request))
+        db.commit()
     return _attendee_out(item)
 
 
 @router.get("/business-meetings/{meeting_id}/actions", response_model=List[Dict])
 def list_actions(
     meeting_id: str,
+    lifecycle: str = Query(default="active", pattern=r"^(active|archived|all)$"),
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[dict[str, Any]]:
     _meeting(db, meeting_id)
-    return [_action_out(item) for item in db.scalars(select(MeetingAction).where(MeetingAction.meeting_id == meeting_id).order_by(MeetingAction.due_at, MeetingAction.created_at)).all()]
+    query = select(MeetingAction).where(MeetingAction.meeting_id == meeting_id)
+    if lifecycle == "active":
+        query = query.where(MeetingAction.archived_at.is_(None))
+    elif lifecycle == "archived":
+        query = query.where(MeetingAction.archived_at.is_not(None))
+    return [_action_out(item) for item in db.scalars(query.order_by(MeetingAction.due_at, MeetingAction.created_at)).all()]
 
 
 @router.post("/business-meetings/{meeting_id}/actions", response_model=dict, status_code=201)
@@ -795,6 +1002,8 @@ def add_action(
 ) -> dict[str, Any]:
     meeting = _meeting(db, meeting_id)
     require_meeting_modify(db, meeting, user)
+    if meeting.archived_at:
+        raise ProblemException(409, "MEETING_ARCHIVED", "会议已归档", "请先恢复会议，再新增落实项。")
     responsible = db.get(User, payload.responsible_user_id) if payload.responsible_user_id else user
     if not responsible or not responsible.active:
         raise ProblemException(422, "ACTION_OWNER_INVALID", "落实负责人不可用", "请选择启用用户。")
@@ -828,7 +1037,6 @@ def add_action(
         created_by=user.id,
     )
     db.add(item)
-    meeting.version += 1
     write_audit(db, user, "meeting.action_create", "business_meeting", meeting.id, {"task_id": item.task_id}, client_ip(request))
     db.commit()
     return _action_out(item)
@@ -848,6 +1056,8 @@ def patch_action(
     item = db.get(MeetingAction, action_id)
     if not item or item.meeting_id != meeting.id:
         raise ProblemException(404, "ACTION_NOT_FOUND", "决议落实项不存在", "请刷新后重试。")
+    if meeting.archived_at or item.archived_at:
+        raise ProblemException(409, "ACTION_ARCHIVED", "落实项已归档", "请先恢复会议和落实项。")
     if not (can_modify_meeting(db, meeting, user) or item.responsible_user_id == user.id):
         raise ProblemException(403, "ACTION_MODIFY_FORBIDDEN", "没有修改落实项的权限", "仅会议记录负责人或本落实项负责人可以修改。")
     if item.version != parse_if_match(if_match):
@@ -878,9 +1088,97 @@ def patch_action(
         task.version += 1
         task.updated_by = user.id
     item.version += 1
-    meeting.version += 1
     write_audit(db, user, "meeting.action_update", "business_meeting", meeting.id, {"action_id": item.id, "fields": sorted(changes)}, client_ip(request))
     db.commit()
+    return _action_out(item)
+
+
+@router.get("/business-meetings/{meeting_id}/actions/{action_id}/deletion-impact", response_model=dict)
+def action_deletion_impact(
+    meeting_id: str,
+    action_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, bool]:
+    meeting = _meeting(db, meeting_id)
+    require_meeting_modify(db, meeting, user)
+    item = db.get(MeetingAction, action_id)
+    if not item or item.meeting_id != meeting.id:
+        raise ProblemException(404, "ACTION_NOT_FOUND", "决议落实项不存在", "请刷新后重试。")
+    return {
+        "linked_task": bool(item.task_id),
+        "reminders_affected": bool(item.task_id),
+        "recoverable": True,
+        "physical_delete": False,
+    }
+
+
+@router.delete("/business-meetings/{meeting_id}/actions/{action_id}", response_model=dict)
+def archive_action(
+    meeting_id: str,
+    action_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    meeting = _meeting(db, meeting_id)
+    require_meeting_modify(db, meeting, user)
+    item = db.get(MeetingAction, action_id)
+    if not item or item.meeting_id != meeting.id:
+        raise ProblemException(404, "ACTION_NOT_FOUND", "决议落实项不存在", "请刷新后重试。")
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "落实项已更新", "请刷新后重试。")
+    if not item.archived_at:
+        item.archived_at = utcnow()
+        item.archived_by = user.id
+        item.archive_reason = payload.reason.strip()
+        item.version += 1
+        if item.task_id and (task := db.get(Task, item.task_id)):
+            item.task_status_before_archive = task.status.value
+            task.status = TaskStatus.ARCHIVED
+            task.version += 1
+            task.updated_by = user.id
+        write_audit(db, user, "meeting.action_archive", "business_meeting", meeting.id, {"action_id": item.id, "reason": item.archive_reason, "task_id": item.task_id}, client_ip(request))
+        db.commit()
+    return _action_out(item)
+
+
+@router.post("/business-meetings/{meeting_id}/actions/{action_id}/restore", response_model=dict)
+def restore_action(
+    meeting_id: str,
+    action_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    meeting = _meeting(db, meeting_id)
+    require_meeting_modify(db, meeting, user)
+    if meeting.archived_at:
+        raise ProblemException(409, "MEETING_ARCHIVED", "会议仍在归档中", "请先恢复会议，再恢复落实项。")
+    item = db.get(MeetingAction, action_id)
+    if not item or item.meeting_id != meeting.id:
+        raise ProblemException(404, "ACTION_NOT_FOUND", "决议落实项不存在", "请刷新后重试。")
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "落实项已更新", "请刷新后重试。")
+    if item.archived_at:
+        item.archived_at = None
+        item.archived_by = None
+        item.archive_reason = ""
+        item.version += 1
+        if item.task_id and (task := db.get(Task, item.task_id)) and task.status == TaskStatus.ARCHIVED:
+            try:
+                task.status = TaskStatus(item.task_status_before_archive)
+            except ValueError:
+                task.status = TaskStatus.IN_PROGRESS
+            task.version += 1
+            task.updated_by = user.id
+        item.task_status_before_archive = ""
+        write_audit(db, user, "meeting.action_restore", "business_meeting", meeting.id, {"action_id": item.id, "reason": payload.reason.strip(), "task_id": item.task_id}, client_ip(request))
+        db.commit()
     return _action_out(item)
 
 

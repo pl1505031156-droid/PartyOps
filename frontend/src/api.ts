@@ -133,6 +133,8 @@ export const api = {
     request<T>(path, { method: "PUT", body: JSON.stringify(body), headers }),
   delete: <T>(path: string, headers?: HeadersInit) =>
     request<T>(path, { method: "DELETE", headers }),
+  deleteBody: <T>(path: string, body: unknown, headers?: HeadersInit) =>
+    request<T>(path, { method: "DELETE", body: JSON.stringify(body), headers }),
 };
 
 export function downloadUrl(path: string): string {

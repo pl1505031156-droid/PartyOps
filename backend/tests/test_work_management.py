@@ -2,23 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
-from pathlib import Path
 import sqlite3
 import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
-from openpyxl import Workbook
-from sqlalchemy import select
-
 from app import ai_service, client_agent, intake, upgrades, workspace
 from app.config import get_settings
 from app.database import db_runtime
-from app.enums import AiCapability, FileIndexStatus, PeriodType
+from app.enums import AiCapability, PeriodType
 from app.models import (
     AIPolicy,
     AIProviderConfig,
@@ -31,9 +27,13 @@ from app.models import (
     WorkspaceFile,
     WorkspaceRoot,
 )
-from app.problems import ProblemException
 from app.notifications import desktop_notifications_allowed
+from app.problems import ProblemException
 from app.reports import auto_fill_report, period_bounds
+from fastapi.testclient import TestClient
+from openpyxl import Workbook
+from sqlalchemy import select
+
 from .conftest import create_task
 
 
@@ -226,7 +226,7 @@ def test_period_report_journal_templates_and_status(
     assert status.status_code == 200, status.text
     body = status.json()
     assert body["app_version"] == get_settings().app_version
-    assert body["schema_revision"] == "0023"
+    assert body["schema_revision"] == "0024"
     assert "sse_clients" in body["service"]
 
 

@@ -15,7 +15,7 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-VERSION = "1.4.5-rc.2"
+VERSION = "1.4.5-rc.3"
 TARGETS = (
     ("windows", "amd64"),
     ("windows7", "amd64"),

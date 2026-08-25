@@ -2,26 +2,33 @@
 
 from __future__ import annotations
 
-import typing
-
-import hashlib
 import csv
 import io
 import ipaddress
 import json
 import os
+import platform
 import secrets
 import shutil
-import platform
 import ssl
 import sys
-import uuid
+import typing
 import urllib.error
 import urllib.request
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Header, Query, Request, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Header,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -37,12 +44,13 @@ from ..backups import (
 )
 from ..config import get_settings, write_network_override
 from ..database import db_runtime, get_session
+from ..local_ai import local_runtime_status
 from ..models import (
-    AttachmentVersion,
+    AIProviderConfig,
     ArchiveAttachment,
     ArchiveCategory,
     ArchiveRecord,
-    AIProviderConfig,
+    AttachmentVersion,
     AuditLog,
     BackgroundJob,
     BackupRun,
@@ -72,12 +80,13 @@ from ..networking import (
     validate_bind_host,
     validate_transport_security,
 )
-from ..local_ai import local_runtime_status
 from ..notifications import desktop_notifications_allowed
 from ..pairings import authenticate_backup_pairing, pairing_expires_at
 from ..problems import ProblemException
 from ..schemas import (
     AuditOut,
+    BackgroundJobOut,
+    BackupLifecycleRequest,
     BackupOut,
     PairingCreate,
     PairingOut,
@@ -86,7 +95,6 @@ from ..schemas import (
     UserCreate,
     UserOut,
     UserPatch,
-    BackgroundJobOut,
     serialize_api_datetime,
 )
 from ..security import (
@@ -97,7 +105,6 @@ from ..security import (
 )
 from ..spreadsheet_security import safe_spreadsheet_row
 from .events import active_stream_count
-
 
 router = APIRouter(tags=["admin"])
 
@@ -271,7 +278,7 @@ def create_user(
 
 def parse_if_match(value: str | None) -> int:
     if value is None:
-        raise ProblemException(428, "IF_MATCH_REQUIRED", "缺少版本号", "修改用户必须携带 If-Match。")
+        raise ProblemException(428, "IF_MATCH_REQUIRED", "缺少版本号", "修改必须携带 If-Match。")
     try:
         return int(value.strip('"'))
     except ValueError as exc:
@@ -527,10 +534,119 @@ def export_audit(
 
 @router.get("/backups", response_model=typing.List[BackupOut])
 def list_backups(
+    lifecycle: str = Query(default="active", pattern=r"^(active|deleted|all)$"),
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> list[BackupRun]:
-    return list(db.scalars(select(BackupRun).order_by(BackupRun.created_at.desc())).all())
+    query = select(BackupRun)
+    if lifecycle == "active":
+        query = query.where(BackupRun.deleted_at.is_(None))
+    elif lifecycle == "deleted":
+        query = query.where(BackupRun.deleted_at.is_not(None))
+    return list(db.scalars(query.order_by(BackupRun.created_at.desc())).all())
+
+
+@router.get("/admin/backups/{backup_id}/deletion-impact", response_model=dict)
+def backup_deletion_impact(
+    backup_id: str,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, object]:
+    record = db.get(BackupRun, backup_id)
+    if not record:
+        raise ProblemException(404, "BACKUP_NOT_FOUND", "备份不存在", "请刷新备份列表。")
+    alternatives = db.scalar(
+        select(func.count())
+        .select_from(BackupRun)
+        .where(
+            BackupRun.id != record.id,
+            BackupRun.status == "completed",
+            BackupRun.deleted_at.is_(None),
+        )
+    ) or 0
+    return {
+        "size_bytes": record.size_bytes,
+        "kind": record.kind,
+        "completed": record.status == "completed",
+        "remaining_completed_backups": alternatives,
+        "recoverable_days": get_settings().deleted_backup_retention_days,
+        "recoverable": True,
+        "physical_delete": False,
+    }
+
+
+@router.delete("/admin/backups/{backup_id}", response_model=BackupOut)
+def delete_backup(
+    backup_id: str,
+    payload: BackupLifecycleRequest,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> BackupRun:
+    record = db.get(BackupRun, backup_id)
+    if not record:
+        raise ProblemException(404, "BACKUP_NOT_FOUND", "备份不存在", "请刷新备份列表。")
+    if record.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "备份记录已更新", "请刷新后重试。")
+    if record.deleted_at:
+        return record
+    if record.status == "completed":
+        alternatives = db.scalar(
+            select(func.count())
+            .select_from(BackupRun)
+            .where(
+                BackupRun.id != record.id,
+                BackupRun.status == "completed",
+                BackupRun.deleted_at.is_(None),
+            )
+        ) or 0
+        if alternatives == 0:
+            raise ProblemException(
+                409,
+                "BACKUP_LAST_RECOVERY_POINT",
+                "不能移除最后一个可用备份",
+                "请先创建并校验一个新备份，再移除当前备份。",
+            )
+    record.deleted_at = utcnow()
+    record.deleted_by = admin.id
+    record.delete_reason = payload.reason.strip()
+    record.purge_after = record.deleted_at + timedelta(
+        days=get_settings().deleted_backup_retention_days
+    )
+    record.version += 1
+    write_audit(db, admin, "backup.delete", "backup", record.id, {"reason": record.delete_reason, "purge_after": serialize_api_datetime(record.purge_after)}, client_ip(request))
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+@router.post("/admin/backups/{backup_id}/restore", response_model=BackupOut)
+def restore_deleted_backup(
+    backup_id: str,
+    payload: BackupLifecycleRequest,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> BackupRun:
+    record = db.get(BackupRun, backup_id)
+    if not record:
+        raise ProblemException(404, "BACKUP_NOT_FOUND", "备份不存在", "请刷新备份列表。")
+    if record.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "备份记录已更新", "请刷新后重试。")
+    if not (get_settings().backups_dir / record.filename).is_file():
+        raise ProblemException(410, "BACKUP_FILE_MISSING", "备份文件已不存在", "该回收站记录已无法恢复。")
+    if record.deleted_at:
+        record.deleted_at = None
+        record.deleted_by = None
+        record.delete_reason = ""
+        record.purge_after = None
+        record.version += 1
+        write_audit(db, admin, "backup.restore_deleted", "backup", record.id, {"reason": payload.reason.strip()}, client_ip(request))
+        db.commit()
+        db.refresh(record)
+    return record
 
 
 @router.post("/backups", response_model=BackupOut, status_code=201)
@@ -566,7 +682,7 @@ def download_backup(
             "请使用管理员账号或有效终端配对令牌。",
         )
     record = db.get(BackupRun, backup_id)
-    if not record or record.status != "completed":
+    if not record or record.status != "completed" or getattr(record, "deleted_at", None):
         raise ProblemException(404, "BACKUP_NOT_FOUND", "备份不存在", "未找到可下载备份。")
     path = get_settings().backups_dir / record.filename
     if not path.exists():
@@ -592,7 +708,7 @@ def latest_backup(
         pairing = authenticate_backup_pairing(db, pairing_token)
     record = db.scalar(
         select(BackupRun)
-        .where(BackupRun.status == "completed")
+        .where(BackupRun.status == "completed", BackupRun.deleted_at.is_(None))
         .order_by(BackupRun.created_at.desc())
     )
     if not record:
@@ -798,7 +914,7 @@ def verify_existing_backup(
     db: Session = Depends(get_session),
 ) -> dict:
     record = db.get(BackupRun, backup_id)
-    if not record or record.status != "completed":
+    if not record or record.status != "completed" or getattr(record, "deleted_at", None):
         raise ProblemException(404, "BACKUP_NOT_FOUND", "备份不存在", "未找到可校验备份。")
     manifest = verify_backup(get_settings().backups_dir / record.filename)
     return {"valid": True, "manifest": manifest, "sha256": record.sha256}
@@ -811,7 +927,7 @@ def restore_existing_backup(
     db: Session = Depends(get_session),
 ) -> dict:
     record = db.get(BackupRun, backup_id)
-    if not record or record.status != "completed":
+    if not record or record.status != "completed" or getattr(record, "deleted_at", None):
         raise ProblemException(404, "BACKUP_NOT_FOUND", "备份不存在", "未找到可恢复备份。")
     path = get_settings().backups_dir / record.filename
     actor_id = admin.id
@@ -841,7 +957,7 @@ def diagnostics(
     usage = shutil.disk_usage(settings.data_dir)
     latest = db.scalar(
         select(BackupRun)
-        .where(BackupRun.status == "completed")
+        .where(BackupRun.status == "completed", BackupRun.deleted_at.is_(None))
         .order_by(BackupRun.created_at.desc())
     )
     return {
@@ -1277,7 +1393,7 @@ def system_status(
     now = datetime.now(timezone.utc)
     latest_backup = db.scalar(
         select(BackupRun)
-        .where(BackupRun.status == "completed")
+        .where(BackupRun.status == "completed", BackupRun.deleted_at.is_(None))
         .order_by(BackupRun.created_at.desc())
     )
     latest_job = db.scalar(

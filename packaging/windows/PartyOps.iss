@@ -1,10 +1,10 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.5-rc.2"
+#define MyAppVersion "1.4.5-rc.3"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
 #ifndef PartyOpsOutputBase
-  #define PartyOpsOutputBase "PartyOps_1.4.5-rc.2_windows_amd64"
+  #define PartyOpsOutputBase "PartyOps_1.4.5-rc.3_windows_amd64"
 #endif
 
 [Setup]
@@ -12,7 +12,7 @@ AppId={{1C8EFC63-CAFC-46EF-A5E3-D3D119B5BB3A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
-VersionInfoVersion=1.4.5.2
+VersionInfoVersion=1.4.5.3
 AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://www.partyops.cn/
 AppSupportURL=https://www.partyops.cn/guide
@@ -54,7 +54,7 @@ WizardSmallImageFile={#BuildRoot}\partyops-1024.png
 Name: "chinesesimp"; MessagesFile: "{#SourcePath}\languages\ChineseSimplified.isl"
 
 [Messages]
-BeveledLabel=PartyOps 1.4.5-rc.2 · 未签名候选版
+BeveledLabel=PartyOps 1.4.5-rc.3 · 未签名候选版
 #ifdef PartyOpsLegacy
 WinVersionTooLowError=此 Windows 7 专用安装包要求 Windows 7 SP1 或更高版本。请先安装 SP1 后重试。
 #else
@@ -613,7 +613,7 @@ begin
   InAppServiceUpdate := CompareText(
     ExpandConstant('{param:INAPPUPDATE|0}'), '1'
   ) = 0;
-  WizardForm.Caption := '党建智办 PartyOps 1.4.5-rc.2 安装向导';
+  WizardForm.Caption := '党建智办 PartyOps 1.4.5-rc.3 安装向导';
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     '选择 PartyOps 业务数据目录',
@@ -976,6 +976,44 @@ begin
   end;
 end;
 
+function SetAdministratorOwnerWithFallback(
+  Target: String; Recursive: Boolean; var ResultCode: Integer
+): Boolean;
+var
+  IcaParameters, TakeOwnParameters: String;
+begin
+  IcaParameters := AddQuotes(Target) + ' /setowner *S-1-5-32-544';
+  if Recursive then
+    IcaParameters := IcaParameters + ' /T /C';
+  IcaParameters := IcaParameters + ' /Q';
+  Result := Exec(
+    ExpandConstant('{sys}\icacls.exe'), IcaParameters,
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+  ) and (ResultCode = 0);
+  if Result then
+    exit;
+
+  { 部分单位电脑会让普通账号先创建 D/E 盘目录，再由另一管理员账号
+    确认 UAC。icacls 不能直接改写这种目录的所有者时，使用 Windows
+    自带 takeown 取得管理员组所有权，再按同一 SID 精确复核；最终 DACL
+    与完整性级别门禁仍全部执行，不因兼容回退而降低保护。 }
+  TakeOwnParameters := '/F ' + AddQuotes(Target) + ' /A';
+  if Recursive then
+    TakeOwnParameters := TakeOwnParameters + ' /R /D Y';
+  if (not Exec(
+    ExpandConstant('{sys}\takeown.exe'), TakeOwnParameters,
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+  )) or (ResultCode <> 0) then
+  begin
+    Result := False;
+    exit;
+  end;
+  Result := Exec(
+    ExpandConstant('{sys}\icacls.exe'), IcaParameters,
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
+  ) and (ResultCode = 0);
+end;
+
 function ValidateAndSecureInstallDirectory: String;
 var
   AppDir, Validator, PowerShell, Parameters, DiagnosticFile: String;
@@ -1015,11 +1053,10 @@ begin
     Result := ReadInstallPathDiagnostic(DiagnosticFile, ResultCode);
     exit;
   end;
-  if (not Exec(
-    ExpandConstant('{sys}\icacls.exe'),
-    AddQuotes(AppDir) + ' /setowner *S-1-5-32-544 /T /C /Q',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode
-  )) or (ResultCode <> 0) then
+  { 先只处理根目录。旧实现把 /T 的任一子文件失败都误报成“程序目录
+    所有权失败”，也会让可安全修复的旧安装无法升级。子项在根 DACL
+    收敛后单独处理并使用更精确的诊断码。 }
+  if not SetAdministratorOwnerWithFallback(AppDir, False, ResultCode) then
   begin
     Result := '[INSTALL_DIR_ACL_DENIED] 无法把程序目录所有权交给管理员，安装已停止。';
     exit;
@@ -1040,6 +1077,11 @@ begin
     ACL，再把已存在的载荷重置为继承根目录权限。空的新目录无需执行此步骤。 }
   if FileExists(AddBackslash(AppDir) + 'PartyOps.exe') then
   begin
+    if not SetAdministratorOwnerWithFallback(AppDir, True, ResultCode) then
+    begin
+      Result := '[INSTALL_DIR_TREE_OWNER_DENIED] 无法保护旧版程序文件所有权，安装已停止。';
+      exit;
+    end;
     if (not Exec(
       ExpandConstant('{sys}\icacls.exe'),
       AddQuotes(AddBackslash(AppDir) + '*') + ' /reset /T /C /Q',

@@ -14,10 +14,10 @@ import os
 import platform as stdlib_platform
 import plistlib
 import re
-import signal
 import secrets
 import shlex
 import shutil
+import signal
 import socket
 import sqlite3
 import ssl
@@ -51,24 +51,22 @@ from .client_agent import (
     validate_config,
 )
 from .networking import discover_lan_addresses
+from .startup_diagnostics import public_startup_message
 from .windows_host_status import (
     CHILD_EXITED,
-    DATA_DIR_DENIED,
     HEALTH_TIMEOUT,
     PORT_IN_USE,
     RUNTIME_VERSION_MISMATCH,
     SERVICE_MISSING,
     SERVICE_STOPPED,
     TERMINAL_CODES,
-    TLS_INIT_FAILED,
     classify_runtime_failure,
-    read_service_status,
     health_payload_ready,
+    read_service_status,
     service_log_path,
     tail_service_log,
     write_service_status,
 )
-from .startup_diagnostics import public_startup_message
 
 
 class HostStartupError(ConnectionError, ValueError):
@@ -402,11 +400,16 @@ def assert_windows_service_data_path_security(
             )
 
 
-def _assert_windows_service_data_root_adoptable(data_dir: Path) -> None:
-    """只允许接管受信任管理员创建的目录，随后再收敛其 ACL。"""
+def _assert_windows_service_data_root_adoptable(data_dir: Path) -> bool:
+    """核验数据根可被服务接管，并返回是否为其他账号创建的空目录。
+
+    单位电脑常由日常账号先在 D/E 盘选择并创建空目录，再由另一管理员账号
+    确认 UAC。空目录没有可继承的业务载荷，允许安装器在无竞态条件下接管并
+    立即收敛 ACL；非空且所有者不受信的目录仍然拒绝，避免接管预置内容。
+    """
 
     if os.name != "nt" or os.getenv("PARTYOPS_ENVIRONMENT") == "test":
-        return
+        return False
     import win32security  # type: ignore[import-untyped]
 
     resolved = data_dir.resolve(strict=True)
@@ -431,12 +434,15 @@ def _assert_windows_service_data_root_adoptable(data_dir: Path) -> None:
         trusted_sids.add(win32security.ConvertSidToStringSid(current_sid))
     except Exception:  # noqa: BLE001 - 服务账号查名失败时仍保留系统 SID 白名单。
         pass
-    if owner not in trusted_sids:
-        raise PermissionError(
-            f"数据目录不是由当前管理员、SYSTEM 或管理员组创建：{resolved}"
-        )
     if descriptor.GetSecurityDescriptorDacl() is None:
         raise PermissionError(f"数据目录存在允许所有人访问的空 ACL：{resolved}")
+    if owner not in trusted_sids:
+        if any(resolved.iterdir()):
+            raise PermissionError(
+                f"数据目录不是由当前管理员、SYSTEM 或管理员组创建，且目录不为空：{resolved}"
+            )
+        return True
+    return False
 
 
 def _validate_windows_data_dir(data_dir: Path) -> Path:
@@ -578,8 +584,7 @@ def _grant_windows_service_access(data_dir: Path) -> None:
     if os.name != "nt" or os.getenv("PARTYOPS_ENVIRONMENT") == "test":
         return
     _assert_managed_data_tree_has_no_reparse_points(data_dir)
-    _assert_windows_service_data_root_adoptable(data_dir)
-    has_children = any(data_dir.iterdir())
+    untrusted_empty_root = _assert_windows_service_data_root_adoptable(data_dir)
     commands = [
         [
             "icacls.exe",
@@ -598,10 +603,49 @@ def _grant_windows_service_access(data_dir: Path) -> None:
             "/Q",
         ],
     ]
+    for index, command in enumerate(commands):
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if index == 0 and result.returncode != 0:
+            # 标准账号创建 D/E 盘空目录、另一管理员确认 UAC 时，icacls
+            # 可能先拒绝直接换所有者。只对已完成空目录/所有权边界检查的
+            # 精确目标使用 Windows 自带 takeown，再重试同一 SID 命令。
+            takeover = subprocess.run(
+                ["takeown.exe", "/F", str(data_dir), "/A"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            if takeover.returncode == 0:
+                result = subprocess.run(
+                    command,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+        if result.returncode != 0:
+            raise ValueError("无法保护所选主机数据目录权限，请更换目录后重试")
+
+    # 其他账号创建的空目录只能在根 ACL 收敛前保持为空；若此窗口内出现内容，
+    # 说明发生并发替换或写入，必须中止而不能把未知内容带入 SYSTEM 服务。
+    has_children = any(data_dir.iterdir())
+    if untrusted_empty_root and has_children:
+        raise ValueError("数据目录在权限接管过程中发生变化，请选择新的空目录后重试")
+    child_commands: list[list[str]] = []
     if has_children:
         # 根目录先锁定后再处理子项，避免把 (OI)(CI) 继承标记递归写到普通
         # 文件并产生无有效 ACE 的载荷；/L 确保即使发生竞态也只处理链接本身。
-        commands.extend(
+        child_commands.extend(
             [
                 [
                     "icacls.exe",
@@ -622,7 +666,7 @@ def _grant_windows_service_access(data_dir: Path) -> None:
                 ],
             ]
         )
-    for command in commands:
+    for command in child_commands:
         result = subprocess.run(
             command,
             check=False,
@@ -4512,7 +4556,10 @@ def main() -> None:
                     transaction_id = str(uuid.UUID(transaction_id))
                 except (ValueError, AttributeError) as exc:
                     raise SystemExit("公文排版事务标识无效") from exc
-                from .official_format import OfficialFormatError, run_official_format_tool
+                from .official_format import (
+                    OfficialFormatError,
+                    run_official_format_tool,
+                )
 
                 try:
                     raise SystemExit(

@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import io
 import typing
-
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -15,7 +14,7 @@ from fastapi import APIRouter, Depends, Header, Request, Response, status
 from fastapi.responses import FileResponse, StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
@@ -24,11 +23,13 @@ from ..audit import write_audit
 from ..config import get_settings
 from ..database import get_session
 from ..models import (
+    Notification,
     PartyDevelopmentCase,
     PartyDevelopmentMaterial,
     PartyDevelopmentMilestone,
     PartyDevelopmentPlanProfile,
     PartyDevelopmentProfile,
+    PartyDevelopmentProgressEvent,
     User,
     WorkCalendarEntry,
     utcnow,
@@ -48,22 +49,26 @@ from ..party_development import (
 )
 from ..problems import ProblemException
 from ..schemas import (
-    PartyDevelopmentCalculateRequest,
     PartyDevelopmentActualDates,
+    PartyDevelopmentCalculateRequest,
     PartyDevelopmentCaseCreate,
+    PartyDevelopmentCaseLifecycleAction,
     PartyDevelopmentCasePatch,
-    PartyDevelopmentMilestonePatch,
+    PartyDevelopmentFromCalculationCreate,
     PartyDevelopmentMaterialInput,
+    PartyDevelopmentMilestonePatch,
     PartyDevelopmentProfileCreate,
     PartyDevelopmentProfileOut,
     PartyDevelopmentProfilePatch,
+    PartyDevelopmentProgressEventCorrect,
+    PartyDevelopmentProgressEventCreate,
+    PartyDevelopmentProgressEventVoid,
     PartyDevelopmentReferencePlanPatch,
     PartyDevelopmentResultOut,
 )
 from ..security import get_current_user, require_admin
 from ..spreadsheet_security import safe_spreadsheet_row
 from .router_utils import client_ip, parse_if_match
-
 
 router = APIRouter(tags=["party-development"])
 settings = get_settings()
@@ -83,20 +88,63 @@ def _aware(value: datetime | None) -> datetime | None:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
-def _case_payload(item: PartyDevelopmentCase) -> PartyDevelopmentCalculateRequest:
+EVENT_TO_ACTUAL_FIELD = {
+    "conversation": "conversation_date",
+    "activist_date": "activist_date",
+    "activist_publicity_start": "publicity_start_date",
+    "development_object_date": "development_object_date",
+    "training_completed": "training_completed_date",
+    "political_review_completed": "political_review_completed_date",
+    "pre_review_approved": "pre_review_approved_date",
+    "branch_acceptance": "branch_acceptance_date",
+    "committee_approval_actual": "committee_approval_date",
+    "oath": "oath_date",
+    "transition_application": "transition_application_date",
+    "transition_branch_meeting": "transition_branch_meeting_date",
+    "transition_approval": "transition_approval_date",
+}
+
+
+def _current_progress_events(
+    db: Session, case_id: str
+) -> dict[str, PartyDevelopmentProgressEvent]:
+    rows = db.scalars(
+        select(PartyDevelopmentProgressEvent)
+        .where(
+            PartyDevelopmentProgressEvent.case_id == case_id,
+            PartyDevelopmentProgressEvent.status == "confirmed",
+        )
+        .order_by(PartyDevelopmentProgressEvent.created_at.desc())
+    ).all()
+    result: dict[str, PartyDevelopmentProgressEvent] = {}
+    for row in rows:
+        result.setdefault(row.milestone_type, row)
+    return result
+
+
+def _case_payload(
+    item: PartyDevelopmentCase,
+    events: dict[str, PartyDevelopmentProgressEvent] | None = None,
+) -> PartyDevelopmentCalculateRequest:
+    actual_values: dict[str, date | int | float | None] = {
+        "activist_date": _as_date(item.activist_at),
+        "development_object_date": _as_date(item.development_object_at),
+        "branch_acceptance_date": _as_date(item.probationary_at),
+        "transition_approval_date": _as_date(item.converted_at),
+    }
+    for milestone_type, event in (events or {}).items():
+        target = EVENT_TO_ACTUAL_FIELD.get(milestone_type)
+        if target:
+            actual_values[target] = _as_date(event.actual_at)
     return PartyDevelopmentCalculateRequest(
         name=item.name,
         application_date=item.application_at.date(),
-        actual_dates=PartyDevelopmentActualDates(
-            activist_date=_as_date(item.activist_at),
-            development_object_date=_as_date(item.development_object_at),
-            branch_acceptance_date=_as_date(item.probationary_at),
-            transition_approval_date=_as_date(item.converted_at),
-        ),
+        actual_dates=PartyDevelopmentActualDates(**actual_values),
     )
 
 
 def _case_out(db: Session, item: PartyDevelopmentCase) -> dict[str, typing.Any]:
+    progress = list(_current_progress_events(db, item.id).values())
     milestones = db.scalars(
         select(PartyDevelopmentMilestone)
         .where(PartyDevelopmentMilestone.case_id == item.id)
@@ -123,7 +171,25 @@ def _case_out(db: Session, item: PartyDevelopmentCase) -> dict[str, typing.Any]:
         "rule_version": item.rule_version,
         "planning_profile_id": item.planning_profile_id,
         "planning_profile_snapshot": item.planning_profile_snapshot,
+        "extra_fields": item.extra_fields or {},
+        "import_batch_id": item.import_batch_id,
         "version": item.version,
+        "progress_events": [
+            {
+                "id": row.id,
+                "milestone_type": row.milestone_type,
+                "actual_at": row.actual_at,
+                "evidence_note": row.evidence_note,
+                "source_entity_type": row.source_entity_type,
+                "source_entity_id": row.source_entity_id,
+                "status": row.status,
+                "supersedes_event_id": row.supersedes_event_id,
+                "version": row.version,
+                "created_by": row.created_by,
+                "created_at": row.created_at,
+            }
+            for row in progress
+        ],
         "milestones": [
             {
                 "id": row.id,
@@ -400,6 +466,377 @@ def create_case(
     # 新建档案的初始计划属于同一笔创建事务，不应把初始版本从 1 抬高到 2。
     _apply_reference_plan(db, item, bump_case_version=False)
     write_audit(db, user, "party_development.case_create", "party_development_case", item.id, {"party_branch": item.party_branch}, client_ip(request))
+    db.commit()
+    return _case_out(db, item)
+
+
+def _case_or_404(db: Session, case_id: str) -> PartyDevelopmentCase:
+    item = db.get(PartyDevelopmentCase, case_id)
+    if not item:
+        raise ProblemException(
+            404,
+            "PARTY_DEVELOPMENT_CASE_NOT_FOUND",
+            "发展档案不存在",
+            "请刷新后重试。",
+        )
+    return item
+
+
+def _ensure_case_active(item: PartyDevelopmentCase) -> None:
+    if item.status != "active":
+        raise ProblemException(
+            409,
+            "PARTY_DEVELOPMENT_CASE_INACTIVE",
+            "发展档案当前不可编辑",
+            "请先恢复已归档档案，再维护真实进度。",
+        )
+
+
+def _sync_high_level_facts(
+    db: Session,
+    item: PartyDevelopmentCase,
+    *,
+    clear_missing: set[str] | None = None,
+) -> None:
+    events = _current_progress_events(db, item.id)
+    mapping = {
+        "activist_date": "activist_at",
+        "development_object_date": "development_object_at",
+        "branch_acceptance": "probationary_at",
+        "transition_approval": "converted_at",
+    }
+    for event_type, column in mapping.items():
+        event = events.get(event_type)
+        if event or event_type in (clear_missing or set()):
+            setattr(item, column, event.actual_at if event else None)
+    if item.converted_at:
+        item.stage = "completed"
+    elif item.probationary_at:
+        item.stage = "probationary"
+    elif item.development_object_at:
+        item.stage = "development_object"
+    elif item.activist_at:
+        item.stage = "activist"
+    else:
+        item.stage = "application"
+
+
+def _append_progress_fact(
+    db: Session,
+    item: PartyDevelopmentCase,
+    *,
+    milestone_type: str,
+    actual_at: datetime,
+    evidence_note: str,
+    source_entity_type: str,
+    source_entity_id: str | None,
+    user: User,
+) -> PartyDevelopmentProgressEvent:
+    allowed = {"application", *EVENT_TO_ACTUAL_FIELD}
+    if milestone_type not in allowed:
+        raise ProblemException(
+            422,
+            "PARTY_DEVELOPMENT_PROGRESS_TYPE_INVALID",
+            "进度节点无效",
+            "请选择时间轴中允许录入真实进度的节点。",
+        )
+    previous = db.scalar(
+        select(PartyDevelopmentProgressEvent)
+        .where(
+            PartyDevelopmentProgressEvent.case_id == item.id,
+            PartyDevelopmentProgressEvent.milestone_type == milestone_type,
+            PartyDevelopmentProgressEvent.status == "confirmed",
+        )
+        .order_by(PartyDevelopmentProgressEvent.created_at.desc())
+    )
+    # SQLite 会丢失时区信息；直接比较 aware/naive datetime 会把同一事实
+    # 错判为新记录，形成重复时间轴。统一转为 UTC 后再做幂等判断。
+    if previous and _aware(previous.actual_at) == _aware(actual_at):
+        raise ProblemException(
+            409,
+            "PARTY_DEVELOPMENT_PROGRESS_DUPLICATE",
+            "该真实进度已经记录",
+            "如需补充说明，请使用纠正功能保留修订链。",
+        )
+    if previous:
+        previous.status = "superseded"
+        previous.version += 1
+    event = PartyDevelopmentProgressEvent(
+        case_id=item.id,
+        milestone_type=milestone_type,
+        actual_at=actual_at,
+        evidence_note=evidence_note.strip(),
+        source_entity_type=source_entity_type.strip(),
+        source_entity_id=source_entity_id,
+        supersedes_event_id=previous.id if previous else None,
+        created_by=user.id,
+    )
+    db.add(event)
+    db.flush()
+    _sync_high_level_facts(db, item)
+    _apply_reference_plan(db, item, bump_case_version=False)
+    item.version += 1
+    return event
+
+
+@router.post(
+    "/party-development/cases/from-calculation",
+    response_model=dict,
+    status_code=201,
+)
+def create_case_from_calculation(
+    payload: PartyDevelopmentFromCalculationCreate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    """把快速测算转为正式档案，且只保存用户已填写的真实节点。"""
+
+    base = PartyDevelopmentCaseCreate.model_validate(
+        payload.model_dump(exclude={"actual_dates"})
+    )
+    profile = ensure_reference_plan_profile(db, user)
+    item = PartyDevelopmentCase(
+        party_committee=base.party_committee.strip(),
+        party_branch=base.party_branch.strip(),
+        name=base.name.strip(),
+        gender=base.gender.strip(),
+        ethnicity=base.ethnicity.strip(),
+        birth_date=_as_datetime(base.birth_date),
+        education=base.education.strip(),
+        application_at=_as_datetime(base.application_date),
+        training_contacts=[value.strip() for value in base.training_contacts if value.strip()],
+        introducers=[value.strip() for value in base.introducers if value.strip()],
+        rule_version=str(rule_metadata()["version"]),
+        planning_profile_id=profile.id,
+        planning_profile_snapshot={
+            "system_key": profile.system_key,
+            "name": profile.name,
+            "version": profile.version,
+            "assumptions": dict(profile.assumptions),
+            "captured_at": utcnow().isoformat(),
+        },
+        created_by=user.id,
+    )
+    db.add(item)
+    db.flush()
+    reverse = {value: key for key, value in EVENT_TO_ACTUAL_FIELD.items()}
+    for field_name, actual_date in payload.actual_dates.model_dump().items():
+        if actual_date in (None, 0, 0.0) or field_name in {"training_days", "training_hours"}:
+            continue
+        event_type = reverse.get(field_name)
+        if event_type:
+            _append_progress_fact(
+                db,
+                item,
+                milestone_type=event_type,
+                actual_at=_as_datetime(actual_date),
+                evidence_note="由快速测算建档时确认",
+                source_entity_type="quick_calculation",
+                source_entity_id=None,
+                user=user,
+            )
+    _apply_reference_plan(db, item, bump_case_version=False)
+    write_audit(db, user, "party_development.case_create_from_calculation", "party_development_case", item.id, {"actual_fact_count": len(_current_progress_events(db, item.id))}, client_ip(request))
+    db.commit()
+    return _case_out(db, item)
+
+
+@router.get("/party-development/cases/{case_id}/timeline", response_model=dict)
+def get_case_timeline(
+    case_id: str,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    item = _case_or_404(db, case_id)
+    current = _case_out(db, item)
+    now = utcnow()
+    facts = {row["milestone_type"]: row for row in current["progress_events"]}
+    timeline: list[dict[str, typing.Any]] = []
+    for milestone in current["milestones"]:
+        target = milestone["adjusted_at"] or milestone["legal_deadline_at"] or milestone["legal_earliest_at"] or milestone["planned_at"]
+        actual = milestone["actual_at"]
+        fact = facts.get(milestone["milestone_type"])
+        if fact:
+            actual = fact["actual_at"]
+        aware_target = _aware(target)
+        if actual:
+            visual_state = "completed"
+        elif aware_target and aware_target < now:
+            visual_state = "overdue"
+        elif aware_target and aware_target <= now + timedelta(days=60):
+            visual_state = "upcoming"
+        else:
+            visual_state = "planned"
+        timeline.append({**milestone, "actual_at": actual, "progress_event": fact, "visual_state": visual_state, "is_reference": bool(milestone["adjusted_at"] or milestone["plan_kind"] == "reference")})
+    present = {row["milestone_type"] for row in timeline}
+    for event_type, fact in facts.items():
+        if event_type not in present:
+            timeline.append({"id": f"fact:{fact['id']}", "milestone_type": event_type, "actual_at": fact["actual_at"], "legal_earliest_at": None, "legal_deadline_at": None, "planned_at": None, "adjusted_at": None, "legal_basis": "", "planning_basis": "", "plan_kind": "fact", "reminder_days": [], "version": fact["version"], "progress_event": fact, "visual_state": "completed", "is_reference": False})
+    def sort_key(row: dict[str, typing.Any]) -> float:
+        value = row["actual_at"] or row["adjusted_at"] or row["legal_deadline_at"] or row["planned_at"]
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return float("inf")
+        return _aware(value).timestamp() if isinstance(value, datetime) else float("inf")
+
+    timeline.sort(key=sort_key)
+    return {"case": current, "timeline": timeline, "legend": {"completed": "已实际完成", "overdue": "已逾期未完成", "upcoming": "即将到期", "planned": "法规或参考计划", "reference": "人工调整或不确定预测"}}
+
+
+@router.post(
+    "/party-development/cases/{case_id}/progress-events",
+    response_model=dict,
+    status_code=201,
+)
+def create_progress_event(
+    case_id: str,
+    payload: PartyDevelopmentProgressEventCreate,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    item = _case_or_404(db, case_id)
+    _ensure_case_active(item)
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "发展档案已更新", "请刷新时间轴后重试。")
+    event = _append_progress_fact(
+        db,
+        item,
+        milestone_type=payload.milestone_type,
+        actual_at=_as_datetime(payload.actual_date),
+        evidence_note=payload.evidence_note,
+        source_entity_type=payload.source_entity_type,
+        source_entity_id=payload.source_entity_id,
+        user=user,
+    )
+    write_audit(db, user, "party_development.progress_created", "party_development_progress_event", event.id, {"case_id": item.id, "milestone_type": event.milestone_type}, client_ip(request))
+    db.commit()
+    return get_case_timeline(item.id, user, db)
+
+
+@router.post(
+    "/party-development/progress-events/{event_id}/correct",
+    response_model=dict,
+)
+def correct_progress_event(
+    event_id: str,
+    payload: PartyDevelopmentProgressEventCorrect,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    previous = db.get(PartyDevelopmentProgressEvent, event_id)
+    if not previous:
+        raise ProblemException(404, "PARTY_DEVELOPMENT_PROGRESS_NOT_FOUND", "真实进度不存在", "请刷新时间轴。")
+    if previous.version != parse_if_match(if_match) or previous.status != "confirmed":
+        raise ProblemException(409, "VERSION_CONFLICT", "真实进度已更新", "请刷新时间轴后重试。")
+    item = _case_or_404(db, previous.case_id)
+    _ensure_case_active(item)
+    event = _append_progress_fact(db, item, milestone_type=previous.milestone_type, actual_at=_as_datetime(payload.actual_date), evidence_note=payload.evidence_note, source_entity_type="correction", source_entity_id=previous.id, user=user)
+    write_audit(db, user, "party_development.progress_corrected", "party_development_progress_event", event.id, {"case_id": item.id, "supersedes": previous.id}, client_ip(request))
+    db.commit()
+    return get_case_timeline(item.id, user, db)
+
+
+@router.post(
+    "/party-development/progress-events/{event_id}/void",
+    response_model=dict,
+)
+def void_progress_event(
+    event_id: str,
+    payload: PartyDevelopmentProgressEventVoid,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    event = db.get(PartyDevelopmentProgressEvent, event_id)
+    if not event:
+        raise ProblemException(404, "PARTY_DEVELOPMENT_PROGRESS_NOT_FOUND", "真实进度不存在", "请刷新时间轴。")
+    if event.version != parse_if_match(if_match) or event.status != "confirmed":
+        raise ProblemException(409, "VERSION_CONFLICT", "真实进度已更新", "请刷新时间轴后重试。")
+    item = _case_or_404(db, event.case_id)
+    _ensure_case_active(item)
+    event.status = "voided"
+    event.voided_at = utcnow()
+    event.evidence_note = f"{event.evidence_note}\n作废原因：{payload.reason}".strip()
+    event.version += 1
+    if event.supersedes_event_id:
+        previous = db.get(PartyDevelopmentProgressEvent, event.supersedes_event_id)
+        if previous and previous.status == "superseded":
+            previous.status = "confirmed"
+            previous.version += 1
+    _sync_high_level_facts(db, item, clear_missing={event.milestone_type})
+    _apply_reference_plan(db, item, bump_case_version=False)
+    item.version += 1
+    write_audit(db, user, "party_development.progress_voided", "party_development_progress_event", event.id, {"case_id": item.id, "reason": payload.reason}, client_ip(request))
+    db.commit()
+    return get_case_timeline(item.id, user, db)
+
+
+@router.get(
+    "/party-development/cases/{case_id}/deletion-impact",
+    response_model=dict,
+)
+def case_deletion_impact(
+    case_id: str,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    item = _case_or_404(db, case_id)
+    milestones = int(db.scalar(select(func.count()).select_from(PartyDevelopmentMilestone).where(PartyDevelopmentMilestone.case_id == item.id)) or 0)
+    progress_events = int(db.scalar(select(func.count()).select_from(PartyDevelopmentProgressEvent).where(PartyDevelopmentProgressEvent.case_id == item.id)) or 0)
+    active_notifications = int(db.scalar(select(func.count()).select_from(Notification).where(Notification.entity_type == "party_development_case", Notification.entity_id == item.id, Notification.read_at.is_(None), Notification.revoked_at.is_(None))) or 0)
+    return {"case_id": item.id, "status": item.status, "milestones": milestones, "progress_events": progress_events, "active_notifications": active_notifications, "action": "archive", "physical_delete": False, "recoverable": True, "message": "作废后从在办台账和活动提醒中移除，节点、材料和审计历史保留，可由有权限人员恢复。"}
+
+
+@router.delete("/party-development/cases/{case_id}", response_model=dict)
+def archive_case(
+    case_id: str,
+    payload: PartyDevelopmentCaseLifecycleAction,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    item = _case_or_404(db, case_id)
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "发展档案已更新", "请刷新影响范围后重试。")
+    if item.status == "archived":
+        return _case_out(db, item)
+    item.status = "archived"
+    item.version += 1
+    now = utcnow()
+    notifications = db.scalars(select(Notification).where(Notification.entity_type == "party_development_case", Notification.entity_id == item.id, Notification.read_at.is_(None), Notification.revoked_at.is_(None))).all()
+    for notification in notifications:
+        notification.revoked_at = now
+    write_audit(db, user, "party_development.case_archived", "party_development_case", item.id, {"reason": payload.reason, "revoked_notifications": len(notifications)}, client_ip(request))
+    db.commit()
+    return _case_out(db, item)
+
+
+@router.post("/party-development/cases/{case_id}/restore", response_model=dict)
+def restore_case(
+    case_id: str,
+    payload: PartyDevelopmentCaseLifecycleAction,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, typing.Any]:
+    item = _case_or_404(db, case_id)
+    if item.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "发展档案已更新", "请刷新后重试。")
+    if item.status != "archived":
+        raise ProblemException(409, "PARTY_DEVELOPMENT_CASE_NOT_ARCHIVED", "档案不需要恢复", "只有已归档档案可以恢复。")
+    item.status = "active"
+    item.version += 1
+    write_audit(db, user, "party_development.case_restored", "party_development_case", item.id, {"reason": payload.reason}, client_ip(request))
     db.commit()
     return _case_out(db, item)
 

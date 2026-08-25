@@ -2,36 +2,37 @@
 
 from __future__ import annotations
 
-import typing
-
+import difflib
 import hashlib
 import json
 import re
+import typing
 import zipfile
-import difflib
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
+from ..archive_service import can_view_category
+from ..archive_service import fts_search as archive_fts_search
 from ..audit import write_audit
-from ..archive_service import can_view_category, fts_search as archive_fts_search
 from ..config import get_settings
 from ..database import db_runtime, get_session
 from ..device_versions import request_device
 from ..enums import ParticipantRole, TaskStatus
 from ..models import (
-    AutomationRule,
-    AttachmentVersion,
     ArchiveCategory,
     ArchiveRecord,
+    AttachmentVersion,
+    AutomationRule,
     Contact,
     Device,
-    DuplicateGroup,
     DocumentComparison,
+    DuplicateGroup,
     FileBlob,
     HandoverExport,
     KnowledgeEntry,
@@ -80,13 +81,17 @@ from ..task_service import (
     can_view_task,
     task_to_out,
     task_visibility_clause,
-    visible_tasks,
 )
 from ..workspace import search_workspace_files
 from ..workspace_access import workspace_root_permissions
 
-
 router = APIRouter(tags=["productivity"])
+
+
+class LifecycleReason(BaseModel):
+    """需要人工说明的可恢复归档，避免无理由隐藏业务记录。"""
+
+    reason: str = Field(min_length=2, max_length=1000)
 
 
 def client_ip(request: Request) -> str:
@@ -539,14 +544,18 @@ def delete_saved_view(
 
 @router.get("/topics", response_model=typing.List[TopicSpaceOut])
 def list_topics(
+    lifecycle: str = Query(default="active", pattern=r"^(active|archived|all)$"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[TopicSpace]:
+    statement = select(TopicSpace).where(TopicSpace.owner_id == user.id)
+    if lifecycle == "active":
+        statement = statement.where(TopicSpace.active.is_(True))
+    elif lifecycle == "archived":
+        statement = statement.where(TopicSpace.active.is_(False))
     return list(
         db.scalars(
-            select(TopicSpace)
-            .where(TopicSpace.owner_id == user.id, TopicSpace.active.is_(True))
-            .order_by(TopicSpace.updated_at.desc())
+            statement.order_by(TopicSpace.updated_at.desc())
         ).all()
     )
 
@@ -584,6 +593,86 @@ def patch_topic(
     topic.version += 1
     db.commit()
     db.refresh(topic)
+    return topic
+
+
+@router.get("/topics/{topic_id}/deletion-impact", response_model=dict)
+def topic_deletion_impact(
+    topic_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, int | bool]:
+    topic = db.get(TopicSpace, topic_id)
+    if not topic or topic.owner_id != user.id:
+        raise ProblemException(404, "TOPIC_NOT_FOUND", "专题不存在", "未找到该专题。")
+    return {
+        "tasks": len(topic.task_ids),
+        "files": len(topic.file_ids),
+        "journals": len(topic.journal_ids),
+        "contacts": len(topic.contact_ids),
+        "recoverable": True,
+        "physical_delete": False,
+    }
+
+
+@router.delete("/topics/{topic_id}", response_model=dict)
+def archive_topic(
+    topic_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, bool | int]:
+    topic = db.get(TopicSpace, topic_id)
+    if not topic or topic.owner_id != user.id:
+        raise ProblemException(404, "TOPIC_NOT_FOUND", "专题不存在", "未找到该专题。")
+    if topic.version != parse_version(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "专题已变化", "请刷新后重试。")
+    if topic.active:
+        topic.active = False
+        topic.version += 1
+        write_audit(
+            db,
+            user,
+            "topic.archive",
+            "topic_space",
+            topic.id,
+            {"reason": payload.reason.strip()},
+            request.client.host if request.client else "",
+        )
+        db.commit()
+    return {"archived": True, "version": topic.version}
+
+
+@router.post("/topics/{topic_id}/restore", response_model=TopicSpaceOut)
+def restore_topic(
+    topic_id: str,
+    payload: LifecycleReason,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> TopicSpace:
+    topic = db.get(TopicSpace, topic_id)
+    if not topic or topic.owner_id != user.id:
+        raise ProblemException(404, "TOPIC_NOT_FOUND", "专题不存在", "未找到该专题。")
+    if topic.version != parse_version(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "专题已变化", "请刷新后重试。")
+    if not topic.active:
+        topic.active = True
+        topic.version += 1
+        write_audit(
+            db,
+            user,
+            "topic.restore",
+            "topic_space",
+            topic.id,
+            {"reason": payload.reason.strip()},
+            request.client.host if request.client else "",
+        )
+        db.commit()
+        db.refresh(topic)
     return topic
 
 

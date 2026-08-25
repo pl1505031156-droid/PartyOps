@@ -9,7 +9,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from app import setup_wizard, update_executor
 from app.enums import UpdateStatus
 
@@ -870,6 +869,72 @@ def test_windows_data_dir_environment_absence_and_service_acl_empty_tree(
     setup_wizard._grant_windows_service_access(data_dir)
     (data_dir / "partyops.db").write_bytes(b"db")
     setup_wizard._grant_windows_service_access(data_dir)
+
+
+def test_windows_cross_account_empty_data_dir_is_adopted_without_weakening_acl(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """日常账号预建的 D/E 盘空目录可由 UAC 管理员安全接管。"""
+
+    data_dir = tmp_path / "D盘 党建文档"
+    data_dir.mkdir()
+
+    class Descriptor:
+        def GetSecurityDescriptorOwner(self):
+            return "S-1-5-21-foreign-owner"
+
+        def GetSecurityDescriptorDacl(self):
+            return object()
+
+    fake_security = SimpleNamespace(
+        OWNER_SECURITY_INFORMATION=1,
+        DACL_SECURITY_INFORMATION=2,
+        GetFileSecurity=lambda *_args: Descriptor(),
+        ConvertSidToStringSid=lambda value: value,
+        LookupAccountName=lambda *_args: ("S-1-5-21-current-admin", "", 1),
+    )
+    monkeypatch.setitem(sys.modules, "win32security", fake_security)
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    monkeypatch.setattr(
+        setup_wizard, "_assert_managed_data_tree_has_no_reparse_points", lambda _p: None
+    )
+    assert setup_wizard._assert_windows_service_data_root_adoptable(data_dir) is True
+
+    (data_dir / "unknown.bin").write_bytes(b"untrusted")
+    with pytest.raises(PermissionError, match="目录不为空"):
+        setup_wizard._assert_windows_service_data_root_adoptable(data_dir)
+
+
+def test_windows_data_dir_owner_falls_back_to_takeown_then_rechecks(
+    monkeypatch, tmp_path: Path
+) -> None:
+    data_dir = tmp_path / "D盘 数据"
+    data_dir.mkdir()
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **_kwargs):
+        calls.append(command)
+        first_owner_attempt = len(calls) == 1 and command[0] == "icacls.exe"
+        return subprocess.CompletedProcess(command, 5 if first_owner_attempt else 0, "", "")
+
+    monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
+    monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
+    monkeypatch.setattr(
+        setup_wizard, "_assert_managed_data_tree_has_no_reparse_points", lambda _p: None
+    )
+    monkeypatch.setattr(
+        setup_wizard, "_assert_windows_service_data_root_adoptable", lambda _p: True
+    )
+    monkeypatch.setattr(
+        setup_wizard, "assert_windows_service_data_path_security", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(setup_wizard.subprocess, "run", run)
+
+    setup_wizard._grant_windows_service_access(data_dir)
+    assert calls[0][0] == "icacls.exe"
+    assert calls[1][:4] == ["takeown.exe", "/F", str(data_dir), "/A"]
+    assert calls[2] == calls[0]
 
 
 def test_personal_data_dir_fixed_drive_and_mode_launch_branches(

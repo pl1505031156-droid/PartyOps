@@ -6,10 +6,6 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from datetime import date, datetime, timezone
-from pathlib import Path
-from types import SimpleNamespace
 import hashlib
 import io
 import json
@@ -17,19 +13,19 @@ import os
 import subprocess
 import urllib.error
 import zipfile
+from datetime import date, datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-from pydantic import ValidationError
-
-from sqlalchemy.exc import OperationalError
-
 from app import (
     ai_service,
     appearance,
     calendar_service,
     client_agent,
-    security,
+    official_format_service,
     schemas,
+    security,
     setup_wizard,
     update_executor,
     upgrades,
@@ -47,9 +43,18 @@ from app.enums import (
     UpdateStatus,
     UserRole,
 )
-from app.models import Device, Task, UpdatePackage, UpdateRun, WorkspaceFile, WorkspaceRoot
+from app.models import (
+    Device,
+    Task,
+    UpdatePackage,
+    UpdateRun,
+    WorkspaceFile,
+    WorkspaceRoot,
+)
 from app.problems import ProblemException
 from app.routers import recurrence_extensions, router_utils
+from pydantic import ValidationError
+from sqlalchemy.exc import OperationalError
 
 
 class _LookupDb:
@@ -75,7 +80,10 @@ def test_schema_normalizers_cover_none_empty_invalid_and_deduplicated_values() -
     assert schemas.TaskUpdate(tags=None).tags is None
     assert schemas.TaskUpdate(tags=[" 甲 ", "", "甲", "乙"]).tags == ["甲", "乙"]
     assert schemas.ReminderPreferencePatch(reminder_days=None).reminder_days is None
-    assert schemas.ReminderPreferencePatch(reminder_days=[1, 3, 1]).reminder_days == [3, 1]
+    assert schemas.ReminderPreferencePatch(reminder_days=[1, 3, 1]).reminder_days == [
+        3,
+        1,
+    ]
     with pytest.raises(ValidationError, match="0—30"):
         schemas.ReminderPreferencePatch(reminder_days=[31])
 
@@ -84,7 +92,9 @@ def test_schema_normalizers_cover_none_empty_invalid_and_deduplicated_values() -
     )
     assert calculated.name == "张 三"
     with pytest.raises(ValidationError, match="姓名不能为空"):
-        schemas.PartyDevelopmentCalculateRequest(name="   ", application_date=date(2026, 1, 1))
+        schemas.PartyDevelopmentCalculateRequest(
+            name="   ", application_date=date(2026, 1, 1)
+        )
 
 
 def test_appearance_invalid_global_values_and_every_effective_theme_branch(
@@ -99,7 +109,9 @@ def test_appearance_invalid_global_values_and_every_effective_theme_branch(
             "version": 0,
         }
     )
-    config = appearance.global_appearance(_LookupDb({appearance.GLOBAL_APPEARANCE_KEY: setting}))
+    config = appearance.global_appearance(
+        _LookupDb({appearance.GLOBAL_APPEARANCE_KEY: setting})
+    )
     assert config == {
         "theme_mode": "auto",
         "fixed_theme": SeasonTheme.SPRING.value,
@@ -109,7 +121,10 @@ def test_appearance_invalid_global_values_and_every_effective_theme_branch(
     }
     preference = SimpleNamespace(theme_override=SeasonTheme.WINTER)
     assert appearance.effective_season(config, preference) == SeasonTheme.WINTER.value
-    assert appearance.effective_season({**config, "theme_mode": "fixed"}) == SeasonTheme.SPRING.value
+    assert (
+        appearance.effective_season({**config, "theme_mode": "fixed"})
+        == SeasonTheme.SPRING.value
+    )
     monkeypatch.setattr(appearance, "automatic_season", lambda: SeasonTheme.AUTUMN)
     assert appearance.effective_season(config) == SeasonTheme.AUTUMN.value
 
@@ -126,7 +141,9 @@ def test_appearance_invalid_global_values_and_every_effective_theme_branch(
         ("其他事件", "", ""),
     ],
 )
-def test_legacy_work_journal_title_matrix(title: str, content: str, expected: str) -> None:
+def test_legacy_work_journal_title_matrix(
+    title: str, content: str, expected: str
+) -> None:
     event, _payload = work_journal._legacy_event(
         SimpleNamespace(event_code="", event_data={}, title=title, content=content)
     )
@@ -157,11 +174,24 @@ def test_system_journal_creates_activity_only_for_scoped_objects(target: str) ->
 def test_ai_provider_resolution_covers_public_private_empty_and_mixed_dns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert ai_service.validate_provider_url("https://1.1.1.1/v1", False, resolve=False) is False
-    assert ai_service.validate_provider_url("http://localhost:9000/v1", True, resolve=False) is True
+    assert (
+        ai_service.validate_provider_url("https://1.1.1.1/v1", False, resolve=False)
+        is False
+    )
+    assert (
+        ai_service.validate_provider_url(
+            "http://localhost:9000/v1", True, resolve=False
+        )
+        is True
+    )
 
     monkeypatch.setattr(ai_service.socket, "getaddrinfo", lambda *_a, **_k: [])
-    assert ai_service.validate_provider_url("https://empty.example/v1", False, resolve=True) is False
+    assert (
+        ai_service.validate_provider_url(
+            "https://empty.example/v1", False, resolve=True
+        )
+        is False
+    )
 
     monkeypatch.setattr(
         ai_service.socket,
@@ -191,7 +221,11 @@ def test_ai_source_scope_and_automatic_collection_limits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user = SimpleNamespace(id="user")
-    policy = SimpleNamespace(allowed_task_categories=["发布"], allowed_root_ids=["root-1"], allowed_file_types=[])
+    policy = SimpleNamespace(
+        allowed_task_categories=["发布"],
+        allowed_root_ids=["root-1"],
+        allowed_file_types=[],
+    )
     task = _ai_task("task-1")
     db = _LookupDb({(Task, task.id): task})
 
@@ -254,13 +288,17 @@ def test_upgrade_restore_rejects_bad_extracted_and_restored_database(
 ) -> None:
     backup = tmp_path / "backup.zip"
     _backup_zip(backup)
-    settings = SimpleNamespace(data_dir=tmp_path, database_path=tmp_path / "partyops.db")
+    settings = SimpleNamespace(
+        data_dir=tmp_path, database_path=tmp_path / "partyops.db"
+    )
     monkeypatch.setattr(upgrades, "get_settings", lambda: settings)
     monkeypatch.setattr(upgrades, "verify_backup", lambda _path: None)
     monkeypatch.setattr(upgrades.db_runtime, "dispose", lambda: None)
     monkeypatch.setattr(upgrades.db_runtime, "rebuild", lambda: None)
 
-    monkeypatch.setattr(upgrades, "sqlite3_connect", lambda _path: _QuickCheck("broken"))
+    monkeypatch.setattr(
+        upgrades, "sqlite3_connect", lambda _path: _QuickCheck("broken")
+    )
     with pytest.raises(RuntimeError, match="升级前备份数据库完整性"):
         upgrades.restore_database_from_upgrade_backup(backup)
 
@@ -329,7 +367,10 @@ def test_secure_update_transaction_uses_protected_windows_location_and_rejects_r
     monkeypatch.setattr(update_executor, "_getenv", lambda _key: "production")
     monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "program-data"))
     transaction = update_executor._secure_update_backup_root("run-windows-1")
-    assert transaction.parent == tmp_path / "program-data" / "PartyOps-System" / "update-transactions"
+    assert (
+        transaction.parent
+        == tmp_path / "program-data" / "PartyOps-System" / "update-transactions"
+    )
     with pytest.raises(RuntimeError, match="已存在"):
         update_executor._secure_update_backup_root("run-windows-1")
 
@@ -346,7 +387,15 @@ def test_installed_deb_snapshot_copies_regular_symlink_and_control_files(
     symlink = tmp_path / "runtime-link"
     symlink.symlink_to(source)
     destination = tmp_path / "rollback" / "partyops.deb"
-    listed = "\n".join(["relative", str(tmp_path / "missing"), str(directory), str(source), str(symlink)])
+    listed = "\n".join(
+        [
+            "relative",
+            str(tmp_path / "missing"),
+            str(directory),
+            str(source),
+            str(symlink),
+        ]
+    )
     copied: list[str] = []
     original_is_file = Path.is_file
     original_relative_to = Path.relative_to
@@ -379,7 +428,9 @@ def test_installed_deb_snapshot_copies_regular_symlink_and_control_files(
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
 
-    monkeypatch.setattr(update_executor, "_installed_package_version", lambda: "1.4.3~rc3")
+    monkeypatch.setattr(
+        update_executor, "_installed_package_version", lambda: "1.4.3~rc3"
+    )
     monkeypatch.setattr(update_executor, "_architecture", lambda: "amd64")
     monkeypatch.setattr(Path, "is_file", is_file)
     monkeypatch.setattr(Path, "relative_to", relative_to)
@@ -394,7 +445,9 @@ def test_installed_deb_snapshot_rejects_build_without_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(update_executor, "_installed_package_version", lambda: "1.4.3~rc3")
+    monkeypatch.setattr(
+        update_executor, "_installed_package_version", lambda: "1.4.3~rc3"
+    )
     monkeypatch.setattr(update_executor, "_architecture", lambda: "arm64")
     monkeypatch.setattr(
         update_executor,
@@ -450,7 +503,13 @@ def test_windows_service_stop_state_machine(
         if command[0] == str(helper):
             code = 0 if scenario == "helper-ok" else 1
             return subprocess.CompletedProcess(command, code, "", "")
-        code = 1062 if scenario == "sc-not-running" else 5 if scenario == "sc-denied" else 0
+        code = (
+            1062
+            if scenario == "sc-not-running"
+            else 5
+            if scenario == "sc-denied"
+            else 0
+        )
         return subprocess.CompletedProcess(command, code, "", "")
 
     monkeypatch.setattr(update_executor, "_run", run)
@@ -487,7 +546,9 @@ def test_update_health_rejects_empty_reported_version(
             return payload
 
     monkeypatch.setattr(update_executor, "get_settings", lambda: settings)
-    monkeypatch.setattr(update_executor.urllib.request, "urlopen", lambda *_a, **_k: Response())
+    monkeypatch.setattr(
+        update_executor.urllib.request, "urlopen", lambda *_a, **_k: Response()
+    )
     assert not update_executor._health_check("1.4.3-rc.3")
 
 
@@ -515,7 +576,10 @@ def test_update_downgrade_bridge_and_daemon_retry_paths(
         def __exit__(self, *_args):
             return False
 
-    monkeypatch.setattr(update_executor.db_runtime, "session_factory", lambda: BrokenFactory())
+    monkeypatch.setattr(
+        update_executor.db_runtime, "session_factory", lambda: BrokenFactory()
+    )
+
     def stop_daemon(_seconds: float) -> None:
         raise StopIteration
 
@@ -528,7 +592,9 @@ def test_update_downgrade_bridge_and_daemon_retry_paths(
 def test_trusted_host_environment_rejects_unsafe_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(update_executor, "_trusted_system_environment_file", lambda _path: False)
+    monkeypatch.setattr(
+        update_executor, "_trusted_system_environment_file", lambda _path: False
+    )
     assert update_executor._candidate_host_environments() == []
 
 
@@ -550,7 +616,13 @@ def test_execute_host_update_missing_run_and_package_states(
             return False
 
         def get(self, model, _identity):
-            return self.run if model is UpdateRun else self.package if model is UpdatePackage else None
+            return (
+                self.run
+                if model is UpdateRun
+                else self.package
+                if model is UpdatePackage
+                else None
+            )
 
     current = Session()
     monkeypatch.setattr(update_executor, "get_settings", lambda: settings)
@@ -602,13 +674,15 @@ def test_wizard_health_terminal_invalid_personal_and_timeout_diagnostics(
     monkeypatch.setattr(
         setup_wizard,
         "read_service_status",
-        lambda _path: terminal_statuses.pop(0)
-        if terminal_statuses
-        else {
-            "updated_at": "current",
-            "code": "CHILD_EXITED",
-            "detail": "子进程退出",
-        },
+        lambda _path: (
+            terminal_statuses.pop(0)
+            if terminal_statuses
+            else {
+                "updated_at": "current",
+                "code": "CHILD_EXITED",
+                "detail": "子进程退出",
+            }
+        ),
     )
     with pytest.raises(setup_wizard.HostStartupError) as terminal:
         setup_wizard.wait_for_host_health(
@@ -644,9 +718,12 @@ def test_wizard_health_terminal_invalid_personal_and_timeout_diagnostics(
         lambda *_a, **_k: _WizardHealthResponse(payload),
     )
     monkeypatch.setattr(setup_wizard.time, "monotonic", lambda: 0.0)
-    assert setup_wizard.wait_for_host_health(
-        "127.0.0.1", 18765, timeout=5, service_managed=False
-    ) == "http://127.0.0.1:18765"
+    assert (
+        setup_wizard.wait_for_host_health(
+            "127.0.0.1", 18765, timeout=5, service_managed=False
+        )
+        == "http://127.0.0.1:18765"
+    )
 
 
 @pytest.mark.parametrize(
@@ -688,19 +765,19 @@ def test_wizard_health_status_file_overrides_generic_timeout(
     monkeypatch.setattr(setup_wizard, "os", _os_proxy("posix"))
     times = iter([0.0, 6.0])
     monkeypatch.setattr(setup_wizard.time, "monotonic", lambda: next(times))
-    statuses = [
-        {"updated_at": "old", "code": "TLS_INIT_FAILED", "detail": "旧诊断"}
-    ]
+    statuses = [{"updated_at": "old", "code": "TLS_INIT_FAILED", "detail": "旧诊断"}]
     monkeypatch.setattr(
         setup_wizard,
         "read_service_status",
-        lambda _path: statuses.pop(0)
-        if statuses
-        else {
-            "updated_at": "current",
-            "code": "TLS_INIT_FAILED",
-            "detail": "证书初始化失败",
-        },
+        lambda _path: (
+            statuses.pop(0)
+            if statuses
+            else {
+                "updated_at": "current",
+                "code": "TLS_INIT_FAILED",
+                "detail": "证书初始化失败",
+            }
+        ),
     )
     with pytest.raises(setup_wizard.HostStartupError) as caught:
         setup_wizard.wait_for_host_health(
@@ -714,7 +791,11 @@ def test_windows_data_directory_unc_root_profile_and_fixed_disk_guards(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(setup_wizard, "os", _os_proxy("nt"))
-    monkeypatch.setattr(setup_wizard, "assert_windows_service_data_path_security", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        setup_wizard,
+        "assert_windows_service_data_path_security",
+        lambda *_a, **_k: None,
+    )
     monkeypatch.setattr(
         setup_wizard.shutil,
         "disk_usage",
@@ -763,12 +844,16 @@ def test_wizard_non_windows_guards_plain_config_and_device_config(
 
     config_root = tmp_path / "config"
     monkeypatch.setattr(setup_wizard, "config_root", lambda: config_root)
-    monkeypatch.setattr(setup_wizard, "runtime_root", lambda: tmp_path / "runtime-without-key")
+    monkeypatch.setattr(
+        setup_wizard, "runtime_root", lambda: tmp_path / "runtime-without-key"
+    )
     monkeypatch.setattr(setup_wizard, "discover_lan_addresses", lambda: [])
     config = setup_wizard.write_host_config(
         "127.0.0.1", 18765, data_dir, write_user_mode=False
     )
-    assert config.is_file() and "PARTYOPS_UPDATE_PUBLIC_KEY" not in config.read_text(encoding="utf-8")
+    assert config.is_file() and "PARTYOPS_UPDATE_PUBLIC_KEY" not in config.read_text(
+        encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="个人模式端口"):
         setup_wizard.write_personal_config(data_dir, 80)
 
@@ -796,7 +881,9 @@ def test_windows_service_autostart_success_and_missing_start(
     )
     setup_wizard._enable_windows_host_service_autostart()
 
-    monkeypatch.setattr(setup_wizard, "_query_windows_host_service", lambda: ("missing", "未安装"))
+    monkeypatch.setattr(
+        setup_wizard, "_query_windows_host_service", lambda: ("missing", "未安装")
+    )
     with pytest.raises(setup_wizard.HostStartupError) as missing:
         setup_wizard._start_windows_host_service(timeout=5)
     assert missing.value.code == setup_wizard.SERVICE_MISSING
@@ -829,7 +916,9 @@ def test_folder_picker_empty_result_missing_client_config_and_cli_guards(
         lambda *_a, **_k: subprocess.CompletedProcess([], 1, "", ""),
     )
     assert setup_wizard._choose_system_folder() is None
-    monkeypatch.setattr(setup_wizard, "config_root", lambda: tmp_path / "missing-config")
+    monkeypatch.setattr(
+        setup_wizard, "config_root", lambda: tmp_path / "missing-config"
+    )
     with pytest.raises(SystemExit, match="尚未配置"):
         setup_wizard.run_shared_root_manager(open_browser=False)
 
@@ -938,7 +1027,10 @@ def test_client_backup_manifest_rejects_defensive_shapes(
     invalid_fields = tmp_path / "invalid-fields.partyops-backup"
     _write_client_backup(
         invalid_fields,
-        manifest={"format": "partyops-backup", "files": [{"path": "database/partyops.db"}]},
+        manifest={
+            "format": "partyops-backup",
+            "files": [{"path": "database/partyops.db"}],
+        },
     )
     with pytest.raises(ValueError, match="校验字段无效"):
         client_agent.verify_local_backup(invalid_fields)
@@ -1011,8 +1103,14 @@ def test_client_backup_detects_overrun_missing_database_and_unexpected_member(
 
 
 def test_client_response_filename_and_safe_root_filtering(tmp_path: Path) -> None:
-    assert client_agent._response_filename("attachment; filename*=UTF-8%20name.zip") == "UTF-8 name.zip"
-    assert client_agent._response_filename("attachment") == "PartyOps-latest.partyops-backup"
+    assert (
+        client_agent._response_filename("attachment; filename*=UTF-8%20name.zip")
+        == "UTF-8 name.zip"
+    )
+    assert (
+        client_agent._response_filename("attachment")
+        == "PartyOps-latest.partyops-backup"
+    )
     valid = tmp_path / "共享目录"
     valid.mkdir()
     roots = client_agent._safe_shared_roots(
@@ -1045,9 +1143,12 @@ def test_client_enrollment_cache_retry_and_invalid_result(
         json.dumps({**identity, "result": {"device_token": "cached-token"}}),
         encoding="utf-8",
     )
-    assert client_agent.enroll_device(
-        identity["host_url"], code, identity["device_name"], pending_path=pending
-    )["device_token"] == "cached-token"
+    assert (
+        client_agent.enroll_device(
+            identity["host_url"], code, identity["device_name"], pending_path=pending
+        )["device_token"]
+        == "cached-token"
+    )
 
     pending.unlink()
     calls = 0
@@ -1060,11 +1161,16 @@ def test_client_enrollment_cache_retry_and_invalid_result(
         return {"device_token": "new-token"}
 
     monkeypatch.setattr(client_agent, "_json_request", retry_request)
-    monkeypatch.setattr(client_agent, "device_metadata", lambda: {"platform": "windows"})
+    monkeypatch.setattr(
+        client_agent, "device_metadata", lambda: {"platform": "windows"}
+    )
     monkeypatch.setattr(client_agent.time, "sleep", lambda _seconds: None)
-    assert client_agent.enroll_device(
-        identity["host_url"], code, identity["device_name"], pending_path=pending
-    )["device_token"] == "new-token"
+    assert (
+        client_agent.enroll_device(
+            identity["host_url"], code, identity["device_name"], pending_path=pending
+        )["device_token"]
+        == "new-token"
+    )
     assert calls == 2
 
     pending.unlink()
@@ -1087,7 +1193,9 @@ def test_client_records_auth_failure_and_survives_state_write_error(
         "_save_config",
         lambda *_a, **_k: (_ for _ in ()).throw(OSError("read only")),
     )
-    client_agent._record_agent_failure(tmp_path / "config.json", config, "heartbeat", error)
+    client_agent._record_agent_failure(
+        tmp_path / "config.json", config, "heartbeat", error
+    )
     assert config["authentication_state"] == "reauth_required"
 
 
@@ -1133,26 +1241,51 @@ def test_client_run_exercises_background_state_machine_and_cleanup(
             assert timeout == 2
             self.joined = True
 
+    class FakeFormatterService:
+        def __init__(self, **_kwargs) -> None:
+            self.closed = False
+
+        def start(self):
+            return self
+
+        def close(self) -> None:
+            self.closed = True
+
     monkeypatch.setattr(client_agent, "configure_agent_logging", lambda _path: None)
     monkeypatch.setattr(client_agent, "configure_ssl_context", lambda _config: None)
     monkeypatch.setattr(client_agent, "send_device_heartbeat", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        official_format_service,
+        "OfficialFormatLocalService",
+        FakeFormatterService,
+    )
     monkeypatch.setattr(client_agent.threading, "Thread", FakeThread)
     monkeypatch.setattr(
         client_agent,
         "sync_shared_roots",
         lambda *_a, **_k: (_ for _ in ()).throw(ValueError("同步失败")),
     )
-    monkeypatch.setattr(client_agent, "poll_device_commands", lambda *_a, **_k: [{"id": "1"}])
+    monkeypatch.setattr(
+        client_agent, "poll_device_commands", lambda *_a, **_k: [{"id": "1"}]
+    )
     monkeypatch.setattr(client_agent, "process_device_command", lambda *_a, **_k: True)
     monkeypatch.setattr(client_agent, "pull_backup", lambda *_a, **_k: None)
-    monkeypatch.setattr(client_agent, "scan_and_upload_roots", lambda *_a, **_k: (2, ["部分失败"]))
-    monkeypatch.setattr(client_agent, "_save_config", lambda *_a, **_k: None)
-    monkeypatch.setattr(client_agent, "poll_desktop_notifications", lambda *_a, **_k: True)
-    monkeypatch.setattr(client_agent.time, "monotonic", lambda: 100.0)
     monkeypatch.setattr(
-        client_agent.time,
-        "sleep",
-        lambda _seconds: (_ for _ in ()).throw(RuntimeError("stop-loop")),
+        client_agent, "scan_and_upload_roots", lambda *_a, **_k: (2, ["部分失败"])
+    )
+    monkeypatch.setattr(client_agent, "_save_config", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        client_agent, "poll_desktop_notifications", lambda *_a, **_k: True
+    )
+    # client_agent.time 指向标准库模块；直接修改其属性会污染并发运行的公文
+    # 排版清理线程。替换当前模块引用即可覆盖循环，又不会影响其他线程。
+    monkeypatch.setattr(
+        client_agent,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: 100.0,
+            sleep=lambda _seconds: (_ for _ in ()).throw(RuntimeError("stop-loop")),
+        ),
     )
     with pytest.raises(RuntimeError, match="stop-loop"):
         client_agent.run(config_path, once=False, open_browser=False)
@@ -1195,7 +1328,9 @@ def test_security_bearer_expired_revoked_disabled_and_optional_paths() -> None:
 
     expired = SimpleNamespace(
         revoked_at=None,
-        expires_at=now - timezone.utc.utcoffset(now) - __import__("datetime").timedelta(seconds=1),
+        expires_at=now
+        - timezone.utc.utcoffset(now)
+        - __import__("datetime").timedelta(seconds=1),
         user_id="u1",
     )
     with pytest.raises(ProblemException) as stale:
@@ -1214,7 +1349,9 @@ def test_security_bearer_expired_revoked_disabled_and_optional_paths() -> None:
     assert denied.value.code == "USER_DISABLED"
 
     cookie_request = SimpleNamespace(cookies={security.SESSION_COOKIE: "token"})
-    assert security.get_current_user_optional(cookie_request, SecurityDb(revoked)) is None
+    assert (
+        security.get_current_user_optional(cookie_request, SecurityDb(revoked)) is None
+    )
 
 
 def test_version_and_router_utility_unreachable_guard_branches(
@@ -1233,7 +1370,9 @@ def test_version_and_router_utility_unreachable_guard_branches(
     assert required.value.code == "IF_MATCH_REQUIRED"
 
 
-def _device(*, active: bool = True, status: str = "online", allow_host_access: bool = True):
+def _device(
+    *, active: bool = True, status: str = "online", allow_host_access: bool = True
+):
     return SimpleNamespace(
         id="device-1",
         active=active,
@@ -1279,7 +1418,11 @@ def test_workspace_access_rejects_inactive_wrong_and_unapproved_roots() -> None:
         approval_status="approved",
     )
     assert not workspace_access.grant_allows(
-        _WorkspaceDb(device=_device(), root=wrong), user, "device-1", "root-1", "download"
+        _WorkspaceDb(device=_device(), root=wrong),
+        user,
+        "device-1",
+        "root-1",
+        "download",
     )
 
 
@@ -1436,7 +1579,9 @@ def test_recurrence_extension_rejection_matrix() -> None:
     request = SimpleNamespace(client=None)
 
     with pytest.raises(ProblemException) as missing:
-        recurrence_extensions.get_recurrence_preview("missing", user=member, db=_LookupDb())
+        recurrence_extensions.get_recurrence_preview(
+            "missing", user=member, db=_LookupDb()
+        )
     assert missing.value.code == "RECURRENCE_NOT_FOUND"
 
     rule = SimpleNamespace(id="r1", owner_id="other", version=2)
@@ -1453,14 +1598,24 @@ def test_recurrence_extension_rejection_matrix() -> None:
     )
     with pytest.raises(ProblemException) as version_error:
         recurrence_extensions.create_recurrence_exception(
-            "r1", payload, request, if_match="1", admin=admin, db=_LookupDb({"r1": rule})
+            "r1",
+            payload,
+            request,
+            if_match="1",
+            admin=admin,
+            db=_LookupDb({"r1": rule}),
         )
     assert version_error.value.code == "VERSION_CONFLICT"
 
     payload.action = RecurrenceExceptionAction.RESCHEDULE
     with pytest.raises(ProblemException) as time_error:
         recurrence_extensions.create_recurrence_exception(
-            "r1", payload, request, if_match="2", admin=admin, db=_LookupDb({"r1": rule})
+            "r1",
+            payload,
+            request,
+            if_match="2",
+            admin=admin,
+            db=_LookupDb({"r1": rule}),
         )
     assert time_error.value.code == "RESCHEDULE_TIME_REQUIRED"
 
@@ -1500,7 +1655,9 @@ def test_update_process_and_lock_staleness_matrix(
     monkeypatch.setattr(
         update_executor.time,
         "time",
-        lambda: lock.stat().st_mtime + update_executor.LEGACY_UPDATE_LOCK_GRACE_SECONDS + 1,
+        lambda: (
+            lock.stat().st_mtime + update_executor.LEGACY_UPDATE_LOCK_GRACE_SECONDS + 1
+        ),
     )
     assert update_executor._update_lock_is_stale(lock)
 
@@ -1516,10 +1673,14 @@ def test_update_lock_link_and_exhausted_stale_retry(
     tmp_path: Path,
 ) -> None:
     lock = tmp_path / "update.lock"
-    monkeypatch.setattr(update_executor, "_is_link_or_reparse_point", lambda path: path == lock.parent)
+    monkeypatch.setattr(
+        update_executor, "_is_link_or_reparse_point", lambda path: path == lock.parent
+    )
     assert not update_executor._acquire_update_lock(lock)
 
-    monkeypatch.setattr(update_executor, "_is_link_or_reparse_point", lambda _path: False)
+    monkeypatch.setattr(
+        update_executor, "_is_link_or_reparse_point", lambda _path: False
+    )
     monkeypatch.setattr(update_executor, "_update_lock_is_stale", lambda _path: True)
     monkeypatch.setattr(
         update_executor.os,
@@ -1542,8 +1703,10 @@ def test_update_platform_environment_and_run_status_branches(
     monkeypatch.setattr(
         update_executor.subprocess,
         "run",
-        lambda command, **kwargs: captured.update({"command": command, **kwargs})
-        or subprocess.CompletedProcess(command, 0, "", ""),
+        lambda command, **kwargs: (
+            captured.update({"command": command, **kwargs})
+            or subprocess.CompletedProcess(command, 0, "", "")
+        ),
     )
     update_executor._run(["helper"], environment={"PARTYOPS_TEST": "1"})
     assert captured["env"]["PARTYOPS_TEST"] == "1"
@@ -1566,8 +1729,12 @@ def test_update_platform_environment_and_run_status_branches(
             self.commits += 1
 
     missing_db = RunDb(None)
-    monkeypatch.setattr(update_executor.db_runtime, "session_factory", lambda: missing_db)
-    update_executor._set_run("missing", status=UpdateStatus.APPLYING, progress=200, message="x")
+    monkeypatch.setattr(
+        update_executor.db_runtime, "session_factory", lambda: missing_db
+    )
+    update_executor._set_run(
+        "missing", status=UpdateStatus.APPLYING, progress=200, message="x"
+    )
     assert missing_db.commits == 0
 
     run = SimpleNamespace(status=None, progress=0, message="", completed_at=None)
@@ -1576,7 +1743,11 @@ def test_update_platform_environment_and_run_status_branches(
     update_executor._set_run(
         "run", status=UpdateStatus.COMPLETED, progress=200, message="完成" * 2000
     )
-    assert run.progress == 100 and run.completed_at is not None and len(run.message) == 2000
+    assert (
+        run.progress == 100
+        and run.completed_at is not None
+        and len(run.message) == 2000
+    )
 
 
 def test_update_downgrade_minimum_and_package_manager_helpers(
@@ -1601,7 +1772,9 @@ def test_update_downgrade_minimum_and_package_manager_helpers(
 
     monkeypatch.setattr(update_executor.shutil, "which", lambda _name: None)
     assert not update_executor._install_rpm(tmp_path / "package.rpm")
-    monkeypatch.setattr(update_executor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        update_executor.shutil, "which", lambda name: f"/usr/bin/{name}"
+    )
     monkeypatch.setattr(
         update_executor,
         "_run_linux_package_manager",
@@ -1614,8 +1787,12 @@ def test_update_artifact_selection_rejects_platform_shape_and_suffix(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(update_executor, "_verify_manifest_signature", lambda _manifest: True)
-    monkeypatch.setattr(update_executor, "_assert_update_not_downgrade", lambda _manifest: None)
+    monkeypatch.setattr(
+        update_executor, "_verify_manifest_signature", lambda _manifest: True
+    )
+    monkeypatch.setattr(
+        update_executor, "_assert_update_not_downgrade", lambda _manifest: None
+    )
     package = tmp_path / "package.partyops-update"
     package.write_bytes(b"unused")
     with pytest.raises(RuntimeError, match="不包含"):
@@ -1660,8 +1837,12 @@ def test_update_health_windows_service_and_manifest_platform_matrix(
     monkeypatch.setattr(update_executor.time, "sleep", lambda _seconds: None)
     assert update_executor._wait_for_health("1.4.3-rc.3", 1)
 
-    monkeypatch.setattr(update_executor, "detect_platform_info", lambda: {"family": "windows7"})
-    monkeypatch.setattr(update_executor, "update_platform_key", lambda _info: "windows7")
+    monkeypatch.setattr(
+        update_executor, "detect_platform_info", lambda: {"family": "windows7"}
+    )
+    monkeypatch.setattr(
+        update_executor, "update_platform_key", lambda _info: "windows7"
+    )
     assert update_executor._manifest_has_windows_artifact(
         {
             "format_version": 3,
@@ -1669,13 +1850,17 @@ def test_update_health_windows_service_and_manifest_platform_matrix(
         },
         "x86",
     )
-    monkeypatch.setattr(update_executor, "update_platform_key", lambda _info: "linux-deb")
+    monkeypatch.setattr(
+        update_executor, "update_platform_key", lambda _info: "linux-deb"
+    )
     assert not update_executor._manifest_has_windows_artifact(
         {"format_version": 3, "platform_artifacts": {}}, "amd64"
     )
 
     installer = tmp_path / "PartyOpsService.exe"
-    monkeypatch.setattr(update_executor.sys, "executable", str(tmp_path / "partyops.exe"))
+    monkeypatch.setattr(
+        update_executor.sys, "executable", str(tmp_path / "partyops.exe")
+    )
     installer.write_bytes(b"service")
     monkeypatch.setattr(
         update_executor,

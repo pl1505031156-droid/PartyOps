@@ -6,9 +6,8 @@ Revises: 0019
 
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0020"
 down_revision = "0019"
@@ -22,6 +21,12 @@ def _add_columns(table: str, columns: tuple[sa.Column, ...]) -> None:
     for column in columns:
         if column.name not in existing:
             op.add_column(table, column)
+
+
+def _create_index_if_missing(table: str, name: str, columns: list[str]) -> None:
+    existing = {item["name"] for item in sa.inspect(op.get_bind()).get_indexes(table)}
+    if name not in existing:
+        op.create_index(name, table, columns)
 
 
 def upgrade() -> None:
@@ -243,9 +248,13 @@ def upgrade() -> None:
     for column in ("notification_id", "source_type", "source_id", "rule_type"):
         op.create_index(f"ix_notification_sources_{column}", "notification_sources", [column], unique=column == "notification_id")
 
-    op.create_index("ix_users_archived_at", "users", ["archived_at"])
-    op.create_index("ix_devices_credential_state", "devices", ["credential_state"])
-    op.create_index("ix_notifications_revoked_at", "notifications", ["revoked_at"])
+    _create_index_if_missing("users", "ix_users_archived_at", ["archived_at"])
+    _create_index_if_missing(
+        "devices", "ix_devices_credential_state", ["credential_state"]
+    )
+    _create_index_if_missing(
+        "notifications", "ix_notifications_revoked_at", ["revoked_at"]
+    )
 
 
 def downgrade() -> None:

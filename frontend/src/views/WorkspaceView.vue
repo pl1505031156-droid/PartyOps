@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import {
   IconDownload,
+  IconDelete,
   IconFile,
   IconFolder,
   IconLink,
@@ -40,6 +41,7 @@ import { zhLabel } from "../utils/labels";
 
 const session = useSessionStore();
 const roots = ref<WorkspaceRoot[]>([]);
+const rootLifecycle = ref<"active" | "disabled">("active");
 const files = ref<WorkspaceFile[]>([]);
 const tasks = ref<Task[]>([]);
 const selectedRootId = ref("");
@@ -50,6 +52,15 @@ const keyword = ref("");
 const loading = ref(false);
 const scanning = ref(false);
 const rootVisible = ref(false);
+const rootDeletionVisible = ref(false);
+const rootDeletionReason = ref("");
+const rootDeletionImpact = ref<{
+  indexed_files: number;
+  business_links: number;
+  sharing_members: number;
+  active_transfers: number;
+  original_files_changed: boolean;
+} | null>(null);
 const linkVisible = ref(false);
 const selectionVisible = ref(false);
 const folderOptions = ref<WorkspaceFolderOption[]>([]);
@@ -152,8 +163,13 @@ function rootStatusLabel(status: string) {
 }
 
 async function loadRoots() {
-  roots.value = await api.get<WorkspaceRoot[]>("/workspace/roots");
-  selectedRootId.value = selectedRootId.value || roots.value[0]?.id || "";
+  const path = rootLifecycle.value === "active"
+    ? "/workspace/roots"
+    : "/workspace/roots?lifecycle=disabled";
+  roots.value = await api.get<WorkspaceRoot[]>(path);
+  if (!roots.value.some((item) => item.id === selectedRootId.value)) {
+    selectedRootId.value = roots.value[0]?.id || "";
+  }
   const hasRunningScan = roots.value.some((item) =>
     ["pending", "running"].includes(item.scan_status),
   );
@@ -167,7 +183,7 @@ async function loadRoots() {
 }
 
 async function loadFiles() {
-  if (!selectedRootId.value) {
+  if (!selectedRootId.value || rootLifecycle.value === "disabled") {
     files.value = [];
     return;
   }
@@ -202,6 +218,16 @@ async function changeRoot(rootId: string) {
   selectedFile.value = null;
   checkedIds.value = [];
   keyword.value = "";
+  if (rootLifecycle.value === "active") await loadFiles();
+}
+
+async function changeRootLifecycle(value: string | number | boolean) {
+  rootLifecycle.value = value === "disabled" ? "disabled" : "active";
+  selectedRootId.value = "";
+  pathStack.value = [];
+  selectedFile.value = null;
+  checkedIds.value = [];
+  await loadRoots();
   await loadFiles();
 }
 
@@ -256,6 +282,58 @@ async function createRoot() {
     await changeRoot(created.id);
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "目录纳管失败");
+  }
+}
+
+async function openRootDeletion() {
+  if (!selectedRoot.value) return;
+  try {
+    rootDeletionImpact.value = await api.get(
+      `/workspace/roots/${selectedRoot.value.id}/deletion-impact`,
+    );
+    rootDeletionReason.value = "";
+    rootDeletionVisible.value = true;
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "目录移除影响读取失败");
+  }
+}
+
+async function deleteRoot() {
+  if (!selectedRoot.value) return;
+  if (rootDeletionReason.value.trim().length < 2) {
+    Message.warning("请填写至少两个字的移除原因");
+    return;
+  }
+  try {
+    await api.deleteBody(
+      `/workspace/roots/${selectedRoot.value.id}`,
+      { reason: rootDeletionReason.value.trim() },
+      { "If-Match": String(selectedRoot.value.version) },
+    );
+    rootDeletionVisible.value = false;
+    selectedRootId.value = "";
+    Message.success("目录已停用，原文件未被改动，可在已停用目录中恢复");
+    await loadRoots();
+    await loadFiles();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "目录停用失败");
+  }
+}
+
+async function restoreRoot() {
+  if (!selectedRoot.value) return;
+  try {
+    await api.post(
+      `/workspace/roots/${selectedRoot.value.id}/restore`,
+      { reason: "管理员核对目录位置后恢复使用" },
+      { "If-Match": String(selectedRoot.value.version) },
+    );
+    Message.success("目录已恢复，请执行增量扫描重新确认当前文件范围");
+    selectedRootId.value = "";
+    await loadRoots();
+    await loadFiles();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "目录恢复失败");
   }
 }
 
@@ -879,6 +957,16 @@ onBeforeUnmount(() => {
           :tips="['目录扫描只登记属性；正文只在用户点击预览时按权限临时读取。', 'Office 与 PDF 使用本地 Firecrawl 解析器生成安全阅读视图，原文件不会上传外网。', '共享电脑文件经主机分块中转和哈希校验后，可预览、下载或发送到其他协同机。']"
           help-query="原始文件中心"
         />
+        <a-radio-group
+          v-if="canManageHostFolder"
+          :model-value="rootLifecycle"
+          type="button"
+          size="small"
+          @change="changeRootLifecycle"
+        >
+          <a-radio value="active">使用中</a-radio>
+          <a-radio value="disabled">已停用</a-radio>
+        </a-radio-group>
         <a-dropdown trigger="click">
           <a-button type="primary" aria-label="操作目录"><template #icon><IconPlus /></template>操作目录</a-button>
           <template #content>
@@ -887,13 +975,15 @@ onBeforeUnmount(() => {
             <a-doption v-if="!canShareLocalFolder && !canManageHostFolder" @click="explainDirectoryOperations">查看当前设备为何不能添加目录</a-doption>
           </template>
         </a-dropdown>
-        <a-button v-if="selectedRoot?.permissions.manage_root && selectedRoot.source === 'device'" aria-label="设置共享范围" @click="openSharing(selectedRoot)"><template #icon><IconSafe /></template>共享范围</a-button>
-        <a-button v-if="selectedRoot && selectedRoot.source !== 'device' && session.runtimeContext?.capabilities.includes('workspace.manage_host_roots')" aria-label="选择接入文件夹" @click="openSelection">
+        <a-button v-if="selectedRoot?.enabled && selectedRoot.permissions.manage_root && selectedRoot.source === 'device'" aria-label="设置共享范围" @click="openSharing(selectedRoot)"><template #icon><IconSafe /></template>共享范围</a-button>
+        <a-button v-if="selectedRoot?.enabled && selectedRoot.source !== 'device' && session.runtimeContext?.capabilities.includes('workspace.manage_host_roots')" aria-label="选择接入文件夹" @click="openSelection">
           <template #icon><IconFolder /></template>选择接入文件夹
         </a-button>
-        <a-button v-if="selectedRoot && selectedRoot.source !== 'device' && session.runtimeContext?.capabilities.includes('workspace.manage_host_roots')" aria-label="增量扫描" :loading="scanning" type="primary" @click="scanRoot">
+        <a-button v-if="selectedRoot?.enabled && selectedRoot.source !== 'device' && session.runtimeContext?.capabilities.includes('workspace.manage_host_roots')" aria-label="增量扫描" :loading="scanning" type="primary" @click="scanRoot">
           <template #icon><IconRefresh /></template>增量扫描
         </a-button>
+        <a-button v-if="selectedRoot?.enabled && canManageHostFolder" status="danger" aria-label="停用当前目录" @click="openRootDeletion"><template #icon><IconDelete /></template>移除目录</a-button>
+        <a-button v-else-if="selectedRoot && canManageHostFolder" type="primary" aria-label="恢复当前目录" @click="restoreRoot">恢复目录</a-button>
       </a-space>
     </header>
 
@@ -912,6 +1002,9 @@ onBeforeUnmount(() => {
 
     <div v-if="selectedRoot" class="workspace-layout">
       <main class="file-browser">
+        <a-alert v-if="!selectedRoot.enabled" type="info" class="selection-alert">
+          该目录已停用，原文件、业务关联和审计记录没有删除。恢复后需重新扫描确认当前文件范围。
+        </a-alert>
         <a-alert
           v-if="selectedRoot.selection_mode === 'selected' && !selectedRoot.included_paths.length"
           type="warning"
@@ -1089,6 +1182,17 @@ onBeforeUnmount(() => {
         <a-form-item label="显示名称"><a-input v-model="rootForm.name" /></a-form-item>
         <a-form-item label="主机绝对路径"><a-input v-model="rootForm.absolute_path" placeholder="/data/home/用户名/2026年工作" /></a-form-item>
       </a-form>
+    </a-modal>
+
+    <a-modal v-model:visible="rootDeletionVisible" title="停用原始文件目录" ok-text="确认停用" @ok="deleteRoot">
+      <a-alert type="warning">系统只停止索引和共享，不移动、不修改、不删除磁盘上的任何原文件；历史业务关联和审计记录继续保留。</a-alert>
+      <div v-if="rootDeletionImpact" class="root-deletion-impact">
+        <span>索引文件 <b>{{ rootDeletionImpact.indexed_files }}</b></span>
+        <span>业务关联 <b>{{ rootDeletionImpact.business_links }}</b></span>
+        <span>共享成员 <b>{{ rootDeletionImpact.sharing_members }}</b></span>
+        <span>活动传输 <b>{{ rootDeletionImpact.active_transfers }}</b></span>
+      </div>
+      <a-form-item label="停用原因" required><a-textarea v-model="rootDeletionReason" :max-length="1000" show-word-limit /></a-form-item>
     </a-modal>
 
     <a-modal
@@ -1650,5 +1754,32 @@ onBeforeUnmount(() => {
 
 .root-form {
   margin-top: 18px;
+}
+
+.root-deletion-impact {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 16px 0;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.root-deletion-impact span {
+  padding: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  background: #fffaf0;
+}
+
+.root-deletion-impact b {
+  display: block;
+  margin-top: 5px;
+  color: var(--charcoal);
+  font: 22px Georgia, serif;
+}
+
+@media (max-width: 720px) {
+  .root-deletion-impact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
