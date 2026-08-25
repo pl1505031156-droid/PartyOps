@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from datetime import date as dt_date
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -38,6 +38,10 @@ from .enums import (
     TaskType,
     UserRole,
 )
+
+# ``datetime.UTC`` 仅在 Python 3.11+ 提供。Win7 专用运行时仍使用受维护的
+# CPython 3.8 安全回移环境，因此统一复用跨版本等价常量。
+UTC = timezone.utc
 
 
 def serialize_api_datetime(value: datetime) -> str:

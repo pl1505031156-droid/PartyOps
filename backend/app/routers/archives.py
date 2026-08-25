@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import typing
 from datetime import timedelta
 from typing import Any
 
@@ -338,7 +339,7 @@ def _add_revision(
     )
 
 
-@router.get("/archives/categories", response_model=list[ArchiveCategoryOut])
+@router.get("/archives/categories", response_model=typing.List[ArchiveCategoryOut])
 def list_archive_categories(
     request: Request,
     include_inactive: bool = False,
@@ -483,7 +484,7 @@ def create_archive_category_grant(
 
 @router.get(
     "/archives/categories/{category_id}/grants",
-    response_model=list[ArchiveAccessGrantOut],
+    response_model=typing.List[ArchiveAccessGrantOut],
 )
 def list_archive_category_grants(
     category_id: str,
@@ -600,7 +601,7 @@ def list_archive_years(
     return {"years": summaries}
 
 
-@router.get("/archives/records", response_model=list[ArchiveRecordOut])
+@router.get("/archives/records", response_model=typing.List[ArchiveRecordOut])
 def list_archive_records(
     request: Request,
     archive_year: int | None = Query(default=None, ge=1_000, le=9_999),
@@ -900,7 +901,10 @@ async def upload_archive_attachment(
     return _attachment_out(db, attachment)
 
 
-@router.get("/archives/records/{record_id}/attachments", response_model=list[ArchiveAttachmentOut])
+@router.get(
+    "/archives/records/{record_id}/attachments",
+    response_model=typing.List[ArchiveAttachmentOut],
+)
 def list_archive_attachments(
     record_id: str,
     request: Request,
@@ -1097,7 +1101,10 @@ def void_archive_attachment(
     return _attachment_out(db, attachment)
 
 
-@router.get("/archives/records/{record_id}/history", response_model=list[ArchiveRevisionOut])
+@router.get(
+    "/archives/records/{record_id}/history",
+    response_model=typing.List[ArchiveRevisionOut],
+)
 def archive_history(
     record_id: str,
     request: Request,
@@ -1198,7 +1205,7 @@ def unlink_archive_record(
     return _record_out(db, record, user, include_attachments=True, device_id=device_id)
 
 
-@router.get("/archives/search", response_model=list[ArchiveRecordOut])
+@router.get("/archives/search", response_model=typing.List[ArchiveRecordOut])
 def search_archives(
     request: Request,
     keyword: str = Query(min_length=1, max_length=200),

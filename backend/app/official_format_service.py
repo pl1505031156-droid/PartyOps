@@ -21,7 +21,7 @@ import time
 import urllib.parse
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -41,6 +41,9 @@ from .official_format import (
     format_docx,
     prepare_docx,
 )
+
+# 兼容 Win7 的 CPython 3.8；语义与 Python 3.11 的 datetime.UTC 完全一致。
+UTC = timezone.utc
 
 LOCAL_FORMAT_PORT = 18768
 TICKET_TTL_SECONDS = 120

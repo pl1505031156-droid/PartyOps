@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import timezone
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -22,6 +22,8 @@ from ..official_format_service import (
 from ..problems import ProblemException
 from ..security import get_current_user
 from .workspace import is_host_local_request
+
+UTC = timezone.utc
 
 router = APIRouter(tags=["official-format"])
 

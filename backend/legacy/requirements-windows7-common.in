@@ -21,6 +21,9 @@ python-docx<1.2
 lxml==6.1.1
 PyMuPDF<1.25
 openpyxl==3.1.5
+# 0.3.2 是仍提供 CPython 3.8 双架构轮子的最后一代兼容线；仅用于 Win7
+# 台账容器解析，主线系统继续使用经过完整门禁的新版 0.8.2。
+python-calamine==0.3.2
 Pillow==12.3.0+partyops.1
 pytesseract==0.3.13
 # 上游安全版本已停止支持 Python 3.8；正式 wheel 必须由

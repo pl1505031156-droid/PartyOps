@@ -10,10 +10,11 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, date, datetime, timedelta
+import typing
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -73,6 +74,8 @@ from ..schemas import (
     LedgerImportValidateRequest,
 )
 from ..security import get_current_user
+
+UTC = timezone.utc
 from .router_utils import client_ip
 
 router = APIRouter(tags=["ledger-imports"])
@@ -1119,7 +1122,7 @@ def undo_import(
     return _job_out(job)
 
 
-@router.get("/ledger-imports/templates", response_model=list[dict])
+@router.get("/ledger-imports/templates", response_model=typing.List[dict])
 def list_templates(
     target_type: str,
     target_id: str | None = None,
@@ -1176,13 +1179,17 @@ def patch_template(
     return _template_out(item)
 
 
-@router.delete("/ledger-imports/templates/{template_id}", status_code=204)
+@router.delete(
+    "/ledger-imports/templates/{template_id}",
+    status_code=204,
+    response_class=Response,
+)
 def delete_template(
     template_id: str,
     request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
-) -> None:
+) -> Response:
     item = db.get(LedgerImportMappingTemplate, template_id)
     if not item or item.created_by != user.id:
         raise ProblemException(404, "LEDGER_TEMPLATE_NOT_FOUND", "映射模板不存在", "请刷新后重试。")
@@ -1190,3 +1197,4 @@ def delete_template(
     item.version += 1
     write_audit(db, user, "ledger_import.template_disabled", "ledger_import_mapping_template", item.id, {}, client_ip(request))
     db.commit()
+    return Response(status_code=204)

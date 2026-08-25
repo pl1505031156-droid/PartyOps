@@ -18,7 +18,7 @@
 | 协同桌面 | 配对设备读取摘要、重复轮询、其他用户提醒 | 只返回当前账号摘要；同一 revision 不重复弹出 | `test_paired_desktop_notification_is_private_and_deduplicated` |
 | Agent 退化 | 主机不可达、响应缺字段、系统通知 API 不可用 | 保留旧状态并安全回退，不泄露正文或阻断业务页面 | `test_command_notification_and_network_fallbacks`、`test_notifications_reachability_and_desktop_revision` |
 
-专项筛选命令 `pytest tests -k "notification or reminder" -q` 共 14 项通过；相关用例同时包含在 1391 项后端全量覆盖率基线中。前端通知中心、今日工作台、设置提醒偏好、任务详情和发展党员时间轴包含在 216 项前端全量回归中。
+专项筛选命令 `pytest tests -k "notification or reminder" -q` 共 14 项通过；相关用例同时包含在 1392 项后端全量覆盖率基线中。前端通知中心、今日工作台、设置提醒偏好、任务详情和发展党员时间轴包含在 216 项前端全量回归中。
 
 ## 原生制品阶段仍需复核
 

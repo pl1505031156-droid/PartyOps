@@ -704,6 +704,9 @@ pymupdf==1.24.11 \
     --hash=sha256:745ce77532702d6ddeeecb47306d3669629aa5ff82708318cd652881f493b0ba \
     --hash=sha256:9b7ac5b8ec3daec17f2e830962ed091610e576a5e531d2fe28c437fbd69b1969
     # via -r backend/legacy/requirements-windows7-common.in
+python-calamine==0.3.2 \
+    --hash=sha256:12cf51fa76470ba55fc87dafd151dd25653fbec8ce8f561fb3035aaac2e15fc5
+    # via -r backend/legacy/requirements-windows7-common.in
 pyreadline3==3.5.6 \
     --hash=sha256:61e53218b99656091ddb077df9e71f25850e72e030b6183b39c9b7e6e4f4a9bf \
     --hash=sha256:8449b734232e42a5dcd74048e39b60db2839a4c38cf3ae2bf7707d58b5389c0d

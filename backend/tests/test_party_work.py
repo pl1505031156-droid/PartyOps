@@ -16,19 +16,42 @@ from app.config import Settings
 from app.database import DatabaseRuntime
 
 
-def test_party_work_fastapi_models_are_python38_import_safe() -> None:
-    """FastAPI 装饰器会立即求值，禁止在 Win7 Python 3.8 中不可下标的内置类型。"""
-    source_path = Path(__file__).resolve().parents[1] / "app" / "routers" / "party_work.py"
-    tree = ast.parse(source_path.read_text(encoding="utf-8"))
-    unsafe: list[tuple[int, str]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.keyword) or node.arg != "response_model":
-            continue
-        value = node.value
-        if isinstance(value, ast.Subscript) and isinstance(value.value, ast.Name):
-            if value.value.id in {"list", "dict", "set", "tuple", "type"}:
-                unsafe.append((value.lineno, value.value.id))
+def test_fastapi_models_are_python38_import_safe() -> None:
+    """扫描全部路由，禁止把 Python 3.9+ 内置泛型放入会立即求值的装饰器。"""
+
+    routers = Path(__file__).resolve().parents[1] / "app" / "routers"
+    unsafe: list[tuple[str, int, str]] = []
+    for source_path in sorted(routers.glob("*.py")):
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.keyword) or node.arg != "response_model":
+                continue
+            value = node.value
+            if isinstance(value, ast.Subscript) and isinstance(value.value, ast.Name):
+                if value.value.id in {"list", "dict", "set", "tuple", "type"}:
+                    unsafe.append((source_path.name, value.lineno, value.value.id))
     assert unsafe == []
+
+
+def test_backend_datetime_utc_is_python38_import_safe() -> None:
+    """Win7 的 CPython 3.8 没有 datetime.UTC，所有运行模块必须使用 timezone.utc。"""
+
+    app_root = Path(__file__).resolve().parents[1] / "app"
+    violations: list[tuple[str, int]] = []
+    for source_path in sorted(app_root.rglob("*.py")):
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "datetime":
+                if any(alias.name == "UTC" for alias in node.names):
+                    violations.append((source_path.relative_to(app_root).as_posix(), node.lineno))
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "datetime"
+                and node.attr == "UTC"
+            ):
+                violations.append((source_path.relative_to(app_root).as_posix(), node.lineno))
+    assert violations == []
 
 
 def test_alembic_migrations_defer_builtin_generic_annotations() -> None:
