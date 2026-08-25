@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import socket
 from datetime import datetime, timezone
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -15,7 +13,11 @@ from cryptography.x509.oid import NameOID
 
 from app import networking, pki, workspace_access
 from app.enums import ObjectType, UserRole, WorkspaceRootSource
-from app.models import ActivityEvent, Device, ObjectLink, User, WorkspaceRoot, WorkspaceRootMember
+from app.models import (
+    Device,
+    ObjectLink,
+    WorkspaceRoot,
+)
 from app.problems import ProblemException
 from app.routers import guidance, relations
 

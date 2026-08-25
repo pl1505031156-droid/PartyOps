@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import calendar
+import io
 import re
 import tarfile
 import zipfile
@@ -20,10 +20,9 @@ from fastapi import UploadFile
 from openpyxl import load_workbook
 from PIL import Image
 
-from .schemas import IntakeCandidate
-from .problems import ProblemException
 from .compat import to_thread
-
+from .problems import ProblemException
+from .schemas import IntakeCandidate
 
 DATE_PATTERNS = [
     re.compile(r"(?P<year>20\d{2})[年./-](?P<month>\d{1,2})[月./-](?P<day>\d{1,2})日?"),

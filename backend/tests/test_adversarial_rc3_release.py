@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import asyncio
 import errno
+import hashlib
 import os
 import sqlite3
 import sys
@@ -13,12 +13,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from starlette.requests import Request
 from sqlalchemy.dialects import sqlite
 from sqlalchemy.schema import CreateIndex
+from starlette.requests import Request
 
 from app import __version__ as APP_VERSION
-from app import client_agent, main as app_main, setup_wizard, update_executor, windows_host_status
+from app import client_agent, setup_wizard, update_executor, windows_host_status
+from app import main as app_main
 from app.models import UpdateRun
 from app.routers import updates as updates_router
 

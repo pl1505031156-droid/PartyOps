@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 from app.enums import UserRole
 from app.models import WorkspaceFile, WorkspaceRoot
 from app.problems import ProblemException

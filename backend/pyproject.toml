@@ -42,6 +42,11 @@ include = ["app*"]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 
+[tool.ruff.lint]
+# 发布门禁聚焦语法、未定义/未使用对象与确定性的导入顺序；更广泛的风格规则
+# 作为后续渐进治理项，避免把安全回退和跨平台兼容代码机械改写成高风险大变更。
+select = ["E9", "F", "I"]
+
 [tool.coverage.run]
 branch = true
 source = ["app"]
@@ -49,6 +54,6 @@ source = ["app"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-# 行覆盖率与分支覆盖率均由 scripts/verify-coverage.py 按 90% 分别校验；coverage.py
+# 行覆盖率与分支覆盖率由 scripts/verify-coverage.py 按 95% / 92% 分别校验；coverage.py
 # 的单一 fail_under 会在 branch=true 时混合两个指标，无法表达发布门禁语义。
 fail_under = 0

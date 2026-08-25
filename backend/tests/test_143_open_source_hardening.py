@@ -12,17 +12,17 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import Request
 
+from app.ai_service import validate_provider_url
+from app.backups import _safe_zip_members, verify_backup
 from app.config import Settings, get_settings
 from app.content_security import may_render_inline
 from app.database import db_runtime
 from app.device_versions import request_device
-from app.backups import _safe_zip_members, verify_backup
-from app.ai_service import validate_provider_url
 from app.intake import MAX_PDF_PAGES, _extract_pdf, extract_path_content
-from app.models import Device
 from app.model_packs import _manifest_signature_valid as model_signature_valid
-from app.routers.updates import _manifest_signature_valid as update_signature_valid
+from app.models import Device
 from app.problems import ProblemException
+from app.routers.updates import _manifest_signature_valid as update_signature_valid
 from app.spreadsheet_security import safe_spreadsheet_cell, safe_spreadsheet_row
 
 

@@ -16,12 +16,12 @@ from fastapi import UploadFile
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
+from .config import get_settings
 from .database import db_runtime
 from .enums import (
     ArchiveAccessMode,
     ArchiveAttachmentStatus,
     ArchiveRecordMode,
-    ArchiveRecordStatus,
     UserRole,
 )
 from .intake import extract_path_text
@@ -35,8 +35,6 @@ from .models import (
 )
 from .problems import ProblemException
 from .storage import normalize_client_upload_id, resolve_blob_path
-from .config import get_settings
-
 
 ALLOWED_SUFFIXES = {
     ".pdf",

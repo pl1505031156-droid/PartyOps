@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 from app import package_selftest, update_executor
 
 ROOT = Path(__file__).resolve().parents[2]

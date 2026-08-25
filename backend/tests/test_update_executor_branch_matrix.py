@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import subprocess
 import sys
 import urllib.error
 import zipfile
-from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 

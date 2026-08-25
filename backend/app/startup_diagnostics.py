@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-
 DATABASE_LOCKED = "DATABASE_LOCKED"
 DATABASE_CORRUPT = "DATABASE_CORRUPT"
 DATABASE_SCHEMA_FAILED = "DATABASE_SCHEMA_FAILED"

@@ -15,7 +15,6 @@ from dataclasses import dataclass
 
 from .config import Settings, get_settings
 
-
 logger = logging.getLogger("partyops.auth")
 
 

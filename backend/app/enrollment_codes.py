@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 import unicodedata
 
-
 ENROLLMENT_SECRET_LENGTH = 24
 ENROLLMENT_FINGERPRINT_LENGTH = 64
 MAX_ENROLLMENT_INPUT_LENGTH = 1024

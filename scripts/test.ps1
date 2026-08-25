@@ -26,7 +26,12 @@ Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") audit --pro
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "website") audit --prod --audit-level high } "官网生产依赖审计"
 Invoke-Checked { & $python -m pip check } "Python 依赖一致性检查"
 Invoke-Checked { & $python -m pip_audit -r (Join-Path $root "backend\requirements-release.txt") } "Python 依赖审计"
+Invoke-Checked { & (Join-Path $root "scripts\scan-secrets.ps1") } "Git 历史与工作区凭据扫描"
+Invoke-Checked {
+  & $python -m bandit -r (Join-Path $root "backend\app") (Join-Path $root "packaging\windows") -x (Join-Path $root "backend\.test-data") -ll
+} "Python 中高危静态安全扫描"
 Invoke-Checked { & $python -m compileall -q (Join-Path $root "backend\app") (Join-Path $root "backend\tests") } "Python 编译检查"
+Invoke-Checked { & $python -m ruff check (Join-Path $root "backend\app") (Join-Path $root "backend\tests") } "Python Ruff 检查"
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") run typecheck } "前端类型检查"
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") run test:coverage } "前端覆盖率测试"
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") run test:sites } "静态入口测试"
@@ -45,7 +50,7 @@ try {
       & $python -m coverage json --fail-under=0 -o coverage-release.json
     } "后端覆盖率报告"
     Invoke-Checked {
-      & $python (Join-Path $root "scripts\verify-coverage.py") coverage-release.json --line 90 --branch 90
+      & $python (Join-Path $root "scripts\verify-coverage.py") coverage-release.json --line 95 --branch 92
     } "后端覆盖率门禁"
 }
 finally {

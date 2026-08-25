@@ -20,7 +20,6 @@ from ..security import get_current_user
 from ..work_journal import ACTION_LABELS, ROLE_LABELS
 from .router_utils import client_ip, parse_if_match, parse_object_type
 
-
 router = APIRouter(tags=["object-relations"])
 
 

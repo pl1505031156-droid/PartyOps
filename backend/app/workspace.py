@@ -11,10 +11,9 @@ import shutil
 import threading
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -33,7 +32,6 @@ from .models import (
 )
 from .problems import ProblemException
 from .schemas import WorkspaceFileOut, WorkspaceScanOut
-
 
 logger = logging.getLogger("partyops.workspace")
 _SCAN_COMMIT_BATCH_SIZE = 500

@@ -6,7 +6,6 @@ import platform
 import sys
 from pathlib import Path
 
-
 CORE_CAPABILITIES = (
     "host",
     "collaboration",

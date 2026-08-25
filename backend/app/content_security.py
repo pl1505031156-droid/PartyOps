@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 SAFE_INLINE_MEDIA_TYPES = {
     "application/pdf",
     "image/avif",

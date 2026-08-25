@@ -17,12 +17,12 @@ export default defineConfig({
       exclude: ["src/**/*.test.ts", "src/**/*.d.ts", "src/main.ts"],
       reporter: ["text", "html", "json-summary"],
       thresholds: {
-        // 发布门槛按用户要求同时约束全仓行、语句与分支覆盖率 90%。
-        // Vue 模板生成函数仍单独保留可解释的函数覆盖率防回退下限。
-        lines: 90,
-        functions: 45,
-        statements: 90,
-        branches: 90,
+        // 以 rc.3 全量真实行为测试达到的稳定峰值为基线，禁止后续用例或功能回退。
+        // Vue 模板会生成大量框架函数，因此函数门禁按可重复达到的实测值单独设置。
+        lines: 95,
+        functions: 46,
+        statements: 95,
+        branches: 93,
       },
     },
   },

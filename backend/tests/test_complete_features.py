@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import io
 import json
-import os
 import re
 import subprocess
 import threading
@@ -21,11 +19,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app import client_agent, main as main_module, networking, scheduler, setup_wizard
+from app import client_agent, networking, scheduler, setup_wizard
+from app import main as main_module
 from app.backups import _ensure_data_child, restore_backup, verify_backup
 from app.config import get_settings
 from app.database import db_runtime
-from app.models import BackupRun, User
+from app.models import BackupRun
 from app.problems import ProblemException
 
 from .conftest import create_task

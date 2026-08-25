@@ -61,6 +61,7 @@ def install_legacy_typing_aliases() -> None:
     if sys.version_info >= (3, 10):
         return
     import typing
+
     import typing_extensions
 
     for name in (

@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
-
 import os
 import subprocess
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from app import calendar_service, update_executor
 from app.enums import (
     CalendarEventType,
-    ObjectType,
     PeriodReportStatus,
     PeriodType,
     Priority,

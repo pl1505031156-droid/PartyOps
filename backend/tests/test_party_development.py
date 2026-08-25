@@ -7,18 +7,22 @@ from datetime import date
 from io import BytesIO
 from pathlib import Path
 
+from alembic.config import Config
 from docx import Document
 from docx.oxml.ns import qn
 from fastapi.testclient import TestClient
-from alembic import command
-from alembic.config import Config
 from openpyxl import load_workbook
 from sqlalchemy import create_engine, inspect
 
+from alembic import command
 from app.database import Base
 from app.models import WorkCalendarEntry
-from app.party_development import WorkdayCalendar, add_months, calculate_party_development
-from app.party_development import safe_person_filename
+from app.party_development import (
+    WorkdayCalendar,
+    add_months,
+    calculate_party_development,
+    safe_person_filename,
+)
 from app.routers import party_development as party_router
 from app.schemas import PartyDevelopmentCalculateRequest
 

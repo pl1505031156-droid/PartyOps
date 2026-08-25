@@ -18,7 +18,6 @@ from .enums import UserRole
 from .models import LoginSession, User, utcnow
 from .problems import ProblemException
 
-
 password_hasher = PasswordHasher()
 SESSION_COOKIE = "partyops_session"
 CSRF_COOKIE = "partyops_csrf"

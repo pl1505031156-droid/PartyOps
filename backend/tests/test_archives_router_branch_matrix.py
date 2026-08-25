@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.enums import ArchiveRecordMode, ArchiveRecordStatus, TaskStatus, UserRole
-from app.models import ArchiveCategory, ArchiveRecord, FileBlob
+from app.enums import ArchiveRecordMode, ArchiveRecordStatus, UserRole
+from app.models import ArchiveCategory
 from app.problems import ProblemException
 from app.routers import archives
 

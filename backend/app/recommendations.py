@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
+from .compat import strict_zip
 from .enums import (
     RecommendationGenerator,
     RecommendationStatus,
@@ -22,7 +23,6 @@ from .enums import (
 )
 from .local_ai import embedding_runtime, local_ai_readiness
 from .model_packs import active_model_pack
-from .compat import strict_zip
 from .models import (
     AIRecommendation,
     ArchiveRecord,
@@ -38,7 +38,6 @@ from .models import (
 )
 from .problems import ProblemException
 from .task_service import visible_tasks
-
 
 TERMINAL_STATUSES = {TaskStatus.COMPLETED, TaskStatus.ARCHIVED}
 SEMANTIC_FAILURE_RETRY = timedelta(hours=6)

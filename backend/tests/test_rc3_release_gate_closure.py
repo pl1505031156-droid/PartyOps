@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import threading
 import zipfile
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,11 +11,11 @@ from types import SimpleNamespace
 import pytest
 
 from app import backups, database, main, schemas, task_service
-from app.enums import TaskStatus, UserRole
+from app.enums import UserRole
+from app.models import WorkspaceRoot
 from app.problems import ProblemException
 from app.routers import productivity
 from app.routers import workspace as workspace_router
-from app.models import WorkspaceRoot
 from tests.test_rc3_remaining_branch_gate import _Db, _request, _task
 
 

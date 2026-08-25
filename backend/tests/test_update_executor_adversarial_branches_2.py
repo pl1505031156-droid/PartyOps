@@ -7,7 +7,6 @@ import hashlib
 import json
 import os
 import stat
-import subprocess
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path

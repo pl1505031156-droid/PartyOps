@@ -18,6 +18,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
+from sqlalchemy.exc import OperationalError
+
 from app import (
     ai_service,
     appearance,
@@ -53,8 +56,6 @@ from app.models import (
 )
 from app.problems import ProblemException
 from app.routers import recurrence_extensions, router_utils
-from pydantic import ValidationError
-from sqlalchemy.exc import OperationalError
 
 
 class _LookupDb:

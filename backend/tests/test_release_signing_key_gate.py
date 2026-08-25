@@ -8,7 +8,6 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "verify-release-signing-key.py"
 GENERATOR = ROOT / "scripts" / "generate-update-key.py"

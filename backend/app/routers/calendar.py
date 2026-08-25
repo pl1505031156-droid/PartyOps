@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import typing
-
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, Query
@@ -25,7 +24,6 @@ from ..schemas import (
 )
 from ..security import get_current_user, require_admin
 from .router_utils import aware_utc, parse_if_match
-
 
 router = APIRouter(tags=["calendar"])
 

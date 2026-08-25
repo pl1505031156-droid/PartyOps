@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 from .enums import ArtLevel, SeasonTheme
 from .models import SystemSetting, User, UserAppearancePreference
 
-
 # 中国现行标准时间全年固定为 UTC+8。使用标准库固定偏移，避免部分
 # Windows/UOS 精简运行时缺少 IANA tzdata 时导致整个服务无法启动。
 SHANGHAI = timezone(timedelta(hours=8), name="Asia/Shanghai")

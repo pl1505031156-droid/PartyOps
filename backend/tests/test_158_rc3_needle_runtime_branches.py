@@ -7,6 +7,7 @@ from datetime import date
 from types import SimpleNamespace
 
 import pytest
+
 from app import needle_intent as needle
 from app.enums import ModelPackStatus
 

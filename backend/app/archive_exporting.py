@@ -12,15 +12,14 @@ from pathlib import Path
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt
 from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .config import get_settings
-from .backups import SCHEMA_VERSION
-from .models import ArchiveAttachment, ArchiveCategory, ArchiveRecord, FileBlob, User
 from .archive_service import can_view_category, safe_archive_name
+from .backups import SCHEMA_VERSION
+from .config import get_settings
+from .models import ArchiveAttachment, ArchiveCategory, ArchiveRecord, FileBlob, User
 from .spreadsheet_security import safe_spreadsheet_row
 
 

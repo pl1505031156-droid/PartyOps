@@ -10,7 +10,6 @@ import re
 from datetime import date, timedelta
 from typing import Any
 
-
 _WRITE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("task.create", re.compile(r"(?:新建|创建|添加|记下).{0,8}(?:事项|任务|待办|提醒)")),
     ("task.delete", re.compile(r"(?:删除|移除|清空).{0,8}(?:事项|任务|待办|提醒|文件|材料)")),

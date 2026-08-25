@@ -20,7 +20,6 @@ from .models import (
 )
 from .task_service import required_materials_missing, visible_tasks
 
-
 LOCAL_TIMEZONE = timezone(timedelta(hours=8))
 
 

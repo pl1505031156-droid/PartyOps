@@ -11,8 +11,7 @@ from pathlib import Path
 import pytest
 
 from app import __version__ as APP_VERSION
-from app import client_agent, setup_wizard
-from app import windows_host_status
+from app import client_agent, setup_wizard, windows_host_status
 from app.windows_host_status import CHILD_EXITED, write_service_status
 
 

@@ -20,7 +20,6 @@ from app.official_format import (
     normalize_chinese_punctuation,
 )
 
-
 ONE_PIXEL_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
 )
@@ -191,6 +190,7 @@ def test_diagnosis_rejects_zip_slip_and_explicitly_blocks_missing_fonts(tmp_path
 
 def test_official_formatter_never_imports_remote_http_clients() -> None:
     import inspect
+
     from app import official_format
 
     source = inspect.getsource(official_format)
@@ -202,6 +202,7 @@ def test_official_formatter_never_imports_remote_http_clients() -> None:
 
 def test_local_formatter_process_guard_denies_non_loopback_connections() -> None:
     import socket
+
     from app.official_format import _install_loopback_only_network_guard
 
     restore = _install_loopback_only_network_guard()

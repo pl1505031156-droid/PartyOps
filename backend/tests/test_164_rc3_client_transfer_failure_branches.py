@@ -7,6 +7,7 @@ import urllib.error
 from pathlib import Path
 
 import pytest
+
 from app import client_agent
 from app.client_agent import AgentCommandError
 

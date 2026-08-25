@@ -25,7 +25,6 @@ from ..schemas import (
 from ..security import get_current_user, get_current_user_optional, require_admin
 from .router_utils import client_ip, parse_if_match
 
-
 router = APIRouter(tags=["appearance"])
 
 

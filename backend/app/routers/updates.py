@@ -2,29 +2,27 @@
 
 from __future__ import annotations
 
-import typing
-
 import base64
 import hashlib
 import hmac
 import json
 import logging
 import os
-import shutil
-import stat
-import sys
-import unicodedata
-import zipfile
 import secrets
+import shutil
 import socket
 import ssl
+import stat
+import sys
 import threading
+import typing
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from datetime import datetime
-from pathlib import Path
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Depends, File, Header, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -38,6 +36,7 @@ from ..backups import SCHEMA_VERSION
 from ..config import get_settings
 from ..database import db_runtime, get_session
 from ..device_versions import ensure_current_release
+from ..enums import UpdateStatus
 from ..models import (
     Device,
     DeviceCommand,
@@ -45,7 +44,6 @@ from ..models import (
     UpdatePackage,
     UpdateRun,
     User,
-    utcnow,
 )
 from ..platform_info import (
     detect_platform_info,
@@ -60,15 +58,14 @@ from ..schemas import (
     UpdateRunOut,
 )
 from ..security import require_admin
-from ..enums import UpdateStatus
-from ..versioning import parse_release_version
-from ..upgrades import create_pre_upgrade_backup
 from ..update_executor import (
     _trusted_public_key,
     launch_linux_personal_update,
     launch_macos_update,
     launch_windows_personal_update,
 )
+from ..upgrades import create_pre_upgrade_backup
+from ..versioning import parse_release_version
 
 try:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -644,7 +641,7 @@ def _download_online_update(package_id: str, catalog: dict[str, object]) -> None
             package.signature_valid = True
             package.status = UpdateStatus.VALIDATED
             db.commit()
-    except Exception as exc:
+    except Exception:
         logger.exception("官方更新包后台下载或校验失败，任务=%s", package_id)
         if discard_partial:
             incoming.unlink(missing_ok=True)
@@ -1633,7 +1630,7 @@ def download_device_update(
 ) -> FileResponse:
     from .fleet import authenticated_device
 
-    device = authenticated_device(token, db)
+    authenticated_device(token, db)
     package = db.scalar(
         select(UpdatePackage).where(
             UpdatePackage.filename == filename,

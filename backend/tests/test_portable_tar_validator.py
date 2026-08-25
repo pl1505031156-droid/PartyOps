@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 VALIDATOR = ROOT / "scripts" / "validate-portable-tar.py"
 

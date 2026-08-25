@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ASSET_PATTERN = re.compile(r"(?:src|href)=[\"']/?([^\"'#?]+)")
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 DEFAULT_MATERIAL_CATEGORIES: tuple[tuple[str, str], ...] = (
     ("final", "最终报送稿"),
     ("draft", "初稿／起草材料"),

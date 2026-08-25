@@ -26,7 +26,6 @@ from app.database import db_runtime
 from app.local_ai import EmbeddingRuntime
 from app.models import AIModelPack
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 

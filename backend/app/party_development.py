@@ -17,21 +17,27 @@ from typing import Any, Iterable
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.shared import Mm, Pt, Twips
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import PartyDevelopmentMaterial, PartyDevelopmentPlanProfile, PartyDevelopmentProfile, User, WorkCalendarEntry, utcnow
+from .compat import strict_zip
+from .models import (
+    PartyDevelopmentMaterial,
+    PartyDevelopmentPlanProfile,
+    PartyDevelopmentProfile,
+    User,
+    WorkCalendarEntry,
+    utcnow,
+)
 from .schemas import (
     PartyDevelopmentCalculateRequest,
     PartyDevelopmentNodeOut,
     PartyDevelopmentResultOut,
 )
-from .compat import strict_zip
-
 
 RULE_VERSION = "2026.05"
 RULE_ISSUED_AT = date(2026, 5, 11)

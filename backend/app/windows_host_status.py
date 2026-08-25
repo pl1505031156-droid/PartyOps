@@ -13,14 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from .startup_diagnostics import (
+    DATA_DIR_FULL,
     DATABASE_CORRUPT,
     DATABASE_IO_FAILED,
     DATABASE_LOCKED,
     DATABASE_SCHEMA_FAILED,
     DATABASE_STARTUP_FAILED,
-    DATA_DIR_FULL,
 )
-
 
 SERVICE_MISSING = "SERVICE_MISSING"
 SERVICE_STOPPED = "SERVICE_STOPPED"

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.archive_service import index_archive_attachment
 
+
 def _category(client: TestClient, name: str) -> dict:
     response = client.get("/api/v1/archives/categories")
     assert response.status_code == 200, response.text

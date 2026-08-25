@@ -11,6 +11,10 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
+from openpyxl import Workbook
+from sqlalchemy import select
+
 from app import ai_service, client_agent, intake, upgrades, workspace
 from app.config import get_settings
 from app.database import db_runtime
@@ -30,9 +34,6 @@ from app.models import (
 from app.notifications import desktop_notifications_allowed
 from app.problems import ProblemException
 from app.reports import auto_fill_report, period_bounds
-from fastapi.testclient import TestClient
-from openpyxl import Workbook
-from sqlalchemy import select
 
 from .conftest import create_task
 

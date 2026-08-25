@@ -5,7 +5,6 @@ from __future__ import annotations
 from .enums import TaskStatus
 from .problems import ProblemException
 
-
 ACTION_TARGETS: dict[str, dict[TaskStatus, TaskStatus]] = {
     "accept": {TaskStatus.PENDING_RECEIPT: TaskStatus.IN_PROGRESS},
     "start": {

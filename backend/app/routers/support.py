@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import typing
-
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -18,18 +17,17 @@ from ..enums import TaskStatus, UserRole
 from ..exporting import export_inspection_package, export_tasks_docx, export_tasks_xlsx
 from ..intake import parse_text, parse_upload
 from ..models import (
-    Contact,
-    AttachmentVersion,
     ArchiveSnapshot,
-    MaterialItem,
-    ReminderPreference,
+    AttachmentVersion,
+    Contact,
     KnowledgeEntry,
+    MaterialItem,
     RecurrenceRule,
+    ReminderPreference,
     Task,
     TaskTemplate,
     TemplateMaterial,
     TemplateStep,
-    FileBlob,
     User,
 )
 from ..problems import ProblemException
@@ -58,7 +56,6 @@ from ..schemas import (
 )
 from ..security import get_current_user
 from ..task_service import can_view_task, get_task_or_404, task_to_out
-
 
 router = APIRouter(tags=["support"])
 

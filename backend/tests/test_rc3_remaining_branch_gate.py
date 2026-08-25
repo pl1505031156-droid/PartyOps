@@ -6,10 +6,9 @@
 
 from __future__ import annotations
 
-import json
-import os
-import urllib.error
 import asyncio
+import json
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,7 +21,6 @@ from app import (
     local_secrets,
     login_throttle,
     networking,
-    notifications,
     object_graph,
     projections,
     reports,

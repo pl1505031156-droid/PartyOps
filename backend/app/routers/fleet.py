@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import typing
-
-import asyncio
 import hashlib
 import json
 import logging
@@ -14,6 +11,7 @@ import os
 import re
 import secrets
 import shutil
+import typing
 import zipfile
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
@@ -23,9 +21,13 @@ from fastapi.responses import FileResponse
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
+from ..archive_service import (
+    can_contribute_category,
+    category_for_record,
+    index_archive_attachment,
+)
 from ..audit import emit_event, write_audit
 from ..compat import to_thread
-from ..archive_service import can_contribute_category, category_for_record, index_archive_attachment
 from ..config import get_settings
 from ..content_security import may_render_inline
 from ..database import db_runtime, get_session
@@ -40,6 +42,7 @@ from ..device_versions import (
 )
 from ..enrollment_codes import normalize_enrollment_code
 from ..enums import MaterialStage, TaskStatus
+from ..local_secrets import decrypt_local_json, encrypt_local_json
 from ..models import (
     ArchiveAttachment,
     ArchiveRecord,
@@ -62,24 +65,23 @@ from ..models import (
     WorkspaceRoot,
     utcnow,
 )
-from ..local_secrets import decrypt_local_json, encrypt_local_json
 from ..networking import (
     discover_lan_addresses,
     enrollment_service_url,
     service_url,
     validate_advertise_host,
 )
-from ..problems import ProblemException
 from ..pki import issue_device_certificate
+from ..problems import ProblemException
 from ..schemas import (
-    DeviceEnrollOut,
-    DeviceEnrollRequest,
+    DeviceBrowserTokenOut,
     DeviceCertificateOut,
     DeviceCertificateRotateRequest,
-    DeviceBrowserTokenOut,
     DeviceEnrollmentCreate,
     DeviceEnrollmentOut,
     DeviceEnrollmentStatusOut,
+    DeviceEnrollOut,
+    DeviceEnrollRequest,
     DeviceGrantCreate,
     DeviceGrantOut,
     DeviceHeartbeat,
@@ -100,7 +102,6 @@ from ..schemas import (
     WorkspaceDownloadOut,
     serialize_api_datetime,
 )
-from .router_utils import aware_utc
 from ..security import get_current_user, hash_token, require_admin
 from ..task_service import can_edit_task
 from ..workspace import resolve_workspace_path, store_managed_path
@@ -109,7 +110,7 @@ from ..workspace_access import (
     grant_allows,
     workspace_root_permissions,
 )
-
+from .router_utils import aware_utc
 
 router = APIRouter(tags=["fleet"])
 logger = logging.getLogger("partyops.transfers")

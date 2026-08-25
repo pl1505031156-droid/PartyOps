@@ -8,7 +8,6 @@ from fastapi import APIRouter
 
 from . import appearance, calendar, guidance, recurrence_extensions, relations, today
 
-
 router = APIRouter()
 router.include_router(today.router)
 router.include_router(calendar.router)

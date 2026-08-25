@@ -10,20 +10,21 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect
 
+from alembic import command
+from app import models  # noqa: F401
 from app.appearance import automatic_season
 from app.config import get_settings
 from app.database import Base, db_runtime
 from app.enums import RecommendationStatus, SeasonTheme
-from app.models import AIModelPack, AIRecommendation, BackgroundJob
 from app.model_packs import model_pack_root
-from app import models  # noqa: F401
+from app.models import AIModelPack, AIRecommendation, BackgroundJob
+
 from .conftest import create_task
 
 

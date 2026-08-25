@@ -9,10 +9,8 @@ import pytest
 
 from app.enums import PeriodReportStatus, UserRole
 from app.models import (
-    ArchiveTemplate,
     Notification,
     PeriodReport,
-    PeriodReportItem,
     ReportTemplate,
     Task,
     WorkJournalEntry,

@@ -9,9 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from app import setup_wizard
 from app.networking import enrollment_service_url
 from app.routers import fleet
-from app import setup_wizard
 
 
 def test_enrollment_rejects_loopback_advertised_host(

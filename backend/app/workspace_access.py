@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from .models import Device, DeviceGrant, User, WorkspaceRoot, WorkspaceRootMember
 
-
 DEVICE_GRANT_CAPABILITIES = frozenset({"download", "share", "upload"})
 
 

@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import importlib.util
 import base64
+import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "generate-release-bundle-manifest.py"

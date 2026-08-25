@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+
 from app import local_ai
 from app.enums import ModelPackStatus
 from app.problems import ProblemException

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
-from sqlalchemy import and_, func, or_, select, update as sql_update
+from sqlalchemy import func, or_, select
+from sqlalchemy import update as sql_update
 from sqlalchemy.orm import Session
 
-from .audit import emit_event, write_audit
 from .archiving import create_archive_snapshot
+from .audit import emit_event, write_audit
 from .database import db_runtime
 from .enums import ParticipantRole, Sensitivity, TaskStatus, TaskType, UserRole
 from .models import (

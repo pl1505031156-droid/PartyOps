@@ -6,8 +6,6 @@ from array import array
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-import pytest
-
 from app import recommendations
 from app.enums import RecommendationStatus, Sensitivity, TaskStatus
 from app.problems import ProblemException

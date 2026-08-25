@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -261,7 +260,6 @@ def test_version_install_duplicate_bad_archive_and_path_boundary(monkeypatch, tm
         )
     assert manifest_large.value.code == "MODEL_PACK_MANIFEST_INVALID"
 
-    settings = model_packs.get_settings()
     bad_pack = SimpleNamespace(install_key="../outside")
     with pytest.raises(ProblemException):
         model_packs.model_pack_root(bad_pack)

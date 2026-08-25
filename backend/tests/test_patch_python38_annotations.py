@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "patch-python38-future-annotations.py"
 SPEC = importlib.util.spec_from_file_location("partyops_patch_py38_annotations", SCRIPT)
 assert SPEC and SPEC.loader

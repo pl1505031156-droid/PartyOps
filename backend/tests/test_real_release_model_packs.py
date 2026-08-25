@@ -12,11 +12,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from fastapi.testclient import TestClient
+
 from app.config import get_settings
 from app.database import db_runtime
 from app.local_ai import EmbeddingRuntime, LocalLlmRuntime
 from app.models import AIModelPack
-from fastapi.testclient import TestClient
 
 
 def _required_file(environment_name: str) -> Path:

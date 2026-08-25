@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
-import subprocess
+import json
 import sys
 import urllib.error
 from pathlib import Path

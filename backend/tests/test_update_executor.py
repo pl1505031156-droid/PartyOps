@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from contextlib import contextmanager
 import json
 import os
 import sqlite3
 import subprocess
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 

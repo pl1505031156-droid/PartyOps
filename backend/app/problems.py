@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import uuid
 import logging
+import uuid
 from typing import Any
 
 from fastapi import FastAPI, Request

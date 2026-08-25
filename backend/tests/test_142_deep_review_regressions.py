@@ -17,6 +17,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi.testclient import TestClient
+from openpyxl import load_workbook
+from sqlalchemy import event, func, select
+
 from app import backups as backups_module
 from app import main as main_module
 from app import networking as networking_module
@@ -53,9 +57,6 @@ from app.routers import fleet
 from app.schemas import TaskUpdate
 from app.task_service import update_task
 from app.workspace import scan_root
-from fastapi.testclient import TestClient
-from openpyxl import load_workbook
-from sqlalchemy import event, func, select
 
 from .conftest import create_task
 

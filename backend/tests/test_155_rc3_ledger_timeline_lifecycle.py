@@ -8,8 +8,12 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
+from openpyxl import Workbook
+from sqlalchemy import create_engine, inspect, text
+
+from alembic import command
 from app import models  # noqa: F401  # 注册全部 SQLAlchemy 元数据供迁移往返测试使用。
 from app.config import get_settings
 from app.database import Base, db_runtime
@@ -17,9 +21,6 @@ from app.enums import ModelPackStatus, TaskStatus
 from app.ledger_imports import parse_table
 from app.models import AIModelActivation, AIModelPack, Task
 from app.problems import ProblemException
-from fastapi.testclient import TestClient
-from openpyxl import Workbook
-from sqlalchemy import create_engine, inspect, text
 
 
 def _xlsx(headers: list[str], rows: list[list[object]], title: str = "台账") -> bytes:

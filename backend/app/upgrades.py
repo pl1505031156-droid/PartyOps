@@ -8,9 +8,12 @@ import zipfile
 from contextlib import closing
 from pathlib import Path
 
-from sqlalchemy import text
-
-from .backups import SCHEMA_VERSION, create_backup, current_schema_version, verify_backup
+from .backups import (
+    SCHEMA_VERSION,
+    create_backup,
+    current_schema_version,
+    verify_backup,
+)
 from .config import get_settings
 from .database import db_runtime
 from .models import UpgradeRecord, utcnow

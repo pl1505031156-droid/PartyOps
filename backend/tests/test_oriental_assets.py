@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
 
 from PIL import Image
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ART_ROOT = PROJECT_ROOT / "frontend" / "src" / "assets" / "oriental"

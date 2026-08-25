@@ -401,4 +401,95 @@ describe("1.4.3 新增页面", () => {
     expect(await vm.saveProfile()).toBe(false);
     wrapper.unmount();
   });
+
+  it("发展党员计算器覆盖草稿恢复、全部日期表达和导出安全回退", async () => {
+    localStorage.setItem(
+      "partyops.party-development.draft.v1:user-1:device-new-features",
+      JSON.stringify({
+        name: "李四",
+        application_date: "2026-01-02",
+        actual_dates: { conversation_date: "2026-01-20", training_hours: 24 },
+      }),
+    );
+    apiMocks.get.mockRejectedValueOnce("规则服务暂不可用");
+    const wrapper = await mount(PartyDevelopmentView as typeof MemoView, "/party-development");
+    const vm = state(wrapper);
+    expect(vm.form.name).toBe("李四");
+    expect(vm.form.application_date).toBe("2026-01-02");
+    expect(vm.form.actual_dates.conversation_date).toBe("2026-01-20");
+
+    const blankNode = {
+      ...result.nodes[0], actual_at: null, date: null, end_date: null, adjusted_at: null,
+      reference_at: null, reference_end_at: null, provisional: false,
+    };
+    expect(vm.nodeDate({ ...blankNode, date: "2026-02-01", end_date: "2026-02-05", date_kind: "deadline" }))
+      .toBe("法定：2026-02-01 至 2026-02-05");
+    expect(vm.nodeDate({ ...blankNode, date: "2026-02-01", date_kind: "window" }))
+      .toBe("建议：2026-02-01");
+    expect(vm.nodeDate({ ...blankNode, adjusted_at: "2026-03-01" })).toBe("人工调整：2026-03-01");
+    expect(vm.nodeDate({ ...blankNode, reference_at: "2026-04-01", reference_end_at: "2026-04-10" }))
+      .toBe("参考计划：2026-04-01 至 2026-04-10");
+    expect(vm.nodeDate(blankNode)).toBe("待组织确认");
+
+    vm.result = null;
+    vm.form.name = "李四";
+    vm.form.application_date = "2026-01-02";
+    apiMocks.post.mockRejectedValueOnce("计算失败");
+    await vm.exportWord();
+    expect(vm.result).toBeNull();
+
+    vm.result = result;
+    vm.form.name = "";
+    apiMocks.post.mockResolvedValueOnce(new Blob(["docx"]));
+    await vm.exportWord();
+    expect(saveBlobDownload).toHaveBeenCalledWith(expect.any(Blob), "党员发展-党员发展时间节点.docx");
+
+    vm.result = {
+      ...result,
+      provisional: false,
+      warnings: [{ code: "OVERDUE", level: "high", message: "节点已逾期" }],
+      nodes: [
+        { ...result.nodes[0], key: "overdue", status: "overdue", phase: "unknown", date_kind: "deadline" },
+        { ...result.nodes[0], key: "waiting", status: "waiting_manual", phase: "activist", date_kind: "manual", materials: [] },
+        {
+          ...result.nodes[0], key: "reference", status: "planned", phase: "activist", date_kind: "window",
+          actual_at: null, date: null, reference_at: "2026-06-01", reference_basis: "单位参考间隔",
+          materials: [{ ...result.nodes[0].materials[0], national: false, source: "单位制度" }],
+        },
+      ],
+    };
+    await flushPromises();
+    expect(wrapper.text()).toContain("需要先核查的风险");
+    expect(wrapper.text()).toContain("单位补充 · 单位制度");
+    expect(wrapper.text()).toContain("unknown");
+    wrapper.unmount();
+  });
+
+  it("单位材料模板覆盖可选项、缺省展示、停用成功与非标准错误", async () => {
+    const wrapper = await mount(PartyDevelopmentSettingsView as typeof MemoView, "/party-development-settings");
+    const vm = state(wrapper);
+    expect(vm.materialsText(profile.items)).toContain("可选");
+    vm.profiles = [{
+      ...profile,
+      active: true,
+      description: "",
+      items: [{ ...profile.items[0], id: "", phase: "custom", responsible_party: "" }],
+    }];
+    await flushPromises();
+    expect(wrapper.text()).toContain("已启用");
+    expect(wrapper.text()).toContain("尚未填写模板说明");
+    expect(wrapper.text()).toContain("责任主体待确认");
+    expect(wrapper.text()).toContain("custom");
+
+    apiMocks.patch.mockResolvedValueOnce({ ...profile, active: false, version: 2 });
+    await vm.toggle({ ...profile, active: true });
+    apiMocks.patch.mockRejectedValueOnce("状态更新失败");
+    await vm.toggle(profile);
+    apiMocks.delete.mockRejectedValueOnce("删除失败");
+    await vm.remove(profile);
+    vm.openProfile(profile);
+    apiMocks.patch.mockRejectedValueOnce("保存失败");
+    expect(await vm.saveProfile()).toBe(false);
+    wrapper.unmount();
+  });
 });

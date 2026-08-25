@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import ipaddress
+import os
 import re
 import socket
 from pathlib import Path

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import typing
-
 import ipaddress
 import secrets
+import typing
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -37,7 +36,6 @@ from ..security import (
     verify_password,
 )
 from ..seed import seed_demo_data, seed_templates
-
 
 router = APIRouter(tags=["bootstrap-auth"])
 

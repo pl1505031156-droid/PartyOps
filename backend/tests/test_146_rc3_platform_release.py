@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import importlib.util
 import asyncio
+import importlib.util
+from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-from app.platform_info import detect_platform_info, read_os_release, update_platform_key
 from app import compat as app_compat
 from app.compat import StrEnum, strict_zip, to_thread
+from app.platform_info import detect_platform_info, read_os_release, update_platform_key
 from app.problems import ProblemException
 from app.routers import updates
 from app.setup_wizard import HostStartupError

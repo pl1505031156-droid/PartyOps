@@ -8,7 +8,14 @@ from types import SimpleNamespace
 import pytest
 
 from app.enums import UserRole
-from app.models import PeriodReport, Task, WorkJournalEntry, WorkspaceFile, WorkspaceLink, WorkspaceRoot
+from app.models import (
+    PeriodReport,
+    Task,
+    WorkJournalEntry,
+    WorkspaceFile,
+    WorkspaceLink,
+    WorkspaceRoot,
+)
 from app.problems import ProblemException
 from app.routers import workspace
 from app.schemas import WorkspaceFileLinkCreate

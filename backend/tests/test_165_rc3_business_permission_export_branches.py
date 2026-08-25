@@ -5,11 +5,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from docx import Document
+from fastapi.testclient import TestClient
+
 from app.enums import UserRole
 from app.problems import ProblemException
 from app.routers import business
-from docx import Document
-from fastapi.testclient import TestClient
 
 
 class _DB:

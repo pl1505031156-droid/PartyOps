@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+
 from app import official_format_service as service
 from app.official_format import LocalDocument, OfficialFormatError
 

@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import typing
-
 import ipaddress
+import typing
 
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy import func, or_, select
@@ -29,16 +28,15 @@ from ..models import (
 from ..problems import ProblemException
 from ..projections import rebuild_report_projection
 from ..schemas import (
-    OnboardingProgressOut,
-    OnboardingProgressPatch,
     EnablementOut,
     EnablementStepOut,
+    OnboardingProgressOut,
+    OnboardingProgressPatch,
     ProjectionCheckpointOut,
 )
 from ..security import get_current_user, require_admin
 from ..workspace_access import workspace_root_permissions
 from .router_utils import client_ip, parse_if_match
-
 
 router = APIRouter(tags=["guidance-and-projections"])
 ONBOARDING_STEPS = [

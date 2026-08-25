@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-
 TEST_DATA = (
     Path(__file__).resolve().parents[1]
     / ".test-data"

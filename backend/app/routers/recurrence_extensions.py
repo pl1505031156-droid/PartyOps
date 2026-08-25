@@ -18,7 +18,6 @@ from ..schemas import RecurrenceExceptionCreate, RecurrenceExceptionOut
 from ..security import get_current_user, require_admin
 from .router_utils import client_ip, parse_if_match
 
-
 router = APIRouter(tags=["recurrence-exceptions"])
 
 

@@ -10,7 +10,6 @@ from .enums import ObjectType
 from .models import ActivityEvent, Task, User, WorkJournalEntry, utcnow
 from .schemas import WorkJournalOut
 
-
 ROLE_LABELS = {"admin": "管理员", "staff": "协同人员"}
 STATUS_LABELS = {
     "pending_receipt": "待接收",

@@ -10,8 +10,7 @@ import pytest
 from app.enums import UpdateStatus
 from app.models import DeviceCommand, UpdatePackage, UpdateRun
 from app.problems import ProblemException
-from app.routers import updates
-from app.routers import fleet
+from app.routers import fleet, updates
 from app.schemas import UpdateApplyRequest
 
 

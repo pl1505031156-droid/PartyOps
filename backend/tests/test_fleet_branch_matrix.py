@@ -7,10 +7,26 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.models import Device, DeviceCommand, DeviceEnrollment, DeviceGrant, SystemSetting, Transfer, UpdateRun, User, WorkspaceFile, WorkspaceRoot
+from app.models import (
+    Device,
+    DeviceCommand,
+    DeviceEnrollment,
+    DeviceGrant,
+    SystemSetting,
+    Transfer,
+    UpdateRun,
+    User,
+    WorkspaceFile,
+    WorkspaceRoot,
+)
 from app.problems import ProblemException
 from app.routers import fleet
-from app.schemas import DeviceGrantCreate, DevicePatch, RemoteRootPatch, RemoteRootRequest
+from app.schemas import (
+    DeviceGrantCreate,
+    DevicePatch,
+    RemoteRootPatch,
+    RemoteRootRequest,
+)
 from app.security import hash_token
 
 

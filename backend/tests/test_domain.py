@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import io
+from datetime import datetime, timedelta, timezone
 
-import pytest
 import fitz
+import pytest
 from PIL import Image
 
 from app.backups import sha256_file
@@ -73,7 +73,6 @@ def test_sha256_file(tmp_path) -> None:
 
 
 def test_date_edge_cases_and_recurrence_variants() -> None:
-    anchor = datetime(2026, 12, 20, tzinfo=timezone.utc)
     candidate = parse_text("跨年通知\n请于1月2日前报送。")
     assert candidate.formal_due_at is not None
     assert add_months(datetime(2024, 1, 31), 1) == datetime(2024, 2, 29)

@@ -7,11 +7,11 @@ from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
-from alembic import command
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 from sqlalchemy import inspect, text
 
+from alembic import command
 from app.config import Settings
 from app.database import DatabaseRuntime
 

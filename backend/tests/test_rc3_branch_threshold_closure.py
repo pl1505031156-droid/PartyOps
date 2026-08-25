@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 from app import setup_wizard, update_executor
 from app.enums import UpdateStatus
 

@@ -10,14 +10,15 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+from docx import Document
+from fastapi.testclient import TestClient
+
 from app.official_format import OfficialFormatError
 from app.official_format_service import (
     OfficialFormatLocalService,
     issue_local_format_ticket,
     verify_local_format_ticket,
 )
-from docx import Document
-from fastapi.testclient import TestClient
 
 ORIGIN = "https://partyops.local"
 SECRET = "a" * 64

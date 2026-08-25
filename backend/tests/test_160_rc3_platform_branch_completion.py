@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 from app import client_agent, setup_wizard
 from app.client_agent import AgentCommandError
 

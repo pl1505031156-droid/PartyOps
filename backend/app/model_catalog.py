@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 MODEL_CATALOG_VERSION = 2
 
 # “官网模型包”仅在签名资产完成发布后填写 hosted_url；没有资产时只给

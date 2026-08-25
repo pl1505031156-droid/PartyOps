@@ -7,15 +7,13 @@ import plistlib
 import shutil
 import subprocess
 import sys
-from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
 import pytest
 
 from app import update_executor
-from app.models import UpdatePackage, UpdateRun, UpdateStatus
-
+from app.models import UpdateRun, UpdateStatus
 
 RUN_ID = "a" * 32
 

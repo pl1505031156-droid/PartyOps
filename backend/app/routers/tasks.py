@@ -7,14 +7,14 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select, update as sql_update
+from sqlalchemy import func, select
+from sqlalchemy import update as sql_update
 from sqlalchemy.orm import Session
 
 from ..audit import emit_event, write_audit
 from ..database import db_runtime, get_session
 from ..enums import MaterialStage, ParticipantRole, TaskStatus
 from ..material_categories import DEFAULT_MATERIAL_CATEGORIES
-from ..notifications import add_notification, reconcile_task_deadline_notifications
 from ..models import (
     AttachmentVersion,
     ConflictDraft,
@@ -26,6 +26,7 @@ from ..models import (
     TaskStep,
     User,
 )
+from ..notifications import add_notification, reconcile_task_deadline_notifications
 from ..problems import ProblemException
 from ..schemas import (
     AttachmentRollbackRequest,
@@ -57,7 +58,6 @@ from ..storage import (
     safe_original_name,
     save_attachment,
 )
-from ..work_journal import record_system_entry
 from ..task_service import (
     apply_task_action,
     can_edit_task,
@@ -70,7 +70,7 @@ from ..task_service import (
     task_to_out,
     update_task,
 )
-
+from ..work_journal import record_system_entry
 
 router = APIRouter(tags=["tasks"])
 

@@ -181,7 +181,7 @@
       "version": "2.2.6"
     },
     {
-      "bom-ref": "BomRef.5105962161797875.05866624496652317",
+      "bom-ref": "BomRef.8564593910227669.6241364053522942",
       "description": "requirements line 4: onnxruntime==1.22.1",
       "externalReferences": [
         {
@@ -271,7 +271,7 @@
       "version": "1.2.0"
     },
     {
-      "bom-ref": "BomRef.762857743761198.9694091776641639",
+      "bom-ref": "BomRef.9306068692714593.1784973955078073",
       "description": "requirements line 8: python-multipart==0.0.32",
       "externalReferences": [
         {
@@ -316,7 +316,7 @@
       "version": "1.3.1"
     },
     {
-      "bom-ref": "BomRef.9117989138381504.5823095383345736",
+      "bom-ref": "BomRef.572475911054432.46543790124637663",
       "description": "requirements line 5: tokenizers==0.21.4",
       "externalReferences": [
         {
@@ -331,7 +331,7 @@
       "version": "0.21.4"
     },
     {
-      "bom-ref": "BomRef.2546393109557812.05380073629714344",
+      "bom-ref": "BomRef.21466784139080952.6172058354504911",
       "description": "requirements line 3: uvicorn==0.35.0",
       "externalReferences": [
         {

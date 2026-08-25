@@ -11,7 +11,6 @@ from .enums import PeriodReportStatus
 from .models import EventOutbox, PeriodReport, ProjectionCheckpoint, Task, User, utcnow
 from .reports import auto_fill_report, ensure_period_reports
 
-
 REPORT_PROJECTION = "period_reports"
 PROJECTION_RETRY_BASE_SECONDS = 60
 PROJECTION_RETRY_MAX_SECONDS = 6 * 60 * 60

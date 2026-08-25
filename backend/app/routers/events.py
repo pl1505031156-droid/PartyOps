@@ -6,13 +6,11 @@ import asyncio
 
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
-
 from sse_starlette.sse import EventSourceResponse
 
 from ..database import db_runtime
 from ..models import EventOutbox, User
 from ..security import get_current_user
-
 
 router = APIRouter(tags=["events"])
 _active_streams = 0

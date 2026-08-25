@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, time, timedelta, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .enums import CalendarEventType, ObjectType, TaskStatus, UserRole
@@ -19,7 +19,6 @@ from .models import (
     WorkCalendarEntry,
 )
 from .task_service import visible_tasks
-
 
 LOCAL_TIMEZONE = timezone(timedelta(hours=8))
 OPEN_STATUSES = {

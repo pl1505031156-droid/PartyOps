@@ -6,7 +6,6 @@ import sqlite3
 import subprocess
 import sys
 import zipfile
-from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 

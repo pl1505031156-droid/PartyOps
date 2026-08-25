@@ -22,7 +22,6 @@ from .schemas import MaterialInput, TaskCreate
 from .security import hash_password
 from .task_service import create_task
 
-
 TEMPLATE_DEFINITIONS = [
     (
         "主题党日或集中学习",

@@ -6,7 +6,6 @@ from fastapi.responses import FileResponse
 from ..config import get_settings
 from ..pki import ensure_tls_material
 
-
 router = APIRouter(tags=["bootstrap"])
 
 

@@ -5,10 +5,11 @@ from __future__ import annotations
 import io
 import zipfile
 
+from fastapi.testclient import TestClient
+
 from app.backups import verify_backup
 from app.config import get_settings
 from app.problems import ProblemException
-from fastapi.testclient import TestClient
 
 
 def test_intake_text_is_candidate_only(client: TestClient, admin: dict) -> None:

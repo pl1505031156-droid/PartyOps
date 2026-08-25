@@ -18,8 +18,7 @@ from .enums import PeriodReportStatus, PeriodType, ReportSection, TaskStatus
 from .models import PeriodReport, PeriodReportItem, Task, User
 from .schemas import PeriodReportItemOut, PeriodReportOut
 from .spreadsheet_security import safe_spreadsheet_row
-from .task_service import task_to_out, visible_tasks
-
+from .task_service import visible_tasks
 
 LOCAL_TIMEZONE = timezone(timedelta(hours=8))
 SECTION_LABELS = {

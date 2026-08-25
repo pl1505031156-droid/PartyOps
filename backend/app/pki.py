@@ -206,7 +206,7 @@ def issue_device_certificate(
 ) -> dict[str, str]:
     """签发短期 Agent 客户端证书；没有 CSR 时仅返回 CA 信息以兼容旧终端。"""
 
-    material = ensure_tls_material(settings)
+    ensure_tls_material(settings)
     ca_key = _load_key(settings.secrets_dir / "pki" / "ca.key")
     ca_cert = x509.load_pem_x509_certificate(
         (settings.secrets_dir / "pki" / "ca.pem").read_bytes()

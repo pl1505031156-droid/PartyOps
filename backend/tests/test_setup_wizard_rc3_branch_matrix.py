@@ -15,6 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 from app import setup_wizard
 from app.windows_host_status import HEALTH_TIMEOUT, SERVICE_MISSING, SERVICE_STOPPED
 

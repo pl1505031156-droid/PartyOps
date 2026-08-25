@@ -19,14 +19,13 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .compat import strict_zip
 from .config import get_settings
 from .models import AttachmentVersion, FileBlob, MaterialItem, Task, User
 from .schemas import serialize_api_datetime
-from .storage import resolve_blob_path
 from .spreadsheet_security import safe_spreadsheet_row
+from .storage import resolve_blob_path
 from .task_service import can_view_task, task_to_out, visible_tasks
-from .compat import strict_zip
-
 
 STATUS_LABELS = {
     "pending_receipt": "待接收",

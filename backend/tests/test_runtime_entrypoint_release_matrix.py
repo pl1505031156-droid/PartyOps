@@ -4,18 +4,14 @@ from __future__ import annotations
 
 import io
 import json
-import subprocess
 import sys
 import urllib.error
 import uuid
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from app import client_agent, main, pki, update_executor
-from app.enums import UserRole
-from app.problems import ProblemException
 
 
 def test_trace_origin_device_launch_and_frontend_directory(monkeypatch, tmp_path) -> None:

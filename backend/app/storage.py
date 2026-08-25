@@ -18,7 +18,14 @@ from .audit import emit_event, write_audit
 from .config import get_settings
 from .database import db_runtime
 from .enums import MaterialStage, Sensitivity, TaskStatus, UserRole
-from .models import ArchiveAttachment, AttachmentVersion, FileBlob, MaterialItem, Task, User
+from .models import (
+    ArchiveAttachment,
+    AttachmentVersion,
+    FileBlob,
+    MaterialItem,
+    Task,
+    User,
+)
 from .problems import ProblemException
 from .task_service import can_edit_task, can_manage_task
 from .work_journal import record_system_entry

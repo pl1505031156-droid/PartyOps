@@ -6,11 +6,9 @@ import hashlib
 import io
 import json
 import subprocess
-import sys
 import urllib.error
 import zipfile
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 

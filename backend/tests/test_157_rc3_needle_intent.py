@@ -12,12 +12,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi.testclient import TestClient
+
 from app import model_packs, needle_intent
 from app.config import get_settings
 from app.database import db_runtime
 from app.enums import ModelPackStatus
 from app.models import AIModelPack
-from fastapi.testclient import TestClient
 
 
 def _pack() -> SimpleNamespace:

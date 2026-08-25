@@ -8,6 +8,8 @@ import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from sqlalchemy import inspect, select, text
+
 from alembic import command
 from app import client_agent
 from app.config import Settings
@@ -29,7 +31,6 @@ from app.notifications import (
     refresh_party_development_notifications,
 )
 from app.security import hash_token
-from sqlalchemy import inspect, select, text
 
 from .conftest import create_task
 

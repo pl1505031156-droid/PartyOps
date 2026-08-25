@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect
 
+from alembic import command
 from app import __version__ as APP_VERSION
 from app.database import Base
+
 from .conftest import create_task
 
 

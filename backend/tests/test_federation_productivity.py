@@ -6,11 +6,12 @@ import io
 import json
 import zipfile
 
-from app.config import get_settings
-from app.versioning import parse_release_version
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
+
+from app.config import get_settings
+from app.versioning import parse_release_version
 
 
 def test_device_enrollment_heartbeat_permissions_and_workbench(
