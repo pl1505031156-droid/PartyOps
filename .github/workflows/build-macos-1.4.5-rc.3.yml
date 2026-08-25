@@ -1,0 +1,195 @@
+name: 手动构建 macOS 1.4.5-rc.3 候选
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 输入 BUILD-UNSIGNED-145-RC3，确认只生成未公证测试候选
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partyops-macos-145-rc3-manual
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event.inputs.confirmation == 'BUILD-UNSIGNED-145-RC3'
+    name: ${{ matrix.architecture }} 原生构建
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: arm64
+            runner: macos-15
+          - architecture: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    env:
+      PARTYOPS_BUILD_JOBS: '3'
+      PYTHONUTF8: '1'
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    steps:
+      - name: 检出固定源码冻结提交
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4e1669d14b9b93375a7d4b3cd3854e61e80c2297
+          persist-credentials: false
+
+      - name: 配置 Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+          architecture: ${{ matrix.architecture == 'x86_64' && 'x64' || 'arm64' }}
+          cache: pip
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: 验证原生架构与准备工具
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = '${{ matrix.architecture }}'
+          python3.11 -m pip install --disable-pip-version-check 'uv==0.8.20'
+          corepack enable
+          corepack prepare 'pnpm@11.9.0' --activate
+          command -v cmake >/dev/null 2>&1 || brew install cmake
+          command -v ninja >/dev/null 2>&1 || brew install ninja
+          chmod 0755 \
+            packaging/macos/build-native-runtimes.sh \
+            packaging/macos/build-pkg.sh \
+            packaging/macos/validate-bundle.sh
+          df -h /
+
+      - name: 恢复已验证的原生运行时缓存
+        id: native-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ runner.temp }}/partyops-runtimes
+          key: partyops-macos-runtime-${{ matrix.architecture }}-${{ hashFiles('packaging/macos/build-native-runtimes.sh') }}
+
+      - name: 构建锁定的 OCR 与本地 LLM 运行时
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          packaging/macos/build-native-runtimes.sh \
+            --architecture '${{ matrix.architecture }}' \
+            --output-root "$RUNNER_TEMP/partyops-runtimes"
+
+      - name: 校验原生运行时缓存或新构建结果
+        shell: bash
+        run: |
+          set -euo pipefail
+          ocr="$RUNNER_TEMP/partyops-runtimes/ocr-${{ matrix.architecture }}/bin/tesseract"
+          llama="$RUNNER_TEMP/partyops-runtimes/llama-${{ matrix.architecture }}/llama-server"
+          test -x "$ocr"
+          test -x "$llama"
+          test -s "$RUNNER_TEMP/partyops-runtimes/ocr-${{ matrix.architecture }}/tessdata/chi_sim.traineddata"
+          test "$(lipo -archs "$ocr")" = '${{ matrix.architecture }}'
+          test "$(lipo -archs "$llama")" = '${{ matrix.architecture }}'
+          ! otool -L "$ocr" | awk 'NR > 1 {print $1}' | grep -Ev '^(/usr/lib/|/System/Library/)'
+          ! otool -L "$llama" | awk 'NR > 1 {print $1}' | grep -Ev '^(/usr/lib/|/System/Library/)'
+
+      - name: 冻结应用并生成未公证候选 PKG
+        shell: bash
+        env:
+          PARTYOPS_MACOS_OCR_RUNTIME: ${{ runner.temp }}/partyops-runtimes/ocr-${{ matrix.architecture }}
+          PARTYOPS_MACOS_LLAMA_RUNTIME: ${{ runner.temp }}/partyops-runtimes/llama-${{ matrix.architecture }}
+        run: |
+          set -euo pipefail
+          packaging/macos/build-pkg.sh \
+            --architecture '${{ matrix.architecture }}' \
+            --unsigned-candidate
+
+      - name: 安装后原生自检
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="artifacts/release-1.4.5-rc.3-final/PartyOps_1.4.5-rc.3_macos_${{ matrix.architecture }}.pkg"
+          test -f "$package"
+          test -f "$package.sha256"
+          test -f "$package.attestation.json"
+          (
+            cd "$(dirname "$package")"
+            shasum -a 256 -c "$(basename "$package").sha256"
+          )
+          install_package() {
+            if ! sudo /usr/sbin/installer -pkg "$package" -target /; then
+              printf '%s\n' '[MACOS_INSTALL_FAILED] 安装失败，输出系统安装日志末尾。' >&2
+              sudo /usr/bin/tail -n 240 /var/log/install.log >&2 || true
+              return 1
+            fi
+          }
+          install_package
+          app='/Applications/PartyOps.app'
+          verify_installed_app() {
+            if [[ ! -d "$app" ]]; then
+              printf '%s\n' '[MACOS_INSTALLED_APP_MISSING] PKG 成功返回后目标 App 不存在。' >&2
+              pkgutil --files cn.partyops.desktop >&2 || true
+              sudo find /Applications -maxdepth 3 -name '*PartyOps*.app' -print >&2 || true
+              return 2
+            fi
+            test -f "$app/Contents/Info.plist"
+            test -x "$app/Contents/MacOS/partyops-desktop"
+            plutil -lint "$app/Contents/Info.plist"
+            test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = 'cn.partyops.desktop'
+            test "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = 'partyops-desktop'
+            codesign --verify --deep --strict --verbose=2 "$app"
+            packaging/macos/validate-bundle.sh "$app" '${{ matrix.architecture }}'
+          }
+          verify_installed_app
+          install_package
+          verify_installed_app
+          "$app/Contents/MacOS/partyops-desktop" --self-test
+          env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" \
+            PATH='/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin' \
+            "$app/Contents/MacOS/partyops-desktop" --launch-services-self-test
+          env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" \
+            PATH='/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin' \
+            _PYI_PARENT_PROCESS_LEVEL=9 PYTHONHOME='/tmp/forged-python-home' \
+            DYLD_LIBRARY_PATH='/tmp/forged-dyld-path' \
+            "$app/Contents/MacOS/partyops-desktop" --launch-services-self-test
+          "$app/Contents/MacOS/partyops-launch-agent" --mode personal --self-test
+          "$app/Contents/MacOS/partyops" --package-self-test
+          probe="$HOME/Library/Logs/PartyOps/launch-probe.log"
+          launcher_log="$HOME/Library/Logs/PartyOps/launcher.log"
+          launcher_stderr="$HOME/Library/Logs/PartyOps/launch-stderr.log"
+          /bin/rm -f "$probe" "$launcher_log" "$launcher_stderr"
+          /usr/bin/open -na "$app" --args --launch-services-self-test
+          launchservices_ok=0
+          for _ in {1..60}; do
+            if /usr/bin/grep -q 'status=launchservices-entered architecture=.* target=partyops-desktop-bin' "$probe" 2>/dev/null &&
+              /usr/bin/grep -q 'status=desktop-child-started child_pid=' "$probe" 2>/dev/null &&
+              /usr/bin/grep -q 'status=desktop-child-exited child_pid=.* exit_code=0' "$probe" 2>/dev/null &&
+              /usr/bin/grep -q 'LaunchServices 已进入 PartyOps 1.4.5-rc.3 Python 桌面启动器' "$launcher_log" 2>/dev/null; then
+              launchservices_ok=1
+              break
+            fi
+            /bin/sleep 1
+          done
+          if [[ "$launchservices_ok" != '1' ]]; then
+            printf '%s\n' '[MACOS_LAUNCHSERVICES_SELFTEST_FAILED] Finder 启动链没有完整进入原生入口和 Python 桌面启动器。' >&2
+            /usr/bin/tail -n 80 "$probe" "$launcher_log" "$launcher_stderr" >&2 2>/dev/null || true
+            exit 2
+          fi
+          sudo /usr/bin/find "$app" -depth -delete
+
+      - name: 上传待人工审核制品
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: partyops-macos-${{ matrix.architecture }}-145-rc3
+          path: |
+            artifacts/release-1.4.5-rc.3-final/PartyOps_1.4.5-rc.3_macos_${{ matrix.architecture }}.pkg
+            artifacts/release-1.4.5-rc.3-final/PartyOps_1.4.5-rc.3_macos_${{ matrix.architecture }}.pkg.sha256
+            artifacts/release-1.4.5-rc.3-final/PartyOps_1.4.5-rc.3_macos_${{ matrix.architecture }}.pkg.attestation.json
+          if-no-files-found: error
+          retention-days: 7
