@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError, downloadUrl, saveBlobDownload } from "./api";
+import {
+  api,
+  ApiError,
+  downloadUrl,
+  saveBlobDownload,
+  uploadFormWithProgress,
+} from "./api";
 import {
   checkRuntimeCompatibility,
   FRONTEND_VERSION,
@@ -12,6 +18,126 @@ afterEach(() => {
 });
 
 describe("API 客户端", () => {
+  class FakeXMLHttpRequest {
+    static mode: "success" | "problem" | "text" | "network" | "manual" = "success";
+    static latest: FakeXMLHttpRequest | null = null;
+    status = 0;
+    responseText = "";
+    withCredentials = false;
+    requestHeaders = new Map<string, string>();
+    listeners = new Map<string, Array<(event?: ProgressEvent) => void>>();
+    uploadListeners = new Map<string, Array<(event: ProgressEvent) => void>>();
+    upload = {
+      addEventListener: (name: string, listener: (event: ProgressEvent) => void) => {
+        const listeners = this.uploadListeners.get(name) || [];
+        listeners.push(listener);
+        this.uploadListeners.set(name, listeners);
+      },
+    };
+
+    constructor() {
+      FakeXMLHttpRequest.latest = this;
+    }
+
+    open(method: string, url: string) {
+      expect(method).toBe("POST");
+      expect(url).toMatch(/^\/api\/v1/);
+    }
+
+    setRequestHeader(key: string, value: string) {
+      this.requestHeaders.set(key.toLowerCase(), value);
+    }
+
+    addEventListener(name: string, listener: (event?: ProgressEvent) => void) {
+      const listeners = this.listeners.get(name) || [];
+      listeners.push(listener);
+      this.listeners.set(name, listeners);
+    }
+
+    dispatch(name: string, event?: ProgressEvent) {
+      for (const listener of this.listeners.get(name) || []) listener(event);
+    }
+
+    send(_form: FormData) {
+      const progress = new ProgressEvent("progress", {
+        lengthComputable: true,
+        loaded: 9,
+        total: 10,
+      });
+      for (const listener of this.uploadListeners.get("progress") || []) listener(progress);
+      for (const listener of this.uploadListeners.get("progress") || []) {
+        listener(new ProgressEvent("progress", { lengthComputable: false }));
+      }
+      if (FakeXMLHttpRequest.mode === "manual") return;
+      if (FakeXMLHttpRequest.mode === "network") {
+        this.dispatch("error");
+      } else if (FakeXMLHttpRequest.mode === "success") {
+        this.status = 201;
+        this.responseText = JSON.stringify({ id: "upload-1" });
+        this.dispatch("load");
+      } else if (FakeXMLHttpRequest.mode === "problem") {
+        this.status = 422;
+        this.responseText = JSON.stringify({ code: "FILE_INVALID", detail: "文件无效" });
+        this.dispatch("load");
+      } else {
+        this.status = 502;
+        this.responseText = "bad gateway";
+        this.dispatch("load");
+      }
+      this.dispatch("loadend");
+    }
+
+    abort() {
+      this.dispatch("abort");
+      this.dispatch("loadend");
+    }
+  }
+
+  it("以真实 XHR 进度上传并覆盖服务端、网络和取消结果", async () => {
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+    document.cookie = "partyops_csrf=upload-csrf; Path=/";
+    const progress: number[] = [];
+    FakeXMLHttpRequest.mode = "success";
+    await expect(
+      uploadFormWithProgress<{ id: string }>("/files", new FormData(), {
+        headers: { "X-Upload-Mode": "safe" },
+        onProgress: (value) => progress.push(value),
+      }),
+    ).resolves.toEqual({ id: "upload-1" });
+    expect(progress).toEqual([90, 100]);
+    expect(FakeXMLHttpRequest.latest?.withCredentials).toBe(true);
+    expect(FakeXMLHttpRequest.latest?.requestHeaders.get("x-partyops-csrf")).toBe("upload-csrf");
+    expect(FakeXMLHttpRequest.latest?.requestHeaders.get("x-upload-mode")).toBe("safe");
+
+    FakeXMLHttpRequest.mode = "problem";
+    await expect(uploadFormWithProgress("/files", new FormData())).rejects.toMatchObject({
+      status: 422,
+      code: "FILE_INVALID",
+      message: "文件无效",
+    });
+    FakeXMLHttpRequest.mode = "text";
+    await expect(uploadFormWithProgress("/files", new FormData())).rejects.toMatchObject({
+      status: 502,
+      message: "上传失败（502）",
+    });
+    FakeXMLHttpRequest.mode = "network";
+    await expect(uploadFormWithProgress("/files", new FormData())).rejects.toMatchObject({
+      status: 0,
+      code: "UPLOAD_NETWORK_ERROR",
+    });
+
+    FakeXMLHttpRequest.mode = "manual";
+    const alreadyCancelled = new AbortController();
+    alreadyCancelled.abort();
+    await expect(
+      uploadFormWithProgress("/files", new FormData(), { signal: alreadyCancelled.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    const controller = new AbortController();
+    const pending = uploadFormWithProgress("/files", new FormData(), { signal: controller.signal });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("发送 JSON、携带同源凭据并解析响应", async () => {
     document.cookie = "partyops_csrf=test-csrf-token; Path=/";
     const fetchMock = vi.fn().mockResolvedValue(

@@ -188,6 +188,43 @@ def run_selftest(runtime: Path, timeout: float = 120.0) -> dict[str, object]:
     }
 
 
+def run_user_permission_selftest(runtime: Path) -> dict[str, object]:
+    """以原桌面账号核验安装树可读执行及用户临时目录可原子写入。
+
+    安装器主体由管理员令牌运行，不能代表真正双击桌面图标的标准账号。该轻量
+    探针由 Inno Setup 通过 ExecAsOriginalUser 调用，因此入口能够执行本身已
+    证明程序目录具有读取/执行权限，再补充关键资源和用户写入路径核验。
+    """
+
+    resolved = runtime.resolve()
+    candidates = [Path(sys.executable).resolve()]
+    frontend = resolved / "_internal" / "frontend" / "index.html"
+    if frontend.is_file():
+        candidates.append(frontend)
+    for candidate in candidates:
+        if candidate.is_symlink() or not candidate.is_file():
+            raise PermissionError(f"安装资源不是受控普通文件：{candidate}")
+        with candidate.open("rb") as stream:
+            if not stream.read(1):
+                raise PermissionError(f"安装资源为空或不可读：{candidate}")
+
+    with tempfile.TemporaryDirectory(prefix="partyops-user-permission-") as temporary:
+        root = Path(temporary).resolve()
+        pending = root / "permission.tmp"
+        completed = root / "permission.ok"
+        pending.write_bytes(b"PartyOps user permission self-test")
+        pending.replace(completed)
+        if completed.read_bytes() != b"PartyOps user permission self-test":
+            raise PermissionError("桌面账号临时目录原子写入回读失败")
+        completed.unlink()
+    return {
+        "passed": True,
+        "mode": "desktop-user-permission",
+        "runtime_readable": True,
+        "user_temp_writable": True,
+    }
+
+
 def main(runtime: Path | None = None) -> int:
     try:
         result = run_selftest(runtime or Path(sys.executable).resolve().parent)

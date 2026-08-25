@@ -113,7 +113,12 @@ def test_installer_exposes_preserve_or_full_delete_choice() -> None:
     assert "PartyOpsDataCleanup" in build
     assert "function InitializeUninstall" in installer
     assert "彻底卸载" in installer and "仅删除程序" in installer
-    assert "ExecAsOriginalUser(" not in installer
+    uninstall = installer[
+        installer.index("procedure CurUninstallStepChanged") : installer.index(
+            "procedure RunChecked"
+        )
+    ]
+    assert "ExecAsOriginalUser(" not in uninstall
     assert "RunDataCleanup('runtime', False)" in installer
     assert "UNINSTALL_DATA_PREFLIGHT_FAILED" in installer
     preflight = installer[installer.index("if DeleteAllDataOnUninstall then") : installer.index("procedure CurUninstallStepChanged")]

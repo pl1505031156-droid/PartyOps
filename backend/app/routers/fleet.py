@@ -470,7 +470,13 @@ def transfer_source_root(db: Session, transfer: Transfer) -> WorkspaceRoot | Non
 
 
 def transfer_sources_still_allowed(db: Session, transfer: Transfer) -> bool:
-    """批量包在每个分块与最终确认时复核全部源文件的目录权限。"""
+    """批量包在每个分块与最终确认时复核全部源文件的目录权限。
+
+    协同机来源需要同时绑定原设备和共享授权；主机来源没有设备标识，仍要
+    逐项检查根目录是否启用以及当前发起人的实时下载权限。两类来源不能
+    共用“必须存在 source_device_id”的旧假设，否则主机生成的 ZIP 会在
+    已返回下载地址后被最终读取接口错误拒绝。
+    """
 
     user = db.get(User, transfer.requested_by)
     if not user:
@@ -481,14 +487,22 @@ def transfer_sources_still_allowed(db: Session, transfer: Transfer) -> bool:
     for item_id in item_ids:
         item = db.get(WorkspaceFile, item_id)
         root = db.get(WorkspaceRoot, item.root_id) if item else None
-        if (
-            not item
-            or not root
-            or not root.enabled
-            or root.source.value != "device"
-            or root.device_id != transfer.source_device_id
-            or not workspace_root_permissions(db, root, user)["download"]
-        ):
+        if not item or not root or not root.enabled:
+            return False
+        source = root.source.value
+        if source == "device":
+            if (
+                not transfer.source_device_id
+                or root.device_id != transfer.source_device_id
+                or not workspace_root_permissions(db, root, user)["download"]
+            ):
+                return False
+        elif source == "host":
+            if transfer.source_device_id or not workspace_root_permissions(
+                db, root, user
+            )["download"]:
+                return False
+        else:
             return False
     return True
 
@@ -1975,7 +1989,16 @@ def _require_current_transfer_source_access(db: Session, transfer: Transfer) -> 
 
 
 def _completed_inbox_path(transfer: Transfer) -> Path:
-    if enum_value(transfer.direction) != "device_to_host" or enum_value(transfer.status) != "completed":
+    direction = enum_value(transfer.direction)
+    completed_host_bundle = (
+        direction == "host_to_device"
+        and transfer.delivery_mode == "browser"
+        and transfer.bundle_mode != "single"
+    )
+    if (
+        enum_value(transfer.status) != "completed"
+        or (direction != "device_to_host" and not completed_host_bundle)
+    ):
         raise ProblemException(409, "INBOX_FILE_NOT_READY", "接收文件尚未就绪", "请等待设备传输完成。")
     path = get_settings().inbox_dir / f"{transfer.id}-{safe_name(transfer.original_name)}"
     if not path.is_file():

@@ -56,6 +56,7 @@ from .windows_host_status import (
     CHILD_EXITED,
     HEALTH_TIMEOUT,
     PORT_IN_USE,
+    RUNTIME_PERMISSION_DENIED,
     RUNTIME_VERSION_MISMATCH,
     SERVICE_MISSING,
     SERVICE_STOPPED,
@@ -2571,6 +2572,71 @@ def _spawn(
     return process
 
 
+def _preflight_personal_runtime_access(
+    config_path: Path,
+    data_dir: Path,
+) -> Path:
+    """在创建个人进程前验证桌面账号真正需要的读取、执行和写入权限。
+
+    安装阶段的管理员自检不能证明原桌面账号也能读取程序树；数据目录权限也
+    可能在配置后被安全软件、磁盘迁移或旧主机模式 ACL 改写。这里在启动前
+    完成无持久副作用的原子写入探针，避免子进程先退出后只剩一条笼统日志。
+    """
+
+    executable = _executable("partyops")
+    stages = (
+        ("个人模式配置", config_path),
+        ("PartyOps 主程序", executable),
+    )
+    for stage, path in stages:
+        try:
+            if path.is_symlink() or not path.is_file():
+                raise PermissionError(f"{stage}不是受控普通文件")
+            with path.open("rb") as stream:
+                if not stream.read(1):
+                    raise PermissionError(f"{stage}为空或不可读")
+            if stage == "PartyOps 主程序" and not os.access(path, os.X_OK):
+                raise PermissionError(f"{stage}不可执行")
+        except OSError as exc:
+            raise HostStartupError(
+                RUNTIME_PERMISSION_DENIED,
+                f"当前账号无法读取或执行{stage}。请使用当前安装包执行修复安装。",
+                detail=(
+                    f"阶段={stage}；路径={path}；"
+                    f"winerror={getattr(exc, 'winerror', '')}；errno={getattr(exc, 'errno', '')}"
+                ),
+            ) from exc
+
+    temporary = data_dir / f".partyops-runtime-permission-{secrets.token_hex(8)}.tmp"
+    committed = temporary.with_suffix(".ok")
+    log_path = data_dir / "launcher.log"
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        _assert_path_components_have_no_reparse_points(data_dir)
+        # 覆盖创建、写入、原子替换、删除和日志追加五种启动期权限。
+        _write_private(temporary, "PartyOps personal runtime permission probe\n")
+        temporary.replace(committed)
+        committed.unlink()
+        with log_path.open("ab"):
+            pass
+    except OSError as exc:
+        raise HostStartupError(
+            RUNTIME_PERMISSION_DENIED,
+            "当前账号无法写入个人数据目录。请在配置向导重新选择当前账号可写的本机目录；原数据不会被删除。",
+            detail=(
+                f"阶段=个人数据目录；路径={data_dir}；"
+                f"winerror={getattr(exc, 'winerror', '')}；errno={getattr(exc, 'errno', '')}"
+            ),
+        ) from exc
+    finally:
+        for candidate in (temporary, committed):
+            try:
+                candidate.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return executable
+
+
 def install_internal_ca(ca_path: Path) -> None:
     """把局域网内部 CA 加入当前用户信任库，避免主机页面证书告警。"""
 
@@ -2984,6 +3050,7 @@ def launch_personal(config_path: Path) -> str:
     env = load_host_environment(config_path)
     port = int(env["PARTYOPS_PORT"])
     data_dir = Path(env["PARTYOPS_DATA_DIR"])
+    executable = _preflight_personal_runtime_access(config_path, data_dir)
     # 端口已由当前 PartyOps 占用时直接复用；若是其他程序占用则立即给出
     # 中文诊断，不能等待 180 秒后再让新手猜测原因。
     port_open = False
@@ -3037,7 +3104,7 @@ def launch_personal(config_path: Path) -> str:
                     ) from stop_error
                 if stopped:
                     process = _spawn(
-                        [str(_executable("partyops"))],
+                        [str(executable)],
                         data_dir / "launcher.log",
                         env,
                     )
@@ -3055,7 +3122,7 @@ def launch_personal(config_path: Path) -> str:
                 f"个人模式端口 {port} 已被其他程序占用，请更换端口后重试。",
                 detail=exc.detail,
             ) from exc
-    process = _spawn([str(_executable("partyops"))], data_dir / "launcher.log", env)
+    process = _spawn([str(executable)], data_dir / "launcher.log", env)
     _record_personal_process(data_dir, process)
     return wait_for_host_health(
         "127.0.0.1",

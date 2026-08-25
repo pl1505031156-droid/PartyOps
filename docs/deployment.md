@@ -164,6 +164,7 @@ PARTYOPS_MODEL_PACK_PUBLIC_KEY=<模型包发布公钥；可与更新公钥分离
 - `DEVICE_UPDATE_REQUIRED`：协同 Agent 与主机版本不一致，先完成签名更新。
 - `reauth_required`：设备凭据失效，需要备份本机共享配置后重新入网。
 - `SERVICE_MISSING` / `SERVICE_STOPPED`：安装器未正确注册服务或服务未运行，优先使用安装器“修复安装”。
+- `RUNTIME_PERMISSION_DENIED`：诊断摘要会标明“个人模式配置”“PartyOps 主程序”或“个人数据目录”。优先使用同一安装包执行修复安装；数据目录阶段失败时，在配置向导选择当前桌面账号可写的本机固定磁盘目录。不要关闭单位安全策略、不要给 Everyone 完全控制，也不要删除原数据。
 - `CHILD_EXITED` / `PORT_IN_USE` / `DATA_DIR_DENIED` / `TLS_INIT_FAILED` / `HEALTH_TIMEOUT`：分别检查主进程日志、端口、所选目录 ACL、内部 CA/TLS 与启动阶段；向导可直接复制诊断。
 - 恢复前先复制原始日志和备份，不要删除数据目录或覆盖数据库。
 

@@ -1332,6 +1332,27 @@ begin
       '安装已回滚；请复制本安装日志给技术支持。退出码：' + IntToStr(ResultCode)
     );
   end;
+  ResultCode := 3;
+  WizardForm.StatusLabel.Caption := '正在验证桌面账号可以读取并启动 PartyOps…';
+  { 管理员令牌通过不能证明原桌面账号拥有程序树 RX。使用原始账号再执行
+    轻量权限探针，失败时在安装完成前回滚，避免安装成功后首次双击才出现
+    RUNTIME_PERMISSION_DENIED。 }
+  if (not ExecAsOriginalUser(
+    ExpandConstant('{app}\PartyOps.exe'),
+    '--startup-user-permission-self-test',
+    ExpandConstant('{app}'),
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode
+  )) or (ResultCode <> 0) then
+  begin
+    ServiceSetupFailed := True;
+    RaiseException(
+      '[PACKAGE_USER_RUNTIME_PERMISSION_SELFTEST_FAILED] 原桌面账号无法读取、执行 ' +
+      'PartyOps 安装资源或写入用户临时目录。安装已回滚；请检查终端安全策略、' +
+      '杀毒软件和所选程序目录。退出码：' + IntToStr(ResultCode)
+    );
+  end;
 end;
 
 procedure RollbackInstallerCache;

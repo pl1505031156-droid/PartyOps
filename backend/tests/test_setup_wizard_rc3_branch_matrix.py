@@ -128,8 +128,11 @@ def test_personal_mode_never_requests_service_or_admin(
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("closed")),
     )
     spawned: list[list[str]] = []
+    executable = tmp_path / "PartyOps.exe"
+    executable.write_bytes(b"MZ-partyops")
+    executable.chmod(0o700)
     monkeypatch.setattr(
-        setup_wizard, "_executable", lambda _name: tmp_path / "PartyOps.exe"
+        setup_wizard, "_executable", lambda _name: executable
     )
     monkeypatch.setattr(
         setup_wizard, "_spawn", lambda command, *_args: spawned.append(command)
