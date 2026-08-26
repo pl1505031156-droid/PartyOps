@@ -4,10 +4,19 @@ function Expand-VerifiedPartyOpsOcrRuntime {
     [Parameter(Mandatory = $true)][string]$Destination
   )
 
-  $isWin7X86 = $env:PARTYOPS_LEGACY_ARCH -eq "x86"
+  $legacyArchitecture = $env:PARTYOPS_LEGACY_ARCH
+  $isWin7X86 = $legacyArchitecture -eq "x86"
+  $isWin7Amd64 = $legacyArchitecture -eq "amd64"
   if ($isWin7X86) {
     $archive = Join-Path $RepoRoot "vendor\windows\ocr\tesseract-5.5.2-windows7-x86.zip"
     $expectedArchiveSha256 = "8174F4646283567AEF49490393D95F3D89265E7B584FA3D95CF64F7795B90CC5"
+    $expectedVersionPattern = "tesseract 5\.5\.2"
+    $engineEvidenceField = "engine_source_commit"
+    $engineEvidenceValue = "6e1d56a847e697de07b38619356550e5cf4e8633"
+    $engineLicense = "licenses\LICENSE-vcpkg-tesseract.txt"
+  } elseif ($isWin7Amd64) {
+    $archive = Join-Path $RepoRoot "vendor\windows\ocr\tesseract-5.5.2-windows7-amd64.zip"
+    $expectedArchiveSha256 = "C874DB36E3D672DDA427B055483A7C33604359F30B88ECCBF585509C77B0CFFB"
     $expectedVersionPattern = "tesseract 5\.5\.2"
     $engineEvidenceField = "engine_source_commit"
     $engineEvidenceValue = "6e1d56a847e697de07b38619356550e5cf4e8633"
@@ -65,7 +74,8 @@ function Expand-VerifiedPartyOpsOcrRuntime {
     ConvertFrom-Json
   $actualEngineEvidence = $source.$engineEvidenceField
   if (($isWin7X86 -and $source.version -ne "5.5.2+partyops.win7.1") -or
-      (-not $isWin7X86 -and $source.version -ne "5.5.3.20260724") -or
+      ($isWin7Amd64 -and $source.version -ne "5.5.2+partyops.win7.1") -or
+      (-not $isWin7X86 -and -not $isWin7Amd64 -and $source.version -ne "5.5.3.20260724") -or
       $actualEngineEvidence -ne $engineEvidenceValue) {
     throw "Windows OCR 来源记录与固定版本不一致。"
   }

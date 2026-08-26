@@ -1,6 +1,7 @@
 """UOS 安装器慢启动等待策略的回归测试。"""
 
 import hashlib
+import json
 import os
 import struct
 import subprocess
@@ -1242,9 +1243,11 @@ def test_windows_ocr_uses_locked_minimal_runtime_and_runs_during_freeze() -> Non
 
     assert "57825338CEAA141C617F66D2A2210B6BEF396436FFC83D242595E5F5F33BF462" in helper
     assert "8174F4646283567AEF49490393D95F3D89265E7B584FA3D95CF64F7795B90CC5" in helper
+    assert "C874DB36E3D672DDA427B055483A7C33604359F30B88ECCBF585509C77B0CFFB" in helper
     assert "tesseract v5\\.5\\.3" in helper
     assert "tesseract 5\\.5\\.2" in helper
-    assert '$env:PARTYOPS_LEGACY_ARCH -eq "x86"' in helper
+    assert '$legacyArchitecture -eq "x86"' in helper
+    assert '$legacyArchitecture -eq "amd64"' in helper
     assert "chi_sim.traineddata" in helper and "eng.traineddata" in helper
     assert "tesseract-uninstall.exe" in helper and "lstmtraining.exe" in helper
     assert "Expand-VerifiedPartyOpsOcrRuntime" in builder
@@ -1271,6 +1274,37 @@ def test_windows7_x86_ocr_archive_is_locked_native_and_minimal() -> None:
     machine = struct.unpack_from("<H", executable, pe_offset + 4)[0]
     assert executable[:2] == b"MZ" and machine == 0x014C
     assert not any(name.lower().endswith(".dll") for name in names)
+    assert {
+        "tessdata/chi_sim.traineddata",
+        "tessdata/eng.traineddata",
+        "tessdata/osd.traineddata",
+        "SOURCE.json",
+    } <= names
+
+
+def test_windows7_amd64_ocr_archive_is_locked_native_and_minimal() -> None:
+    """Win7 x64 必须封入静态 x64 引擎，不能退回含 Win8 API 的动态包。"""
+
+    archive_path = (
+        ROOT
+        / "vendor"
+        / "windows"
+        / "ocr"
+        / "tesseract-5.5.2-windows7-amd64.zip"
+    )
+    assert hashlib.sha256(archive_path.read_bytes()).hexdigest() == (
+        "c874db36e3d672dda427b055483a7c33604359f30b88eccbf585509c77b0cffb"
+    )
+    with zipfile.ZipFile(archive_path) as archive:
+        names = set(archive.namelist())
+        executable = archive.read("bin/tesseract.exe")
+        source = json.loads(archive.read("SOURCE.json"))
+    pe_offset = struct.unpack_from("<I", executable, 0x3C)[0]
+    machine = struct.unpack_from("<H", executable, pe_offset + 4)[0]
+    assert executable[:2] == b"MZ" and machine == 0x8664
+    assert not any(name.lower().endswith(".dll") for name in names)
+    assert source["architecture"] == "windows7-amd64"
+    assert source["windows_api_floor"] == "_WIN32_WINNT=0x0601"
     assert {
         "tessdata/chi_sim.traineddata",
         "tessdata/eng.traineddata",
