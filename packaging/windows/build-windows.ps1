@@ -16,7 +16,7 @@ $releaseTag = "v1.4.5-rc.4"
 if ($LASTEXITCODE -ne 0) { throw "版本一致性门禁失败，拒绝冻结 Windows 制品。" }
 $isLegacy = [bool]$LegacyArchitecture
 $targetArchitecture = if ($isLegacy) { $LegacyArchitecture } else { "amd64" }
-$runtimeProfile = if (-not $isLegacy) { "full" } elseif ($targetArchitecture -eq "amd64") { "legacy-full" } else { "legacy-core" }
+$runtimeProfile = if (-not $isLegacy) { "full" } elseif ($targetArchitecture -eq "amd64") { "legacy-smart" } else { "legacy-core" }
 $platformFamily = if ($isLegacy) { "windows7" } else { "windows" }
 $artifactSuffix = if ($isLegacy) { "windows7-$targetArchitecture" } else { "windows-amd64" }
 $ucrtArchitecture = if ($targetArchitecture -eq "amd64") { "x64" } else { "x86" }
@@ -157,7 +157,7 @@ if (-not $InnoCompiler) {
     "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
   ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 }
-if ($runtimeProfile -ne "legacy-core") {
+if ($runtimeProfile -eq "full") {
   foreach ($runtimeFile in @("llama-server.exe", "llama-server-impl.dll", "llama-common.dll", "llama.dll", "ggml.dll", "LICENSE", "SOURCE.json")) {
     if (-not (Test-Path -LiteralPath (Join-Path $localAiRoot $runtimeFile))) {
       throw "缺少经固定版本校验的 Windows 本地 LLM 运行时：$runtimeFile"
@@ -404,7 +404,7 @@ foreach ($notice in @("README.md", "CHANGELOG.md", "LICENSE", "THIRD_PARTY_NOTIC
   if (-not (Test-Path -LiteralPath $noticePath)) { throw "发布包缺少开源声明文件：$notice" }
   Copy-Item -LiteralPath $noticePath -Destination $bundleRoot -Force
 }
-if ($runtimeProfile -ne "legacy-core") {
+if ($runtimeProfile -eq "full") {
   Copy-Item -Path (Join-Path $localAiRoot "*") -Destination $bundleRoot -Force
   & (Join-Path $bundleRoot "llama-server.exe") --version | Out-Null
   Assert-NativeSuccess "llama.cpp Windows 运行时验证"
@@ -469,7 +469,23 @@ $candidate = [ordered]@{
   size = (Get-Item -LiteralPath $installer).Length
   sha256 = $hash
   sqlite_version = $officialSqliteVersion
-  limitations = if ($isLegacy) { @("Windows 7 未执行运行验收", "仅限受控局域网", "未签名候选版") } else { @("Windows 10 未实机验证", "未签名候选版") }
+  limitations = if (-not $isLegacy) {
+    @("Windows 10 未实机验证", "未签名候选版")
+  } elseif ($targetArchitecture -eq "amd64") {
+    @(
+      "Windows 7 未执行运行验收",
+      "仅限受控局域网",
+      "本地 llama.cpp 大模型不可用；保留规则与语义增强",
+      "未签名候选版"
+    )
+  } else {
+    @(
+      "Windows 7 未执行运行验收",
+      "仅限受控局域网",
+      "语义重排与本地 llama.cpp 大模型不可用",
+      "未签名候选版"
+    )
+  }
 }
 [System.IO.File]::WriteAllText(
   (Join-Path $outputRoot "$installerBase.candidate.json"),

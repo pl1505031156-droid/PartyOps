@@ -77,7 +77,7 @@ try {
 if ($LASTEXITCODE -ne 0) { throw "Win7 wheelhouse 缺少已验证的 PyInstaller/bootloader。" }
 
 $env:PARTYOPS_LEGACY_ARCH = $Architecture
-$env:PARTYOPS_LEGACY_PROFILE = if ($Architecture -eq "amd64") { "legacy-full" } else { "legacy-core" }
+$env:PARTYOPS_LEGACY_PROFILE = if ($Architecture -eq "amd64") { "legacy-smart" } else { "legacy-core" }
 $env:PARTYOPS_LEGACY_WHEELHOUSE = $wheelhousePath
 $env:PARTYOPS_LEGACY_EVIDENCE_ROOT = $evidencePath
 

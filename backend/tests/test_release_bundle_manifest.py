@@ -169,7 +169,7 @@ def test_manifest_rejects_mismatched_key_and_unverified_target(tmp_path: Path) -
     ("platform", "architecture", "runtime_profile"),
     [
         ("windows", "amd64", "full"),
-        ("windows7", "amd64", "legacy-full"),
+        ("windows7", "amd64", "legacy-smart"),
         ("windows7", "x86", "legacy-core"),
     ],
 )

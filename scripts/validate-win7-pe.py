@@ -21,11 +21,15 @@ FORBIDDEN_DLL_PREFIXES = (
 )
 FORBIDDEN_IMPORTS = {
     "kernel32.dll": {
+        "CopyFile2",
+        "CreateFile2",
+        "CreateFileMappingFromApp",
         "GetCurrentPackageFamilyName",
         "GetCurrentPackageFullName",
         "GetCurrentPackageId",
         "GetProcessMitigationPolicy",
         "GetSystemTimePreciseAsFileTime",
+        "MapViewOfFileFromApp",
         "SetProcessMitigationPolicy",
         "SetThreadDescription",
     },

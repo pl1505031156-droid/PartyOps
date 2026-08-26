@@ -342,7 +342,7 @@ def test_win7_build_and_frontend_have_hard_compatibility_gates() -> None:
     html = (root / "frontend" / "index.html").read_text(encoding="utf-8")
     assert "validate-win7-wheelhouse.py" in builder
     assert "validate-win7-pe.py" in builder
-    assert '"legacy-full"' in builder and '"legacy-core"' in builder
+    assert '"legacy-smart"' in builder and '"legacy-core"' in builder
     assert '$legacySchema -notcontains "0024"' in builder
     assert '$revision -ne "0024"' in runtime_smoke
     assert "[switch]$UpgradeFrom0023" in runtime_smoke
@@ -350,6 +350,10 @@ def test_win7_build_and_frontend_have_hard_compatibility_gates() -> None:
     assert "覆盖升级后原有管理员记录丢失或损坏" in runtime_smoke
     assert "MajorSubsystemVersion" in pe_gate
     assert "GetSystemTimePreciseAsFileTime" in pe_gate
+    assert "CreateFile2" in pe_gate
+    assert "CreateFileMappingFromApp" in pe_gate
+    assert "MapViewOfFileFromApp" in pe_gate
+    assert "CopyFile2" in pe_gate
     assert 'legacy from "@vitejs/plugin-legacy"' in vite
     assert '"Chrome >= 64"' in vite and "renderLegacyChunks: false" in vite
     assert "Internet Explorer 11 不受支持" in html

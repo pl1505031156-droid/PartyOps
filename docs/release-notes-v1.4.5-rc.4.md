@@ -10,6 +10,7 @@
 - 迁移失败时恢复已验证的旧快照，清除生产路径上的 WAL/SHM；半迁移数据库与伴随文件改名保留，方便诊断且不会覆盖前一次证据。
 - 新增持久化 `upgrade-transaction.json`。如果进程在迁移或校验阶段被强退，下次启动先恢复升级前快照，再重新执行完整事务。
 - `UPGRADE_BACKUP_FAILED` 表示备份或事务日志未完成，旧库没有迁移；`DATABASE_SCHEMA_FAILED` 表示表结构迁移失败并已尝试回滚；`SQLITE_RUNTIME_FAILED` 仅表示驱动、版本或 FTS5 能力问题。
+- Windows 7 x64 不再捆绑当前上游 `llama.cpp` Windows 运行时。该运行时直接导入 Win8+ API，并依赖与 Win7 VC142 不兼容的新版 ABI；rc.4 保留核心业务、协同、OCR 和语义重排，阻止以“能打包”为由发布调用即崩溃的伪兼容能力。
 
 ## 升级边界
 

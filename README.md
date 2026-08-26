@@ -219,7 +219,7 @@ flowchart LR
 
 国产 Linux 用户不再需要下载“构建套件 + 校验包”。每台电脑只下载一个与 CPU 架构匹配的 DEB 或 RPM：飞腾 D2000/FT-2000、麒麟 9000C/9006C/990、鲲鹏通常选 ARM64，海光/兆芯/Intel/AMD 通常选 AMD64；最准确的方法是运行 `uname -m`，`aarch64` 对应 ARM64、`x86_64` 对应 AMD64。银河麒麟桌面 V10 SP1 的 2107/2203/2303/2403/2503 使用同一套选包规则，不需要按小版本重复下载。龙芯 LoongArch 与 RISC-V 本轮没有对应包，不要强制安装其他架构。
 
-Windows 7 x64 提供完整主机、协同、OCR、语义重排和本地 LLM；x86 提供核心主机、协同、数据库、文件、档案、备份和 OCR，受 32 位地址空间限制不启用语义重排与本地 LLM。两者均使用独立 Python 3.8 Legacy 锁、经证据校验的安全回移组件和 Microsoft 官方 app-local UCRT；由于没有 Win7 真机，仍不能把静态/冻结验证表述为真机通过。
+Windows 7 x64 提供完整主机、协同、OCR 和语义重排；x86 提供核心主机、协同、数据库、文件、档案、备份和 OCR。Win7 不内置 `llama.cpp` 大模型运行时：上游当前 Windows 二进制直接依赖 Win8+ API 与新版 MSVC ABI，强行打包会造成启动或推理崩溃；需要本地大模型时应在受支持的 Windows 10/11 或 Linux 主机运行，再通过受控接口接入。x86 受 32 位地址空间限制也不启用语义重排。两者均使用独立 Python 3.8 Legacy 锁、经证据校验的安全回移组件、Microsoft 官方 app-local UCRT 与 VC142 运行库；由于没有 Win7 真机，仍不能把静态/冻结验证表述为真机通过。
 
 macOS 1.4.5-rc.4 提供 Apple Silicon 与 Intel 两个原生 PKG。两者分别在 `macos-15` 与 `macos-15-intel` 原生主机完成安装、干净环境/污染环境重复自检、LaunchAgent 启动、真实 `open -na` LaunchServices 和 `0023 → 0024` 覆盖升级门禁；原生入口会在 Python 运行时前写入 `launch-probe.log`，清理 PyInstaller/Python/DYLD 继承环境，并记录脱敏 stderr 与退出码。安装包采用 ad-hoc 签名、未公证，首次安装须先核对 SHA-256，再按 macOS“隐私与安全”界面放行；不要全局关闭 Gatekeeper。
 
