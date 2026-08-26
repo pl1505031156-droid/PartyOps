@@ -60,6 +60,7 @@ GPLv3 第 13 节，GPLv3 与 AGPLv3 可以组合，但组合的软件需要遵�
 | Inno Setup | 6.7.3 | 生成 Windows 单文件安装器 | <https://github.com/jrsoftware/issrc/tree/is-6_7_3>，Inno Setup License |
 | Simplified Chinese messages | `is-6_7_3` | PartyOps 安装器简体中文界面 | `Files/Languages/Unofficial/ChineseSimplified.isl`，维护者 Zhenghan Yang，随 Inno Setup 源码按 Inno Setup License 分发 |
 | Microsoft Universal C Runtime | Windows SDK `10.0.19041.0` | Win7 x64/x86 app-local UCRT 与 APISet 转发器 | Microsoft Windows SDK 可再发行文件；精确 DLL 哈希、SDK 许可和第三方声明随安装目录 `ucrt-source.json`、`ucrt-sdk-license.rtf`、`ucrt-sdk-third-party-notices.rtf` 提供 |
+| Microsoft Visual C++ Runtime | VC142 `14.29.30157.0` | Win7 x64/x86 app-local C/C++ 运行库 | Microsoft Visual Studio 2019 可再发行文件；架构、精确 DLL 哈希、来源路径和官方许可说明随安装目录 `vc-runtime-source.json` 提供 |
 
 仓库内的中文消息文件仅规范化了行尾空白；PartyOps 专属标题、路径说明和诊断文案仅在 `PartyOps.iss` 的 `[Messages]` 与 `[Code]` 中覆盖。
 

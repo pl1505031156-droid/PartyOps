@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pefile
 
-
 MACHINES = {"amd64": 0x8664, "x86": 0x014C}
 
 # 下列 DLL/API 最早随 Windows 8/10 提供。Win7 制品出现任一项都说明冻结运行时
@@ -130,6 +129,34 @@ def main() -> int:
             if not candidate.is_file() or _sha256(candidate) != expected_hash:
                 print(
                     f"Win7 PE 门禁失败：UCRT 文件缺失或哈希不匹配：{candidate}",
+                    file=sys.stderr,
+                )
+                return 2
+
+    vc_source_path = root / "vc-runtime-source.json"
+    if not vc_source_path.is_file():
+        print("Win7 PE 门禁失败：缺少 VC142 来源与哈希清单", file=sys.stderr)
+        return 2
+    try:
+        vc_source = json.loads(vc_source_path.read_text(encoding="utf-8"))
+        vc_hashes = {
+            name.lower(): str(value).lower()
+            for name, value in vc_source["files"].items()
+        }
+    except (OSError, ValueError, KeyError, AttributeError) as exc:
+        print(f"Win7 PE 门禁失败：VC142 来源清单无效：{exc}", file=sys.stderr)
+        return 2
+    if vc_source.get("version") != "14.29.30157.0" or vc_source.get(
+        "architecture"
+    ) != expected_ucrt_arch:
+        print("Win7 PE 门禁失败：VC142 版本或架构与候选不匹配", file=sys.stderr)
+        return 2
+    for directory in (root, root / "_internal"):
+        for name, expected_hash in vc_hashes.items():
+            candidate = directory / name
+            if not candidate.is_file() or _sha256(candidate) != expected_hash:
+                print(
+                    f"Win7 PE 门禁失败：VC142 文件缺失或哈希不匹配：{candidate}",
                     file=sys.stderr,
                 )
                 return 2

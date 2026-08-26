@@ -22,6 +22,8 @@ $artifactSuffix = if ($isLegacy) { "windows7-$targetArchitecture" } else { "wind
 $ucrtArchitecture = if ($targetArchitecture -eq "amd64") { "x64" } else { "x86" }
 $ucrtRoot = Join-Path $repoRoot "vendor\windows\ucrt-10.0.19041.0-$ucrtArchitecture"
 $ucrtSource = Join-Path $ucrtRoot "SOURCE.json"
+$vcRuntimeRoot = Join-Path $repoRoot "vendor\windows\vc142-14.29.30157-$ucrtArchitecture"
+$vcRuntimeSource = Join-Path $vcRuntimeRoot "SOURCE.json"
 $officialSqliteDll = if ($isLegacy -and $targetArchitecture -eq "x86") {
   Join-Path $repoRoot "vendor\windows\sqlite-3.53.4-x86\runtime\sqlite3.dll"
 } else {
@@ -106,6 +108,24 @@ if ($isLegacy) {
     $runtimeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimePath).Hash.ToLowerInvariant()
     if ($runtimeHash -ne [string]$property.Value) {
       throw "Win7 UCRT 文件 SHA-256 与来源清单不一致：$($property.Name)"
+    }
+  }
+  if (-not (Test-Path -LiteralPath $vcRuntimeSource)) {
+    throw "缺少 Win7 $targetArchitecture 的 Microsoft VC142 运行时来源清单：$vcRuntimeSource"
+  }
+  $vcRuntimeEvidence = Get-Content -Raw -LiteralPath $vcRuntimeSource | ConvertFrom-Json
+  if ($vcRuntimeEvidence.version -ne "14.29.30157.0" -or
+      $vcRuntimeEvidence.architecture -ne $ucrtArchitecture) {
+    throw "Win7 VC142 来源清单版本或架构不匹配。"
+  }
+  foreach ($property in $vcRuntimeEvidence.files.PSObject.Properties) {
+    $runtimePath = Join-Path $vcRuntimeRoot $property.Name
+    if (-not (Test-Path -LiteralPath $runtimePath)) {
+      throw "Win7 VC142 来源清单中的文件不存在：$($property.Name)"
+    }
+    $runtimeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimePath).Hash.ToLowerInvariant()
+    if ($runtimeHash -ne [string]$property.Value) {
+      throw "Win7 VC142 文件 SHA-256 与来源清单不一致：$($property.Name)"
     }
   }
 }
@@ -357,6 +377,24 @@ if ($isLegacy) {
     -Destination (Join-Path $bundleRoot "ucrt-sdk-license.rtf") -Force
   Copy-Item -LiteralPath (Join-Path $ucrtRoot "sdk_third_party_notices.rtf") `
     -Destination (Join-Path $bundleRoot "ucrt-sdk-third-party-notices.rtf") -Force
+
+  # PyInstaller 可能从当前 Windows 10/11 主机收集最新版 MSVC 运行库。新版
+  # MSVCP140.dll 会直接导入 Win7 不存在的 API，即使 Python 与业务依赖都已
+  # 锁定也会在进程入口前失败。必须用带哈希来源清单的 VC142 14.29 运行库
+  # 同时覆盖程序根目录和共享运行时目录，禁止继承构建机的全局版本。
+  foreach ($destination in @($bundleRoot, $internalRoot)) {
+    foreach ($property in $vcRuntimeEvidence.files.PSObject.Properties) {
+      Copy-Item -LiteralPath (Join-Path $vcRuntimeRoot $property.Name) `
+        -Destination (Join-Path $destination $property.Name) -Force
+      $copiedHash = (Get-FileHash -Algorithm SHA256 `
+        -LiteralPath (Join-Path $destination $property.Name)).Hash.ToLowerInvariant()
+      if ($copiedHash -ne [string]$property.Value) {
+        throw "Win7 VC142 运行时写入后哈希不一致：$($property.Name)"
+      }
+    }
+  }
+  Copy-Item -LiteralPath $vcRuntimeSource `
+    -Destination (Join-Path $bundleRoot "vc-runtime-source.json") -Force
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\uos\update-public-key.txt") -Destination $bundleRoot -Force
 Copy-Item -LiteralPath $brandIcon -Destination (Join-Path $bundleRoot "partyops.ico") -Force

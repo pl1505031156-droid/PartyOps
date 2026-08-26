@@ -224,7 +224,7 @@ jobs:
           # macOS 系统 Bash 仍为 3.2，不提供 Bash 4 的 mapfile。使用本轮已经
           # 固定的 Python 3.11 对受控备份目录做确定性计数，并返回唯一文件。
           upgrade_backup="$("$upgrade_env/bin/python" -c \
-            'import pathlib,sys; paths=sorted(pathlib.Path(sys.argv[1]).glob("PartyOps-pre-upgrade-*.partyops-backup")); raise SystemExit(2) if len(paths) != 1 else None; print(paths[0])' \
+            'import pathlib,sys; paths=sorted(pathlib.Path(sys.argv[1]).glob("PartyOps-pre-upgrade-*.partyops-backup")); assert len(paths) == 1, f"expected one pre-upgrade backup, got {len(paths)}"; print(paths[0])' \
             "$upgrade_data/backups")"
           "$upgrade_env/bin/python" -c \
             'import pathlib,sys; sys.path.insert(0,str(pathlib.Path(sys.argv[1])/"backend")); from app.backups import verify_backup; manifest=verify_backup(pathlib.Path(sys.argv[2])); raise SystemExit(0 if manifest.get("schema_version")=="0023" else 2)' \

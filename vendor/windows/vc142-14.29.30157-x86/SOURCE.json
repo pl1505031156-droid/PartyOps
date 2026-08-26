@@ -1,0 +1,13 @@
+{
+  "component": "Microsoft Visual C++ Runtime app-local redistributable",
+  "version": "14.29.30157.0",
+  "architecture": "x86",
+  "toolset": "VC142",
+  "source_path": "VC/Redist/MSVC/14.29.30133/x86/Microsoft.VC142.CRT",
+  "official_documentation": "https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist",
+  "redistribution_basis": "Microsoft Visual Studio 2019 Build Tools REDIST list and Microsoft Software License Terms",
+  "files": {
+    "msvcp140.dll": "8acd9e63a83f2facfc68b801f864f923eac5fb8c8a046a32fef8d622ba7d407f",
+    "vcruntime140.dll": "526d8774c67248aa62a5911acd7db667cc4bed5be2cd5dc139c6c4d5dfb9d57e"
+  }
+}

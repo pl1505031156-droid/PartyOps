@@ -943,6 +943,22 @@ def test_win7_uses_verified_sdk_ucrt_instead_of_build_host_system_dlls() -> None
     assert "ucrt-source.json" in build
     assert 'for directory in (root, root / "_internal")' in validator
     assert "is_verified_ucrt_forwarder" in validator
+
+
+def test_win7_pins_vc142_instead_of_collecting_build_host_runtime() -> None:
+    build = (ROOT / "packaging" / "windows" / "build-windows.ps1").read_text(
+        encoding="utf-8"
+    )
+    validator = (ROOT / "scripts" / "validate-win7-pe.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "vc142-14.29.30157-$ucrtArchitecture" in build
+    assert 'vcRuntimeEvidence.version -ne "14.29.30157.0"' in build
+    assert "VC142 运行时写入后哈希不一致" in build
+    assert 'Join-Path $bundleRoot "vc-runtime-source.json"' in build
+    assert 'root / "vc-runtime-source.json"' in validator
+    assert 'vc_source.get("version") != "14.29.30157.0"' in validator
     assert "10.0.19041.0" in validator
     assert '"api-ms-win-core-path-"' in validator
     assert '#define PartyOpsLegacy' in (
