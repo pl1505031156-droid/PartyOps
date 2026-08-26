@@ -221,12 +221,14 @@ jobs:
           test "$revision" = '0024'
           test "$display_name" = '原生覆盖升级管理员'
           test "$(cat "$upgrade_data/attachments/preserved.txt")" = 'rc4 原生覆盖升级必须保留附件'
-          mapfile -t upgrade_backups < <(find "$upgrade_data/backups" -maxdepth 1 \
-            -name 'PartyOps-pre-upgrade-*.partyops-backup' -type f -print)
-          test "${#upgrade_backups[@]}" = 1
+          # macOS 系统 Bash 仍为 3.2，不提供 Bash 4 的 mapfile。使用本轮已经
+          # 固定的 Python 3.11 对受控备份目录做确定性计数，并返回唯一文件。
+          upgrade_backup="$("$upgrade_env/bin/python" -c \
+            'import pathlib,sys; paths=sorted(pathlib.Path(sys.argv[1]).glob("PartyOps-pre-upgrade-*.partyops-backup")); raise SystemExit(2) if len(paths) != 1 else None; print(paths[0])' \
+            "$upgrade_data/backups")"
           "$upgrade_env/bin/python" -c \
             'import pathlib,sys; sys.path.insert(0,str(pathlib.Path(sys.argv[1])/"backend")); from app.backups import verify_backup; manifest=verify_backup(pathlib.Path(sys.argv[2])); raise SystemExit(0 if manifest.get("schema_version")=="0023" else 2)' \
-            "$PWD" "${upgrade_backups[0]}"
+            "$PWD" "$upgrade_backup"
           probe="$HOME/Library/Logs/PartyOps/launch-probe.log"
           launcher_log="$HOME/Library/Logs/PartyOps/launcher.log"
           launcher_stderr="$HOME/Library/Logs/PartyOps/launch-stderr.log"
