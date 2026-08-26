@@ -9,6 +9,7 @@ import shutil
 import stat
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -32,6 +33,16 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"com{number}" for number in range(1, 10)),
     *(f"lpt{number}" for number in range(1, 10)),
 }
+
+
+@dataclass(frozen=True)
+class BackupArtifact:
+    """已经完成边界、哈希和 SQLite 完整性校验的备份制品。"""
+
+    path: Path
+    size_bytes: int
+    sha256: str
+    schema_version: str
 
 
 def _portable_zip_name(member: zipfile.ZipInfo) -> tuple[str, str]:
@@ -172,6 +183,146 @@ def _database_snapshot(source: Path, destination: Path) -> None:
         source_connection.close()
 
 
+def _snapshot_schema_version(path: Path) -> str:
+    """直接从快照读取迁移版本，禁止在升级前触发任何 ORM 映射。"""
+
+    connection = sqlite3_dbapi.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    try:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        if "alembic_version" in tables:
+            row = connection.execute(
+                "SELECT version_num FROM alembic_version LIMIT 1"
+            ).fetchone()
+            if row and row[0]:
+                return str(row[0])
+        if "schema_release_notes" in tables:
+            row = connection.execute(
+                "SELECT max(revision) FROM schema_release_notes"
+            ).fetchone()
+            if row and row[0]:
+                return str(row[0])
+        return "0002" if "tasks" in tables else "0001"
+    finally:
+        connection.close()
+
+
+def create_backup_archive(
+    *,
+    kind: str,
+    filename: str | None = None,
+) -> BackupArtifact:
+    """创建不依赖当前 ORM 的备份包，适用于任意旧模式原位升级。"""
+
+    settings = get_settings()
+    # 升级备份可能运行在配置迁移之前，只建立本流程需要的受控目录，避免
+    # 触发其他依赖当前版本配置结构的初始化副作用。
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    settings.backups_dir.mkdir(parents=True, exist_ok=True)
+    settings.attachments_dir.mkdir(parents=True, exist_ok=True)
+    settings.archives_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    target_name = filename or f"PartyOps-{kind}-{stamp}.partyops-backup"
+    if Path(target_name).name != target_name:
+        raise RuntimeError("备份文件名包含目录或越界语义")
+    output = settings.backups_dir / target_name
+    if output.exists():
+        raise RuntimeError(f"备份目标已存在：{target_name}")
+    with tempfile.TemporaryDirectory(
+        prefix="partyops-backup-", dir=settings.data_dir
+    ) as temp_dir_value:
+        temp_dir = Path(temp_dir_value)
+        snapshot = temp_dir / "partyops.db"
+        staged_archive = temp_dir / target_name
+        # 只在确定数据库快照与不可变文件集合时短暂阻止业务写入。
+        # 附件使用内容寻址且原子落盘，后续哈希/压缩无需长期占用写锁。
+        with db_runtime.write_lock:
+            _database_snapshot(settings.database_path, snapshot)
+            attachment_paths = [
+                path
+                for path in settings.attachments_dir.rglob("*")
+                if path.is_file()
+                and not path.is_symlink()
+                and ".incoming" not in path.parts
+            ]
+            archive_index_paths = [
+                path
+                for path in settings.archives_dir.rglob("*")
+                if path.is_file() and not path.is_symlink()
+            ]
+        schema_version = _snapshot_schema_version(snapshot)
+        files: list[dict[str, object]] = [
+            {
+                "path": "database/partyops.db",
+                "sha256": sha256_file(snapshot),
+                "size": snapshot.stat().st_size,
+            }
+        ]
+        for path in attachment_paths:
+            relative = path.relative_to(settings.attachments_dir).as_posix()
+            files.append(
+                {
+                    "path": f"attachments/{relative}",
+                    "sha256": sha256_file(path),
+                    "size": path.stat().st_size,
+                }
+            )
+        for path in archive_index_paths:
+            relative = path.relative_to(settings.archives_dir).as_posix()
+            files.append(
+                {
+                    "path": f"archives/{relative}",
+                    "sha256": sha256_file(path),
+                    "size": path.stat().st_size,
+                }
+            )
+        manifest = {
+            "format": "partyops-backup",
+            "format_version": FORMAT_VERSION,
+            "schema_version": schema_version,
+            "app_version": settings.app_version,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "files": files,
+        }
+        with zipfile.ZipFile(
+            staged_archive, "w", zipfile.ZIP_DEFLATED, allowZip64=True
+        ) as archive:
+            archive.write(snapshot, "database/partyops.db")
+            for path in attachment_paths:
+                relative = path.relative_to(settings.attachments_dir).as_posix()
+                archive.write(path, f"attachments/{relative}")
+            for path in archive_index_paths:
+                relative = path.relative_to(settings.archives_dir).as_posix()
+                archive.write(path, f"archives/{relative}")
+            archive.writestr(
+                "config/config.json",
+                json.dumps(
+                    {"mode": "host", "app_version": settings.app_version},
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+            archive.writestr(
+                "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
+            )
+        verified = verify_backup(staged_archive)
+        if verified.get("schema_version") != schema_version:
+            raise RuntimeError("备份快照迁移版本在校验期间发生变化")
+        size_bytes = staged_archive.stat().st_size
+        digest = sha256_file(staged_archive)
+        os.replace(staged_archive, output)
+    return BackupArtifact(
+        path=output,
+        size_bytes=size_bytes,
+        sha256=digest,
+        schema_version=schema_version,
+    )
+
+
 def create_backup(
     db: Session,
     actor: User | None,
@@ -190,81 +341,10 @@ def create_backup(
     db.refresh(record)
     output = settings.backups_dir / record.filename
     try:
-        with tempfile.TemporaryDirectory(
-            prefix="partyops-backup-", dir=settings.data_dir
-        ) as temp_dir_value:
-            temp_dir = Path(temp_dir_value)
-            snapshot = temp_dir / "partyops.db"
-            # 只在确定数据库快照与不可变文件集合时短暂阻止业务写入。
-            # 附件使用内容寻址且原子落盘，后续哈希/压缩无需长期占用写锁。
-            with db_runtime.write_lock:
-                _database_snapshot(settings.database_path, snapshot)
-                attachment_paths = [
-                    path
-                    for path in settings.attachments_dir.rglob("*")
-                    if path.is_file() and ".incoming" not in path.parts
-                ]
-                archive_index_paths = [
-                    path for path in settings.archives_dir.rglob("*") if path.is_file()
-                ]
-            files: list[dict[str, object]] = [
-                {
-                    "path": "database/partyops.db",
-                    "sha256": sha256_file(snapshot),
-                    "size": snapshot.stat().st_size,
-                }
-            ]
-            for path in attachment_paths:
-                relative = path.relative_to(settings.attachments_dir).as_posix()
-                files.append(
-                    {
-                        "path": f"attachments/{relative}",
-                        "sha256": sha256_file(path),
-                        "size": path.stat().st_size,
-                    }
-                )
-            for path in archive_index_paths:
-                relative = path.relative_to(settings.archives_dir).as_posix()
-                files.append(
-                    {
-                        "path": f"archives/{relative}",
-                        "sha256": sha256_file(path),
-                        "size": path.stat().st_size,
-                    }
-                )
-            manifest = {
-                "format": "partyops-backup",
-                "format_version": FORMAT_VERSION,
-                "schema_version": current_schema_version(),
-                "app_version": settings.app_version,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "files": files,
-            }
-            with zipfile.ZipFile(
-                output, "w", zipfile.ZIP_DEFLATED, allowZip64=True
-            ) as archive:
-                archive.write(snapshot, "database/partyops.db")
-                for path in attachment_paths:
-                    relative = path.relative_to(settings.attachments_dir).as_posix()
-                    archive.write(path, f"attachments/{relative}")
-                for path in archive_index_paths:
-                    relative = path.relative_to(settings.archives_dir).as_posix()
-                    archive.write(path, f"archives/{relative}")
-                archive.writestr(
-                    "config/config.json",
-                    json.dumps(
-                        {"mode": "host", "app_version": settings.app_version},
-                        ensure_ascii=False,
-                        indent=2,
-                    ),
-                )
-                archive.writestr(
-                    "manifest.json",
-                    json.dumps(manifest, ensure_ascii=False, indent=2),
-                )
+        artifact = create_backup_archive(kind=kind, filename=record.filename)
         record.status = "completed"
-        record.size_bytes = output.stat().st_size
-        record.sha256 = sha256_file(output)
+        record.size_bytes = artifact.size_bytes
+        record.sha256 = artifact.sha256
         record.completed_at = utcnow()
         write_audit(
             db,
@@ -287,6 +367,51 @@ def create_backup(
         if output.exists():
             output.unlink()
         raise
+
+
+def register_backup_artifact(
+    db: Session,
+    path: Path,
+    *,
+    kind: str,
+    actor: User | None = None,
+    ip: str = "",
+) -> BackupRun:
+    """迁移完成后登记已经校验的模式无关备份；按文件名保持幂等。"""
+
+    settings = get_settings()
+    resolved = path.resolve()
+    if resolved.parent != settings.backups_dir.resolve():
+        raise RuntimeError("待登记备份不在受控备份目录")
+    verify_backup(resolved)
+    record = db.scalar(select(BackupRun).where(BackupRun.filename == resolved.name))
+    if record is None:
+        record = BackupRun(
+            filename=resolved.name,
+            kind=kind,
+            created_by=actor.id if actor else None,
+        )
+        db.add(record)
+    record.kind = kind
+    record.status = "completed"
+    record.message = ""
+    record.size_bytes = resolved.stat().st_size
+    record.sha256 = sha256_file(resolved)
+    record.completed_at = utcnow()
+    db.flush()
+    write_audit(
+        db,
+        actor,
+        "backup.register",
+        "backup",
+        record.id,
+        {"kind": kind, "filename": record.filename},
+        ip,
+    )
+    emit_event(db, "backup.completed", record.id, {"filename": record.filename})
+    db.commit()
+    apply_retention(db)
+    return record
 
 
 def verify_backup(path: Path) -> dict[str, object]:
@@ -409,10 +534,11 @@ def verify_backup(path: Path) -> dict[str, object]:
         try:
             connection = sqlite3_dbapi.connect(integrity_path)
             try:
+                quick_check = connection.execute("PRAGMA quick_check").fetchone()[0]
                 integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
             finally:
                 connection.close()
-            if integrity != "ok":
+            if quick_check != "ok" or integrity != "ok":
                 raise ProblemException(
                     400, "BACKUP_DATABASE_CORRUPT", "备份数据库损坏", "SQLite 完整性检查未通过。"
                 )

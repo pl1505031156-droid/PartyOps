@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import subprocess
@@ -1143,7 +1144,22 @@ def test_ai_file_scope_intake_formats_scan_failure_and_upgrade_restore(
     fake_settings = SimpleNamespace(data_dir=rollback_dir, database_path=current_db)
     verified_paths: list[Path] = []
     monkeypatch.setattr(upgrades, "get_settings", lambda: fake_settings)
-    monkeypatch.setattr(upgrades, "verify_backup", lambda path: verified_paths.append(path))
+    monkeypatch.setattr(
+        upgrades,
+        "verify_backup",
+        lambda path: (
+            verified_paths.append(path)
+            or {
+                "files": [
+                    {
+                        "path": "database/partyops.db",
+                        "size": len(restored_bytes),
+                        "sha256": hashlib.sha256(restored_bytes).hexdigest(),
+                    }
+                ]
+            }
+        ),
+    )
     monkeypatch.setattr(upgrades.db_runtime, "dispose", lambda: None)
     monkeypatch.setattr(upgrades.db_runtime, "rebuild", lambda: None)
     upgrades.restore_database_from_upgrade_backup(backup_path)
@@ -1152,4 +1168,5 @@ def test_ai_file_scope_intake_formats_scan_failure_and_upgrade_restore(
         assert restored_db.execute("SELECT value FROM evidence").fetchone() == (
             "old-database",
         )
-    assert current_db.with_suffix(".db.upgrade-failed").read_bytes() == b"new-database"
+    failed = list(rollback_dir.glob("partyops.upgrade-failed-*.db"))
+    assert len(failed) == 1 and failed[0].read_bytes() == b"new-database"

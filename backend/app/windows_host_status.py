@@ -19,6 +19,8 @@ from .startup_diagnostics import (
     DATABASE_LOCKED,
     DATABASE_SCHEMA_FAILED,
     DATABASE_STARTUP_FAILED,
+    SQLITE_RUNTIME_FAILED,
+    UPGRADE_BACKUP_FAILED,
 )
 
 SERVICE_MISSING = "SERVICE_MISSING"
@@ -34,7 +36,6 @@ RUNTIME_DEPENDENCY_MISSING = "RUNTIME_DEPENDENCY_MISSING"
 RUNTIME_BINARY_INCOMPATIBLE = "RUNTIME_BINARY_INCOMPATIBLE"
 RUNTIME_NATIVE_CRASH = "RUNTIME_NATIVE_CRASH"
 RUNTIME_PERMISSION_DENIED = "RUNTIME_PERMISSION_DENIED"
-SQLITE_RUNTIME_FAILED = "SQLITE_RUNTIME_FAILED"
 CONFIG_MIGRATION_FAILED = "CONFIG_MIGRATION_FAILED"
 
 TERMINAL_CODES = {
@@ -55,6 +56,7 @@ TERMINAL_CODES = {
     RUNTIME_NATIVE_CRASH,
     RUNTIME_PERMISSION_DENIED,
     SQLITE_RUNTIME_FAILED,
+    UPGRADE_BACKUP_FAILED,
     CONFIG_MIGRATION_FAILED,
 }
 
@@ -98,7 +100,30 @@ def classify_runtime_failure(
         return RUNTIME_BINARY_INCOMPATIBLE
     if unsigned in {0xC0000005, 0xC0000409}:
         return RUNTIME_NATIVE_CRASH
-    if any(marker in lowered for marker in ("sqlite", "fts5", "pysqlite", "database disk image")):
+    if any(
+        marker in lowered
+        for marker in (
+            "no such table",
+            "no such column",
+            "has no column named",
+            "duplicate column",
+        )
+    ):
+        return DATABASE_SCHEMA_FAILED
+    if any(marker in lowered for marker in ("database disk image is malformed", "file is not a database")):
+        return DATABASE_CORRUPT
+    if any(marker in lowered for marker in ("database is locked", "database table is locked")):
+        return DATABASE_LOCKED
+    if any(
+        marker in lowered
+        for marker in (
+            "no such module: fts5",
+            "未启用 fts5",
+            "sqlite runtime",
+            "pysqlite",
+            "低于生产最低版本",
+        )
+    ):
         return SQLITE_RUNTIME_FAILED
     if any(marker in lowered for marker in ("alembic", "migration", "迁移", "schema upgrade")):
         return CONFIG_MIGRATION_FAILED

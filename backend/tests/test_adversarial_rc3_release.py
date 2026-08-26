@@ -208,8 +208,27 @@ def test_runtime_initialization_upgrade_success_and_diagnostic_rollback(
         lambda revision, _backup, status, **_kwargs: recorded.append((revision, status)),
     )
     monkeypatch.setattr(app_main, "upgrade_required", lambda: (True, "0018"))
+    monkeypatch.setattr(app_main, "recover_interrupted_upgrade", lambda: None)
     backup = tmp_path / "backup.db"
     monkeypatch.setattr(app_main, "create_pre_upgrade_backup", lambda: backup)
+    states: list[str] = []
+    monkeypatch.setattr(
+        app_main,
+        "write_upgrade_transaction_state",
+        lambda state, **_kwargs: states.append(state),
+    )
+    validated: list[tuple[str, Path]] = []
+    registered: list[Path] = []
+    monkeypatch.setattr(
+        app_main,
+        "validate_upgrade_postconditions",
+        lambda revision, path: validated.append((revision, path)),
+    )
+    monkeypatch.setattr(
+        app_main,
+        "register_pre_upgrade_backup",
+        lambda path: registered.append(path),
+    )
 
     admin = SimpleNamespace(id="admin")
 
@@ -234,6 +253,8 @@ def test_runtime_initialization_upgrade_success_and_diagnostic_rollback(
     monkeypatch.setattr(app_main, "db_runtime", runtime)
     assert app_main._initialize_runtime() == {"fts5": True}
     assert seeded == [admin] and recorded == [("0018", "completed")]
+    assert validated == [("0018", backup)] and registered == [backup]
+    assert states == ["backup_verified", "migrating", "validating", "completed"]
 
     restored: list[Path] = []
     monkeypatch.setattr(

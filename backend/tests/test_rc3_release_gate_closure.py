@@ -254,6 +254,7 @@ def test_backup_failure_removes_partial_archive(
     settings.database_path.write_bytes(b"db")
     monkeypatch.setattr(backups, "get_settings", lambda: settings)
     monkeypatch.setattr(backups, "_database_snapshot", lambda source, target: target.write_bytes(source.read_bytes()))
+    monkeypatch.setattr(backups, "_snapshot_schema_version", lambda _path: "0024")
 
     def fail_after_open(path, *_args, **_kwargs):
         Path(path).write_bytes(b"partial")
@@ -276,6 +277,7 @@ def test_backup_guards_missing_output_missing_database_and_escape_target(
     settings.archives_dir.mkdir()
     settings.database_path.write_bytes(b"db")
     monkeypatch.setattr(backups, "get_settings", lambda: settings)
+    monkeypatch.setattr(backups, "_snapshot_schema_version", lambda _path: "0024")
     monkeypatch.setattr(
         backups,
         "_database_snapshot",

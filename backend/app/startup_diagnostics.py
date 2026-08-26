@@ -10,6 +10,8 @@ DATABASE_SCHEMA_FAILED = "DATABASE_SCHEMA_FAILED"
 DATABASE_IO_FAILED = "DATABASE_IO_FAILED"
 DATA_DIR_FULL = "DATA_DIR_FULL"
 DATABASE_STARTUP_FAILED = "DATABASE_STARTUP_FAILED"
+UPGRADE_BACKUP_FAILED = "UPGRADE_BACKUP_FAILED"
+SQLITE_RUNTIME_FAILED = "SQLITE_RUNTIME_FAILED"
 
 
 PUBLIC_STARTUP_MESSAGES = {
@@ -19,6 +21,8 @@ PUBLIC_STARTUP_MESSAGES = {
     DATABASE_IO_FAILED: "数据库所在磁盘无法可靠读写。请检查磁盘、目录权限和安全软件拦截后重试。",
     DATA_DIR_FULL: "数据目录所在磁盘空间不足。请释放空间后重试。",
     DATABASE_STARTUP_FAILED: "数据库初始化未完成。系统已保留原数据，请打开日志目录并提供诊断编号。",
+    UPGRADE_BACKUP_FAILED: "升级前安全备份未完成，系统没有迁移或改动原数据库。请检查磁盘空间、数据目录权限和安全软件拦截后重试。",
+    SQLITE_RUNTIME_FAILED: "SQLite 运行时、版本或 FTS5 能力不满足启动要求。系统已保留原数据，请重新安装与当前系统匹配的完整安装包。",
 }
 
 
@@ -39,12 +43,33 @@ def classify_database_startup_error(exc: BaseException) -> tuple[str, str]:
         code = DATABASE_LOCKED
     elif any(marker in combined for marker in ("database disk image is malformed", "file is not a database", "database corrupt")):
         code = DATABASE_CORRUPT
-    elif any(marker in combined for marker in ("no such table", "no such column", "duplicate column", "already exists")):
+    elif any(
+        marker in combined
+        for marker in (
+            "no such table",
+            "no such column",
+            "has no column named",
+            "duplicate column",
+            "already exists",
+            "administrator invariant",
+        )
+    ):
         code = DATABASE_SCHEMA_FAILED
     elif any(marker in combined for marker in ("database or disk is full", "disk full", "no space left")):
         code = DATA_DIR_FULL
     elif any(marker in combined for marker in ("disk i/o error", "readonly database", "unable to open database file", "access is denied", "permission denied")):
         code = DATABASE_IO_FAILED
+    elif any(
+        marker in combined
+        for marker in (
+            "no such module: fts5",
+            "未启用 fts5",
+            "低于生产最低版本",
+            "pysqlite",
+            "sqlite runtime",
+        )
+    ):
+        code = SQLITE_RUNTIME_FAILED
     else:
         code = DATABASE_STARTUP_FAILED
     return code, PUBLIC_STARTUP_MESSAGES[code]

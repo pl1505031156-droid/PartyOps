@@ -50,7 +50,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
     startup_selftest._validate_probe(
         {
             "status": "ok",
-            "app_version": "1.4.5-rc.3",
+            "app_version": "1.4.5-rc.4",
             "mode": "personal",
             "sqlite": {"safe_version": True, "fts5": True},
         },
@@ -70,7 +70,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.3",
+                "app_version": "1.4.5-rc.4",
                 "mode": "host",
                 "sqlite": {"safe_version": True, "fts5": True},
             },
@@ -80,7 +80,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.3",
+                "app_version": "1.4.5-rc.4",
                 "mode": "personal",
                 "sqlite": {"safe_version": True, "fts5": False},
             },
@@ -90,7 +90,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.3",
+                "app_version": "1.4.5-rc.4",
                 "mode": "personal",
                 "sqlite": {"safe_version": True, "fts5": True},
             },
@@ -100,7 +100,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "failed",
-                "app_version": "1.4.5-rc.3",
+                "app_version": "1.4.5-rc.4",
                 "mode": "personal",
                 "sqlite": {},
             },
@@ -110,7 +110,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.3",
+                "app_version": "1.4.5-rc.4",
                 "mode": "personal",
                 "sqlite": "invalid",
             },
@@ -202,7 +202,7 @@ def test_frozen_probe_success_exit_and_timeout(
         "_read_json",
         lambda _url: {
             "status": "ok",
-            "app_version": "1.4.5-rc.3",
+            "app_version": "1.4.5-rc.4",
             "mode": "personal",
             "sqlite": {"safe_version": True, "fts5": True},
         },
@@ -262,7 +262,7 @@ def test_main_reports_success_and_bounded_failure(
         "run_selftest",
         lambda _runtime: {
             "passed": True,
-            "version": "1.4.5-rc.3",
+            "version": "1.4.5-rc.4",
             "mode": "personal",
         },
     )

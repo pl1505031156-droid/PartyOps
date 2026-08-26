@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
-$releaseVersion = "1.4.5-rc.3"
-$releaseTag = "v1.4.5-rc.3"
+$releaseVersion = "1.4.5-rc.4"
+$releaseTag = "v1.4.5-rc.4"
 & $Python (Join-Path $repoRoot "scripts\verify-version-consistency.py") `
   --root $repoRoot --expected $releaseVersion
 if ($LASTEXITCODE -ne 0) { throw "版本一致性门禁失败，拒绝冻结 Windows 制品。" }
@@ -406,7 +406,7 @@ try {
 }
 Assert-NativeSuccess "Inno Setup 安装器构建"
 
-$installerBase = if ($isLegacy) { "PartyOps_1.4.5-rc.3_windows7_$targetArchitecture" } else { "PartyOps_1.4.5-rc.3_windows_amd64" }
+$installerBase = if ($isLegacy) { "PartyOps_1.4.5-rc.4_windows7_$targetArchitecture" } else { "PartyOps_1.4.5-rc.4_windows_amd64" }
 $installer = Join-Path $outputRoot "$installerBase.exe"
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"

@@ -39,7 +39,7 @@ from .enrollment_codes import normalize_enrollment_code as _normalize_enrollment
 from .platform_info import detect_platform_info
 from .schemas import serialize_api_datetime
 
-AGENT_VERSION = "1.4.5-rc.3"
+AGENT_VERSION = "1.4.5-rc.4"
 AGENT_PROTOCOL_VERSION = 2
 AUTHENTICATION_EXIT_CODE = 4
 _ACTIVE_SSL_CONTEXT = None

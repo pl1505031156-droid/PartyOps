@@ -283,6 +283,19 @@ def _backup_zip(path: Path) -> None:
         archive.writestr("database/partyops.db", b"sqlite")
 
 
+def _upgrade_backup_manifest() -> dict[str, object]:
+    payload = b"sqlite"
+    return {
+        "files": [
+            {
+                "path": "database/partyops.db",
+                "size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+        ]
+    }
+
+
 def test_upgrade_restore_rejects_bad_extracted_and_restored_database(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -293,7 +306,7 @@ def test_upgrade_restore_rejects_bad_extracted_and_restored_database(
         data_dir=tmp_path, database_path=tmp_path / "partyops.db"
     )
     monkeypatch.setattr(upgrades, "get_settings", lambda: settings)
-    monkeypatch.setattr(upgrades, "verify_backup", lambda _path: None)
+    monkeypatch.setattr(upgrades, "verify_backup", lambda _path: _upgrade_backup_manifest())
     monkeypatch.setattr(upgrades.db_runtime, "dispose", lambda: None)
     monkeypatch.setattr(upgrades.db_runtime, "rebuild", lambda: None)
 
@@ -317,18 +330,23 @@ def test_upgrade_restore_reinstates_previous_database_when_replace_fails(
     _backup_zip(backup)
     database = tmp_path / "partyops.db"
     database.write_bytes(b"old")
+    wal = Path(f"{database}-wal")
+    shm = Path(f"{database}-shm")
+    wal.write_bytes(b"old-wal")
+    shm.write_bytes(b"old-shm")
     settings = SimpleNamespace(data_dir=tmp_path, database_path=database)
     monkeypatch.setattr(upgrades, "get_settings", lambda: settings)
-    monkeypatch.setattr(upgrades, "verify_backup", lambda _path: None)
+    monkeypatch.setattr(upgrades, "verify_backup", lambda _path: _upgrade_backup_manifest())
     monkeypatch.setattr(upgrades.db_runtime, "dispose", lambda: None)
     monkeypatch.setattr(upgrades, "sqlite3_connect", lambda _path: _QuickCheck("ok"))
     real_replace = os.replace
-    calls = 0
+    injected = False
 
     def fail_new_source(source, destination):
-        nonlocal calls
-        calls += 1
-        if calls == 2:
+        nonlocal injected
+        source_path = Path(source)
+        if destination == database and source_path != database and not injected:
+            injected = True
             raise OSError("simulated install failure")
         return real_replace(source, destination)
 
@@ -336,6 +354,8 @@ def test_upgrade_restore_reinstates_previous_database_when_replace_fails(
     with pytest.raises(OSError, match="simulated"):
         upgrades.restore_database_from_upgrade_backup(backup)
     assert database.read_bytes() == b"old"
+    assert wal.read_bytes() == b"old-wal"
+    assert shm.read_bytes() == b"old-shm"
 
 
 def test_update_lock_write_failure_and_managed_tree_link_guards(

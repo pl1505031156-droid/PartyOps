@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "product_version": "1.4.5-rc.4",
+  "release_tag": "v1.4.5-rc.4",
+  "updated_at": "2026-08-26T08:30:00+08:00",
+  "levels": {
+    "stable": "已完成原生构建和目标系统用户验收",
+    "preview": "已完成原生构建与自动门禁，仍有明确的真机或签名限制",
+    "unavailable": "没有完成对应原生构建、目标系统门禁或正式签名发布条件"
+  },
+  "targets": [
+    {"id": "windows-x64", "os": "Windows 10/11", "arch": "x86_64", "level": "unavailable", "artifact": "PartyOps_1.4.5-rc.4_windows_amd64.exe", "reason": "等待 rc.4 原生构建、新装与真实 0023 覆盖升级门禁"},
+    {"id": "windows7-x64", "os": "Windows 7 SP1", "arch": "x86_64", "level": "unavailable", "artifact": "PartyOps_1.4.5-rc.4_windows7_amd64.exe", "reason": "等待 rc.4 Legacy x64 依赖闭包、新装与 0023 覆盖升级门禁"},
+    {"id": "windows7-x86", "os": "Windows 7 SP1", "arch": "x86", "level": "unavailable", "artifact": "PartyOps_1.4.5-rc.4_windows7_x86.exe", "reason": "等待 rc.4 Legacy x86 依赖闭包、新装与 0023 覆盖升级门禁"},
+    {"id": "linux-deb-amd64", "os": "麒麟/UOS/deepin", "arch": "x86_64", "level": "unavailable", "artifact": "PartyOps_1.4.5-rc.4_linux_amd64.deb", "reason": "等待 rc.4 glibc 2.17 原生载荷、安装脚本与 0023 覆盖升级门禁"},
+    {"id": "linux-deb-arm64", "os": "麒麟/UOS/deepin", "arch": "aarch64", "level": "unavailable", "artifact": "PartyOps_1.4.5-rc.4_linux_arm64.deb", "reason": "等待 rc.4 ARM64 环境依赖闭包、动态启动与 0023 覆盖升级门禁"},
+    {"id": "linux-rpm-amd64", "os": "openEuler", "arch": "x86_64", "level": "unavailable", "artifact": "PartyOps-1.4.5-0.rc.4.1.x86_64.rpm", "reason": "等待 rc.4 RPM 原生封装、动态启动与 0023 覆盖升级门禁"},
+    {"id": "linux-rpm-arm64", "os": "openEuler", "arch": "aarch64", "level": "unavailable", "artifact": "PartyOps-1.4.5-0.rc.4.1.aarch64.rpm", "reason": "等待 rc.4 ARM64 RPM 依赖闭包、动态启动与 0023 覆盖升级门禁"},
+    {"id": "macos-arm64", "os": "macOS 11+", "arch": "arm64", "level": "unavailable", "artifact": "PartyOps_1.4.5-rc.4_macos_arm64.pkg", "reason": "等待 macos-15 Apple Silicon 原生构建、安装、LaunchServices 与 0023 覆盖升级门禁"},
+    {"id": "macos-x86_64", "os": "macOS 11+", "arch": "x86_64", "level": "unavailable", "artifact": "PartyOps_1.4.5-rc.4_macos_x86_64.pkg", "reason": "等待 macos-15-intel 原生构建、安装、LaunchServices 与 0023 覆盖升级门禁"},
+    {"id": "windows-arm64", "os": "Windows 11", "arch": "arm64", "level": "unavailable", "artifact": null, "reason": "没有原生托管构建与真机验证，不提供伪兼容包"},
+    {"id": "linux-other", "os": "Linux", "arch": "i686/armv7/loongarch64/riscv64", "level": "unavailable", "artifact": null, "reason": "没有对应原生依赖闭包与真机门禁，不提供伪兼容包"}
+  ]
+}

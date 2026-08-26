@@ -23,7 +23,7 @@ from fastapi.encoders import ENCODERS_BY_TYPE
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from . import __version__
 from .config import get_settings
@@ -69,12 +69,21 @@ from .routers import (
 from .scheduler import scheduler_loop
 from .schemas import serialize_api_datetime
 from .seed import seed_templates
-from .startup_diagnostics import classify_database_startup_error
+from .startup_diagnostics import (
+    DATABASE_SCHEMA_FAILED,
+    UPGRADE_BACKUP_FAILED,
+    classify_database_startup_error,
+    public_startup_message,
+)
 from .upgrades import (
     create_pre_upgrade_backup,
     record_upgrade,
+    recover_interrupted_upgrade,
+    register_pre_upgrade_backup,
     restore_database_from_upgrade_backup,
     upgrade_required,
+    validate_upgrade_postconditions,
+    write_upgrade_transaction_state,
 )
 
 settings = get_settings()
@@ -234,25 +243,114 @@ def _initialize_runtime() -> dict[str, object]:
         production=settings.environment == "production",
         tls_enabled=settings.tls_enabled,
     )
-    needs_upgrade, from_revision = upgrade_required()
-    upgrade_backup = create_pre_upgrade_backup() if needs_upgrade else None
     try:
+        recovered_backup = recover_interrupted_upgrade()
+        if recovered_backup:
+            logging.getLogger("partyops").warning(
+                "interrupted_upgrade_rolled_back backup=%s",
+                recovered_backup.name,
+            )
+    except Exception as exc:
+        public_detail = public_startup_message(DATABASE_SCHEMA_FAILED)
+        logging.getLogger("partyops").exception(
+            "interrupted_upgrade_recovery_failed code=%s",
+            DATABASE_SCHEMA_FAILED,
+        )
+        raise RuntimeError(f"[{DATABASE_SCHEMA_FAILED}] {public_detail}") from exc
+    needs_upgrade, from_revision = upgrade_required()
+    upgrade_backup: Path | None = None
+    if needs_upgrade:
+        try:
+            upgrade_backup = create_pre_upgrade_backup()
+            write_upgrade_transaction_state(
+                "backup_verified",
+                from_revision=from_revision,
+                backup_path=upgrade_backup,
+            )
+        except Exception as exc:
+            public_detail = public_startup_message(UPGRADE_BACKUP_FAILED)
+            logging.getLogger("partyops").exception(
+                "upgrade_backup_failed code=%s from_revision=%s",
+                UPGRADE_BACKUP_FAILED,
+                from_revision,
+            )
+            if os.name == "nt":
+                try:
+                    from .windows_host_status import write_service_status
+
+                    write_service_status(
+                        settings.data_dir,
+                        stage="upgrade_backup_failed",
+                        code=UPGRADE_BACKUP_FAILED,
+                        detail=f"{public_detail} 数据库未迁移，回滚状态：无需回滚。",
+                    )
+                except OSError:
+                    logging.getLogger("partyops").exception(
+                        "startup_status_write_failed"
+                    )
+            raise RuntimeError(f"[{UPGRADE_BACKUP_FAILED}] {public_detail}") from exc
+    try:
+        if upgrade_backup:
+            write_upgrade_transaction_state(
+                "migrating",
+                from_revision=from_revision,
+                backup_path=upgrade_backup,
+            )
         db_runtime.create_schema()
+        if upgrade_backup:
+            write_upgrade_transaction_state(
+                "validating",
+                from_revision=from_revision,
+                backup_path=upgrade_backup,
+            )
+            validate_upgrade_postconditions(from_revision, upgrade_backup)
+            register_pre_upgrade_backup(upgrade_backup)
+            record_upgrade(from_revision, upgrade_backup, status="completed")
+        capabilities = db_runtime.validate_capabilities()
+        with db_runtime.session_factory() as db:
+            admin = db.scalar(
+                select(User).where(User.role == UserRole.ADMIN, User.active.is_(True))
+            )
+            user_count = db.scalar(select(func.count(User.id))) or 0
+            if needs_upgrade and user_count and admin is None:
+                raise RuntimeError(
+                    "schema upgrade administrator invariant failed: no active administrator"
+                )
+            if admin:
+                seed_templates(db, admin)
+                party_work.ensure_party_work_templates(db, admin)
+            ensure_device_context_secret(db)
+            ensure_current_release(db)
+            db.commit()
+        if upgrade_backup:
+            write_upgrade_transaction_state(
+                "completed",
+                from_revision=from_revision,
+                backup_path=upgrade_backup,
+            )
     except Exception as exc:
         code, public_detail = classify_database_startup_error(exc)
+        rolled_back = False
+        rollback_failed = False
         if upgrade_backup:
-            restore_database_from_upgrade_backup(upgrade_backup)
             try:
-                record_upgrade(
-                    from_revision,
-                    upgrade_backup,
-                    status="rolled_back",
-                    message=f"{code}: {public_detail}",
+                restore_database_from_upgrade_backup(upgrade_backup)
+                rolled_back = True
+                write_upgrade_transaction_state(
+                    "rolled_back",
+                    from_revision=from_revision,
+                    backup_path=upgrade_backup,
+                    detail_code=code,
                 )
             except Exception:
-                logging.getLogger("partyops").exception("upgrade_rollback_record_failed")
+                rollback_failed = True
+                logging.getLogger("partyops").exception("upgrade_rollback_failed")
         logging.getLogger("partyops").exception(
-            "schema_upgrade_failed code=%s from_revision=%s", code, from_revision
+            "schema_upgrade_failed code=%s from_revision=%s rolled_back=%s rollback_failed=%s",
+            code,
+            from_revision,
+            rolled_back,
+            rollback_failed,
         )
         if os.name == "nt":
             try:
@@ -262,24 +360,14 @@ def _initialize_runtime() -> dict[str, object]:
                     settings.data_dir,
                     stage="schema_failed",
                     code=code,
-                    detail=public_detail,
+                    detail=(
+                        f"{public_detail} 回滚状态："
+                        f"{'已恢复升级前快照。' if rolled_back else '自动回滚未完成，请勿删除数据目录。' if rollback_failed else '无需回滚。'}"
+                    ),
                 )
             except OSError:
                 logging.getLogger("partyops").exception("startup_status_write_failed")
         raise RuntimeError(f"[{code}] {public_detail}") from exc
-    if upgrade_backup:
-        record_upgrade(from_revision, upgrade_backup, status="completed")
-    capabilities = db_runtime.validate_capabilities()
-    with db_runtime.session_factory() as db:
-        admin = db.scalar(
-            select(User).where(User.role == UserRole.ADMIN, User.active.is_(True))
-        )
-        if admin:
-            seed_templates(db, admin)
-            party_work.ensure_party_work_templates(db, admin)
-        ensure_device_context_secret(db)
-        ensure_current_release(db)
-        db.commit()
     logging.getLogger("partyops").info("database_ready %s", capabilities)
     return capabilities
 

@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$releaseVersion = "1.4.5-rc.3"
+$releaseVersion = "1.4.5-rc.4"
 $wheelhousePath = (Resolve-Path -LiteralPath $Wheelhouse).Path
 $evidencePath = (Resolve-Path -LiteralPath $EvidenceRoot).Path
 $pythonPath = (Resolve-Path -LiteralPath $Python).Path

@@ -26,17 +26,17 @@ _VALIDATOR_SPEC.loader.exec_module(_VALIDATOR)
 validate_package = _VALIDATOR.validate_package
 
 
-VERSION = "1.4.5-rc.3"
+VERSION = "1.4.5-rc.4"
 PLATFORMS = {
-    ("windows", "amd64"): "PartyOps_1.4.5-rc.3_windows_amd64.exe",
-    ("windows7", "amd64"): "PartyOps_1.4.5-rc.3_windows7_amd64.exe",
-    ("windows7", "x86"): "PartyOps_1.4.5-rc.3_windows7_x86.exe",
-    ("linux-deb", "amd64"): "PartyOps_1.4.5-rc.3_linux_amd64.deb",
-    ("linux-deb", "arm64"): "PartyOps_1.4.5-rc.3_linux_arm64.deb",
-    ("linux-rpm", "amd64"): "PartyOps-1.4.5-0.rc.3.1.x86_64.rpm",
-    ("linux-rpm", "arm64"): "PartyOps-1.4.5-0.rc.3.1.aarch64.rpm",
-    ("macos", "amd64"): "PartyOps_1.4.5-rc.3_macos_x86_64.pkg",
-    ("macos", "arm64"): "PartyOps_1.4.5-rc.3_macos_arm64.pkg",
+    ("windows", "amd64"): "PartyOps_1.4.5-rc.4_windows_amd64.exe",
+    ("windows7", "amd64"): "PartyOps_1.4.5-rc.4_windows7_amd64.exe",
+    ("windows7", "x86"): "PartyOps_1.4.5-rc.4_windows7_x86.exe",
+    ("linux-deb", "amd64"): "PartyOps_1.4.5-rc.4_linux_amd64.deb",
+    ("linux-deb", "arm64"): "PartyOps_1.4.5-rc.4_linux_arm64.deb",
+    ("linux-rpm", "amd64"): "PartyOps-1.4.5-0.rc.4.1.x86_64.rpm",
+    ("linux-rpm", "arm64"): "PartyOps-1.4.5-0.rc.4.1.aarch64.rpm",
+    ("macos", "amd64"): "PartyOps_1.4.5-rc.4_macos_x86_64.pkg",
+    ("macos", "arm64"): "PartyOps_1.4.5-rc.4_macos_arm64.pkg",
 }
 RELEASE_NOTES = [
     "公文规范排版改为系统内嵌流程，文件只在当前电脑诊断、排版、复检和导出",
