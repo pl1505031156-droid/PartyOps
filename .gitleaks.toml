@@ -11,6 +11,7 @@ regexes = [
 ]
 paths = [
   '''(^|/)backend/\.test-data/''',
+  '''(^|/)\.smoke-rc4-/''',
   '''(^|/)frontend/node_modules/''',
   '''(^|/)frontend/dist/''',
   '''(^|/)website/node_modules/''',

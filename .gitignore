@@ -46,6 +46,7 @@ partyops.env
 *.deb
 .build-*/
 .test-*/
+.smoke-rc4-*/
 .qa-*/
 .run-*/
 .remote-audit-partyops/
