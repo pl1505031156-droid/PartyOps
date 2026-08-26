@@ -36,7 +36,7 @@ Windows、Linux、macOS 的实际制品均执行了全新安装和覆盖升级�
 ## 4. 制品与公网回读
 
 - Cloud Studio 固化 `/downloads/` 流程：19 个安装包、更新包和 Needle 包全部上传并从公开地址回读到 EOF，长度、SHA-256、文件头、版本和架构一致。证据：`artifacts/cloudstudio-readback-1.4.5-rc.4.json`（`verified=true`，`asset_count=19`，15:38:49）。
-- GitHub Release：61 个资产逐项验证摘要和大小一致，预发布地址为 [v1.4.5-rc.4](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.5-rc.4)。证据：`artifacts/github-release-view-1.4.5-rc.4.json`。
+- GitHub Release：61 个冻结发布资产逐项验证摘要和大小一致；本验收记录随后作为第 62 个独立审计资产上传。预发布地址为 [v1.4.5-rc.4](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.5-rc.4)。冻结资产证据：`artifacts/github-release-view-1.4.5-rc.4.json`。
 - 官网正式域名 `https://partyops.cn` 已切换 rc.4；根清单、更新清单和模型清单均返回真实 JSON（HTTP 200，不回退 SPA HTML），二维码、rc.4 更新诊断截图和 WebP 缩略图均 HTTP 200。
 
 主要部署记录：
