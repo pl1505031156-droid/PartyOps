@@ -33,7 +33,7 @@ export PARTYOPS_MACOS_NOTARY_PROFILE='partyops-notary'
 
 ## 无证书测试候选
 
-仓库提供只允许手动触发的 `.github/workflows/build-macos-1.4.5-rc.4.yml`。它分别使用 GitHub 原生 `macos-15` Apple Silicon 与 `macos-15-intel` runner，从 rc.4 产品源码冻结提交 `c19c11df43cc07902e4e0eac5707e5b5bd092e76` 构建 OCR 和 llama.cpp，再生成逐架构 PKG。任务只上传待人工审核的 workflow artifact，不会自动写入 Release 或官网。
+仓库提供只允许手动触发的 `.github/workflows/build-macos-1.4.5-rc.4.yml`。它分别使用 GitHub 原生 `macos-15` Apple Silicon 与 `macos-15-intel` runner，从包含产品修复与原生门禁的冻结提交 `30fb1c29af794121925728ad78e64d566224f15e` 构建 OCR 和 llama.cpp，再生成逐架构 PKG。任务只上传待人工审核的 workflow artifact，不会自动写入 Release 或官网。
 
 没有 Apple Developer 证书时可使用 `--unsigned-candidate`：应用内所有 Mach-O 使用 ad-hoc 签名，旁边生成机器可读 attestation，明确记录 `developer_id_signed=false`、`notarized=false` 和 `real_device_validation=false`。这种包只能作为 1.4.5-rc.4 未签名公开候选，必须在下载页显著提示“未签名、未公证、未用户真机验证”，不能称为已签名或已通过用户实机验收。
 

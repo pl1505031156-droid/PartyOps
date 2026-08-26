@@ -37,7 +37,7 @@ jobs:
       - name: 检出固定源码冻结提交
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: c19c11df43cc07902e4e0eac5707e5b5bd092e76
+          ref: 30fb1c29af794121925728ad78e64d566224f15e
           persist-credentials: false
 
       - name: 配置 Python 3.11

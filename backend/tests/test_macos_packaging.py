@@ -267,7 +267,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "contents: read" in workflow
     assert "macos-15-intel" in workflow and "macos-15" in workflow
     assert "BUILD-UNSIGNED-145-RC4" in workflow
-    assert "ref: c19c11df43cc07902e4e0eac5707e5b5bd092e76" in workflow
+    assert "ref: 30fb1c29af794121925728ad78e64d566224f15e" in workflow
     assert "建立真实 0023 覆盖升级基线" in workflow
     assert "MACOS_0023_UPGRADE_FAILED" in workflow
     assert "test \"$revision\" = '0024'" in workflow
