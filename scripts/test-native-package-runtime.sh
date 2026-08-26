@@ -300,11 +300,18 @@ display_name="$("$UPGRADE_VENV/bin/python" -c \
   echo "覆盖升级后的附件不一致。" >&2
   exit 9
 }
-find "$UPGRADE_DATA/backups" -maxdepth 1 -name 'backup-*.zip' -print -quit |
-  grep -q . || {
-    echo "覆盖升级没有生成迁移前备份。" >&2
-    exit 9
-  }
+mapfile -t upgrade_backups < <(find "$UPGRADE_DATA/backups" -maxdepth 1 \
+  -name 'PartyOps-pre-upgrade-*.partyops-backup' -type f -print)
+[[ "${#upgrade_backups[@]}" == 1 ]] || {
+  echo "覆盖升级没有生成唯一迁移前备份。" >&2
+  exit 9
+}
+"$UPGRADE_VENV/bin/python" -c \
+  'import pathlib,sys; sys.path.insert(0,str(pathlib.Path(sys.argv[1])/"backend")); from app.backups import verify_backup; manifest=verify_backup(pathlib.Path(sys.argv[2])); raise SystemExit(0 if manifest.get("schema_version")=="0023" else 2)' \
+  "$SOURCE_ROOT" "${upgrade_backups[0]}" || {
+  echo "覆盖升级的迁移前备份未通过 ZIP 边界、哈希或旧版本校验。" >&2
+  exit 9
+}
 kill "$SERVER_PID" >/dev/null 2>&1 || true
 wait "$SERVER_PID" >/dev/null 2>&1 || true
 SERVER_PID=""

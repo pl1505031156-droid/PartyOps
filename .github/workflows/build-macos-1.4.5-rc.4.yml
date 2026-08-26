@@ -221,7 +221,12 @@ jobs:
           test "$revision" = '0024'
           test "$display_name" = '原生覆盖升级管理员'
           test "$(cat "$upgrade_data/attachments/preserved.txt")" = 'rc4 原生覆盖升级必须保留附件'
-          test -n "$(find "$upgrade_data/backups" -maxdepth 1 -name 'backup-*.zip' -print -quit)"
+          mapfile -t upgrade_backups < <(find "$upgrade_data/backups" -maxdepth 1 \
+            -name 'PartyOps-pre-upgrade-*.partyops-backup' -type f -print)
+          test "${#upgrade_backups[@]}" = 1
+          "$upgrade_env/bin/python" -c \
+            'import pathlib,sys; sys.path.insert(0,str(pathlib.Path(sys.argv[1])/"backend")); from app.backups import verify_backup; manifest=verify_backup(pathlib.Path(sys.argv[2])); raise SystemExit(0 if manifest.get("schema_version")=="0023" else 2)' \
+            "$PWD" "${upgrade_backups[0]}"
           probe="$HOME/Library/Logs/PartyOps/launch-probe.log"
           launcher_log="$HOME/Library/Logs/PartyOps/launcher.log"
           launcher_stderr="$HOME/Library/Logs/PartyOps/launch-stderr.log"

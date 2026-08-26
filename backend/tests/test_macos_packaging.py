@@ -272,6 +272,8 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "MACOS_0023_UPGRADE_FAILED" in workflow
     assert "test \"$revision\" = '0024'" in workflow
     assert "rc4-native-upgrade-admin" in workflow
+    assert "PartyOps-pre-upgrade-*.partyops-backup" in workflow
+    assert "verify_backup" in workflow
     assert re.search(r"ref: [0-9a-f]{40}", workflow)
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1

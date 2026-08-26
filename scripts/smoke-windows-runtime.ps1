@@ -88,8 +88,12 @@ try {
         (Get-Content -Raw -LiteralPath $preserved -Encoding UTF8) -ne "rc4 原生覆盖升级必须保留附件") {
       throw "覆盖升级后原有附件丢失或损坏。"
     }
-    if (-not (Get-ChildItem -LiteralPath (Join-Path $DataRoot "backups") -Filter "backup-*.zip" -File | Select-Object -First 1)) {
-      throw "覆盖升级未生成经过校验的迁移前备份。"
+    $backupFiles = @(Get-ChildItem -LiteralPath (Join-Path $DataRoot "backups") `
+      -Filter "PartyOps-pre-upgrade-*.partyops-backup" -File)
+    if ($backupFiles.Count -ne 1) { throw "覆盖升级没有生成唯一迁移前备份。" }
+    $backupManifest = & $Python -c "import json,pathlib,sys; sys.path.insert(0,str(pathlib.Path(sys.argv[1])/'backend')); from app.backups import verify_backup; print(json.dumps(verify_backup(pathlib.Path(sys.argv[2]))))" $projectRoot $backupFiles[0].FullName | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or $backupManifest.schema_version -ne "0023") {
+      throw "覆盖升级的迁移前备份未通过 ZIP 边界、哈希或旧版本校验。"
     }
   }
   if ([version]$health.sqlite.version -lt [version]"3.51.3") {
