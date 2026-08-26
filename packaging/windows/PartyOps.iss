@@ -720,6 +720,89 @@ begin
   Result := NormalizeOwnedExecutablePath(Result);
 end;
 
+function IsKnownLegacyPartyOpsServiceBinary(
+  ServiceName, ExecutablePath: String
+): Boolean;
+var
+  Digest: String;
+begin
+  Result := False;
+  if (ExecutablePath = '') or (not FileExists(ExecutablePath)) then
+    exit;
+  Digest := Lowercase(GetSHA256OfFile(ExecutablePath));
+  if ServiceName = 'PartyOpsHost' then
+    Result :=
+      { 1.4.5-rc.1：Windows amd64、Win7 amd64、Win7 x86。 }
+      (Digest = 'd4d89dd603d2b8b1f77da075914dd0c3d0882ddf645af9ac5c16d8ca8c9274e6') or
+      (Digest = '2c5be84335179b698c25d7a5f3aa8dc23f3ed00d7900d36d3b24fdee61979907') or
+      (Digest = 'a3a6009470bb01b680e6ef3c45c7b5a9fc2847159b9f1d0fdf343eb829051f15') or
+      { 1.4.5-rc.2：Windows amd64、Win7 amd64、Win7 x86。 }
+      (Digest = '43babf7f765aff96a14fa4a56fb2ba63b329e358d4db8157d7c6f6c81e6a952d') or
+      (Digest = '56c8d58af2d06c81ea8998b28130cec33494e64a322a29affcf6133407ae91ec') or
+      (Digest = '89042cbeae03b03c30adcedeed0463f05730eb20149721fb4c3d5b2682de616b') or
+      { 已撤回的 1.4.5-rc.3：仅用于安全接管并升级，不重新发布。 }
+      (Digest = 'b2a5b6426469860974be1815f52dcaf1533574989e979e6319931f2ecdfe4b53') or
+      (Digest = '26099268f3116172c64f66446db0f27cbf804b0e91992c785ebd0b1d1da26772') or
+      (Digest = 'cc979351ff0d265c35808373e0f37634b256c58005f3273e2ce305fd4582ff52')
+  else if ServiceName = 'PartyOpsUpdateService' then
+    Result :=
+      (Digest = '125cfb078a03b45c4d662e7aca799dc22852239b8e05a0f5d60e484aaaad8ceb') or
+      (Digest = '426d1a793a1643963322ca7d7ade4e399bbe766aebf13279c62b774056676302') or
+      (Digest = '62959691f3e2f70b041e5a914dbfed7063b312dfa81f8b9172946a5c195a95ac') or
+      (Digest = 'c4ccea171c97eef8b9044a03c869107d1ed61a073c6f034f08bb183c3883ff55') or
+      (Digest = '893c0a1a66209f5f6801244837ed0e144d877a7e8efea5b19dc345950f9e16cd') or
+      (Digest = '678170ae7e4c15069f3bc8f764b751bd4bf1754db5c9af75e813bfc74214b654') or
+      (Digest = 'e0e6194b18feb80b473d17b8c5bb1aa7475ac54832f93d932fb682a1eb80dd3e') or
+      (Digest = '41fa10506af9a350da241e2c3aad2dc7ca681524ae2a44ffd1ea8ee69f3f7b5e') or
+      (Digest = 'e62e0a452556f6920bd672851d9b678c26ebc0a11a8dd02eb5fc6b70aececdcd');
+end;
+
+function IsDormantLegacyPartyOpsService(
+  ServiceName, ServiceExecutable, ExecutablePath: String
+): Boolean;
+var
+  ServiceKey, DisplayName, Description, ObjectName: String;
+  ExpectedDisplayName, ExpectedDescription: String;
+  ServiceType, StartType, ErrorControl: Cardinal;
+begin
+  Result := False;
+  { 二进制仍在时必须走哈希、AppId、当前路径或卸载记录证明；这一分支只
+    修复卸载器已经删除文件、但 SCM 删除失败后留下的不可运行注册项。 }
+  if (ExecutablePath = '') or FileExists(ExecutablePath) or
+     ServiceIsRunning(ServiceName) or
+     (CompareText(ExtractFileName(ExecutablePath), ServiceExecutable) <> 0) then
+    exit;
+
+  if ServiceName = 'PartyOpsHost' then
+  begin
+    ExpectedDisplayName := '党建智办 PartyOps 主机服务';
+    ExpectedDescription := '在 Windows 10/11 上托管 PartyOps 局域网协同主机。';
+  end
+  else if ServiceName = 'PartyOpsUpdateService' then
+  begin
+    ExpectedDisplayName := '党建智办 PartyOps 更新服务';
+    ExpectedDescription := '校验签名后执行 PartyOps 更新、健康检查和失败回滚。';
+  end
+  else
+    exit;
+
+  ServiceKey := 'SYSTEM\CurrentControlSet\Services\' + ServiceName;
+  if (not RegQueryStringValue(HKLM, ServiceKey, 'DisplayName', DisplayName)) or
+     (not RegQueryStringValue(HKLM, ServiceKey, 'Description', Description)) or
+     (not RegQueryStringValue(HKLM, ServiceKey, 'ObjectName', ObjectName)) or
+     (not RegQueryDWordValue(HKLM, ServiceKey, 'Type', ServiceType)) or
+     (not RegQueryDWordValue(HKLM, ServiceKey, 'Start', StartType)) or
+     (not RegQueryDWordValue(HKLM, ServiceKey, 'ErrorControl', ErrorControl)) then
+    exit;
+  Result :=
+    (CompareText(DisplayName, ExpectedDisplayName) = 0) and
+    (CompareText(Description, ExpectedDescription) = 0) and
+    (CompareText(ObjectName, 'LocalSystem') = 0) and
+    (ServiceType = 16) and
+    ((StartType = 2) or (StartType = 3) or (StartType = 4)) and
+    (ErrorControl = 1);
+end;
+
 function QueryOwnedServiceExecutable(
   ServiceName, ServiceExecutable: String; var ExecutablePath: String
 ): Boolean;
@@ -752,6 +835,26 @@ begin
   if (CompareText(OwnerAppId, PartyOpsAppId) = 0) and
      (CompareText(ExtractFileName(ExecutablePath), ServiceExecutable) = 0) then
   begin
+    Result := True;
+    exit;
+  end;
+
+  { rc.1/rc.2 卸载失败可能先移除 Inno 卸载项和 AppId，再留下 SCM 项。
+    二进制仍存在时只接受冻结发布制品的精确 SHA-256，不按文件名猜测。 }
+  if IsKnownLegacyPartyOpsServiceBinary(ServiceName, ExecutablePath) then
+  begin
+    Log('已通过正式旧版二进制 SHA-256 证明遗留 PartyOps 服务归属。');
+    Result := True;
+    exit;
+  end;
+
+  { 若旧卸载器已删除二进制，只允许接管“已停止 + 文件不存在 + 精确服务名、
+    显示名、说明、LocalSystem、类型、启动类型、错误策略”同时匹配的残留项。 }
+  if IsDormantLegacyPartyOpsService(
+    ServiceName, ServiceExecutable, ExecutablePath
+  ) then
+  begin
+    Log('已通过不可运行遗留 SCM 元数据证明 PartyOps 服务归属。');
     Result := True;
     exit;
   end;

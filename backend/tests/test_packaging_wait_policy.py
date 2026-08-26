@@ -771,6 +771,21 @@ def test_windows_installer_is_chinese_branded_and_preserves_custom_paths() -> No
     assert "GetShortName" in installer
     assert "WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall" in installer
     assert "ExtractServiceExecutablePath(ImagePath, ServiceExecutable)" in installer
+    assert "function IsKnownLegacyPartyOpsServiceBinary" in installer
+    assert "function IsDormantLegacyPartyOpsService" in installer
+    assert "GetSHA256OfFile(ExecutablePath)" in installer
+    assert "43babf7f765aff96a14fa4a56fb2ba63b329e358d4db8157d7c6f6c81e6a952d" in installer
+    assert "56c8d58af2d06c81ea8998b28130cec33494e64a322a29affcf6133407ae91ec" in installer
+    assert "89042cbeae03b03c30adcedeed0463f05730eb20149721fb4c3d5b2682de616b" in installer
+    assert "ServiceIsRunning(ServiceName)" in installer
+    assert "(CompareText(ObjectName, 'LocalSystem') = 0)" in installer
+    assert "(ServiceType = 16)" in installer
+    assert installer.index("IsKnownLegacyPartyOpsServiceBinary") < installer.index(
+        "LEGACY_SERVICE_CONFLICT"
+    )
+    assert installer.index("IsDormantLegacyPartyOpsService") < installer.index(
+        "LEGACY_SERVICE_CONFLICT"
+    )
     assert "function StopOwnedServiceThroughScm" in installer
     assert "LEGACY_SERVICE_CONFLICT" in installer
     assert "LEGACY_SERVICE_STOP_FAILED" in installer

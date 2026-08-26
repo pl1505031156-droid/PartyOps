@@ -11,6 +11,7 @@
 - 新增持久化 `upgrade-transaction.json`。如果进程在迁移或校验阶段被强退，下次启动先恢复升级前快照，再重新执行完整事务。
 - `UPGRADE_BACKUP_FAILED` 表示备份或事务日志未完成，旧库没有迁移；`DATABASE_SCHEMA_FAILED` 表示表结构迁移失败并已尝试回滚；`SQLITE_RUNTIME_FAILED` 仅表示驱动、版本或 FTS5 能力问题。
 - Windows 7 x64 不再捆绑当前上游 `llama.cpp` Windows 运行时。该运行时直接导入 Win8+ API，并依赖与 Win7 VC142 不兼容的新版 ABI；rc.4 保留核心业务、协同、OCR 和语义重排，阻止以“能打包”为由发布调用即崩溃的伪兼容能力。
+- Windows 覆盖安装可安全接管 rc.1/rc.2/已撤回 rc.3 遗留的 PartyOps 主机与更新服务：旧二进制仍在时必须匹配冻结发布制品 SHA-256；旧卸载器已删除二进制时，必须同时满足服务已停止、目标文件不存在、精确服务名/显示名/说明、`LocalSystem`、服务类型、启动类型和错误策略。仅名称相同或元数据不完整的外部服务仍返回 `LEGACY_SERVICE_CONFLICT`，不会被修改。
 
 ## 升级边界
 
