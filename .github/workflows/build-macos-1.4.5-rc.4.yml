@@ -1,10 +1,10 @@
-name: 手动构建 macOS 1.4.5-rc.3 候选
+name: 手动构建 macOS 1.4.5-rc.4 候选
 
 on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 输入 BUILD-UNSIGNED-145-RC3，确认只生成未公证测试候选
+        description: 输入 BUILD-UNSIGNED-145-RC4，确认只生成未公证测试候选
         required: true
         type: string
 
@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: partyops-macos-145-rc3-manual
+  group: partyops-macos-145-rc4-manual
   cancel-in-progress: false
 
 jobs:
   build:
-    if: github.event.inputs.confirmation == 'BUILD-UNSIGNED-145-RC3'
+    if: github.event.inputs.confirmation == 'BUILD-UNSIGNED-145-RC4'
     name: ${{ matrix.architecture }} 原生构建
     timeout-minutes: 120
     strategy:
@@ -37,7 +37,7 @@ jobs:
       - name: 检出固定源码冻结提交
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 4e1669d14b9b93375a7d4b3cd3854e61e80c2297
+          ref: c19c11df43cc07902e4e0eac5707e5b5bd092e76
           persist-credentials: false
 
       - name: 配置 Python 3.11
@@ -110,11 +110,27 @@ jobs:
             --architecture '${{ matrix.architecture }}' \
             --unsigned-candidate
 
+      - name: 建立真实 0023 覆盖升级基线
+        shell: bash
+        run: |
+          set -euo pipefail
+          upgrade_env="$RUNNER_TEMP/partyops-upgrade-gate"
+          upgrade_data="$RUNNER_TEMP/partyops-upgrade-data"
+          python3.11 -m venv "$upgrade_env"
+          UV_PROJECT_ENVIRONMENT="$upgrade_env" uv sync \
+            --project backend --frozen --no-dev
+          "$upgrade_env/bin/python" scripts/create-0023-upgrade-fixture.py \
+            --repo-root "$PWD" --data-root "$upgrade_data"
+          revision="$($upgrade_env/bin/python -c \
+            'import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute("select version_num from alembic_version").fetchone()[0])' \
+            "$upgrade_data/partyops.db")"
+          test "$revision" = '0023'
+
       - name: 安装后原生自检
         shell: bash
         run: |
           set -euo pipefail
-          package="artifacts/release-1.4.5-rc.3-final/PartyOps_1.4.5-rc.3_macos_${{ matrix.architecture }}.pkg"
+          package="artifacts/release-1.4.5-rc.4-final/PartyOps_1.4.5-rc.4_macos_${{ matrix.architecture }}.pkg"
           test -f "$package"
           test -f "$package.sha256"
           test -f "$package.attestation.json"
@@ -160,6 +176,52 @@ jobs:
             "$app/Contents/MacOS/partyops-desktop" --launch-services-self-test
           "$app/Contents/MacOS/partyops-launch-agent" --mode personal --self-test
           "$app/Contents/MacOS/partyops" --package-self-test
+
+          # 对最终冻结主程序执行真实 0023→0024 覆盖升级，而不是只验证空库。
+          upgrade_env="$RUNNER_TEMP/partyops-upgrade-gate"
+          upgrade_data="$RUNNER_TEMP/partyops-upgrade-data"
+          upgrade_log="$RUNNER_TEMP/partyops-upgrade-runtime.log"
+          upgrade_port="$($upgrade_env/bin/python -c \
+            'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+          PARTYOPS_MODE=host PARTYOPS_ENVIRONMENT=test \
+            PARTYOPS_HOST=127.0.0.1 PARTYOPS_PORT="$upgrade_port" \
+            PARTYOPS_AGENT_PORT="$((upgrade_port + 1))" \
+            PARTYOPS_DATA_DIR="$upgrade_data" PARTYOPS_STRICT_SQLITE=true \
+            PARTYOPS_TLS_ENABLED=false PARTYOPS_SEED_DEMO=false \
+            "$app/Contents/MacOS/partyops" >"$upgrade_log" 2>&1 &
+          upgrade_pid=$!
+          upgrade_ok=0
+          for _ in {1..180}; do
+            if ! kill -0 "$upgrade_pid" 2>/dev/null; then
+              break
+            fi
+            if curl -fsS --connect-timeout 1 --max-time 3 \
+              "http://127.0.0.1:$upgrade_port/api/v1/health" \
+              >"$RUNNER_TEMP/partyops-upgrade-health.json" 2>/dev/null; then
+              upgrade_ok=1
+              break
+            fi
+            /bin/sleep 1
+          done
+          if [[ "$upgrade_ok" != '1' ]]; then
+            /usr/bin/tail -n 160 "$upgrade_log" >&2 || true
+            kill "$upgrade_pid" >/dev/null 2>&1 || true
+            wait "$upgrade_pid" >/dev/null 2>&1 || true
+            printf '%s\n' '[MACOS_0023_UPGRADE_FAILED] 最终冻结主程序未完成 0023→0024 健康启动。' >&2
+            exit 2
+          fi
+          revision="$($upgrade_env/bin/python -c \
+            'import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute("select version_num from alembic_version").fetchone()[0])' \
+            "$upgrade_data/partyops.db")"
+          display_name="$($upgrade_env/bin/python -c \
+            'import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute("select display_name from users where id=?", ("rc4-native-upgrade-admin",)).fetchone()[0])' \
+            "$upgrade_data/partyops.db")"
+          kill "$upgrade_pid" >/dev/null 2>&1 || true
+          wait "$upgrade_pid" >/dev/null 2>&1 || true
+          test "$revision" = '0024'
+          test "$display_name" = '原生覆盖升级管理员'
+          test "$(cat "$upgrade_data/attachments/preserved.txt")" = 'rc4 原生覆盖升级必须保留附件'
+          test -n "$(find "$upgrade_data/backups" -maxdepth 1 -name 'backup-*.zip' -print -quit)"
           probe="$HOME/Library/Logs/PartyOps/launch-probe.log"
           launcher_log="$HOME/Library/Logs/PartyOps/launcher.log"
           launcher_stderr="$HOME/Library/Logs/PartyOps/launch-stderr.log"
@@ -170,7 +232,7 @@ jobs:
             if /usr/bin/grep -q 'status=launchservices-entered architecture=.* target=partyops-desktop-bin' "$probe" 2>/dev/null &&
               /usr/bin/grep -q 'status=desktop-child-started child_pid=' "$probe" 2>/dev/null &&
               /usr/bin/grep -q 'status=desktop-child-exited child_pid=.* exit_code=0' "$probe" 2>/dev/null &&
-              /usr/bin/grep -q 'LaunchServices 已进入 PartyOps 1.4.5-rc.3 Python 桌面启动器' "$launcher_log" 2>/dev/null; then
+              /usr/bin/grep -q 'LaunchServices 已进入 PartyOps 1.4.5-rc.4 Python 桌面启动器' "$launcher_log" 2>/dev/null; then
               launchservices_ok=1
               break
             fi
@@ -186,10 +248,10 @@ jobs:
       - name: 上传待人工审核制品
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: partyops-macos-${{ matrix.architecture }}-145-rc3
+          name: partyops-macos-${{ matrix.architecture }}-145-rc4
           path: |
-            artifacts/release-1.4.5-rc.3-final/PartyOps_1.4.5-rc.3_macos_${{ matrix.architecture }}.pkg
-            artifacts/release-1.4.5-rc.3-final/PartyOps_1.4.5-rc.3_macos_${{ matrix.architecture }}.pkg.sha256
-            artifacts/release-1.4.5-rc.3-final/PartyOps_1.4.5-rc.3_macos_${{ matrix.architecture }}.pkg.attestation.json
+            artifacts/release-1.4.5-rc.4-final/PartyOps_1.4.5-rc.4_macos_${{ matrix.architecture }}.pkg
+            artifacts/release-1.4.5-rc.4-final/PartyOps_1.4.5-rc.4_macos_${{ matrix.architecture }}.pkg.sha256
+            artifacts/release-1.4.5-rc.4-final/PartyOps_1.4.5-rc.4_macos_${{ matrix.architecture }}.pkg.attestation.json
           if-no-files-found: error
           retention-days: 7

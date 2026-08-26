@@ -66,7 +66,7 @@ case "$PACKAGE" in
 esac
 
 RUNTIME="$ROOT/opt/partyops"
-[[ "$(cat "$RUNTIME/VERSION" 2>/dev/null || true)" == "1.4.5-rc.3" ]] || {
+[[ "$(cat "$RUNTIME/VERSION" 2>/dev/null || true)" == "1.4.5-rc.4" ]] || {
   echo "成品缺少正确的冻结版本标识。" >&2
   exit 2
 }
@@ -234,5 +234,79 @@ grep -q '\[START_COMMAND_FAILED\]' "$CONFIG_ROOT/startup-diagnostic.txt" || {
   cat "$CONFIG_ROOT/startup-diagnostic.txt" >&2
   exit 8
 }
+
+# 用同一最终 DEB/RPM 中的冻结主程序执行真实 0023→0024 覆盖升级。
+# 构建机 Python 仅负责按仓库 Alembic 历史生成真实旧库和读回结果，迁移
+# 本身完全由待发布二进制完成。
+SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_PYTHON="${PARTYOPS_SOURCE_PYTHON:-${PYTHON_BIN:-}}"
+if [[ -z "$SOURCE_PYTHON" || ! -x "$SOURCE_PYTHON" ]]; then
+  SOURCE_PYTHON="$(command -v python3.11 || command -v python3 || true)"
+fi
+[[ -n "$SOURCE_PYTHON" && -x "$SOURCE_PYTHON" ]] || {
+  echo "缺少用于生成真实 0023 测试库的 Python。" >&2
+  exit 9
+}
+UPGRADE_VENV="$TEST_ROOT/upgrade-venv"
+"$SOURCE_PYTHON" -m venv "$UPGRADE_VENV"
+WHEELHOUSE="$SOURCE_ROOT/vendor/wheels/$EXPECTED_ARCH"
+[[ -d "$WHEELHOUSE" ]] || WHEELHOUSE="$SOURCE_ROOT/vendor/wheels"
+"$UPGRADE_VENV/bin/python" -m pip install --no-index --find-links "$WHEELHOUSE" \
+  -r "$SOURCE_ROOT/backend/requirements.txt" >/dev/null
+UPGRADE_DATA="$TEST_ROOT/upgrade-data"
+"$UPGRADE_VENV/bin/python" "$SOURCE_ROOT/scripts/create-0023-upgrade-fixture.py" \
+  --repo-root "$SOURCE_ROOT" --data-root "$UPGRADE_DATA" \
+  >"$TEST_ROOT/upgrade-fixture.json"
+UPGRADE_PORT="$("$UPGRADE_VENV/bin/python" -c \
+  'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+unset PARTYOPS_CONFIG_FILE
+export PARTYOPS_MODE=host PARTYOPS_HOST=127.0.0.1
+export PARTYOPS_PORT="$UPGRADE_PORT" PARTYOPS_AGENT_PORT=$((UPGRADE_PORT + 1))
+export PARTYOPS_ENVIRONMENT=test PARTYOPS_STRICT_SQLITE=true
+export PARTYOPS_TLS_ENABLED=false PARTYOPS_SEED_DEMO=false
+export PARTYOPS_DATA_DIR="$UPGRADE_DATA"
+"$RUNTIME/partyops" >"$TEST_ROOT/upgrade-server.log" 2>&1 &
+SERVER_PID=$!
+UPGRADE_READY=0
+for _attempt in $(seq 1 180); do
+  if curl -fsS --connect-timeout 1 --max-time 3 \
+    "http://127.0.0.1:$UPGRADE_PORT/api/v1/health" \
+    >"$TEST_ROOT/upgrade-health.json" 2>/dev/null; then
+    UPGRADE_READY=1
+    break
+  fi
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+if [[ "$UPGRADE_READY" != 1 ]]; then
+  tail -n 160 "$TEST_ROOT/upgrade-server.log" >&2 || true
+  echo "[NATIVE_0023_UPGRADE_FAILED] 最终成品未完成 0023→0024 健康启动。" >&2
+  exit 9
+fi
+revision="$("$UPGRADE_VENV/bin/python" -c \
+  'import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute("select version_num from alembic_version").fetchone()[0])' \
+  "$UPGRADE_DATA/partyops.db")"
+display_name="$("$UPGRADE_VENV/bin/python" -c \
+  'import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute("select display_name from users where id=?", ("rc4-native-upgrade-admin",)).fetchone()[0])' \
+  "$UPGRADE_DATA/partyops.db")"
+[[ "$revision" == 0024 && "$display_name" == 原生覆盖升级管理员 ]] || {
+  echo "覆盖升级后的迁移版本或管理员记录不一致。" >&2
+  exit 9
+}
+[[ "$(cat "$UPGRADE_DATA/attachments/preserved.txt")" == \
+  "rc4 原生覆盖升级必须保留附件" ]] || {
+  echo "覆盖升级后的附件不一致。" >&2
+  exit 9
+}
+find "$UPGRADE_DATA/backups" -maxdepth 1 -name 'backup-*.zip' -print -quit |
+  grep -q . || {
+    echo "覆盖升级没有生成迁移前备份。" >&2
+    exit 9
+  }
+kill "$SERVER_PID" >/dev/null 2>&1 || true
+wait "$SERVER_PID" >/dev/null 2>&1 || true
+SERVER_PID=""
 
 echo "原生包动态启动门禁通过：$PACKAGE（$EXPECTED_ARCH）"

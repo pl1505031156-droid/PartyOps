@@ -233,7 +233,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     runtimes = (MACOS / "build-native-runtimes.sh").read_text(encoding="utf-8")
     validation = (MACOS / "validate-bundle.sh").read_text(encoding="utf-8")
     workflow = (
-        ROOT / ".github" / "workflows" / "build-macos-1.4.5-rc.3.yml"
+        ROOT / ".github" / "workflows" / "build-macos-1.4.5-rc.4.yml"
     ).read_text(encoding="utf-8")
 
     assert "--unsigned-candidate" in build
@@ -266,8 +266,12 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "push:" not in workflow and "pull_request:" not in workflow
     assert "contents: read" in workflow
     assert "macos-15-intel" in workflow and "macos-15" in workflow
-    assert "BUILD-UNSIGNED-145-RC3" in workflow
-    assert "ref: 4e1669d14b9b93375a7d4b3cd3854e61e80c2297" in workflow
+    assert "BUILD-UNSIGNED-145-RC4" in workflow
+    assert "ref: c19c11df43cc07902e4e0eac5707e5b5bd092e76" in workflow
+    assert "建立真实 0023 覆盖升级基线" in workflow
+    assert "MACOS_0023_UPGRADE_FAILED" in workflow
+    assert "test \"$revision\" = '0024'" in workflow
+    assert "rc4-native-upgrade-admin" in workflow
     assert re.search(r"ref: [0-9a-f]{40}", workflow)
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1

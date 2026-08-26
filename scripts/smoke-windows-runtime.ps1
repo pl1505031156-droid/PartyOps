@@ -2,7 +2,8 @@ param(
   [string]$RuntimeDir = "",
   [int]$Port = 18940,
   [string]$DataRoot = "",
-  [string]$Python = ""
+  [string]$Python = "",
+  [switch]$UpgradeFrom0023
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,13 +14,21 @@ if (-not $Python) {
 if (-not (Test-Path -LiteralPath $Python)) {
   throw "未找到用于读取冒烟数据库的 Python：$Python；可通过 -Python 或 PARTYOPS_PYTHON 指定。"
 }
-if (-not $RuntimeDir) { $RuntimeDir = Join-Path $projectRoot "artifacts\PartyOps-1.4.5-rc.3-windows-amd64" }
+if (-not $RuntimeDir) { $RuntimeDir = Join-Path $projectRoot "artifacts\PartyOps-1.4.5-rc.4-windows-amd64" }
 $RuntimeDir = (Resolve-Path -LiteralPath $RuntimeDir).Path
 if (-not $DataRoot) {
   $DataRoot = Join-Path $projectRoot (".run-win-smoke-" + [DateTime]::UtcNow.ToString("yyyyMMddHHmmss"))
 }
 New-Item -ItemType Directory -Path $DataRoot -Force | Out-Null
 $DataRoot = (Resolve-Path -LiteralPath $DataRoot).Path
+if ($UpgradeFrom0023) {
+  if (Get-ChildItem -LiteralPath $DataRoot -Force | Select-Object -First 1) {
+    throw "0023 覆盖升级冒烟目录必须为空：$DataRoot"
+  }
+  & $Python (Join-Path $projectRoot "scripts\create-0023-upgrade-fixture.py") `
+    --repo-root $projectRoot --data-root $DataRoot
+  if ($LASTEXITCODE -ne 0) { throw "无法创建真实 0023 覆盖升级基线。" }
+}
 
 $env:PARTYOPS_MODE = "host"
 $env:PARTYOPS_ENVIRONMENT = "test"
@@ -69,6 +78,20 @@ try {
   $revision = & $Python -c "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute('select version_num from alembic_version').fetchone()[0])" (Join-Path $DataRoot "partyops.db")
   if ($LASTEXITCODE -ne 0) { throw "无法读取冒烟数据库迁移版本。" }
   if ($revision -ne "0024") { throw "冻结主程序数据库版本为 $revision，不是 0024。" }
+  if ($UpgradeFrom0023) {
+    $fixture = & $Python -c "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute('select display_name from users where id=?', ('rc4-native-upgrade-admin',)).fetchone()[0])" (Join-Path $DataRoot "partyops.db")
+    if ($LASTEXITCODE -ne 0 -or $fixture -ne "原生覆盖升级管理员") {
+      throw "覆盖升级后原有管理员记录丢失或损坏。"
+    }
+    $preserved = Join-Path $DataRoot "attachments\preserved.txt"
+    if (-not (Test-Path -LiteralPath $preserved) -or
+        (Get-Content -Raw -LiteralPath $preserved -Encoding UTF8) -ne "rc4 原生覆盖升级必须保留附件") {
+      throw "覆盖升级后原有附件丢失或损坏。"
+    }
+    if (-not (Get-ChildItem -LiteralPath (Join-Path $DataRoot "backups") -Filter "backup-*.zip" -File | Select-Object -First 1)) {
+      throw "覆盖升级未生成经过校验的迁移前备份。"
+    }
+  }
   if ([version]$health.sqlite.version -lt [version]"3.51.3") {
     throw "冻结主程序 SQLite 为 $($health.sqlite.version)，低于 3.51.3。"
   }
@@ -77,6 +100,7 @@ try {
     app_version = $health.app_version
     sqlite_version = $health.sqlite.version
     schema_revision = $revision
+    upgrade_from_0023 = [bool]$UpgradeFrom0023
     data_root = $DataRoot
   } | ConvertTo-Json -Depth 3
 } finally {

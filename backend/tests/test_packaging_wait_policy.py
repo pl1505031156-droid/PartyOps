@@ -340,6 +340,9 @@ def test_linux_auxiliary_entrypoints_share_onedir_runtime() -> None:
     ).read_text(encoding="utf-8")
     assert '"$RUNTIME/partyops-wizard" --runtime-layout-self-test' in native_runtime
     assert "partyops partyops-client partyops-wizard partyops-updater" in native_runtime
+    assert "create-0023-upgrade-fixture.py" in native_runtime
+    assert "NATIVE_0023_UPGRADE_FAILED" in native_runtime
+    assert '[[ "$revision" == 0024' in native_runtime
     assert "runtime_root != expected_root" in wizard
     assert 'runtime_root.rglob("*.so*")' in wizard
 
