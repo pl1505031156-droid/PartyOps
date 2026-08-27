@@ -77,6 +77,7 @@ const toolLabels: Record<string, string> = {
   "notifications.recalculate": "重算提醒",
   "files.explain_open": "诊断文件打开",
   "fleet.diagnose": "诊断协同设备",
+  "official_format.review_diagnostics": "复核公文排版诊断",
   "fleet.rebind": "重新绑定设备",
   "user.archive": "归档用户并移交责任",
   "user.delete": "进入用户归档流程",

@@ -82,6 +82,13 @@ TOOL_REGISTRY: dict[str, ToolContract] = {
     "files.explain_open": ToolContract(
         "files.explain_open", "解释文件授权、预览和打开状态", frozenset({"file_id"}), "low", False
     ),
+    "official_format.review_diagnostics": ToolContract(
+        "official_format.review_diagnostics",
+        "根据本机排版引擎的问题码和标准条款生成复核建议",
+        frozenset({"diagnostic_codes"}),
+        "low",
+        False,
+    ),
     "fleet.diagnose": ToolContract(
         "fleet.diagnose", "检查主机和协同设备健康状态", frozenset({"device_id"}), "low", False
     ),
@@ -201,6 +208,13 @@ def _rule_steps(goal: str) -> list[dict[str, Any]]:
         add("business_meeting.prepare_workflow", {}, "为会议生成固定筹备流程，等待负责人确认", 0.84)
     if any(token in text for token in ("台账", "表格", "导入", "xlsx", "xls", "csv", "档案")):
         add("ledger.inspect", {"target_type": "重要档案"}, "识别到台账或档案导入目标")
+    if any(token in text for token in ("公文排版", "公文格式", "格式诊断", "9704")):
+        add(
+            "official_format.review_diagnostics",
+            {"diagnostic_codes": "由本机公文排版页选择的问题码"},
+            "只解释本机确定性引擎已识别的问题，不读取文档正文或直接修改 OOXML",
+            0.94,
+        )
     if "发展党员" in text or "入党" in text:
         add("party_development.timeline", {}, "识别到发展党员时间轴或节点测算目标", 0.86)
     if any(token in text for token in ("提醒", "通知", "改期", "截止", "日期")):
@@ -433,6 +447,18 @@ def dispatch_step(step: AIOrchestrationStep, contract: ToolContract) -> dict[str
             "preview_only": True,
             "handoff": handoff,
             "message": "已通过编排器确认门禁；请在对应业务页面核对并完成实际写入。",
+        }
+    if contract.name == "official_format.review_diagnostics":
+        return {
+            "status": "completed",
+            "tool": contract.name,
+            "preview_only": True,
+            "message": "已生成排版复核路线；国家标准参数和 OOXML 写入仍由本机确定性引擎裁决。",
+            "review_policy": {
+                "allowed_context": ["问题码", "候选角色", "置信度", "标准条款"],
+                "forbidden_context": ["原文件", "文件路径", "完整正文", "临时副本"],
+                "uncertain_action": "保留原段落并要求人工确认",
+            },
         }
     return {"status": "completed", "tool": contract.name, "preview_only": False}
 

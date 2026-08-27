@@ -449,6 +449,8 @@ def test_footer_reuse_rejects_unsafe_relationships_and_avoids_duplicates(tmp_pat
         outputs = formatter._add_page_footers(document, settings, relationships, content_types, package)
     assert "word/footer-existing.xml" in outputs
     assert "word/footer-partyops-even.xml" in outputs
+    normalized = formatter._safe_xml(outputs["word/footer-existing.xml"], "word/footer-existing.xml")
+    assert formatter._standard_page_footer_paragraph(formatter._page_field_paragraphs(normalized)[0])
     assert len(content_types.findall(f"{{{formatter.CT}}}Override")) == 1
     relationship_ids = {item.get("Id") for item in relationships}
     assert "rIdPartyOpsFooter2" in relationship_ids

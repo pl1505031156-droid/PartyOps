@@ -48,6 +48,7 @@ partyops.env
 .test-*/
 .smoke-rc4-*/
 .qa-*/
+.qa/
 .run-*/
 .remote-audit-partyops/
 .playwright-cli/

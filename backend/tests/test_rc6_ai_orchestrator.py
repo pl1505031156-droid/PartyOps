@@ -40,6 +40,37 @@ def test_rule_orchestration_creates_safe_cross_module_plan(client: TestClient, a
     assert payload["plan"]["can_execute"] is False
 
 
+def test_official_format_ai_only_reviews_diagnostics_without_document_content(
+    client: TestClient,
+    admin: dict,
+) -> None:
+    created = client.post(
+        "/api/v1/ai/orchestrations",
+        json={"goal": "解释公文排版的页码格式诊断，不读取原文"},
+    )
+    assert created.status_code == 201, created.text
+    payload = created.json()
+    step = next(
+        item
+        for item in payload["steps"]
+        if item["tool_name"] == "official_format.review_diagnostics"
+    )
+    assert step["requires_confirmation"] is False
+    executed = client.post(
+        f"/api/v1/ai/orchestrations/{payload['id']}/execute",
+        headers={"If-Match": str(payload["version"])},
+    )
+    assert executed.status_code == 200, executed.text
+    result = next(
+        item["result_summary"]
+        for item in executed.json()["steps"]
+        if item["tool_name"] == "official_format.review_diagnostics"
+    )
+    assert result["preview_only"] is True
+    assert result["review_policy"]["allowed_context"] == ["问题码", "候选角色", "置信度", "标准条款"]
+    assert "完整正文" in result["review_policy"]["forbidden_context"]
+
+
 def test_high_risk_step_requires_exact_scope_confirmation(client: TestClient, admin: dict) -> None:
     created = client.post(
         "/api/v1/ai/orchestrations",

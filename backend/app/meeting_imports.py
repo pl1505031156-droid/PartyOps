@@ -23,8 +23,11 @@ OLE_HEADER = bytes.fromhex("D0CF11E0A1B11AE1")
 ZIP_HEADERS = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
 BEIJING = timezone(timedelta(hours=8))
 
-_TOPIC = re.compile(
-    r"^(?:议题\s*)?(?:[一二三四五六七八九十]+[、.．]|（[一二三四五六七八九十]+）|\d{1,2}[、.．]|\（?\d{1,2}\）)\s*(.+)$"
+_TOPIC_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("中文一级序号", re.compile(r"^(?:议题\s*)?([一二三四五六七八九十]+)[、.．]\s*(.+)$")),
+    ("中文括号序号", re.compile(r"^(?:议题\s*)?（([一二三四五六七八九十]+)）\s*(.+)$")),
+    ("数字一级序号", re.compile(r"^(?:议题\s*)?(\d{1,2})[、.．]\s*(.+)$")),
+    ("数字括号序号", re.compile(r"^(?:议题\s*)?[（(](\d{1,2})[）)]\s*(.+)$")),
 )
 _DATE_COMPACT = re.compile(r"(?<!\d)(20\d{2})(0[1-9]|1[0-2])([0-2]\d|3[01])(?!\d)")
 _DATE_TEXT = re.compile(r"(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]")
@@ -112,6 +115,48 @@ def _label_value(lines: list[str], labels: tuple[str, ...]) -> str:
     return ""
 
 
+def _chinese_number(value: str) -> int | None:
+    digits = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+    if value == "十":
+        return 10
+    if "十" in value:
+        left, right = value.split("十", 1)
+        tens = digits.get(left, 1) if left else 1
+        ones = digits.get(right, 0) if right else 0
+        return tens * 10 + ones
+    return digits.get(value)
+
+
+def _topic_candidates(lines: list[str]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for index, line in enumerate(lines):
+        for style, pattern in _TOPIC_PATTERNS:
+            match = pattern.match(line)
+            if not match:
+                continue
+            raw_number = match.group(1)
+            number = int(raw_number) if raw_number.isdigit() else _chinese_number(raw_number)
+            title = match.group(2).strip(" ：:;；。")[:240]
+            if number is not None and len(title) >= 2:
+                candidates.append({"style": style, "number": number, "title": title, "line": index + 1})
+            break
+    return candidates
+
+
+def _dominant_topic_style(candidates: list[dict[str, Any]]) -> str | None:
+    """只在存在明确连续层级时选择主序号，避免把议题内的小项当成议题。"""
+
+    for style, _pattern in _TOPIC_PATTERNS:
+        values: list[int] = []
+        for item in candidates:
+            if item["style"] != style or item["number"] in values:
+                continue
+            values.append(item["number"])
+        if len(values) >= 2 and values[0] == 1 and values == list(range(1, len(values) + 1)):
+            return style
+    return None
+
+
 def propose_meeting(text: str, filename_hint: str = "") -> dict[str, Any]:
     lines = [" ".join(item.split()) for item in text.splitlines() if item.strip()]
     filename_title = Path(filename_hint).stem[:240]
@@ -132,11 +177,12 @@ def propose_meeting(text: str, filename_hint: str = "") -> dict[str, Any]:
     scheduled = _scheduled_at(text, date_value)
     topics: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for index, line in enumerate(lines):
-        match = _TOPIC.match(line)
-        if not match:
+    candidates = _topic_candidates(lines)
+    dominant_style = _dominant_topic_style(candidates)
+    for candidate in candidates:
+        if dominant_style and candidate["style"] != dominant_style:
             continue
-        topic = match.group(1).strip(" ：:;；。")[:240]
+        topic = candidate["title"]
         if len(topic) < 2 or topic in seen:
             continue
         seen.add(topic)
@@ -144,7 +190,7 @@ def propose_meeting(text: str, filename_hint: str = "") -> dict[str, Any]:
             {
                 "title": topic,
                 "confidence": 0.96,
-                "source": f"正文第 {index + 1} 行的明确序号",
+                "source": f"正文第 {candidate['line']} 行的{candidate['style']}",
                 "confirmed": False,
             }
         )

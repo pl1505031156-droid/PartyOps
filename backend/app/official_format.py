@@ -520,6 +520,68 @@ def _append_page_footer_paragraph(root: etree._Element, alignment: str) -> etree
     return paragraph
 
 
+def _page_field_paragraphs(root: etree._Element) -> list[etree._Element]:
+    return root.xpath(
+        ".//w:p[.//w:instrText[contains(translate(., 'page', 'PAGE'), 'PAGE')] "
+        "or .//w:fldSimple[contains(translate(@w:instr, 'page', 'PAGE'), 'PAGE')]]",
+        namespaces=NS,
+    )
+
+
+def _standard_page_footer_paragraph(paragraph: etree._Element) -> bool:
+    visible = "".join(paragraph.xpath(".//w:t/text()", namespaces=NS)).strip()
+    return re.fullmatch(r"—\s*\d*\s*—", visible) is not None
+
+
+def _remove_page_field_runs(paragraph: etree._Element) -> None:
+    """从混合页脚中移除旧 PAGE 域，同时保留单位名称等其他页脚内容。"""
+
+    for field in list(paragraph.xpath(".//w:fldSimple", namespaces=NS)):
+        instruction = field.get(_qn("instr"), "")
+        if "PAGE" in instruction.upper() and field.getparent() is not None:
+            field.getparent().remove(field)
+    runs = list(paragraph.findall(_qn("r")))
+    page_indexes = [
+        index
+        for index, run in enumerate(runs)
+        if any("PAGE" in (item.text or "").upper() for item in run.findall(_qn("instrText")))
+    ]
+    for page_index in reversed(page_indexes):
+        begin_indexes = [
+            index
+            for index in range(page_index, -1, -1)
+            if runs[index].xpath(".//w:fldChar[@w:fldCharType='begin']", namespaces=NS)
+        ]
+        end_indexes = [
+            index
+            for index in range(page_index, len(runs))
+            if runs[index].xpath(".//w:fldChar[@w:fldCharType='end']", namespaces=NS)
+        ]
+        start = begin_indexes[0] if begin_indexes else page_index
+        end = end_indexes[0] if end_indexes else page_index
+        for run in runs[start : end + 1]:
+            if run.getparent() is paragraph:
+                paragraph.remove(run)
+
+
+def _normalize_page_footer(root: etree._Element, alignment: str) -> None:
+    page_paragraphs = _page_field_paragraphs(root)
+    standard = next((item for item in page_paragraphs if _standard_page_footer_paragraph(item)), None)
+    if standard is not None:
+        ppr = _get_or_add(standard, "pPr", first=True)
+        _set_value(ppr, "jc", alignment)
+        return
+    for paragraph in page_paragraphs:
+        visible = "".join(paragraph.xpath(".//w:t/text()", namespaces=NS)).strip()
+        if re.fullmatch(r"[\d\s—–－-]*", visible):
+            parent = paragraph.getparent()
+            if parent is not None:
+                parent.remove(paragraph)
+        else:
+            _remove_page_field_runs(paragraph)
+    _append_page_footer_paragraph(root, alignment)
+
+
 def _add_page_footers(
     document: etree._Element,
     settings: etree._Element,
@@ -574,8 +636,7 @@ def _add_page_footers(
             if part_name not in package.namelist():
                 continue
             root = _safe_xml(outputs.get(part_name, package.read(part_name)), part_name)
-            if not root.xpath(".//w:instrText[contains(translate(., 'page', 'PAGE'), 'PAGE')]", namespaces=NS):
-                _append_page_footer_paragraph(root, alignment)
+            _normalize_page_footer(root, alignment)
             outputs[part_name] = etree.tostring(
                 root, xml_declaration=True, encoding="UTF-8", standalone=True
             )
@@ -755,11 +816,29 @@ def diagnose_docx(path: Path, *, changed_count: int = 0) -> FormatReport:
                 break
         if body_invalid:
             issues.append(FormatIssue("BODY_STYLE_INVALID", "warning", "正文段落需要校准", "正文未完整使用 3 号仿宋、28 磅行距和首行二字符缩进。", "GB/T 9704-2012 5.2.3、5.2.4"))
+    footer_standard = True
     with zipfile.ZipFile(path) as package:
         footer_parts = [name for name in package.namelist() if re.fullmatch(r"word/footer[^/]*\.xml", name)]
         has_page_field = any(b"PAGE" in package.read(name) for name in footer_parts)
+        for name in footer_parts:
+            payload = package.read(name)
+            if b"PAGE" not in payload:
+                continue
+            footer = _safe_xml(payload, name)
+            page_paragraphs = _page_field_paragraphs(footer)
+            if not page_paragraphs or not all(
+                _standard_page_footer_paragraph(item) for item in page_paragraphs
+            ):
+                footer_standard = False
+                break
     if not document.xpath(".//w:sectPr/w:footerReference", namespaces=NS) or not has_page_field:
         issues.append(FormatIssue("PAGE_NUMBER_MISSING", "error" if changed_count else "warning", "未识别到有效页码", "排版时将按奇偶页分别置于版心下边缘。", "GB/T 9704-2012 7.5"))
+    elif not footer_standard:
+        issues.append(FormatIssue(
+            "PAGE_NUMBER_STYLE_INVALID", "error", "页码一字线格式不完整",
+            "奇数页和偶数页都必须使用四号半角宋体阿拉伯数字，并在数字左右各放一条一字线。",
+            "GB/T 9704-2012 7.5",
+        ))
     if document.xpath(".//w:txbxContent", namespaces=NS):
         issues.append(FormatIssue("TEXTBOX_REVIEW_REQUIRED", "warning", "包含文本框或浮动文字", "工具不移动文本框，需人工确认其字体、位置和遮挡关系。", "特殊对象复核"))
     if any(re.match(r"^\d+[、)]", _paragraph_text(item)) for item in nonempty):

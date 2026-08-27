@@ -113,6 +113,33 @@ def test_meeting_candidate_date_time_and_title_scoring_edges() -> None:
     assert penalized["title"] == "建议以上事项现提请党委会审议。"
 
 
+def test_meeting_candidate_uses_dominant_heading_level_for_real_agenda_shape() -> None:
+    candidate = meeting_imports.propose_meeting(
+        """中共测试镇委员会党委会议程
+一、学习有关文件精神
+1.传达文件精神
+2.研究我镇贯彻落实意见
+二、研究基层党建工作
+1.听取情况汇报
+2.研究下一步工作
+三、审议项目建设方案
+四、研究干部有关事项
+五、研究意识形态工作
+六、研究其他事项
+""",
+        "20260821党委会议程.docx",
+    )
+    assert [item["title"] for item in candidate["topics"]] == [
+        "学习有关文件精神",
+        "研究基层党建工作",
+        "审议项目建设方案",
+        "研究干部有关事项",
+        "研究意识形态工作",
+        "研究其他事项",
+    ]
+    assert all(item["source"].endswith("中文一级序号") for item in candidate["topics"])
+
+
 def test_meeting_import_is_draft_first_and_requires_exact_confirmation(client, admin: dict) -> None:
     inspected = client.post(
         "/api/v1/business-meetings/imports/inspect",

@@ -77,6 +77,9 @@ def test_format_docx_preserves_content_images_and_merged_tables(tmp_path, monkey
         assert "word/media/image1.png" in names
         assert "word/footer-partyops-odd.xml" in names
         assert "word/footer-partyops-even.xml" in names
+        for name in ("word/footer-partyops-odd.xml", "word/footer-partyops-even.xml"):
+            footer_xml = package.read(name).decode("utf-8")
+            assert "— " in footer_xml and " —" in footer_xml and " PAGE " in footer_xml
         document_xml = package.read("word/document.xml").decode("utf-8")
         assert 'w:line="560"' in document_xml
         assert 'w:firstLine="640"' in document_xml
