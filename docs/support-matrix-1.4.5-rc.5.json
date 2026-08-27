@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "product_version": "1.4.5-rc.5",
+  "release_tag": "v1.4.5-rc.5",
+  "updated_at": "2026-08-27T09:57:36+08:00",
+  "release_state": "blocked_before_artifact_build",
+  "levels": {
+    "stable": "已完成原生构建和目标系统用户验收",
+    "preview": "已完成原生构建与自动门禁，仍有明确的真机或签名限制",
+    "unavailable": "没有完成对应原生构建、目标系统门禁或正式签名发布条件"
+  },
+  "targets": [
+    {"id": "windows-x64", "os": "Windows 10/11", "arch": "x86_64", "level": "unavailable", "artifact": null, "planned_artifact": "PartyOps_1.4.5-rc.5_windows_amd64.exe", "reason": "缺少经许可审计的 Windows AMD64 LibreOffice 原生闭包，尚未执行全新安装与 0024→0025 覆盖升级门禁"},
+    {"id": "windows7-x64", "os": "Windows 7 SP1", "arch": "x86_64", "level": "unavailable", "artifact": null, "planned_artifact": "PartyOps_1.4.5-rc.5_windows7_amd64.exe", "reason": "尚未证明 LibreOffice 转换闭包、Python 3.8/UCRT 与冻结应用在 Windows 7 真机兼容"},
+    {"id": "windows7-x86", "os": "Windows 7 SP1", "arch": "x86", "level": "unavailable", "artifact": null, "planned_artifact": "PartyOps_1.4.5-rc.5_windows7_x86.exe", "reason": "缺少经审计的 32 位 LibreOffice 原生闭包和 Windows 7 x86 真机启动证据"},
+    {"id": "linux-deb-amd64", "os": "麒麟/UOS/deepin", "arch": "x86_64", "level": "unavailable", "artifact": null, "planned_artifact": "PartyOps_1.4.5-rc.5_linux_amd64.deb", "reason": "缺少目标架构 LibreOffice 闭包，尚未完成国产桌面图形安装、协同重绑和公文转换真机门禁"},
+    {"id": "linux-deb-arm64", "os": "麒麟/UOS/deepin", "arch": "aarch64", "level": "unavailable", "artifact": null, "planned_artifact": "PartyOps_1.4.5-rc.5_linux_arm64.deb", "reason": "缺少 ARM64 LibreOffice 闭包和 UOS/麒麟 ARM64 真机桌面启动证据"},
+    {"id": "linux-rpm-amd64", "os": "openEuler", "arch": "x86_64", "level": "unavailable", "artifact": null, "planned_artifact": "PartyOps-1.4.5-0.rc.5.1.x86_64.rpm", "reason": "缺少目标架构 LibreOffice 闭包及 openEuler 图形真机验收"},
+    {"id": "linux-rpm-arm64", "os": "openEuler", "arch": "aarch64", "level": "unavailable", "artifact": null, "planned_artifact": "PartyOps-1.4.5-0.rc.5.1.aarch64.rpm", "reason": "缺少 ARM64 LibreOffice 闭包及 openEuler ARM64 真机验收"},
+    {"id": "macos-arm64", "os": "macOS 11+", "arch": "arm64", "level": "unavailable", "artifact": null, "planned_artifact": "PartyOps_1.4.5-rc.5_macos_arm64-UNSIGNED-UNNOTARIZED-CANDIDATE.pkg", "reason": "尚未在 Apple Silicon 原生 Darwin 构建并验证统一 Team ID、Finder 双击和内置 LibreOffice；仅允许未来生成未签名未公证候选"},
+    {"id": "macos-x86_64", "os": "macOS 11+", "arch": "x86_64", "level": "unavailable", "artifact": null, "planned_artifact": "PartyOps_1.4.5-rc.5_macos_x86_64-UNSIGNED-UNNOTARIZED-CANDIDATE.pkg", "reason": "尚未在 Intel 原生 Darwin 构建并验证统一 Team ID、Finder 双击和内置 LibreOffice；仅允许未来生成未签名未公证候选"},
+    {"id": "windows-arm64", "os": "Windows 11", "arch": "arm64", "level": "unavailable", "artifact": null, "reason": "没有原生托管构建与真机验证，不提供伪兼容包"},
+    {"id": "linux-other", "os": "Linux", "arch": "i686/armv7/loongarch64/riscv64", "level": "unavailable", "artifact": null, "reason": "没有对应原生依赖闭包与真机门禁，不提供伪兼容包"}
+  ]
+}

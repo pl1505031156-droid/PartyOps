@@ -171,8 +171,14 @@ def test_macos_build_is_native_strict_signed_and_notarized() -> None:
     assert 'resources = runtime.parent / "Resources"' in package_selftest
     assert 'parent.parent / "Resources"' in app_main
     assert '"$LLAMA_RUNTIME/llama-server" "$APP/Contents/MacOS/llama-server"' in build
+    assert "PARTYOPS_MACOS_OFFICE_RUNTIME" in build
+    assert "MACOS_OFFICE_RUNTIME_MISSING" in build
+    assert "MACOS_OFFICE_RUNTIME_ARCH_MISMATCH" in build
+    assert "MACOS_OFFICE_RUNTIME_SYMLINK_INVALID" in build
+    assert '"$OFFICE_RUNTIME" "$APP/Contents/Resources/office-runtime"' in build
     assert "PARTYOPS_MACOS_OCR_RUNTIME" not in spec
     assert "PARTYOPS_MACOS_LLAMA_RUNTIME" not in spec
+    assert "PARTYOPS_MACOS_OFFICE_RUNTIME" not in spec
     assert '(str(ocr_runtime), "ocr")' not in spec
     assert '(str(llama_runtime), ".")' not in spec
     update_key = ROOT / "packaging" / "uos" / "update-public-key.txt"

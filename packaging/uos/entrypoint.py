@@ -31,6 +31,30 @@ if ocr_binary.exists():
     os.environ["TESSDATA_PREFIX"] = str(ocr_root / "tessdata")
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--startup-desktop-user-self-test"]:
+        from app.startup_selftest import run_desktop_user_selftest
+
+        try:
+            print(
+                json.dumps(
+                    run_desktop_user_selftest(runtime),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "passed": False,
+                        "code": "PACKAGE_DESKTOP_RUNTIME_STARTUP_SELFTEST_FAILED",
+                        "error": str(exc)[-6000:],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            raise SystemExit(4) from exc
+        raise SystemExit(0)
     if sys.argv[1:] == ["--startup-user-permission-self-test"]:
         from app.startup_selftest import run_user_permission_selftest
 

@@ -30,7 +30,7 @@ from .problems import ProblemException
 
 DEVICE_CONTEXT_COOKIE = "partyops_device_context"
 DEVICE_CONTEXT_SECRET_KEY = "device_context_hmac_secret"
-CURRENT_RELEASE_TITLE = "1.4.5-rc.4 原位升级启动修复"
+CURRENT_RELEASE_TITLE = "1.4.5-rc.6 协同、时间与启动修复"
 CURRENT_RELEASE_NOTES = [
     "协同凭据升级到协议 v2；旧令牌被拒绝时停止无限重试并进入可恢复的重新授权状态",
     "页面启动、心跳和灾备同步相互解耦，单项失败不再拖死 UOS、麒麟 ARM64 桌面入口",

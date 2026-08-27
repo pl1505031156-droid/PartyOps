@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-VERSION='1.4.5-rc.4'
-PACKAGE_VERSION='1.4.5.4'
+VERSION='1.4.5-rc.6'
+PACKAGE_VERSION='1.4.5.6'
 MODE='release'
 TARGET_ARCH=''
 while (($#)); do
@@ -55,6 +55,7 @@ ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 OUTPUT_DIR="$ROOT/artifacts/release-$VERSION-final"
 OCR_RUNTIME="${PARTYOPS_MACOS_OCR_RUNTIME:-}"
 LLAMA_RUNTIME="${PARTYOPS_MACOS_LLAMA_RUNTIME:-}"
+OFFICE_RUNTIME="${PARTYOPS_MACOS_OFFICE_RUNTIME:-}"
 for command in python3.11 uv node corepack sips iconutil pkgbuild pkgutil spctl xcrun \
   curl ditto gzip tar shasum file otool codesign make perl; do
   if ! command -v "$command" >/dev/null 2>&1; then
@@ -71,6 +72,24 @@ if [[ ! -d "$LLAMA_RUNTIME" ]] || [[ ! -f "$LLAMA_RUNTIME/llama-server" ]]; then
   printf '%s\n' '[MACOS_LLM_RUNTIME_MISSING] 请提供当前架构、可审计的 llama.cpp 运行时目录。' >&2
   exit 2
 fi
+if [[ ! -x "$OFFICE_RUNTIME/program/soffice" ]] ||
+  [[ ! -f "$OFFICE_RUNTIME/program/soffice.bin" ]] ||
+  [[ ! -f "$OFFICE_RUNTIME/SOURCE.json" ]] ||
+  [[ ! -d "$OFFICE_RUNTIME/licenses" ]]; then
+  printf '%s\n' '[MACOS_OFFICE_RUNTIME_MISSING] 请提供当前架构、包含来源清单和许可证的 LibreOffice headless 运行时。' >&2
+  exit 2
+fi
+OFFICE_RUNTIME="$(cd "$OFFICE_RUNTIME" && pwd -P)"
+while IFS= read -r -d '' link; do
+  resolved="$(python3.11 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$link")"
+  case "$resolved" in
+    "$OFFICE_RUNTIME"/*) ;;
+    *)
+      printf '[MACOS_OFFICE_RUNTIME_SYMLINK_INVALID] LibreOffice 运行时包含越界或损坏链接：%s\n' "$link" >&2
+      exit 2
+      ;;
+  esac
+done < <(/usr/bin/find "$OFFICE_RUNTIME" -type l -print0)
 for binary in "$OCR_RUNTIME/bin/tesseract" "$LLAMA_RUNTIME/llama-server"; do
   description="$(file -b "$binary")"
   if [[ "$description" != *Mach-O* ]] || [[ "$description" != *"$TARGET_ARCH"* ]]; then
@@ -78,8 +97,51 @@ for binary in "$OCR_RUNTIME/bin/tesseract" "$LLAMA_RUNTIME/llama-server"; do
     exit 2
   fi
 done
+office_description="$(file -b "$OFFICE_RUNTIME/program/soffice.bin")"
+if [[ "$office_description" != *Mach-O* ]] || [[ "$office_description" != *"$TARGET_ARCH"* ]]; then
+  printf '[MACOS_OFFICE_RUNTIME_ARCH_MISMATCH] soffice.bin 不是 %s Mach-O。\n' "$TARGET_ARCH" >&2
+  exit 2
+fi
 
 mkdir -p "$OUTPUT_DIR"
+# 对每个嵌套 Mach-O 和代码目录逐层签名，再签主 App。--deep 只用于最终
+# 验证，不能代替由内向外签名，否则 Python.framework 与主 App 可能出现
+# 不同 Team ID，Finder 会在映射运行时前直接拒绝加载。
+sign_bundle_code() {
+  local identity="$1"; shift
+  local timestamp_args=("$@")
+  while IFS= read -r -d '' candidate; do
+    [[ "$(file -b "$candidate" 2>/dev/null || true)" == *Mach-O* ]] || continue
+    codesign --force "${timestamp_args[@]}" --options runtime --sign "$identity" "$candidate"
+  # 调用方在签名阶段先生成候选清单，避免把根可执行文件和嵌套入口
+  # 混在同一次签名中；清单本身也作为制品审计证据留在构建临时目录。
+  done <"$MACHO_CANDIDATE_LIST"
+  while IFS= read -r -d '' bundle; do
+    [[ "$bundle" == "$APP" ]] && continue
+    codesign --force "${timestamp_args[@]}" --options runtime --sign "$identity" "$bundle"
+  done < <(/usr/bin/find "$APP/Contents" -depth \( -name '*.framework' -o -name '*.app' -o -name '*.xpc' -o -name '*.bundle' -o -name '*.plugin' \) -type d -print0)
+}
+
+verify_team_ids() {
+  local mode="$1" expected=''
+  if [[ "$mode" == 'release' ]]; then
+    expected="$(codesign --display --verbose=4 "$APP" 2>&1 | awk -F= '/TeamIdentifier=/{print $2; exit}')"
+    [[ -n "$expected" && "$expected" != 'not set' ]] || { printf '%s\n' '[MACOS_TEAM_ID_MISSING] 正式 App 未发现 Team ID。' >&2; exit 2; }
+  fi
+  while IFS= read -r -d '' candidate; do
+    [[ "$(file -b "$candidate" 2>/dev/null || true)" == *Mach-O* ]] || continue
+    team="$(codesign --display --verbose=4 "$candidate" 2>&1 | awk -F= '/TeamIdentifier=/{print $2; exit}')"
+    if [[ "$mode" == 'release' && "$team" != "$expected" ]]; then
+      printf '[MACOS_TEAM_ID_MISMATCH] %s 的 Team ID 为 %s，期望 %s。\n' "$candidate" "${team:-未签名}" "$expected" >&2
+      exit 2
+    fi
+    if [[ "$mode" != 'release' && -n "$team" && "$team" != 'not set' ]]; then
+      printf '[MACOS_TEAM_ID_MISMATCH] 未签名候选仍含非空 Team ID：%s=%s。\n' "$candidate" "$team" >&2
+      exit 2
+    fi
+  done < <(/usr/bin/find "$APP/Contents" -type f -print0)
+}
+
 if [[ "$MODE" == 'release' ]]; then
   OUTPUT="$OUTPUT_DIR/PartyOps_${VERSION}_macos_${RELEASE_ARCH}.pkg"
   if [[ -z "${PARTYOPS_MACOS_APPLICATION_IDENTITY:-}" ]] ||
@@ -91,7 +153,7 @@ if [[ "$MODE" == 'release' ]]; then
 elif [[ "$MODE" == 'unsigned-candidate' ]]; then
   # 没有 Developer ID 时仍只允许在真实、同架构 Mac 上生成候选。所有
   # Mach-O 使用 ad-hoc 签名，官网与 Release 必须明确标注未公证。
-  OUTPUT="$OUTPUT_DIR/PartyOps_${VERSION}_macos_${RELEASE_ARCH}.pkg"
+  OUTPUT="$OUTPUT_DIR/PartyOps_${VERSION}_macos_${RELEASE_ARCH}-UNSIGNED-UNNOTARIZED-CANDIDATE.pkg"
 else
   OUTPUT="$OUTPUT_DIR/PartyOps_${VERSION}_macos_${RELEASE_ARCH}-UNSIGNED-DO-NOT-PUBLISH.pkg"
 fi
@@ -365,6 +427,7 @@ done
 /bin/mkdir -p "$APP/Contents/Resources/licenses"
 /usr/bin/install -m 0644 "$LLAMA_RUNTIME/licenses/llama.cpp-LICENSE" \
   "$APP/Contents/Resources/licenses/llama.cpp-LICENSE"
+/usr/bin/ditto "$OFFICE_RUNTIME" "$APP/Contents/Resources/office-runtime"
 # 生产更新器只信任随 PKG 安装且由 root 保护的应用资源。公钥不是可执行
 # 代码，必须放入 Apple 约定的 Resources；放在 MacOS 会被 codesign 当成
 # 未签名嵌套代码。PyInstaller 对 datas 的重排位置也不是运行时契约，因此
@@ -452,19 +515,15 @@ if [[ "$MODE" == 'release' ]]; then
   # CFBundleExecutable 是整个 App 的主签名边界。必须先签完新加入的
   # tesseract、llama-server 等嵌套 Mach-O，再签主入口；否则没有预存
   # 签名的全新运行时会令 codesign 在主入口阶段提前失败。
-  /usr/bin/find "$APP/Contents" -type f ! -path "$BUNDLE_EXECUTABLE" -print0 \
-    >"$MACHO_CANDIDATE_LIST"
-  while IFS= read -r -d '' candidate; do
-    [[ "$(file -b "$candidate" 2>/dev/null || true)" == *Mach-O* ]] || continue
-    codesign --force --timestamp --options runtime \
-      --sign "$PARTYOPS_MACOS_APPLICATION_IDENTITY" "$candidate"
-  done <"$MACHO_CANDIDATE_LIST"
+  /usr/bin/find "$APP/Contents" -type f ! -path "$BUNDLE_EXECUTABLE" -print0 >"$MACHO_CANDIDATE_LIST"
+  sign_bundle_code "$PARTYOPS_MACOS_APPLICATION_IDENTITY" --timestamp
   codesign --force --timestamp --options runtime \
     --sign "$PARTYOPS_MACOS_APPLICATION_IDENTITY" "$BUNDLE_EXECUTABLE"
   codesign --force --timestamp --options runtime \
     --entitlements "$SCRIPT_DIR/entitlements.plist" \
     --sign "$PARTYOPS_MACOS_APPLICATION_IDENTITY" "$APP"
   codesign --verify --deep --strict --verbose=2 "$APP"
+  verify_team_ids release
   APP_NOTARY_ARCHIVE="$BUILD_ROOT/PartyOps-notary.zip"
   ditto -c -k --keepParent "$APP" "$APP_NOTARY_ARCHIVE"
   xcrun notarytool submit "$APP_NOTARY_ARCHIVE" \
@@ -494,16 +553,13 @@ if [[ "$MODE" == 'release' ]]; then
 elif [[ "$MODE" == 'unsigned-candidate' ]]; then
   BUNDLE_EXECUTABLE="$APP/Contents/MacOS/partyops-desktop"
   MACHO_CANDIDATE_LIST="$BUILD_ROOT/macho-candidates-adhoc.bin"
-  /usr/bin/find "$APP/Contents" -type f ! -path "$BUNDLE_EXECUTABLE" -print0 \
-    >"$MACHO_CANDIDATE_LIST"
-  while IFS= read -r -d '' candidate; do
-    [[ "$(file -b "$candidate" 2>/dev/null || true)" == *Mach-O* ]] || continue
-    codesign --force --options runtime --sign - "$candidate"
-  done <"$MACHO_CANDIDATE_LIST"
+  /usr/bin/find "$APP/Contents" -type f ! -path "$BUNDLE_EXECUTABLE" -print0 >"$MACHO_CANDIDATE_LIST"
+  sign_bundle_code -
   codesign --force --options runtime --sign - "$BUNDLE_EXECUTABLE"
   codesign --force --options runtime \
     --entitlements "$SCRIPT_DIR/entitlements.plist" --sign - "$APP"
   codesign --verify --deep --strict --verbose=2 "$APP"
+  verify_team_ids unsigned
   stage_pkg_payload
   pkgbuild --root "$PAYLOAD_ROOT" \
     --scripts "$PKG_SCRIPTS" --install-location / --ownership recommended \
@@ -526,7 +582,7 @@ Path(path).write_text(
         {
             "format_version": 1,
             "product": "PartyOps",
-            "version": "1.4.5-rc.4",
+            "version": "1.4.5-rc.6",
             "architecture": architecture,
             "source_commit": source_commit,
             "workflow_commit": workflow_commit,

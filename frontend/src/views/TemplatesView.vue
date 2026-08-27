@@ -409,7 +409,7 @@ onMounted(load);
           <a-select v-model="ownerId"><a-option v-for="user in users" :key="user.id" :value="user.id">{{ user.display_name }}</a-option></a-select>
         </a-form-item>
         <a-form-item label="正式截止时间">
-          <a-date-picker v-model="dueAt" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" />
+          <a-date-picker v-model="dueAt" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -434,7 +434,7 @@ onMounted(load);
           <a-form-item label="责任人"><a-select v-model="recurrenceForm.owner_id"><a-option v-for="user in users" :key="user.id" :value="user.id">{{ user.display_name }}</a-option></a-select></a-form-item>
           <a-form-item label="周期"><a-select v-model="recurrenceForm.kind"><a-option value="monthly">每月</a-option><a-option value="quarterly">每季度</a-option><a-option value="half_yearly">每半年</a-option><a-option value="yearly">每年</a-option><a-option value="custom_days">自定义天数</a-option></a-select></a-form-item>
           <a-form-item v-if="recurrenceForm.kind === 'custom_days'" label="间隔天数"><a-input-number v-model="recurrenceForm.custom_days" :min="1" :max="3650" /></a-form-item>
-          <a-form-item label="首次正式节点"><a-date-picker v-model="recurrenceForm.next_run_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
+        <a-form-item label="首次正式节点"><a-date-picker v-model="recurrenceForm.next_run_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
           <a-form-item label="内部提前天数"><a-input-number v-model="recurrenceForm.internal_lead_days" :min="0" :max="365" /></a-form-item>
           <a-form-item label="节点规则">
             <a-select v-model="recurrenceForm.schedule_mode">
@@ -453,8 +453,8 @@ onMounted(load);
               <a-option value="next">顺延至下一工作日</a-option>
             </a-select>
           </a-form-item>
-          <a-form-item label="暂停至（可选）"><a-date-picker v-model="recurrenceForm.paused_until" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
-          <a-form-item label="终止日期（可选）"><a-date-picker v-model="recurrenceForm.end_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
+        <a-form-item label="暂停至（可选）"><a-date-picker v-model="recurrenceForm.paused_until" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
+        <a-form-item label="终止日期（可选）"><a-date-picker v-model="recurrenceForm.end_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
           <a-form-item label="最多生成次数（可选）"><a-input-number v-model="recurrenceForm.max_occurrences" :min="1" :max="10000" /></a-form-item>
         </div>
         <a-form-item label="注意事项（下期自动复用）"><a-textarea v-model="recurrenceForm.notes" :auto-size="{ minRows: 3, maxRows: 6 }" /></a-form-item>
@@ -471,8 +471,8 @@ onMounted(load);
         <div class="form-grid settings-grid">
           <a-form-item label="启用规则"><a-switch v-model="recurrenceSettingsForm.active" /></a-form-item>
           <a-form-item label="最多生成次数"><a-input-number v-model="recurrenceSettingsForm.max_occurrences" :min="1" :max="10000" allow-clear /></a-form-item>
-          <a-form-item label="暂停至"><a-date-picker v-model="recurrenceSettingsForm.paused_until" show-time allow-clear value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
-          <a-form-item label="终止日期"><a-date-picker v-model="recurrenceSettingsForm.end_at" show-time allow-clear value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
+        <a-form-item label="暂停至"><a-date-picker v-model="recurrenceSettingsForm.paused_until" show-time allow-clear value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
+        <a-form-item label="终止日期"><a-date-picker v-model="recurrenceSettingsForm.end_at" show-time allow-clear value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
         </div>
       </a-form>
     </a-modal>
@@ -497,7 +497,7 @@ onMounted(load);
     <a-modal v-model:visible="recurrenceExceptionVisible" :title="exceptionForm.action === 'skip' ? '跳过本次计划' : '临时改期'" width="520px" @ok="saveRecurrenceException">
       <a-form :model="exceptionForm" layout="vertical">
         <a-form-item label="原计划时间"><strong>{{ selectedOccurrence ? formatServerTime(selectedOccurrence.occurrence_at, "YYYY-MM-DD HH:mm") : "—" }}</strong></a-form-item>
-        <a-form-item v-if="exceptionForm.action === 'reschedule'" label="改期至"><a-date-picker v-model="exceptionForm.rescheduled_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
+        <a-form-item v-if="exceptionForm.action === 'reschedule'" label="改期至"><a-date-picker v-model="exceptionForm.rescheduled_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
         <a-form-item label="调整原因"><a-textarea v-model="exceptionForm.reason" :max-length="2000" show-word-limit :auto-size="{ minRows: 3, maxRows: 6 }" /></a-form-item>
       </a-form>
     </a-modal>

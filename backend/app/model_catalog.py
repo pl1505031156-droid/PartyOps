@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-MODEL_CATALOG_VERSION = 2
+MODEL_CATALOG_VERSION = 3
 
 # “官网模型包”仅在签名资产完成发布后填写 hosted_url；没有资产时只给
 # 官方来源，避免界面产生无法下载或未经验证的链接。
@@ -13,6 +13,7 @@ MODEL_CATALOG: list[dict[str, Any]] = [
         "id": "needle2-intent",
         "name": "Needle 2 意图助手",
         "kind": "intent_router",
+        "role": "safety_router",
         "tier": "基础",
         "summary": "把自然语言指令整理成事项预览、字段和提醒建议；所有写操作仍需人工确认。",
         "official_url": "https://huggingface.co/Cactus-Compute/needle2",
@@ -31,9 +32,10 @@ MODEL_CATALOG: list[dict[str, Any]] = [
         "architectures": ["amd64", "arm64"],
     },
     {
-        "id": "bge-small-zh-v1.5",
+        "id": "bge-small-zh-v1.5-onnx-fp32",
         "name": "BGE Small 中文语义检索",
         "kind": "embedding",
+        "role": "semantic_retrieval",
         "tier": "基础",
         "summary": "适合普通办公电脑，增强本地文件、档案和事项的中文语义检索。",
         "official_url": "https://huggingface.co/BAAI/bge-small-zh-v1.5",
@@ -45,7 +47,7 @@ MODEL_CATALOG: list[dict[str, Any]] = [
         "context_tokens": 512,
         "recommended_threads": 2,
         "recommended_vram_mb": 0,
-        "quantization": "ONNX INT8",
+        "quantization": "ONNX FP32",
         "delivery": "partyops_pack",
         "hosted_url": "",
         "platforms": ["windows", "linux", "macos"],
@@ -55,6 +57,7 @@ MODEL_CATALOG: list[dict[str, Any]] = [
         "id": "bge-base-zh-v1.5",
         "name": "BGE Base 中文语义检索",
         "kind": "embedding",
+        "role": "semantic_retrieval_optional",
         "tier": "均衡",
         "summary": "检索质量和速度更均衡，适合资料量较大的日常党务工作站。",
         "official_url": "https://huggingface.co/BAAI/bge-base-zh-v1.5",
@@ -76,6 +79,7 @@ MODEL_CATALOG: list[dict[str, Any]] = [
         "id": "bge-large-zh-v1.5",
         "name": "BGE Large 中文语义检索",
         "kind": "embedding",
+        "role": "semantic_retrieval_optional",
         "tier": "专业",
         "summary": "面向大规模资料库的高质量语义检索，优先推荐内存充足的主机。",
         "official_url": "https://huggingface.co/BAAI/bge-large-zh-v1.5",
@@ -94,9 +98,10 @@ MODEL_CATALOG: list[dict[str, Any]] = [
         "architectures": ["amd64", "arm64"],
     },
     {
-        "id": "qwen3-0.6b-gguf",
+        "id": "qwen3-0.6b-q8_0",
         "name": "Qwen3 0.6B 本地草稿",
         "kind": "llm",
+        "role": "low_resource_fallback",
         "tier": "基础",
         "summary": "轻量中文草稿、标题改写和操作引导，适合 8GB 内存办公电脑。",
         "official_url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF",
@@ -106,6 +111,28 @@ MODEL_CATALOG: list[dict[str, Any]] = [
         "recommended_memory_mb": 8_192,
         "disk_mb": 1_600,
         "context_tokens": 2_048,
+        "recommended_threads": 4,
+        "recommended_vram_mb": 2_048,
+        "quantization": "GGUF Q8_0",
+        "delivery": "partyops_pack",
+        "hosted_url": "",
+        "platforms": ["windows", "linux", "macos"],
+        "architectures": ["amd64", "arm64"],
+    },
+    {
+        "id": "deepseek-r1-distill-qwen-1.5b-q4_k_m",
+        "name": "DeepSeek-R1-Distill-Qwen 1.5B 主编排模型",
+        "kind": "llm",
+        "role": "planner",
+        "tier": "均衡",
+        "summary": "面向会议筹备、台账识别和发展党员时间轴的本地中文规划与推理；只生成结构化计划，不直接执行操作。",
+        "official_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+        "source_url": "https://github.com/deepseek-ai/DeepSeek-R1",
+        "license": "MIT（同时附带 Qwen 基座许可）",
+        "min_memory_mb": 6_144,
+        "recommended_memory_mb": 8_192,
+        "disk_mb": 2_048,
+        "context_tokens": 4_096,
         "recommended_threads": 4,
         "recommended_vram_mb": 2_048,
         "quantization": "GGUF Q4_K_M",

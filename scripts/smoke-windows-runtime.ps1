@@ -14,7 +14,7 @@ if (-not $Python) {
 if (-not (Test-Path -LiteralPath $Python)) {
   throw "未找到用于读取冒烟数据库的 Python：$Python；可通过 -Python 或 PARTYOPS_PYTHON 指定。"
 }
-if (-not $RuntimeDir) { $RuntimeDir = Join-Path $projectRoot "artifacts\PartyOps-1.4.5-rc.4-windows-amd64" }
+if (-not $RuntimeDir) { $RuntimeDir = Join-Path $projectRoot "artifacts\PartyOps-1.4.5-rc.6-windows-amd64" }
 $RuntimeDir = (Resolve-Path -LiteralPath $RuntimeDir).Path
 if (-not $DataRoot) {
   $DataRoot = Join-Path $projectRoot (".run-win-smoke-" + [DateTime]::UtcNow.ToString("yyyyMMddHHmmss"))
@@ -77,7 +77,7 @@ try {
   }
   $revision = & $Python -c "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute('select version_num from alembic_version').fetchone()[0])" (Join-Path $DataRoot "partyops.db")
   if ($LASTEXITCODE -ne 0) { throw "无法读取冒烟数据库迁移版本。" }
-  if ($revision -ne "0024") { throw "冻结主程序数据库版本为 $revision，不是 0024。" }
+  if ($revision -ne "0026") { throw "冻结主程序数据库版本为 $revision，不是 0026。" }
   if ($UpgradeFrom0023) {
     $fixture = & $Python -c "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute('select display_name from users where id=?', ('rc4-native-upgrade-admin',)).fetchone()[0])" (Join-Path $DataRoot "partyops.db")
     if ($LASTEXITCODE -ne 0 -or $fixture -ne "原生覆盖升级管理员") {

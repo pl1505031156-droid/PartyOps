@@ -9,7 +9,7 @@ import { formatServerTime } from "../utils/datetime";
 
 interface Milestone { id: string; milestone_type: string; actual_at: string | null; legal_earliest_at: string | null; legal_deadline_at: string | null; planned_at: string | null; adjusted_at: string | null; legal_basis: string; planning_basis?: string; plan_kind: string; reminder_days: number[]; version: number; }
 interface ProgressEvent { id: string; milestone_type: string; actual_at: string; evidence_note: string; status: string; version: number; }
-interface TimelineItem extends Milestone { visual_state: "completed" | "overdue" | "upcoming" | "planned"; is_reference: boolean; progress_event?: ProgressEvent | null; }
+interface TimelineItem extends Milestone { title_zh?: string; visual_state: "completed" | "overdue" | "upcoming" | "planned"; is_reference: boolean; progress_event?: ProgressEvent | null; }
 interface DevelopmentCase { id: string; party_committee: string; party_branch: string; name: string; gender: string; ethnicity: string; birth_date: string | null; education: string; application_at: string; activist_at: string | null; training_contacts: string[]; introducers: string[]; development_object_at: string | null; probationary_at: string | null; converted_at: string | null; stage: string; status: string; rule_version: string; version: number; milestones: Milestone[]; progress_events: ProgressEvent[]; extra_fields: Record<string, unknown>; }
 interface Statistics { total: number; stage_counts: Record<string, number>; upcoming_60_days: number; overdue: number; }
 interface DeletionImpact { milestones: number; progress_events: number; active_notifications: number; message: string; }
@@ -35,7 +35,9 @@ const progressForm = reactive({ milestone_type: "conversation", actual_date: "",
 
 const milestoneLabels: Record<string, string> = {
   application: "提交入党申请书", conversation_window: "谈话建议窗口", conversation_deadline: "谈话截止",
+  conversation_target: "派人谈话参考目标", activist_reference: "确定入党积极分子参考时间",
   activist_date: "确定入党积极分子", first_half_year_assessment: "首次半年考察", development_object_earliest: "列为发展对象最早日期",
+  first_half_year_assessment_reference: "首次半年考察参考时间", development_object_reference: "列为发展对象参考时间",
   development_object_publicity: "发展对象公示", development_object_date: "确定发展对象", political_review: "政治审查",
   training: "集中培训", pre_review_approved: "上级党委预审", branch_acceptance_deadline: "支部大会讨论截止",
   branch_acceptance: "接收预备党员", committee_approval: "党委审批期限", oath_deadline: "入党宣誓",
@@ -260,7 +262,7 @@ onMounted(load);
           <section class="milestone-grid unified-timeline">
             <article v-for="item in timeline" :key="item.id" :class="[`state-${item.visual_state}`, { reference: item.is_reference && !item.actual_at }]">
               <i />
-              <div><span>{{ item.actual_at ? "实际事实" : item.is_reference ? "参考计划" : "法规边界" }}</span><h3>{{ milestoneLabels[item.milestone_type] || item.milestone_type }}</h3><strong><IconCalendar /> {{ formatServerTime(targetDate(item), "YYYY-MM-DD", "等待组织确认") }}</strong><p>{{ item.progress_event?.evidence_note || item.legal_basis || item.planning_basis || "该节点须结合实际材料确认。" }}</p><small v-if="item.actual_at">已完成；事实记录保留纠正链</small><small v-else-if="item.reminder_days.length">提醒：提前 {{ item.reminder_days.join("、") }} 天及逾期</small><a-space v-if="item.progress_event && selected.status === 'active'"><a-button size="mini" type="text" @click="openProgress(item)">纠正</a-button><a-button size="mini" type="text" status="danger" @click="voidProgress(item.progress_event)">作废</a-button></a-space></div>
+              <div><span>{{ item.actual_at ? "实际事实" : item.is_reference ? "参考计划" : "法规边界" }}</span><h3>{{ item.title_zh || milestoneLabels[item.milestone_type] || "待确认节点" }}</h3><strong><IconCalendar /> {{ formatServerTime(targetDate(item), "YYYY-MM-DD", "等待组织确认") }}</strong><p>{{ item.progress_event?.evidence_note || item.legal_basis || item.planning_basis || "该节点须结合实际材料确认。" }}</p><small v-if="item.actual_at">已完成；事实记录保留纠正链</small><small v-else-if="item.reminder_days.length">提醒：提前 {{ item.reminder_days.join("、") }} 天及逾期</small><a-space v-if="item.progress_event && selected.status === 'active'"><a-button size="mini" type="text" @click="openProgress(item)">纠正</a-button><a-button size="mini" type="text" status="danger" @click="voidProgress(item.progress_event)">作废</a-button></a-space></div>
             </article>
             <div v-if="!timeline.length" class="empty-state">尚无时间轴节点，请录入真实进度或重新计算未来节点。</div>
           </section>

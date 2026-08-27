@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FORMAT="${1:-}"
 ARCH="${PARTYOPS_BUILD_ARCH:-}"
-DEB_VERSION="1.4.5~rc.4"
+DEB_VERSION="1.4.5~rc.6"
 RPM_VERSION="1.4.5"
-RPM_RELEASE="0.rc.4.1"
+RPM_RELEASE="0.rc.6.1"
 ARTIFACTS="$ROOT/artifacts"
 
 if [[ -z "${PYTHON_BIN:-}" && -f "$ROOT/.partyops-build.env" ]]; then
@@ -22,7 +22,7 @@ if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
 fi
 
 "$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py" \
-  --root "$ROOT" --expected "1.4.5-rc.4"
+  --root "$ROOT" --expected "1.4.5-rc.6"
 
 [[ "$FORMAT" == "deb" || "$FORMAT" == "rpm" ]] || {
   echo "用法：build-native.sh deb|rpm（通过 PARTYOPS_BUILD_ARCH 指定 amd64/arm64）" >&2
@@ -41,6 +41,33 @@ fi
 }
 EXPECTED_MACHINE=x86_64
 [[ "$ARCH" == arm64 ]] && EXPECTED_MACHINE=aarch64
+EXPECTED_OFFICE_PATTERN='x86-64|x86_64'
+[[ "$ARCH" == arm64 ]] && EXPECTED_OFFICE_PATTERN='aarch64|ARM64'
+OFFICE_RUNTIME_MODE="${PARTYOPS_OFFICE_RUNTIME_MODE:-bundled}"
+[[ "$OFFICE_RUNTIME_MODE" == bundled || "$OFFICE_RUNTIME_MODE" == external ]] || {
+  echo "PARTYOPS_OFFICE_RUNTIME_MODE 仅支持 bundled/external。" >&2
+  exit 2
+}
+OFFICE_RUNTIME="${PARTYOPS_OFFICE_RUNTIME:-$ROOT/vendor/linux/libreoffice-headless-$ARCH}"
+OFFICE_BINARY="$OFFICE_RUNTIME/program/soffice.bin"
+if [[ "$OFFICE_RUNTIME_MODE" == bundled ]]; then
+  if [[ ! -x "$OFFICE_RUNTIME/program/soffice" || ! -f "$OFFICE_BINARY" ||
+    ! -f "$OFFICE_RUNTIME/SOURCE.json" || ! -d "$OFFICE_RUNTIME/licenses" ]]; then
+    echo "[OFFICE_RUNTIME_MISSING] 缺少 $ARCH 经许可审计的 LibreOffice headless 运行时、来源清单或许可证。" >&2
+    exit 2
+  fi
+  file "$OFFICE_BINARY" | grep -Eq "$EXPECTED_OFFICE_PATTERN" || {
+    echo "[OFFICE_RUNTIME_ARCH_MISMATCH] LibreOffice 运行时与 $ARCH 不一致。" >&2
+    exit 2
+  }
+  while IFS= read -r -d '' link; do
+    resolved="$(readlink -f -- "$link" 2>/dev/null || true)"
+    case "$resolved" in
+      "$OFFICE_RUNTIME"/*) ;;
+      *) echo "[OFFICE_RUNTIME_SYMLINK_INVALID] LibreOffice 运行时包含越界或损坏链接：$link" >&2; exit 2 ;;
+    esac
+  done < <(find "$OFFICE_RUNTIME" -type l -print0)
+fi
 [[ "$(uname -s)" == Linux ]] || {
   echo "原生包只能在 Linux manylinux2014 构建环境生成。" >&2
   exit 2
@@ -153,6 +180,15 @@ chmod 0755 \
 if [[ -f "$PKG/opt/partyops/llama-server" ]]; then
   chmod 0755 "$PKG/opt/partyops/llama-server"
 fi
+# LibreOffice 自带多个受许可约束的本机入口和动态库；在 PartyOps 基础
+# 载荷完成权限收敛后再复制，保留其发行方所需的可执行位与相对布局。
+if [[ "$OFFICE_RUNTIME_MODE" == bundled ]]; then
+  cp -a "$OFFICE_RUNTIME" "$PKG/opt/partyops/office-runtime"
+else
+  printf '%s\n' \
+    '{"mode":"external","reason":"该候选平台没有满足当前安全基线的可再分发 LibreOffice 运行时；DOC/WPS 需使用用户已安装且已更新的办公套件。"}' \
+    >"$PKG/opt/partyops/office-runtime-status.json"
+fi
 EXPECTED_PAYLOAD_PATTERN='x86-64'
 [[ "$ARCH" == arm64 ]] && EXPECTED_PAYLOAD_PATTERN='ARM aarch64'
 file "$PKG/opt/partyops/partyops" | grep -q "$EXPECTED_PAYLOAD_PATTERN" || {
@@ -214,7 +250,8 @@ while IFS= read -r -d '' executable; do
     "$PKG/opt/partyops/post-install-selftest.sh"|\
     "$PKG/opt/partyops/post-install-services.sh"|\
     "$PKG/opt/partyops/post-install-verify.sh"|\
-    "$PKG/opt/partyops/post-install-transaction.sh") ;;
+    "$PKG/opt/partyops/post-install-transaction.sh"|\
+    "$PKG/opt/partyops/office-runtime/"*) ;;
     *)
       echo "原生包包含未授权的可执行文件：$executable" >&2
       exit 2
@@ -258,7 +295,7 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 echo "PartyOps 业务数据保留在 /var/lib/partyops，卸载不会自动删除。" >&2
 EOF
   chmod 0755 "$PKG/DEBIAN/preinst" "$PKG/DEBIAN/postinst" "$PKG/DEBIAN/prerm" "$PKG/DEBIAN/postrm"
-  OUTPUT="$ARTIFACTS/PartyOps_1.4.5-rc.4_linux_${ARCH}.deb"
+  OUTPUT="$ARTIFACTS/PartyOps_1.4.5-rc.6_linux_${ARCH}.deb"
   if dpkg-deb --help 2>&1 | grep -q -- '--root-owner-group'; then
     dpkg-deb --root-owner-group --build "$PKG" "$OUTPUT"
   else
@@ -367,7 +404,7 @@ EOF
     --define "partyops_release $RPM_RELEASE" \
     --define "with_rollback_cache 1" \
     -bb "$BUILD/rpmbuild/SPECS/partyops.spec"
-  OUTPUT="$ARTIFACTS/PartyOps-1.4.5-0.rc.4.1.${RPM_ARCH}.rpm"
+  OUTPUT="$ARTIFACTS/PartyOps-1.4.5-0.rc.6.1.${RPM_ARCH}.rpm"
   cp "$BUILD/rpmbuild/RPMS/$RPM_ARCH/partyops-$RPM_VERSION-$RPM_RELEASE.$RPM_ARCH.rpm" "$OUTPUT"
 fi
 if [[ "$FORMAT" == deb ]]; then

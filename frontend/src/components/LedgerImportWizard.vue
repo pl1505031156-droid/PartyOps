@@ -63,9 +63,11 @@ interface LedgerJob {
       columns: ColumnProfile[];
       duplicate_headers: string[];
       header_signature: string;
+      derived_candidates?: { year: number; sources: string[]; confirmed: boolean }[];
     };
     available_fields: FieldChoice[];
   };
+  derived_candidates?: { year: number; sources: string[]; confirmed: boolean }[];
   validation: {
     issues?: ValidationIssue[];
     issues_truncated?: number;
@@ -104,6 +106,7 @@ const mappings = ref<MappingRow[]>([]);
 const sharedConfirmed = ref(false);
 const newFieldsConfirmed = ref(false);
 const rowActions = ref<Record<string, string>>({});
+const derivedYear = ref<number | null>(null);
 
 const steps = ["选择台账", "识别表头", "确认目标", "字段映射", "全量校验", "提交归档"];
 const selectedProfile = computed(() => job.value?.profile.selected);
@@ -122,6 +125,7 @@ function reset() {
   sharedConfirmed.value = false;
   newFieldsConfirmed.value = false;
   rowActions.value = {};
+  derivedYear.value = null;
 }
 
 watch(
@@ -183,6 +187,7 @@ async function inspectFile() {
     });
     selectedSheet.value = job.value.sheet_name;
     headerRow.value = job.value.header_row;
+    derivedYear.value = job.value.derived_candidates?.[0]?.year ?? null;
     initializeMappings(job.value);
     step.value = 1;
   } catch (error) {
@@ -213,6 +218,10 @@ async function applyProfile() {
 function confirmTarget() {
   if (!sharedConfirmed.value) {
     Message.warning("请确认台账将进入共享 PartyOps 主机");
+    return;
+  }
+  if (job.value?.derived_candidates?.length && !derivedYear.value) {
+    Message.warning("请先确认系统识别出的归档年度");
     return;
   }
   step.value = 3;
@@ -272,6 +281,7 @@ async function validateAll() {
   try {
     job.value = await api.post<LedgerJob>(`/ledger-imports/${job.value.id}/validate`, {
       version: job.value.version,
+      derived_year: derivedYear.value,
       row_actions: rowActions.value,
     });
     if (!job.value.error_rows) Message.success(`全量校验通过：${job.value.valid_rows} 行可导入`);
@@ -301,6 +311,8 @@ async function commit() {
       version: job.value.version,
       confirm_shared_storage: sharedConfirmed.value,
       confirm_new_fields: newFieldsConfirmed.value,
+      confirm_derived_candidates: Boolean(job.value.derived_candidates?.length),
+      derived_year: derivedYear.value,
       row_actions: rowActions.value,
     });
     Message.success(`已导入 ${job.value.valid_rows} 行；可在本次窗口内安全撤销`);
@@ -379,6 +391,14 @@ function confidenceLabel(value: string) {
       <section v-else-if="step === 2" class="wizard-panel target-stage">
         <header><span class="stage-kicker">03 / 归档边界</span><h3>确认共享业务目标</h3></header>
         <div class="target-card"><span>本次归档到</span><strong>{{ targetLabel }}</strong><small>{{ targetType === "party_development" ? "创建或更新人员档案及真实进度" : "创建或更新重要档案目录记录" }}</small></div>
+        <div v-if="job?.derived_candidates?.length" class="derived-year">
+          <a-alert type="warning">未发现独立年度列。系统仅根据文件名、工作表名、文号或日期提出候选，必须人工确认后才会填入年度。</a-alert>
+          <a-form-item label="确认归档年度">
+            <a-select v-model="derivedYear" placeholder="请选择年度候选">
+              <a-option v-for="candidate in job.derived_candidates" :key="candidate.year" :value="candidate.year">{{ candidate.year }}（来源：{{ candidate.sources.join("、") }}）</a-option>
+            </a-select>
+          </a-form-item>
+        </div>
         <a-alert type="warning">台账导入与“公文规范排版”不同：确认后，所选字段会通过当前认证连接进入 PartyOps 主机，供有权限人员协作。</a-alert>
         <a-checkbox v-model="sharedConfirmed">我已确认该台账可以进入当前 PartyOps 共享业务系统</a-checkbox>
         <footer><a-button @click="step = 1">上一步</a-button><a-button type="primary" @click="confirmTarget">继续字段映射</a-button></footer>

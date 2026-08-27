@@ -50,7 +50,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
     startup_selftest._validate_probe(
         {
             "status": "ok",
-            "app_version": "1.4.5-rc.4",
+            "app_version": "1.4.5-rc.6",
             "mode": "personal",
             "sqlite": {"safe_version": True, "fts5": True},
         },
@@ -70,7 +70,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.4",
+                "app_version": "1.4.5-rc.6",
                 "mode": "host",
                 "sqlite": {"safe_version": True, "fts5": True},
             },
@@ -80,7 +80,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.4",
+                "app_version": "1.4.5-rc.6",
                 "mode": "personal",
                 "sqlite": {"safe_version": True, "fts5": False},
             },
@@ -90,7 +90,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.4",
+                "app_version": "1.4.5-rc.6",
                 "mode": "personal",
                 "sqlite": {"safe_version": True, "fts5": True},
             },
@@ -100,7 +100,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "failed",
-                "app_version": "1.4.5-rc.4",
+                "app_version": "1.4.5-rc.6",
                 "mode": "personal",
                 "sqlite": {},
             },
@@ -110,7 +110,7 @@ def test_validate_probe_requires_version_mode_and_frontend() -> None:
         startup_selftest._validate_probe(
             {
                 "status": "ok",
-                "app_version": "1.4.5-rc.4",
+                "app_version": "1.4.5-rc.6",
                 "mode": "personal",
                 "sqlite": "invalid",
             },
@@ -202,7 +202,7 @@ def test_frozen_probe_success_exit_and_timeout(
         "_read_json",
         lambda _url: {
             "status": "ok",
-            "app_version": "1.4.5-rc.4",
+            "app_version": "1.4.5-rc.6",
             "mode": "personal",
             "sqlite": {"safe_version": True, "fts5": True},
         },
@@ -262,7 +262,7 @@ def test_main_reports_success_and_bounded_failure(
         "run_selftest",
         lambda _runtime: {
             "passed": True,
-            "version": "1.4.5-rc.4",
+                "version": "1.4.5-rc.6",
             "mode": "personal",
         },
     )
@@ -277,3 +277,39 @@ def test_main_reports_success_and_bounded_failure(
     payload = json.loads(capsys.readouterr().out)
     assert payload["code"] == "PACKAGE_RUNTIME_STARTUP_SELFTEST_FAILED"
     assert len(payload["error"]) == 6000
+
+
+def test_desktop_user_selftest_combines_permission_and_real_server_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        startup_selftest,
+        "run_user_permission_selftest",
+        lambda _runtime: {
+            "passed": True,
+            "mode": "desktop-user-permission",
+            "runtime_readable": True,
+            "user_temp_writable": True,
+        },
+    )
+    monkeypatch.setattr(
+        startup_selftest,
+        "run_selftest",
+        lambda _runtime, timeout: calls.append(f"startup:{timeout}")
+        or {
+            "passed": True,
+            "version": "1.4.5-rc.6",
+            "mode": "personal",
+            "database": "sqlite+fts5",
+        },
+    )
+
+    result = startup_selftest.run_desktop_user_selftest(tmp_path, timeout=45)
+
+    assert calls == ["startup:45"]
+    assert result["desktop_user"] is True
+    assert result["runtime_readable"] is True
+    assert result["user_temp_writable"] is True
+    assert result["database"] == "sqlite+fts5"

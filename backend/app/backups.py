@@ -23,7 +23,7 @@ from .models import BackupRun, User, utcnow
 from .problems import ProblemException
 
 FORMAT_VERSION = 1
-SCHEMA_VERSION = "0024"
+SCHEMA_VERSION = "0026"
 MAX_BACKUP_MANIFEST_BYTES = 1024 * 1024
 _WINDOWS_RESERVED_NAMES = {
     "con",

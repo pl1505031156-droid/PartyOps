@@ -343,8 +343,8 @@ def test_win7_build_and_frontend_have_hard_compatibility_gates() -> None:
     assert "validate-win7-wheelhouse.py" in builder
     assert "validate-win7-pe.py" in builder
     assert '"legacy-smart"' in builder and '"legacy-core"' in builder
-    assert '$legacySchema -notcontains "0024"' in builder
-    assert '$revision -ne "0024"' in runtime_smoke
+    assert '$legacySchema -notcontains "0026"' in builder
+    assert '$revision -ne "0026"' in runtime_smoke
     assert "[switch]$UpgradeFrom0023" in runtime_smoke
     assert "create-0023-upgrade-fixture.py" in runtime_smoke
     assert "覆盖升级后原有管理员记录丢失或损坏" in runtime_smoke

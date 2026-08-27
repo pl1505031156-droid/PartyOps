@@ -15,6 +15,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -29,7 +30,7 @@ from typing import Any, Iterable
 
 from lxml import etree
 
-VERSION = "1.4.5-rc.4"
+VERSION = "1.4.5-rc.6"
 MAX_FILE_BYTES = 50 * 1024 * 1024
 MAX_PACKAGE_BYTES = 512 * 1024 * 1024
 MAX_ZIP_RATIO = 200
@@ -221,14 +222,35 @@ def _classify_document_paragraphs(paragraphs: list[etree._Element]) -> list[tupl
 
     classified: list[tuple[etree._Element, str]] = []
     title_seen = False
+    # 公文标题经常由“机关名称/文件标题”两行或多行组成。旧实现只把
+    # 第一行识别为 title，第二行会被当作正文并错误加首行缩进；这里依据
+    # 连续短段落、居中属性和无句末标点建立有限标题块，不猜测正文语义。
+    title_block_open = False
     for index, paragraph in enumerate(paragraphs):
         text = texts[index]
         if not text:
             continue
         allow_title = not title_seen and kind not in {"order", "minutes"}
         role = _paragraph_role(text, first_body=allow_title)
+        properties = paragraph.find(_qn("pPr"))
+        centered = bool(
+            properties is not None
+            and properties.find(_qn("jc")) is not None
+            and properties.find(_qn("jc")).get(_qn("val")) == "center"
+        )
+        if (
+            (not title_seen or title_block_open)
+            and kind not in {"order", "minutes"}
+            and len(text.strip()) <= 80
+            and not re.search(r"[。；！？!?]$", text.strip())
+            and (centered or role == "title")
+        ):
+            role = "title"
+            title_block_open = True
         if role == "title":
             title_seen = True
+        elif title_block_open:
+            title_block_open = False
         classified.append((paragraph, role))
 
     # 成文日期上一条短机构名称通常是署名；只有同时满足位置、长度和机关后缀
@@ -824,12 +846,48 @@ def format_docx(source: Path, target: Path) -> FormatReport:
 
 
 def _office_candidates() -> list[Path]:
-    values = [shutil.which("soffice"), shutil.which("libreoffice")]
+    values = [
+        os.getenv("PARTYOPS_OFFICE_BIN"),
+        shutil.which("soffice"),
+        shutil.which("libreoffice"),
+    ]
+    # 原生安装包可把精简的 headless LibreOffice 放在 office-runtime 目录；
+    # 通过显式环境变量或相邻目录查找，避免依赖用户 PATH，也避免把办公
+    # 套件安装到全局位置后误用其它版本。
+    try:
+        executable_root = Path(sys.executable).resolve().parent
+        module_root = Path(__file__).resolve().parent
+    except (NotImplementedError, OSError):
+        # 单元测试会临时切换 os.name 以覆盖 Windows 分支；Windows 路径
+        # 不能由 PosixPath 构造，此时跳过相邻运行时探测即可。
+        executable_root = None
+        module_root = None
+    if executable_root is not None and module_root is not None:
+        values.extend(
+            [
+                str(executable_root / "office-runtime" / "program" / "soffice"),
+                str(executable_root / "office-runtime" / "program" / "soffice.exe"),
+                str(executable_root.parent / "Resources" / "office-runtime" / "program" / "soffice"),
+                str(module_root / "office-runtime" / "program" / "soffice"),
+                str(module_root / "office-runtime" / "program" / "soffice.exe"),
+            ]
+        )
     if os.name == "nt":
         for root in (os.getenv("PROGRAMFILES"), os.getenv("PROGRAMFILES(X86)")):
             if root:
                 values.append(str(Path(root) / "LibreOffice" / "program" / "soffice.exe"))
-    return [Path(value) for value in values if value and Path(value).is_file()]
+    seen: set[str] = set()
+    candidates: list[Path] = []
+    for value in values:
+        if not value:
+            continue
+        path = Path(value)
+        key = str(path.resolve()).lower()
+        if key in seen or not path.is_file():
+            continue
+        seen.add(key)
+        candidates.append(path)
+    return candidates
 
 
 def _convert_with_libreoffice(source: Path, workspace: Path) -> Path | None:
@@ -839,11 +897,18 @@ def _convert_with_libreoffice(source: Path, workspace: Path) -> Path | None:
     profile = workspace / "office-profile"
     profile.mkdir(mode=0o700, exist_ok=True)
     environment = os.environ.copy()
+    # 转换器处理的是不受信任文档。不要继承系统代理，更不能把 NO_PROXY
+    # 设为 *（这会允许直连）；统一把网络代理指向不可用的本机 discard
+    # 端口，并使用隔离配置、禁用恢复和扩展，降低宏、外链及崩溃恢复面。
     for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
-        environment[key] = ""
-    environment["NO_PROXY"] = "*"
+        environment[key] = "http://127.0.0.1:9"
+    environment["NO_PROXY"] = "127.0.0.1,localhost"
+    environment["no_proxy"] = "127.0.0.1,localhost"
+    environment["LIBO_DISABLE_CRASHREPORT"] = "1"
+    environment["SAL_DISABLE_OPENCL"] = "1"
     command = [
-        str(candidates[0]), "--headless", "--nologo", "--nodefault", "--nofirststartwizard",
+        str(candidates[0]), "--headless", "--invisible", "--safe-mode", "--nologo", "--nodefault",
+        "--norestore", "--nolockcheck", "--nofirststartwizard",
         f"-env:UserInstallation={profile.as_uri()}", "--convert-to", "docx", "--outdir", str(workspace), str(source),
     ]
     try:

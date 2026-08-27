@@ -549,6 +549,13 @@ async def trace_requests(request: Request, call_next):
     non_browser_write = (
         authorization.startswith("bearer ")
         or bool(request.headers.get("X-PartyOps-Device-Token"))
+        # 首次入网由无会话的本机 Agent 发起。仅允许精确的入网端点携带
+        # 一次性入网码头，路由仍会把请求头与正文做常量时间比对；不能把
+        # 这一例外扩展到其它 API，也不能把设备令牌当作浏览器端口凭据。
+        or (
+            request.url.path == "/api/v1/devices/enroll"
+            and bool(request.headers.get("X-PartyOps-Enrollment-Code"))
+        )
         or (
             request.url.path == "/api/v1/bootstrap/host"
             and bool(request.headers.get("X-PartyOps-Bootstrap-Token"))

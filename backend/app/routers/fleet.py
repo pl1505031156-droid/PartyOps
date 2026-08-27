@@ -721,6 +721,10 @@ def enrollment_status(
 def enroll_device(
     payload: DeviceEnrollRequest,
     request: Request,
+    enrollment_code_header: str | None = Header(
+        default=None,
+        alias="X-PartyOps-Enrollment-Code",
+    ),
     db: Session = Depends(get_session),
 ) -> DeviceEnrollOut:
     try:
@@ -732,6 +736,33 @@ def enroll_device(
             "入网码格式不完整",
             "请在主机设备中心点击“复制完整入网码”后直接粘贴。",
         ) from exc
+    # 生产环境的无会话 Agent 请求必须同时证明持有一次性入网码。中间件
+    # 只按路径和“是否携带”放行，真正的机密比对在这里完成；测试环境保留
+    # 旧的直接路由契约，避免把测试客户端误当作生产浏览器。
+    if get_settings().environment == "production":
+        if not enrollment_code_header:
+            raise ProblemException(
+                403,
+                "ENROLLMENT_TOKEN_REQUIRED",
+                "缺少入网安全令牌",
+                "请使用当前版本配置向导重新提交入网码。",
+            )
+        try:
+            normalized_header = normalize_enrollment_code(enrollment_code_header)
+        except ValueError as exc:
+            raise ProblemException(
+                403,
+                "ENROLLMENT_TOKEN_INVALID",
+                "入网安全令牌无效",
+                "请求头中的入网码格式不正确。",
+            ) from exc
+        if not secrets.compare_digest(normalized_header, normalized_code):
+            raise ProblemException(
+                403,
+                "ENROLLMENT_TOKEN_MISMATCH",
+                "入网安全令牌不匹配",
+                "请从主机重新复制完整入网码后重试。",
+            )
     with db_runtime.write_lock:
         enrollment = db.scalar(
             select(DeviceEnrollment).where(

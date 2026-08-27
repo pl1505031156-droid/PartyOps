@@ -24,9 +24,9 @@ flock -w 3600 9 || {
 }
 
 case "$ACTION" in
-  portable|deb|rpm|test-deb|test-rpm) ;;
+  portable|deb|rpm|test-deb|test-rpm|prepare-office|test-office) ;;
   *)
-    echo "用法：build-linux-arm64-chroot.sh [portable|deb|rpm|test-deb|test-rpm]" >&2
+    echo "用法：build-linux-arm64-chroot.sh [portable|deb|rpm|test-deb|test-rpm|prepare-office|test-office]" >&2
     exit 2
     ;;
 esac
@@ -125,11 +125,28 @@ chroot "$ROOTFS" /bin/bash -lc "
     rpm) bash packaging/linux/build-native.sh rpm ;;
     test-deb)
       bash scripts/test-native-package-runtime.sh \
-        artifacts/PartyOps_1.4.5-rc.4_linux_arm64.deb arm64
+        artifacts/PartyOps_1.4.5-rc.6_linux_arm64.deb arm64
       ;;
     test-rpm)
       bash scripts/test-native-package-runtime.sh \
-        artifacts/PartyOps-1.4.5-0.rc.4.1.aarch64.rpm arm64
+        artifacts/PartyOps-1.4.5-0.rc.6.1.aarch64.rpm arm64
+      ;;
+    prepare-office) bash scripts/prepare-libreoffice-linux-arm64.sh ;;
+    test-office)
+      runtime=vendor/linux/libreoffice-headless-arm64
+      input=artifacts/rc5-office-input/公文格式模板.docx
+      output=/tmp/partyops-office-arm64-output
+      profile=/tmp/partyops-office-arm64-profile
+      test -x "\$runtime/program/soffice"
+      test -s "\$input"
+      mkdir -p "\$output"
+      "\$runtime/program/soffice" \
+        --headless --nologo --nodefault --nolockcheck --nofirststartwizard \
+        -env:UserInstallation=file://"\$profile" \
+        --convert-to 'doc:MS Word 97' --outdir "\$output" "\$input"
+      test -s "\$output/公文格式模板.doc"
+      file "\$output/公文格式模板.doc"
+      sha256sum "\$output/公文格式模板.doc"
       ;;
   esac
 "

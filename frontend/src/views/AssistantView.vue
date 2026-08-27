@@ -4,7 +4,15 @@ import { IconCopy, IconFile, IconRefresh, IconRobot } from "@arco-design/web-vue
 import { Message, Modal } from "@arco-design/web-vue";
 import { ApiError, api } from "../api";
 import PageHelp from "../components/PageHelp.vue";
-import type { AIDraft, AIRecommendation, Task, WorkspaceFile } from "../types";
+import type {
+  AIDraft,
+  AIOrchestration,
+  AIOrchestrationCapabilities,
+  AIOrchestrationStep,
+  AIRecommendation,
+  Task,
+  WorkspaceFile,
+} from "../types";
 import { formatServerTime } from "../utils/datetime";
 
 const drafts = ref<AIDraft[]>([]);
@@ -15,6 +23,10 @@ const selectedDraftId = ref("");
 const fileKeyword = ref("");
 const loading = ref(false);
 const querying = ref(false);
+const orchestrationBusy = ref(false);
+const orchestrationGoal = ref("");
+const orchestration = ref<AIOrchestration | null>(null);
+const orchestrationCapabilities = ref<AIOrchestrationCapabilities | null>(null);
 const form = reactive({
   capability: "summarize",
   instruction: "",
@@ -44,10 +56,114 @@ async function load() {
     tasks.value = taskList.items.filter((item) => item.sensitivity === "normal");
     recommendations.value = recommendationList;
     selectedDraftId.value = selectedDraftId.value || drafts.value[0]?.id || "";
+    orchestrationCapabilities.value = await api
+      .get<AIOrchestrationCapabilities>("/ai/capabilities")
+      .catch(() => null);
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "AI 工作区加载失败");
   } finally {
     loading.value = false;
+  }
+}
+
+const toolLabels: Record<string, string> = {
+  "work.search": "查询工作台",
+  "navigation.find": "定位功能入口",
+  "business_meeting.create_draft": "创建会议草稿",
+  "business_meeting.prepare_workflow": "生成会议筹备流程",
+  "ledger.inspect": "检查台账字段",
+  "ledger.commit": "提交台账导入",
+  "party_development.timeline": "生成发展党员时间轴",
+  "notifications.recalculate": "重算提醒",
+  "files.explain_open": "诊断文件打开",
+  "fleet.diagnose": "诊断协同设备",
+  "fleet.rebind": "重新绑定设备",
+  "user.archive": "归档用户并移交责任",
+  "user.delete": "进入用户归档流程",
+  "settings.network_change": "修改协同公布地址",
+};
+
+function toolLabel(step: AIOrchestrationStep) {
+  return toolLabels[step.tool_name] || "受控业务步骤";
+}
+
+function handoffFor(step: AIOrchestrationStep): { route: string; label: string } | null {
+  const handoff = step.result_summary?.handoff;
+  if (!handoff || typeof handoff !== "object") return null;
+  const value = handoff as Record<string, unknown>;
+  return typeof value.route === "string" && typeof value.label === "string"
+    ? { route: value.route, label: value.label }
+    : null;
+}
+
+function openBusinessHandoff(step: AIOrchestrationStep) {
+  const handoff = handoffFor(step);
+  if (handoff) window.location.assign(handoff.route);
+}
+
+async function createOrchestration() {
+  if (!orchestrationGoal.value.trim()) {
+    Message.warning("请先描述希望系统统筹完成的工作");
+    return;
+  }
+  orchestrationBusy.value = true;
+  try {
+    orchestration.value = await api.post<AIOrchestration>("/ai/orchestrations", {
+      goal: orchestrationGoal.value,
+      context_scope: { task_ids: form.task_ids, file_ids: form.file_ids },
+    });
+    Message.success("已生成受控计划；系统尚未修改任何业务数据");
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "生成编排计划失败");
+  } finally {
+    orchestrationBusy.value = false;
+  }
+}
+
+async function approveStep(step: AIOrchestrationStep) {
+  if (!orchestration.value) return;
+  const current = orchestration.value;
+  Modal.confirm({
+    title: `确认执行：${toolLabel(step)}`,
+    content: `风险等级：${step.risk_level}。只确认当前展示的参数范围；计划变化后本次确认自动失效。`,
+    okText: "确认当前步骤",
+    cancelText: "取消",
+    async onOk() {
+      orchestrationBusy.value = true;
+      try {
+        orchestration.value = await api.post<AIOrchestration>(
+          `/ai/orchestrations/${current.id}/steps/${step.id}/approve`,
+          { approved: true, scope_sha256: step.scope_sha256 },
+          { "If-Match": String(current.version) },
+        );
+      } catch (error) {
+        Message.error(error instanceof Error ? error.message : "步骤确认失败");
+        throw error;
+      } finally {
+        orchestrationBusy.value = false;
+      }
+    },
+  });
+}
+
+async function executeOrchestration() {
+  if (!orchestration.value) return;
+  orchestrationBusy.value = true;
+  try {
+    orchestration.value = await api.post<AIOrchestration>(
+      `/ai/orchestrations/${orchestration.value.id}/execute`,
+      undefined,
+      { "If-Match": String(orchestration.value.version) },
+    );
+    if (orchestration.value.state === "awaiting_business_action") {
+      Message.info("确认门禁已通过；请进入对应业务页面核对并完成写入");
+    } else {
+      Message.success("只读步骤已完成，结果已写入审计");
+    }
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "执行编排计划失败");
+  } finally {
+    orchestrationBusy.value = false;
   }
 }
 
@@ -158,6 +274,45 @@ onMounted(load);
     <a-alert type="warning" class="security-banner">
       AI 默认关闭。启用和调整资料范围只能由管理员在“系统设置 → AI 与权限”中完成。
     </a-alert>
+
+    <section class="orchestration-panel">
+      <div class="orchestration-heading">
+        <div>
+          <p class="page-kicker">全系统智能编排器 · {{ orchestrationCapabilities?.release || "安全降级可用" }}</p>
+          <h2>先看计划，再决定执行哪些步骤</h2>
+          <p>DeepSeek 负责规划，Needle 2 负责安全路由，BGE 负责中文检索；模型不能直接访问数据库、文件系统或网络。</p>
+        </div>
+        <a-tag>{{ orchestrationCapabilities?.planner?.role || "规则编排引擎" }}</a-tag>
+      </div>
+      <div class="orchestration-input">
+        <a-textarea
+          v-model="orchestrationGoal"
+          :auto-size="{ minRows: 2, maxRows: 5 }"
+          placeholder="例如：识别党委会议程，建立会议草稿和六步筹备流程，并给负责人生成提醒预览。"
+        />
+        <a-button type="primary" :loading="orchestrationBusy" @click="createOrchestration">生成跨模块计划</a-button>
+      </div>
+      <div v-if="orchestration" class="orchestration-result">
+        <header>
+          <div><strong>{{ orchestration.goal_summary }}</strong><small>{{ orchestration.model_id }} · {{ orchestration.state }}</small></div>
+          <a-button
+            type="primary"
+            :disabled="orchestration.state !== 'awaiting_confirmation'"
+            :loading="orchestrationBusy"
+            @click="executeOrchestration"
+          >执行已确认步骤</a-button>
+        </header>
+        <ol>
+          <li v-for="step in orchestration.steps" :key="step.id">
+            <span class="step-order">{{ step.step_order }}</span>
+            <div><strong>{{ toolLabel(step) }}</strong><p>{{ step.reason }}</p><small>置信度 {{ Math.round(step.confidence * 100) }}% · 风险 {{ step.risk_level }} · {{ step.status }}</small></div>
+            <a-button v-if="step.requires_confirmation && step.status === 'pending'" size="small" @click="approveStep(step)">查看并确认</a-button>
+            <a-button v-else-if="handoffFor(step)" size="small" type="primary" @click="openBusinessHandoff(step)">{{ handoffFor(step)?.label }}</a-button>
+            <a-tag v-else :color="step.status === 'completed' ? 'green' : 'gray'">{{ step.status }}</a-tag>
+          </li>
+        </ol>
+      </div>
+    </section>
 
     <div class="assistant-layout">
       <section class="prompt-panel">
@@ -270,6 +425,38 @@ onMounted(load);
 .security-banner {
   margin-bottom: 16px;
 }
+
+.orchestration-panel {
+  margin-bottom: 16px;
+  padding: 22px 24px;
+  background: linear-gradient(135deg, rgba(251, 248, 241, 0.96), rgba(247, 238, 225, 0.78));
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--cinnabar);
+}
+
+.orchestration-heading,
+.orchestration-result > header,
+.orchestration-input,
+.orchestration-result li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.orchestration-heading h2,
+.orchestration-heading p { margin: 0; }
+.orchestration-heading > div > p:last-child { margin-top: 6px; color: var(--muted); }
+.orchestration-input { margin-top: 18px; align-items: stretch; }
+.orchestration-input .arco-textarea-wrapper { flex: 1; }
+.orchestration-result { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.orchestration-result header small,
+.orchestration-result li small { display: block; margin-top: 4px; color: var(--muted); }
+.orchestration-result ol { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.orchestration-result li { padding: 12px; background: rgba(255,255,255,.45); border: 1px solid var(--line-light); }
+.orchestration-result li > div { flex: 1; }
+.orchestration-result li p { margin: 4px 0 0; color: var(--muted); }
+.step-order { display: grid; width: 28px; height: 28px; place-items: center; color: white; background: var(--cinnabar); border-radius: 50%; }
 
 .assistant-layout {
   display: grid;

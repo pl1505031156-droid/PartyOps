@@ -82,12 +82,12 @@ PARTY_FIELDS: tuple[FieldSpec, ...] = (
 
 ARCHIVE_FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("archive_year", "年度", "number", ("年度", "年份", "考核年度", "归档年度"), True),
-    FieldSpec("title", "标题", "text", ("标题", "文件名称", "档案名称", "事项名称"), True),
+    FieldSpec("title", "标题", "text", ("标题", "文件名称", "档案名称", "事项名称", "内容", "文件内容"), True),
     FieldSpec("document_no", "文号", "text", ("文号", "文件编号", "档案编号")),
     FieldSpec("summary", "摘要", "textarea", ("摘要", "备注", "说明")),
     FieldSpec("involved_persons", "涉及人员", "list", ("涉及人员", "相关人员")),
     FieldSpec("source_unit", "来源单位", "text", ("来源单位", "发文单位", "原单位")),
-    FieldSpec("document_date", "文件日期", "date", ("文件日期", "发文日期", "形成日期")),
+    FieldSpec("document_date", "文件日期", "date", ("文件日期", "发文日期", "形成日期", "出文时间", "出文日期")),
     FieldSpec("person_name", "人员姓名", "text", ("姓名", "人员姓名", "被考核人")),
     FieldSpec("person_identifier", "人员标识", "text", ("身份证号", "人员编号", "工号", "唯一标识", "外部ID", "外部编号")),
     FieldSpec("personnel_type", "人员类型", "text", ("人员类型", "编制类型", "身份类别")),
@@ -432,6 +432,36 @@ def profile_sheet(rows: list[list[Any]], header_row: int, fields: Iterable[Field
         "duplicate_headers": duplicates,
         "header_signature": signature,
     }
+
+
+def derive_archive_year_candidates(
+    source_name: str,
+    sheet_name: str,
+    rows: list[list[Any]],
+    header_row: int,
+) -> list[dict[str, Any]]:
+    """从文件名、工作表、文号和日期提取年度候选；只提供证据，不自动落库。"""
+
+    found: dict[int, set[str]] = {}
+
+    def add(value: Any, source: str) -> None:
+        for match in re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", str(value or "")):
+            year = int(match)
+            if 1900 <= year <= 2200:
+                found.setdefault(year, set()).add(source)
+
+    add(Path(source_name or "").name, "文件名")
+    add(sheet_name, "工作表名")
+    if 1 <= header_row <= len(rows):
+        headers = [normalize_header(value) for value in rows[header_row - 1]]
+        for index, header in enumerate(headers):
+            if any(token in header for token in ("文号", "编号", "日期", "时间", "年度", "年份")):
+                for row in rows[header_row:]:
+                    add(row[index] if index < len(row) else None, f"列“{rows[header_row - 1][index]}”")
+    return [
+        {"year": year, "sources": sorted(sources), "confirmed": False}
+        for year, sources in sorted(found.items(), reverse=True)
+    ]
 
 
 def _staging_root() -> Path:

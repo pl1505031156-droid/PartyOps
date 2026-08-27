@@ -225,6 +225,22 @@ def run_user_permission_selftest(runtime: Path) -> dict[str, object]:
     }
 
 
+def run_desktop_user_selftest(
+    runtime: Path,
+    timeout: float = 120.0,
+) -> dict[str, object]:
+    """以真实桌面账号同时验证权限和完整个人进程启动链。"""
+
+    permission = run_user_permission_selftest(runtime)
+    startup = run_selftest(runtime, timeout=timeout)
+    return {
+        **startup,
+        "desktop_user": True,
+        "runtime_readable": permission["runtime_readable"],
+        "user_temp_writable": permission["user_temp_writable"],
+    }
+
+
 def main(runtime: Path | None = None) -> int:
     try:
         result = run_selftest(runtime or Path(sys.executable).resolve().parent)

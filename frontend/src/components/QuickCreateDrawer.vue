@@ -80,7 +80,7 @@ async function submit() {
           v-model="form.formal_due_at"
           show-time
           format="YYYY-MM-DD HH:mm"
-          value-format="YYYY-MM-DDTHH:mm:ssZ"
+          value-format="YYYY-MM-DD HH:mm:ss"
           style="width: 100%"
         />
       </a-form-item>

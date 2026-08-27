@@ -12,6 +12,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -1809,6 +1810,119 @@ class OnboardingProgress(Base):
     )
 
 
+class AIOrchestrationSession(Base):
+    """全系统智能编排会话。
+
+    模型只生成受约束的计划；业务写入由服务端工具契约逐步校验并在用户
+    确认后执行。数据库仅保存脱敏摘要和结构化计划，不保存原始提示或文件。
+    """
+
+    __tablename__ = "ai_orchestration_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    goal_summary: Mapped[str] = mapped_column(String(500))
+    input_sha256: Mapped[str] = mapped_column(String(64), default="")
+    state: Mapped[str] = mapped_column(String(32), default="awaiting_confirmation", index=True)
+    model_id: Mapped[str] = mapped_column(String(160), default="rules")
+    external_consented: Mapped[bool] = mapped_column(Boolean, default=False)
+    risk_level: Mapped[str] = mapped_column(String(16), default="low")
+    context_scope: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    plan: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    unresolved: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AIOrchestrationStep(Base):
+    """编排计划中的单个受控工具步骤。"""
+
+    __tablename__ = "ai_orchestration_steps"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("ai_orchestration_sessions.id", ondelete="CASCADE"), index=True
+    )
+    step_order: Mapped[int] = mapped_column(Integer)
+    tool_name: Mapped[str] = mapped_column(String(120), index=True)
+    arguments: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    evidence: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    risk_level: Mapped[str] = mapped_column(String(16), default="low")
+    requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    preconditions: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    compensation: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    result_summary: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    error_code: Mapped[str] = mapped_column(String(80), default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AIOrchestrationApproval(Base):
+    """步骤级确认记录，防止一次确认扩大到未展示的副作用。"""
+
+    __tablename__ = "ai_orchestration_approvals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("ai_orchestration_sessions.id", ondelete="CASCADE"), index=True
+    )
+    step_id: Mapped[str] = mapped_column(
+        ForeignKey("ai_orchestration_steps.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    scope_sha256: Mapped[str] = mapped_column(String(64), default="")
+    device_id: Mapped[str] = mapped_column(String(36), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AIContextGrant(Base):
+    """编排器的最小上下文授权，过期或撤销后不可继续读取业务数据。"""
+
+    __tablename__ = "ai_context_grants"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("ai_orchestration_sessions.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    scope: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AIOrchestrationEvent(Base):
+    """编排事件的脱敏审计摘要。"""
+
+    __tablename__ = "ai_orchestration_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("ai_orchestration_sessions.id", ondelete="CASCADE"), index=True
+    )
+    step_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("ai_orchestration_steps.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(40), index=True)
+    result_code: Mapped[str] = mapped_column(String(80), default="")
+    summary: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ClientDeviceCredential(Base):
     """协同终端设备令牌版本；数据库只保存哈希，明文仅在签发响应中出现一次。"""
 
@@ -1944,6 +2058,31 @@ class MeetingTopic(Base):
     archive_reason: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MeetingImportDraft(Base):
+    """会议文件导入的可编辑候选；不保存原文件、文件名或正文。"""
+
+    __tablename__ = "meeting_import_drafts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    source_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    source_kind: Mapped[str] = mapped_column(String(24), default="ooxml")
+    status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    proposed_meeting: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    proposed_topics: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    warnings: Mapped[List[str]] = mapped_column(JSON, default=list)
+    meeting_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("business_meetings.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class MeetingAttendee(Base):
@@ -2114,6 +2253,9 @@ class LedgerImportJob(Base):
     status: Mapped[str] = mapped_column(String(24), default="inspected", index=True)
     mapping: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     profile: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    # 由文件名/工作表/文号等推断的候选仅供人工确认，禁止直接当作事实写入。
+    derived_candidates: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    manual_edits: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     validation: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     total_rows: Mapped[int] = mapped_column(Integer, default=0)
     valid_rows: Mapped[int] = mapped_column(Integer, default=0)

@@ -37,4 +37,11 @@ export function localInputToUtc(value: ConfigType): string {
   return dayjs.tz(value, DISPLAY_TIMEZONE).utc().toISOString();
 }
 
+/** 把服务端 UTC 瞬时值填回北京时间控件，避免旧值被浏览器本地时区二次解释。 */
+export function utcToLocalInput(value: ConfigType | null | undefined): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = serverTime(value);
+  return parsed.isValid() ? parsed.format("YYYY-MM-DD HH:mm:ss") : null;
+}
+
 export { dayjs };

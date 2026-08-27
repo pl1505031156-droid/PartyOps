@@ -294,6 +294,43 @@ def test_windows_wizard_wait_allows_slow_legacy_startup() -> None:
     assert launcher.WIZARD_WAIT_SECONDS == 180.0
 
 
+def test_desktop_entry_blocks_configuration_when_runtime_dependency_preflight_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launcher = load_launcher()
+    shown: list[str] = []
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(launcher.sys, "argv", ["PartyOpsLauncher.exe"])
+    monkeypatch.setattr(launcher, "show_launch_failure", shown.append)
+    monkeypatch.setattr(
+        launcher,
+        "_preflight_windows_runtime_dependencies",
+        lambda _executable: (_ for _ in ()).throw(
+            launcher.HostStartupError(
+                launcher.RUNTIME_DEPENDENCY_MISSING,
+                "Python 或 SQLite 依赖缺失。",
+                detail="缺失=_internal/python3.dll",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "ensure_user_protocols",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("依赖闭包失败后不得写注册表或启动配置向导")
+        ),
+    )
+
+    assert launcher.main() == 1
+    assert shown and "RUNTIME_DEPENDENCY_MISSING" in shown[0]
+    assert "_internal/python3.dll" in shown[0]
+    assert "修复安装" in shown[0]
+    log = tmp_path / "PartyOps" / "launcher.log"
+    assert log.is_file()
+    assert "RUNTIME_DEPENDENCY_MISSING" in log.read_text(encoding="utf-8")
+
+
 @pytest.mark.parametrize(
     ("payload", "accepted"),
     [

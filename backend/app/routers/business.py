@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -9,21 +10,28 @@ from typing import Any, List
 from urllib.parse import quote
 
 from docx import Document
-from fastapi import APIRouter, Body, Depends, Header, Query, Request
+from fastapi import APIRouter, Body, Depends, File, Header, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from ..audit import write_audit
 from ..database import get_session
 from ..enums import Priority, Sensitivity, TaskStatus, TaskType, UserRole
+from ..meeting_imports import (
+    MAX_MEETING_IMPORT_BYTES,
+    extract_meeting_text,
+    propose_meeting,
+)
 from ..models import (
     BusinessDocument,
     BusinessDocumentRevision,
     BusinessMeeting,
     MeetingAction,
     MeetingAttendee,
+    MeetingImportDraft,
     MeetingTopic,
     StudyPlan,
     Task,
@@ -83,6 +91,20 @@ class MeetingPatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=240)
     scheduled_at: datetime | None = None
     status: str | None = Field(default=None, pattern=r"^(planned|in_progress|completed|cancelled|archived)$")
+
+
+class MeetingImportPatch(BaseModel):
+    """用户确认后的会议候选；模型或规则候选不会直接写入正式台账。"""
+
+    meeting_type: str = "party_committee"
+    organization: str = Field(min_length=1, max_length=160)
+    title: str = Field(min_length=1, max_length=240)
+    scheduled_at: datetime | None = None
+    venue: str = Field(default="", max_length=240)
+    host_name: str = Field(default="", max_length=120)
+    attendee_text: str = Field(default="", max_length=2_000)
+    owner_id: str | None = None
+    topics: list[str] = Field(default_factory=list, max_length=50)
 
 
 class TopicInput(BaseModel):
@@ -479,6 +501,263 @@ def restore_workflow_template(
     write_audit(db, admin, "workflow_template.restore", "workflow_template", item.id, {"reason": payload.reason.strip()}, client_ip(request))
     db.commit()
     return template_out(item)
+
+
+def _meeting_import_draft(db: Session, draft_id: str, user: User) -> MeetingImportDraft:
+    draft = db.get(MeetingImportDraft, draft_id)
+    if not draft or (draft.created_by != user.id and user.role != UserRole.ADMIN):
+        raise ProblemException(
+            404,
+            "MEETING_IMPORT_DRAFT_NOT_FOUND",
+            "会议导入草稿不存在",
+            "草稿可能已过期、被取消或不属于当前用户。",
+        )
+    expires_at = draft.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if draft.status == "draft" and expires_at <= utcnow():
+        draft.status = "expired"
+        draft.version += 1
+        db.commit()
+        raise ProblemException(
+            410,
+            "MEETING_IMPORT_DRAFT_EXPIRED",
+            "会议导入草稿已过期",
+            "原始文件未被保存，请重新选择文件生成候选。",
+        )
+    return draft
+
+
+def _meeting_import_out(draft: MeetingImportDraft) -> dict[str, Any]:
+    return {
+        "id": draft.id,
+        "source_sha256": draft.source_sha256,
+        "source_kind": draft.source_kind,
+        "status": draft.status,
+        "meeting": draft.proposed_meeting,
+        "topics": draft.proposed_topics,
+        "warnings": draft.warnings,
+        "meeting_id": draft.meeting_id,
+        "expires_at": draft.expires_at,
+        "confirmed_at": draft.confirmed_at,
+        "version": draft.version,
+    }
+
+
+def _utc_business_datetime(value: datetime | None) -> datetime | None:
+    """无时区输入一律按北京时间解释，数据库只保存 UTC 瞬时。"""
+
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone(timedelta(hours=8)))
+    return value.astimezone(timezone.utc)
+
+
+@router.post("/business-meetings/imports/inspect", response_model=dict, status_code=201)
+async def inspect_meeting_import(
+    request: Request,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """检查真实容器并生成候选；原文件、文件名和正文均不落库。"""
+
+    data = await file.read(MAX_MEETING_IMPORT_BYTES + 1)
+    filename_hint = file.filename or ""
+    await file.close()
+    if len(data) > MAX_MEETING_IMPORT_BYTES:
+        raise ProblemException(
+            413,
+            "MEETING_IMPORT_SIZE_LIMIT",
+            "会议文件超过限制",
+            "单个会议导入文件不得超过 50 MiB。",
+        )
+    text, source_kind = await run_in_threadpool(extract_meeting_text, data)
+    candidate = propose_meeting(text, filename_hint)
+    topics = list(candidate.pop("topics", []))
+    warnings = list(candidate.pop("warnings", []))
+    draft = MeetingImportDraft(
+        created_by=user.id,
+        source_sha256=hashlib.sha256(data).hexdigest(),
+        source_kind=source_kind,
+        proposed_meeting=candidate,
+        proposed_topics=topics,
+        warnings=warnings,
+        expires_at=utcnow() + timedelta(minutes=30),
+    )
+    db.add(draft)
+    db.flush()
+    write_audit(
+        db,
+        user,
+        "business_meeting.import_inspect",
+        "meeting_import_draft",
+        draft.id,
+        {
+            "source_kind": source_kind,
+            "source_sha256_prefix": draft.source_sha256[:12],
+            "topic_candidates": len(topics),
+        },
+        client_ip(request),
+    )
+    db.commit()
+    return _meeting_import_out(draft)
+
+
+@router.get("/business-meetings/imports/{draft_id}", response_model=dict)
+def get_meeting_import(
+    draft_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    return _meeting_import_out(_meeting_import_draft(db, draft_id, user))
+
+
+@router.patch("/business-meetings/imports/{draft_id}", response_model=dict)
+def confirm_meeting_import_candidates(
+    draft_id: str,
+    payload: MeetingImportPatch,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    draft = _meeting_import_draft(db, draft_id, user)
+    if draft.status != "draft":
+        raise ProblemException(409, "MEETING_IMPORT_STATE_INVALID", "会议草稿状态不可修改", "请重新生成导入草稿。")
+    if draft.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "会议导入草稿已更新", "请刷新后重新确认。")
+    if payload.meeting_type not in MEETING_TYPES:
+        raise ProblemException(422, "MEETING_TYPE_INVALID", "会议类型无效", "请选择系统支持的党建会议类型。")
+    scheduled_at = _utc_business_datetime(payload.scheduled_at)
+    draft.proposed_meeting = {
+        "meeting_type": payload.meeting_type,
+        "organization": payload.organization.strip(),
+        "title": payload.title.strip(),
+        "scheduled_at": scheduled_at.isoformat() if scheduled_at else None,
+        "venue": payload.venue.strip(),
+        "host_name": payload.host_name.strip(),
+        "attendee_text": payload.attendee_text.strip(),
+        "owner_id": payload.owner_id,
+        "requires_confirmation": False,
+    }
+    unique_topics: list[str] = []
+    for raw_title in payload.topics:
+        title = " ".join(raw_title.split()).strip(" ：:;；。")[:240]
+        if title and title not in unique_topics:
+            unique_topics.append(title)
+    draft.proposed_topics = [
+        {"title": title, "confidence": 1.0, "source": "用户人工确认", "confirmed": True}
+        for title in unique_topics
+    ]
+    draft.version += 1
+    write_audit(
+        db,
+        user,
+        "business_meeting.import_confirm",
+        "meeting_import_draft",
+        draft.id,
+        {"topic_count": len(unique_topics), "meeting_type": payload.meeting_type},
+        client_ip(request),
+    )
+    db.commit()
+    return _meeting_import_out(draft)
+
+
+@router.post("/business-meetings/imports/{draft_id}/commit", response_model=dict, status_code=201)
+def commit_meeting_import(
+    draft_id: str,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    draft = _meeting_import_draft(db, draft_id, user)
+    if draft.status != "draft":
+        if draft.status == "committed" and draft.meeting_id:
+            meeting = db.get(BusinessMeeting, draft.meeting_id)
+            if meeting:
+                return {"draft": _meeting_import_out(draft), "meeting": meeting_out(db, meeting)}
+        raise ProblemException(409, "MEETING_IMPORT_STATE_INVALID", "会议草稿不能提交", "请重新生成并确认导入草稿。")
+    if draft.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "会议导入草稿已更新", "请刷新后重新确认。")
+    values = dict(draft.proposed_meeting or {})
+    if values.get("requires_confirmation", True):
+        raise ProblemException(
+            409,
+            "MEETING_IMPORT_CONFIRMATION_REQUIRED",
+            "会议候选尚未人工确认",
+            "请先核对会议、时间、地点和议题，再提交正式台账。",
+        )
+    meeting_type = str(values.get("meeting_type", ""))
+    if meeting_type not in MEETING_TYPES:
+        raise ProblemException(422, "MEETING_TYPE_INVALID", "会议类型无效", "请选择系统支持的党建会议类型。")
+    owner = db.get(User, values.get("owner_id")) if values.get("owner_id") else user
+    if not owner or not owner.active:
+        raise ProblemException(422, "MEETING_OWNER_INVALID", "负责人不可用", "请选择启用用户。")
+    scheduled_raw = values.get("scheduled_at")
+    scheduled_at = datetime.fromisoformat(scheduled_raw) if scheduled_raw else None
+    template = ensure_committee_template(db, user)
+    meeting = _create_meeting_record(
+        db,
+        template=template,
+        meeting_type=meeting_type,
+        organization=str(values.get("organization", "")),
+        title=str(values.get("title", "")),
+        scheduled_at=scheduled_at,
+        owner=owner,
+        created_by=user,
+    )
+    meeting.venue = str(values.get("venue", ""))
+    meeting.business_data = {
+        "import_source_sha256": draft.source_sha256,
+        "import_source_kind": draft.source_kind,
+        "host_name_candidate": str(values.get("host_name", "")),
+        "attendee_text_candidate": str(values.get("attendee_text", "")),
+    }
+    for candidate in draft.proposed_topics or []:
+        if not candidate.get("confirmed") or not str(candidate.get("title", "")).strip():
+            continue
+        db.add(MeetingTopic(meeting_id=meeting.id, title=str(candidate["title"]).strip()[:240]))
+    draft.status = "committed"
+    draft.meeting_id = meeting.id
+    draft.confirmed_at = utcnow()
+    draft.version += 1
+    write_audit(
+        db,
+        user,
+        "business_meeting.import_commit",
+        "business_meeting",
+        meeting.id,
+        {"draft_id": draft.id, "topic_count": len(draft.proposed_topics or [])},
+        client_ip(request),
+    )
+    db.commit()
+    return {"draft": _meeting_import_out(draft), "meeting": meeting_out(db, meeting)}
+
+
+@router.delete("/business-meetings/imports/{draft_id}", response_model=dict)
+def cancel_meeting_import(
+    draft_id: str,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    draft = _meeting_import_draft(db, draft_id, user)
+    if draft.status == "committed":
+        raise ProblemException(409, "MEETING_IMPORT_ALREADY_COMMITTED", "会议草稿已经入账", "如需撤销，请归档对应会议并保留审计记录。")
+    if draft.version != parse_if_match(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "会议导入草稿已更新", "请刷新后重试。")
+    draft.status = "cancelled"
+    draft.proposed_meeting = {}
+    draft.proposed_topics = []
+    draft.warnings = []
+    draft.version += 1
+    write_audit(db, user, "business_meeting.import_cancel", "meeting_import_draft", draft.id, {}, client_ip(request))
+    db.commit()
+    return {"cancelled": True, "id": draft.id, "version": draft.version}
 
 
 @router.get("/business-meetings", response_model=List[dict])

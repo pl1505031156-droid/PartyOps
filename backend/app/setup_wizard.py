@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import getpass
+import hashlib
 import html
 import http.client
 import ipaddress
@@ -36,6 +37,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 from .client_agent import (
     add_shared_root,
@@ -56,7 +58,12 @@ from .windows_host_status import (
     CHILD_EXITED,
     HEALTH_TIMEOUT,
     PORT_IN_USE,
+    RUNTIME_BINARY_INCOMPATIBLE,
+    RUNTIME_DEPENDENCY_MISSING,
+    RUNTIME_EXECUTABLE_MISSING,
+    RUNTIME_PACKAGE_MISMATCH,
     RUNTIME_PERMISSION_DENIED,
+    RUNTIME_SYSTEM_UPDATE_REQUIRED,
     RUNTIME_VERSION_MISMATCH,
     SERVICE_MISSING,
     SERVICE_STOPPED,
@@ -115,6 +122,47 @@ def runtime_root() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parents[2]
+
+
+def _read_install_root_marker(path: Path) -> Path | None:
+    """读取安装器写入的当前安装根目录，拒绝链接、相对路径和超长内容。"""
+
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 2048:
+            return None
+        raw = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    if len(raw) != 1 or not raw[0].strip():
+        return None
+    candidate = Path(raw[0].strip()).expanduser()
+    if not candidate.is_absolute() or candidate.is_symlink() or not candidate.is_dir():
+        return None
+    return candidate.resolve()
+
+
+def _candidate_windows_runtime_roots() -> tuple[Path, ...]:
+    """返回当前进程和安装器记录的 Windows 运行时目录，避免旧向导路径失效。
+
+    升级时用户可能从旧安装目录中的配置向导继续操作，而新的桌面入口已安装到
+    另一目录。安装器在 ProgramData 和当前用户配置目录各写一份根目录标记，
+    这里只读取受控标记并逐一核对目标文件，不会扫描磁盘或执行不明程序。
+    """
+
+    roots: list[Path] = [runtime_root()]
+    if os.name != "nt":
+        return tuple(dict.fromkeys(roots))
+    marker_paths = (
+        config_root() / "install-root.txt",
+        Path(os.getenv("PROGRAMDATA", "C:/ProgramData"))
+        / "PartyOps"
+        / "install-root.txt",
+    )
+    for marker in marker_paths:
+        candidate = _read_install_root_marker(marker)
+        if candidate is not None and candidate not in roots:
+            roots.append(candidate)
+    return tuple(roots)
 
 
 def installer_default_data_dir() -> Path:
@@ -484,10 +532,10 @@ def _validate_windows_data_dir(data_dir: Path) -> Path:
             )
     reserved_roots = []
     for env_name in ("PROGRAMDATA", "USERPROFILE"):
-        raw = os.getenv(env_name)
-        if raw:
+        reserved_raw = os.getenv(env_name)
+        if reserved_raw:
             try:
-                reserved_roots.append(Path(raw).resolve())
+                reserved_roots.append(Path(reserved_raw).resolve())
             except OSError:
                 continue
     user_profile = os.getenv("USERPROFILE")
@@ -1110,10 +1158,13 @@ def _restore_windows_host_switch_privileged(expected_transaction_id: str = "") -
         for service in ("PartyOpsHost", "PartyOpsUpdateService"):
             state = services[service]
             raw_start = state.get("start_type")
+            normalized_start = (
+                int(raw_start) if isinstance(raw_start, (int, str)) else None
+            )
             config = (
                 None
-                if raw_start is None
-                else (int(raw_start), bool(state.get("delayed")))
+                if normalized_start is None
+                else (normalized_start, bool(state.get("delayed")))
             )
             _restore_windows_service_start_config(service, config)
         _restore_windows_services_after_mode_switch(
@@ -1636,7 +1687,7 @@ def _stop_personal_process_for_data_migration(data_dir: Path, port: int) -> bool
         if os.name == "nt":
             os.kill(pid, signal.SIGTERM)
         else:
-            os.kill(pid, signal.SIGKILL)
+            os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
         time.sleep(0.5)
     if _process_executable_matches(pid, expected):
         raise ValueError("旧个人模式进程未能安全停止，数据目录尚未切换")
@@ -1723,6 +1774,26 @@ def _restart_previous_personal_process(environment: dict[str, str]) -> None:
         [str(_executable("partyops"))], data_dir / "launcher.log", environment
     )
     _record_personal_process(data_dir, process)
+
+
+def _restore_previous_windows_autostart(previous_mode: str, client_config: Path) -> None:
+    """尽力恢复旧自启动；启动器被隔离时降级告警，不伪造模式回滚失败。
+
+    自启动是便利功能，业务模式、数据库和主机服务才是核心事务。安全软件在
+    配置向导运行期间隔离旧版启动器时，不能因为恢复便利入口失败而覆盖真正的
+    首次错误；记录可见告警并由下一次修复安装重新创建即可。
+    """
+
+    try:
+        if previous_mode == "personal":
+            install_windows_personal_autostart()
+        elif previous_mode == "client" and client_config.is_file():
+            install_client_autostart(client_config)
+    except OSError as exc:
+        _record_windows_autostart_warning(
+            "[AUTOSTART_RESTORE_DEFERRED] 旧自启动入口暂不可用，已保留原模式；"
+            f"请执行同版本修复安装：{str(exc)[:400]}"
+        )
 
 
 def write_host_config(
@@ -1891,11 +1962,8 @@ def write_personal_config(data_dir: Path, port: int = 18775) -> Path:
         for candidate in transaction_paths
     }
     try:
-        previous_mode = (
-            json.loads(previous_files[mode_path]).get("mode")
-            if previous_files[mode_path]
-            else ""
-        )
+        previous_mode_raw = previous_files[mode_path]
+        previous_mode = json.loads(previous_mode_raw).get("mode") if previous_mode_raw else ""
     except (ValueError, TypeError, json.JSONDecodeError):
         previous_mode = ""
     previous = load_host_environment(path) if path.is_file() else {}
@@ -1981,12 +2049,10 @@ def write_personal_config(data_dir: Path, port: int = 18775) -> Path:
                 # 三个 plist 已由上面的事务快照逐项恢复；配置阶段尚未
                 # bootstrap，不再删除刚恢复的旧角色启动项。
                 pass
-            elif previous_mode == "personal":
-                install_windows_personal_autostart()
-            elif (
-                previous_mode == "client" and (config_root() / "client.json").is_file()
-            ):
-                install_client_autostart(config_root() / "client.json")
+            elif os.name == "nt":
+                _restore_previous_windows_autostart(
+                    previous_mode, config_root() / "client.json"
+                )
         except Exception as exc:  # noqa: BLE001 - 汇总事务回滚诊断。
             rollback_errors.append(f"自启动：{exc}")
         try:
@@ -1997,6 +2063,12 @@ def write_personal_config(data_dir: Path, port: int = 18775) -> Path:
             raise ValueError(
                 "[MODE_SWITCH_ROLLBACK_FAILED] 个人模式配置失败且原模式未能完整恢复："
                 + "；".join(rollback_errors)
+            ) from original_error
+        if isinstance(original_error, FileNotFoundError):
+            raise HostStartupError(
+                RUNTIME_EXECUTABLE_MISSING,
+                "桌面启动程序缺失，个人模式尚未切换。请执行同版本修复安装；业务数据不会删除。",
+                detail=str(original_error)[:800],
             ) from original_error
         raise
     return path
@@ -2261,7 +2333,8 @@ def configure_host_config(host: str, port: int, data_dir: Path) -> Path:
         if personal_stopped and personal_environment:
             try:
                 _restart_previous_personal_process(personal_environment)
-                install_windows_personal_autostart()
+                if os.name == "nt":
+                    _restore_previous_windows_autostart("personal", personal_config)
                 write_mode_config("personal", config_path=personal_config)
             except Exception as exc:  # noqa: BLE001 - 汇总事务回滚诊断。
                 rollback_errors.append(f"个人模式：{exc}")
@@ -2276,6 +2349,12 @@ def configure_host_config(host: str, port: int, data_dir: Path) -> Path:
             raise ValueError(
                 "[MODE_SWITCH_ROLLBACK_FAILED] 主机配置失败且原个人模式未能完整恢复："
                 + "；".join(rollback_errors)
+            ) from original_error
+        if isinstance(original_error, FileNotFoundError):
+            raise HostStartupError(
+                RUNTIME_EXECUTABLE_MISSING,
+                "桌面启动程序缺失，主机模式尚未切换。请执行同版本修复安装；业务数据不会删除。",
+                detail=str(original_error)[:800],
             ) from original_error
         raise
 
@@ -2312,11 +2391,8 @@ def write_client_config(
         for candidate in (path, mode_path, marker_path)
     }
     try:
-        previous_mode = (
-            json.loads(previous_files[mode_path]).get("mode")
-            if previous_files[mode_path]
-            else ""
-        )
+        previous_mode_raw = previous_files[mode_path]
+        previous_mode = json.loads(previous_mode_raw).get("mode") if previous_mode_raw else ""
     except (ValueError, TypeError, json.JSONDecodeError):
         previous_mode = ""
     personal = config_root() / "personal.env"
@@ -2354,10 +2430,8 @@ def write_client_config(
             except Exception as exc:  # noqa: BLE001 - 汇总事务回滚诊断。
                 rollback_errors.append(f"个人模式：{exc}")
         try:
-            if previous_mode == "personal":
-                install_windows_personal_autostart()
-            elif previous_mode == "client" and path.is_file():
-                install_client_autostart(path)
+            if os.name == "nt":
+                _restore_previous_windows_autostart(previous_mode, path)
         except Exception as exc:  # noqa: BLE001 - 汇总事务回滚诊断。
             rollback_errors.append(f"自启动：{exc}")
         try:
@@ -2368,6 +2442,12 @@ def write_client_config(
             raise ValueError(
                 "[MODE_SWITCH_ROLLBACK_FAILED] 协同模式配置失败且原模式未能完整恢复："
                 + "；".join(rollback_errors)
+            ) from original_error
+        if isinstance(original_error, FileNotFoundError):
+            raise HostStartupError(
+                RUNTIME_EXECUTABLE_MISSING,
+                "桌面启动程序缺失，协同模式尚未切换。请执行同版本修复安装；业务数据不会删除。",
+                detail=str(original_error)[:800],
             ) from original_error
         raise
 
@@ -2451,11 +2531,8 @@ def write_device_config(
         for candidate in transaction_paths
     }
     try:
-        previous_mode = (
-            json.loads(previous_files[mode_path]).get("mode")
-            if previous_files[mode_path]
-            else ""
-        )
+        previous_mode_raw = previous_files[mode_path]
+        previous_mode = json.loads(previous_mode_raw).get("mode") if previous_mode_raw else ""
     except (ValueError, TypeError, json.JSONDecodeError):
         previous_mode = ""
     personal = config_root() / "personal.env"
@@ -2503,10 +2580,8 @@ def write_device_config(
             except Exception as exc:  # noqa: BLE001 - 汇总事务回滚诊断。
                 rollback_errors.append(f"个人模式：{exc}")
         try:
-            if previous_mode == "personal":
-                install_windows_personal_autostart()
-            elif previous_mode == "client" and path.is_file():
-                install_client_autostart(path)
+            if os.name == "nt":
+                _restore_previous_windows_autostart(previous_mode, path)
         except Exception as exc:  # noqa: BLE001 - 汇总事务回滚诊断。
             rollback_errors.append(f"自启动：{exc}")
         try:
@@ -2517,6 +2592,12 @@ def write_device_config(
             raise ValueError(
                 "[MODE_SWITCH_ROLLBACK_FAILED] 设备配置失败且原模式未能完整恢复："
                 + "；".join(rollback_errors)
+            ) from original_error
+        if isinstance(original_error, FileNotFoundError):
+            raise HostStartupError(
+                RUNTIME_EXECUTABLE_MISSING,
+                "桌面启动程序缺失，协同模式尚未切换。请执行同版本修复安装；业务数据不会删除。",
+                detail=str(original_error)[:800],
             ) from original_error
         raise
 
@@ -2536,14 +2617,46 @@ def load_host_environment(path: Path) -> dict[str, str]:
 
 
 def _executable(name: str) -> Path:
-    root = runtime_root()
-    candidates = [root / name, root / "PartyOps" / name]
-    if sys.platform == "win32":
-        candidates = [path.with_suffix(".exe") for path in candidates] + candidates
-    for path in candidates:
-        if path.exists():
-            return path
-    raise FileNotFoundError(f"未找到运行程序：{name}")
+    roots = _candidate_windows_runtime_roots()
+    current_root = roots[0]
+    for root in roots:
+        candidates = [root / name, root / "PartyOps" / name]
+        if sys.platform == "win32":
+            candidates = [path.with_suffix(".exe") for path in candidates] + candidates
+        for path in candidates:
+            if not path.is_file() or path.is_symlink():
+                continue
+            if root != current_root and not _marked_runtime_file_is_trusted(root, path):
+                continue
+            if path.is_file():
+                return path.resolve()
+    searched = "；".join(str(root) for root in roots)
+    raise FileNotFoundError(f"未找到运行程序：{name}；已检查安装目录：{searched[:800]}")
+
+
+def _marked_runtime_file_is_trusted(root: Path, candidate: Path) -> bool:
+    """核对安装根标记指向的可执行文件，防止用户可写标记被替换。"""
+
+    try:
+        manifest = _read_small_json(root / "release-manifest.json")
+        if manifest.get("product") != "PartyOps":
+            return False
+        relative = candidate.resolve().relative_to(root.resolve()).as_posix()
+        files = manifest.get("files")
+        if not isinstance(files, list):
+            return False
+        expected = ""
+        for item in files:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("path") or "").replace("\\", "/").casefold() == relative.casefold():
+                expected = str(item.get("sha256") or "").strip().lower()
+                break
+        if len(expected) != 64 or any(char not in "0123456789abcdef" for char in expected):
+            return False
+        return secrets.compare_digest(_sha256_file(candidate).lower(), expected)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
 
 
 def _spawn(
@@ -2552,7 +2665,7 @@ def _spawn(
     log_path.parent.mkdir(parents=True, exist_ok=True)
     _rotate_bounded_log(log_path)
     handle = log_path.open("ab")
-    options: dict[str, object] = {
+    options: dict[str, Any] = {
         "env": env,
         "stdin": subprocess.DEVNULL,
         "stdout": handle,
@@ -2634,7 +2747,254 @@ def _preflight_personal_runtime_access(
                 candidate.unlink(missing_ok=True)
             except OSError:
                 pass
+    _preflight_windows_runtime_dependencies(executable)
     return executable
+
+
+def _sha256_file(path: Path) -> str:
+    """流式计算冻结依赖哈希，避免一次读取大型运行时文件。"""
+
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _read_small_json(path: Path, *, limit: int = 4 * 1024 * 1024) -> dict[str, object]:
+    """只读取受控安装目录中的有界 JSON 清单。"""
+
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
+        raise ValueError(f"运行时清单缺失或越界：{path.name}")
+    payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"运行时清单格式无效：{path.name}")
+    return payload
+
+
+def _windows_version_tuple() -> tuple[int, int] | None:
+    """返回真实 Windows 主次版本；测试和非 Windows 环境安全降级。"""
+
+    getter = getattr(sys, "getwindowsversion", None)
+    if getter is None:
+        return None
+    try:
+        version = getter()
+        return int(version.major), int(version.minor)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
+
+
+def _missing_win7_loader_apis() -> list[str]:
+    """探测 KB2533623 或后续汇总更新实际提供的安全 Loader 能力。"""
+
+    if os.name != "nt":
+        return []
+    try:
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32.dll", use_last_error=True)
+        return [
+            name
+            for name in ("AddDllDirectory", "SetDefaultDllDirectories")
+            if not getattr(kernel32, name, None)
+        ]
+    except (AttributeError, OSError):
+        return ["AddDllDirectory", "SetDefaultDllDirectories"]
+
+
+def _preflight_windows_runtime_dependencies(
+    executable: Path,
+    *,
+    force: bool = False,
+    windows_version: tuple[int, int] | None = None,
+) -> None:
+    """在配置提交前验证所有 Windows 包的 app-local 依赖闭包。
+
+    rc.4 仅对 Win7 做文件级核验，Win10/11 会在架构检查后直接返回。因此
+    通用包中的 Python、SQLite、UCRT 或 VC DLL 被隔离/混装时，只能等到子进程
+    退出后笼统报告依赖缺失。这里统一以冻结发布清单为准逐项核验，不从网络
+    下载依赖，也不以系统全局运行库掩盖不完整的 PartyOps 安装目录。
+    """
+
+    if not force and (sys.platform != "win32" or not getattr(sys, "frozen", False)):
+        return
+    runtime = executable.resolve().parent
+    manifest_path = runtime / "release-manifest.json"
+    try:
+        manifest = _read_small_json(manifest_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise HostStartupError(
+            RUNTIME_DEPENDENCY_MISSING,
+            "安装包运行时清单缺失或损坏，请使用官网下载的完整安装包执行修复安装。",
+            detail=f"缺失或无效清单={manifest_path.name}",
+        ) from exc
+
+    detected_version = windows_version or _windows_version_tuple()
+    is_win7 = detected_version == (6, 1)
+    package_platform = str(manifest.get("platform") or "")
+    package_arch = str(manifest.get("architecture") or "")
+    process_arch = "amd64" if sys.maxsize > 2**32 else "x86"
+    if package_arch != process_arch:
+        raise HostStartupError(
+            RUNTIME_BINARY_INCOMPATIBLE,
+            f"安装包位数为 {package_arch or '未知'}，当前进程需要 {process_arch}；请安装匹配版本。",
+            detail=f"package_arch={package_arch or 'missing'}；process_arch={process_arch}",
+        )
+    if is_win7 and package_platform != "windows7":
+        raise HostStartupError(
+            RUNTIME_PACKAGE_MISMATCH,
+            "当前是 Windows 7，但安装的是 Windows 10/11 通用包。请改用文件名含 windows7 的专用安装包。",
+            detail=f"package_platform={package_platform or 'missing'}；os=Windows 7 SP1",
+        )
+    if not is_win7 and package_platform != "windows":
+        raise HostStartupError(
+            RUNTIME_PACKAGE_MISMATCH,
+            "当前 Windows 10/11 必须使用通用安装包，请安装文件名含 windows_amd64 的版本。",
+            detail=(
+                f"package_platform={package_platform or 'missing'}；"
+                f"os={detected_version or 'unknown'}"
+            ),
+        )
+
+    missing_apis = _missing_win7_loader_apis() if is_win7 else []
+    if is_win7 and missing_apis:
+        raise HostStartupError(
+            RUNTIME_SYSTEM_UPDATE_REQUIRED,
+            "Windows 7 缺少安全 DLL 加载能力。请安装 KB2533623 或包含该能力的后续汇总更新并重启。",
+            detail="缺失系统 API=" + ",".join(missing_apis),
+        )
+
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        raise HostStartupError(
+            RUNTIME_DEPENDENCY_MISSING,
+            "安装包文件清单无效，请重新下载 Win7 专用安装包。",
+            detail="release-manifest.json 缺少 files 数组",
+        )
+    manifest_files: dict[str, tuple[str, str]] = {}
+    invalid_entries: list[str] = []
+    for item in files:
+        if not isinstance(item, dict) or not item.get("path"):
+            continue
+        original = str(item.get("path")).replace("\\", "/").strip()
+        parts = original.split("/")
+        canonical = original.casefold()
+        digest = str(item.get("sha256") or "").lower()
+        if (
+            not original
+            or original.startswith("/")
+            or any(part in {"", ".", ".."} for part in parts)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+            or canonical in manifest_files
+        ):
+            invalid_entries.append(original or "<empty>")
+            continue
+        manifest_files[canonical] = (original, digest)
+    if invalid_entries:
+        raise HostStartupError(
+            RUNTIME_DEPENDENCY_MISSING,
+            "安装包文件清单包含无效或重复条目，请重新下载并执行修复安装。",
+            detail="无效清单条目=" + ",".join(invalid_entries[:12]),
+        )
+
+    expected_python = "python38.dll" if is_win7 else (
+        f"python{sys.version_info.major}{sys.version_info.minor}.dll"
+    )
+    python_dlls = {
+        Path(original).name.casefold()
+        for canonical, (original, _digest) in manifest_files.items()
+        if re.fullmatch(r"_internal/python\d{2,3}\.dll", canonical)
+    }
+    if python_dlls != {expected_python}:
+        raise HostStartupError(
+            RUNTIME_PACKAGE_MISMATCH,
+            (
+                "Win7 专用包必须使用隔离的 Python 3.8 运行时；当前包不符合要求。"
+                if is_win7
+                else "通用安装包的 Python 运行时与当前启动程序不一致，请重新下载安装。"
+            ),
+            detail="检测到 Python DLL=" + (",".join(sorted(python_dlls)) or "无"),
+        )
+
+    required_paths = {
+        "PartyOps.exe",
+        "PartyOpsLauncher.exe",
+        "PartyOpsWizard.exe",
+        "sqlite3.dll",
+        "_internal/sqlite3.dll",
+        "_internal/_sqlite3.pyd",
+        "_internal/python3.dll",
+        f"_internal/{expected_python}",
+        "_internal/ucrtbase.dll",
+        "_internal/vcruntime140.dll",
+        "_internal/msvcp140.dll",
+        "_internal/_tkinter.pyd",
+        "_internal/tcl86t.dll",
+        "_internal/tk86t.dll",
+        "_internal/_tcl_data/init.tcl",
+        "_internal/_tk_data/tk.tcl",
+        "_internal/frontend/index.html",
+    }
+    if process_arch == "amd64":
+        required_paths.add("_internal/vcruntime140_1.dll")
+
+    if is_win7:
+        source_names = ("ucrt-source.json", "vc-runtime-source.json")
+        required_names: set[str] = set()
+        try:
+            for source_name in source_names:
+                source = _read_small_json(runtime / source_name, limit=256 * 1024)
+                declared = source.get("files")
+                if not isinstance(declared, dict):
+                    raise ValueError(f"{source_name} 缺少 files 对象")
+                required_names.update(str(name) for name in declared)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise HostStartupError(
+                RUNTIME_DEPENDENCY_MISSING,
+                "Win7 专用运行时来源清单缺失或损坏，请执行修复安装。",
+                detail=str(exc),
+            ) from exc
+        required_paths.update(
+            relative
+            for name in required_names
+            for relative in (name, f"_internal/{name}")
+        )
+        required_paths.update(source_names)
+
+    missing: list[str] = []
+    changed: list[str] = []
+    for relative in sorted(required_paths):
+        manifest_entry = manifest_files.get(relative.casefold())
+        if manifest_entry is None:
+            missing.append(relative)
+            continue
+        original, expected = manifest_entry
+        candidate = runtime / Path(original)
+        if candidate.is_symlink() or not candidate.is_file():
+            missing.append(original)
+            continue
+        try:
+            if _sha256_file(candidate).lower() != expected:
+                changed.append(original)
+        except OSError:
+            missing.append(original)
+    if missing or changed:
+        parts = []
+        if missing:
+            parts.append("缺失=" + ",".join(missing[:12]))
+        if changed:
+            parts.append("哈希异常=" + ",".join(changed[:12]))
+        raise HostStartupError(
+            RUNTIME_DEPENDENCY_MISSING,
+            (
+                "Win7 运行时不完整或已被安全软件隔离，请使用同一专用安装包执行修复安装。"
+                if is_win7
+                else "PartyOps 运行时不完整、被安全软件隔离或混入旧文件，请使用同一版本安装包执行修复安装。"
+            ),
+            detail="；".join(parts),
+        )
 
 
 def install_internal_ca(ca_path: Path) -> None:
@@ -4084,6 +4444,21 @@ def run_wizard(
     reconfiguration_transactions: dict[str, dict[str, object]] = {}
     reconfiguration_lock = threading.Lock()
 
+    def delayed_shutdown(delay: float, browser_url: str = "") -> None:
+        time.sleep(delay)
+        if browser_url:
+            webbrowser.open(browser_url)
+        shutdown.set()
+
+    def transaction_is_stale(item: dict[str, object], now: float) -> bool:
+        raw_created = item.get("created_at", now)
+        created = (
+            float(raw_created)
+            if isinstance(raw_created, (int, float, str))
+            else now
+        )
+        return now - created > 600
+
     def update_reconfiguration_transaction(
         transaction_id: str,
         *,
@@ -4228,7 +4603,8 @@ def run_wizard(
                 self._send_json(transaction)
                 if transaction.get("status") == "ready":
                     threading.Thread(
-                        target=lambda: (time.sleep(2), shutdown.set()),
+                        target=delayed_shutdown,
+                        args=(2,),
                         daemon=True,
                     ).start()
                 return
@@ -4334,7 +4710,7 @@ def run_wizard(
                         stale_ids = [
                             key
                             for key, item in reconfiguration_transactions.items()
-                            if now - float(item.get("created_at", now)) > 600
+                            if transaction_is_stale(item, now)
                         ]
                         for key in stale_ids:
                             reconfiguration_transactions.pop(key, None)
@@ -4383,7 +4759,8 @@ def run_wizard(
                     if reconfiguration and configured_runtime_status(url):
                         self._redirect(url)
                         threading.Thread(
-                            target=lambda: (time.sleep(1), shutdown.set()),
+                            target=delayed_shutdown,
+                            args=(1,),
                             daemon=True,
                         ).start()
                         return
@@ -4422,7 +4799,8 @@ def run_wizard(
                     ):
                         self._redirect(url)
                         threading.Thread(
-                            target=lambda: (time.sleep(1), shutdown.set()),
+                            target=delayed_shutdown,
+                            args=(1,),
                             daemon=True,
                         ).start()
                         return
@@ -4453,7 +4831,8 @@ def run_wizard(
                     )
                     self._redirect(service_url)
                     threading.Thread(
-                        target=lambda: (time.sleep(1), shutdown.set()),
+                        target=delayed_shutdown,
+                        args=(1,),
                         daemon=True,
                     ).start()
                     return
@@ -4503,11 +4882,8 @@ def run_wizard(
                     )
                 )
                 threading.Thread(
-                    target=lambda: (
-                        time.sleep(1),
-                        webbrowser.open(url),
-                        shutdown.set(),
-                    ),
+                    target=delayed_shutdown,
+                    args=(1, url),
                     daemon=True,
                 ).start()
             except (ValueError, OSError, urllib.error.HTTPError) as exc:

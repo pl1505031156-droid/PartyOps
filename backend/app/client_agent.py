@@ -39,7 +39,7 @@ from .enrollment_codes import normalize_enrollment_code as _normalize_enrollment
 from .platform_info import detect_platform_info
 from .schemas import serialize_api_datetime
 
-AGENT_VERSION = "1.4.5-rc.4"
+AGENT_VERSION = "1.4.5-rc.6"
 AGENT_PROTOCOL_VERSION = 2
 AUTHENTICATION_EXIT_CODE = 4
 _ACTIVE_SSL_CONTEXT = None
@@ -444,6 +444,7 @@ def _json_request(
     url: str,
     *,
     token: str | None = None,
+    enrollment_code: str | None = None,
     payload: dict[str, object] | None = None,
     method: str = "GET",
     timeout: int = 15,
@@ -452,6 +453,9 @@ def _json_request(
     data = None
     if token:
         headers["X-PartyOps-Device-Token"] = token
+    if enrollment_code:
+        # 入网码只用于 /devices/enroll；调用方不得把它复用为设备令牌。
+        headers["X-PartyOps-Enrollment-Code"] = enrollment_code
     if payload is not None:
         headers["Content-Type"] = "application/json"
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -683,6 +687,7 @@ def enroll_device(
             try:
                 result = _json_request(
                     f"{normalized_host}/api/v1/devices/enroll",
+                    enrollment_code=normalized_code,
                     payload=payload,
                     method="POST",
                 )

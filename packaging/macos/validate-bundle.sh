@@ -61,6 +61,7 @@ fi
 bad_architecture=''
 bad_dependency=''
 bad_deployment_target=''
+team_ids=''
 while IFS= read -r -d '' candidate; do
   description="$(/usr/bin/file -b "$candidate" 2>/dev/null || true)"
   [[ "$description" == *Mach-O* ]] || continue
@@ -94,6 +95,21 @@ while IFS= read -r -d '' candidate; do
     # 分隔符，确保安装器校验在 Finder、终端与 GitHub runner 中一致。
     bad_deployment_target="${candidate}: min macOS ${deployment_target} (发布基线为 11.0)"
     break
+  fi
+done < <(/usr/bin/find "$APP_PATH/Contents" -type f -print0)
+
+# 逐个检查嵌套 Mach-O 的签名身份，避免 Python.framework、扩展和主入口
+# 混用 Team ID。未签名候选允许 ad-hoc（TeamIdentifier=not set），正式
+# 构建则要求由调用方在签名后执行同样的统一身份检查。
+while IFS= read -r -d '' candidate; do
+  description="$(/usr/bin/file -b "$candidate" 2>/dev/null || true)"
+  [[ "$description" == *Mach-O* ]] || continue
+  identity="$(/usr/bin/codesign --display --verbose=4 "$candidate" 2>&1 | /usr/bin/awk -F= '/TeamIdentifier=/{print $2; exit}')"
+  if [[ -n "$identity" && "$identity" != 'not set' ]]; then
+    if [[ -z "$team_ids" ]]; then team_ids="$identity"; elif [[ "$team_ids" != "$identity" ]]; then
+      printf '[MACOS_TEAM_ID_MISMATCH] %s 的 Team ID 为 %s，已发现 %s。\n' "$candidate" "$identity" "$team_ids" >&2
+      exit 2
+    fi
   fi
 done < <(/usr/bin/find "$APP_PATH/Contents" -type f -print0)
 

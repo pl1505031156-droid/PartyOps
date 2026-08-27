@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import plistlib
@@ -1240,6 +1241,111 @@ def test_windows_personal_autostart_falls_back_without_rolling_back_mode(
     assert "AUTOSTART_REGISTRY_DENIED" in (
         tmp_path / "config" / "autostart-warning.log"
     ).read_text(encoding="utf-8")
+
+
+def test_windows_executable_uses_current_install_marker_after_upgrade(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """从旧向导路径运行时应解析安装器记录的新根目录，而不是误报启动器不存在。"""
+
+    current_root = tmp_path / "old-install"
+    current_root.mkdir()
+    new_root = tmp_path / "new-install"
+    new_root.mkdir()
+    launcher = new_root / "PartyOpsLauncher.exe"
+    launcher.write_bytes(b"launcher")
+    (new_root / "release-manifest.json").write_text(
+        json.dumps(
+            {
+                "product": "PartyOps",
+                "files": [
+                    {
+                        "path": "PartyOpsLauncher.exe",
+                        "sha256": hashlib.sha256(launcher.read_bytes()).hexdigest(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "install-root.txt").write_text(str(new_root), encoding="utf-8")
+    monkeypatch.setattr(setup_wizard, "runtime_root", lambda: current_root)
+    monkeypatch.setattr(setup_wizard, "config_root", lambda: config)
+    assert setup_wizard._executable("PartyOpsLauncher") == launcher.resolve()
+
+
+def test_windows_executable_rejects_tampered_install_marker_target(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """标记指向的启动器必须与 PartyOps 发布清单哈希一致。"""
+
+    current_root = tmp_path / "old-install"
+    current_root.mkdir()
+    marked_root = tmp_path / "marked-install"
+    marked_root.mkdir()
+    launcher = marked_root / "PartyOpsLauncher.exe"
+    launcher.write_bytes(b"tampered")
+    (marked_root / "release-manifest.json").write_text(
+        json.dumps(
+            {
+                "product": "PartyOps",
+                "files": [
+                    {"path": "PartyOpsLauncher.exe", "sha256": "0" * 64}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "install-root.txt").write_text(str(marked_root), encoding="utf-8")
+    monkeypatch.setattr(setup_wizard, "runtime_root", lambda: current_root)
+    monkeypatch.setattr(setup_wizard, "config_root", lambda: config)
+
+    with pytest.raises(FileNotFoundError, match="PartyOpsLauncher"):
+        setup_wizard._executable("PartyOpsLauncher")
+
+
+def test_missing_autostart_binary_is_deferred_without_mode_rollback_failure(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """安全软件隔离启动器时恢复自启动只写告警，不掩盖原模式事务结果。"""
+
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        setup_wizard,
+        "install_windows_personal_autostart",
+        lambda: (_ for _ in ()).throw(FileNotFoundError("未找到运行程序：PartyOpsLauncher")),
+    )
+    monkeypatch.setattr(
+        setup_wizard, "_record_windows_autostart_warning", warnings.append
+    )
+    setup_wizard._restore_previous_windows_autostart("personal", tmp_path / "client.json")
+    assert warnings and "AUTOSTART_RESTORE_DEFERRED" in warnings[0]
+
+
+def test_autostart_restore_permission_failure_is_not_a_mode_rollback_failure(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """HKCU 和 Startup 都被策略拒绝时，也只影响登录自启动。"""
+
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        setup_wizard,
+        "install_client_autostart",
+        lambda _path: (_ for _ in ()).throw(PermissionError(5, "拒绝访问")),
+    )
+    monkeypatch.setattr(
+        setup_wizard, "_record_windows_autostart_warning", warnings.append
+    )
+    client = tmp_path / "client.json"
+    client.write_text("{}", encoding="utf-8")
+
+    setup_wizard._restore_previous_windows_autostart("client", client)
+
+    assert warnings and "AUTOSTART_RESTORE_DEFERRED" in warnings[0]
 
 
 def test_windows_data_directory_permission_space_and_system_guards(

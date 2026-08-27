@@ -8,6 +8,7 @@ import PageHelp from "../components/PageHelp.vue";
 import BusinessUploadQueue from "../components/BusinessUploadQueue.vue";
 import { useUploadQueue } from "../composables/useUploadQueue";
 import type { Task, User } from "../types";
+import { utcToLocalInput } from "../utils/datetime";
 
 const router = useRouter();
 const users = ref<User[]>([]);
@@ -80,7 +81,7 @@ async function parse() {
     const result = await api.post<NonNullable<typeof candidate.value>>("/intake/parse", data);
     candidate.value = result;
     form.title = result.title;
-    form.formalDueAt = result.formal_due_at;
+    form.formalDueAt = utcToLocalInput(result.formal_due_at);
     Message.success("已提取候选信息，请人工确认");
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "解析失败");
@@ -224,7 +225,7 @@ async function create() {
           <a-form :model="form" layout="vertical">
             <a-form-item label="事项名称" required><a-input v-model="form.title" /></a-form-item>
             <a-form-item label="正式截止时间">
-              <a-date-picker v-model="form.formalDueAt" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" />
+              <a-date-picker v-model="form.formalDueAt" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
             </a-form-item>
             <a-form-item label="责任人" required>
               <a-select v-model="form.ownerId"><a-option v-for="user in users" :key="user.id" :value="user.id">{{ user.display_name }}</a-option></a-select>

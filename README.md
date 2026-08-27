@@ -6,8 +6,8 @@
 
 把事项办理、跨机文件、重要档案、迎检材料、通知评论和工作留痕，收进一套真正能落地的局域网协同闭环。
 
-[![Release](https://img.shields.io/badge/release-v1.4.5--rc.4-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.5-rc.4)
-[![Source](https://img.shields.io/badge/source-v1.4.5--rc.4-c58b3d?style=for-the-badge)](docs/release-notes-v1.4.5-rc.4.md)
+[![Release](https://img.shields.io/badge/release-v1.4.5--rc.6-b42318?style=for-the-badge)](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.5-rc.6)
+[![Source](https://img.shields.io/badge/source-v1.4.5--rc.6-c58b3d?style=for-the-badge)](docs/release-notes-v1.4.5-rc.6.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-292520?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-c17b17?style=for-the-badge)](#安装教程)
 [![Local first](https://img.shields.io/badge/data-local--first-2f7d57?style=for-the-badge)](#安全与隐私)
@@ -18,13 +18,16 @@
 </div>
 
 > [!IMPORTANT]
-> 当前源码与发布目标为 `1.4.5-rc.4`，数据库模式仍为 `0024`；本版修复 rc.2/`0023` 原位升级时升级前备份过早使用新 ORM 导致的 Windows/Linux/macOS 共享启动故障，并为备份、迁移、校验和中断恢复建立模式无关启动事务。支持等级只以[rc.4 机器可读矩阵](docs/support-matrix-1.4.5-rc.4.json)和 Release 冻结清单为准，未通过原生构建与覆盖升级门禁的架构不得冒充可用。
+> 当前开发与验收目标为 `1.4.5-rc.6`，数据库增量迁移为 `0026`；rc.5 未公开发布，rc.4 仍是生产回滚点。本版新增受权限和用户确认保护的全系统智能编排器：DeepSeek-R1-Distill-Qwen-1.5B 主编排、Needle 2 安全路由、BGE-small-zh-v1.5 中文检索、Qwen3-0.6B 低配回退和规则引擎最终兜底。支持等级只以[rc.6 机器可读矩阵](docs/support-matrix-1.4.5-rc.6.json)和冻结清单为准，未通过原生构建、签名与覆盖升级门禁的架构不得冒充可用。
+
+> [!WARNING]
+> rc.6 目前是本地验证候选，尚未完成九平台原生制品、正式模型签名和官网/GitHub 发布。下载入口在门禁全部通过前应继续指向上一生产回滚点。
 
 ## 当前公开发布
 
 | 项目 | 当前状态 |
 | --- | --- |
-| 公开版本 | [`v1.4.5-rc.4`](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.5-rc.4)，GitHub Pre-release |
+| 公开版本 | [`v1.4.5-rc.4`](https://github.com/pl1505031156-droid/PartyOps/releases/tag/v1.4.5-rc.4)，GitHub Pre-release；rc.6 为本地验证候选 |
 | 发布时间 | 以 GitHub Release 与官网显示的北京时间为准 |
 | 冻结源码 | 不可变标签 [`v1.4.5-rc.4`](https://github.com/pl1505031156-droid/PartyOps/tree/v1.4.5-rc.4) |
 | 官方网站 | [https://www.partyops.cn/](https://www.partyops.cn/) |

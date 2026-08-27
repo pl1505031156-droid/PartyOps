@@ -1,0 +1,33 @@
+{
+  "version": "1.4.5-rc.6",
+  "release_state": "local_validation",
+  "generated_at": "2026-08-27T00:00:00+08:00",
+  "schema_revision": "0026",
+  "models": {
+    "planner": "deepseek-r1-distill-qwen-1.5b-q4_k_m",
+    "intent_router": "needle2-intent",
+    "embedding": "bge-small-zh-v1.5-onnx-fp32",
+    "fallback": "qwen3-0.6b-q8_0",
+    "final_fallback": "rules"
+  },
+  "targets": [
+    {"platform": "windows", "architecture": "amd64", "support": "unavailable", "artifact": null},
+    {"platform": "windows7", "architecture": "amd64", "support": "unavailable", "artifact": null},
+    {"platform": "windows7", "architecture": "x86", "support": "unavailable", "artifact": null},
+    {"platform": "linux-deb", "architecture": "amd64", "support": "unavailable", "artifact": null},
+    {"platform": "linux-deb", "architecture": "arm64", "support": "unavailable", "artifact": null},
+    {"platform": "linux-rpm", "architecture": "amd64", "support": "unavailable", "artifact": null},
+    {"platform": "linux-rpm", "architecture": "arm64", "support": "unavailable", "artifact": null},
+    {"platform": "macos", "architecture": "amd64", "support": "unavailable", "artifact": null},
+    {"platform": "macos", "architecture": "arm64", "support": "unavailable", "artifact": null}
+  ],
+  "gates": {
+    "native_builds": false,
+    "model_signatures": false,
+    "coverage": false,
+    "cloudstudio_readback": false,
+    "github_release": false,
+    "edgeone_preview": false
+  },
+  "note": "rc.5 未公开发布；rc.4 是当前生产回滚点。未完成原生构建、正式签名和真机验证的目标不得冒充正式支持。"
+}

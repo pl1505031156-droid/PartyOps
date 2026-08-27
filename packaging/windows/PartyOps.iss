@@ -1,10 +1,10 @@
 #define MyAppName "党建智办 PartyOps"
-#define MyAppVersion "1.4.5-rc.4"
+#define MyAppVersion "1.4.5-rc.6"
 #define MyAppPublisher "PartyOps Local"
 #define BuildRoot GetEnv("PARTYOPS_WINDOWS_BUILD_ROOT")
 #define OutputRoot GetEnv("PARTYOPS_WINDOWS_OUTPUT_ROOT")
 #ifndef PartyOpsOutputBase
-  #define PartyOpsOutputBase "PartyOps_1.4.5-rc.4_windows_amd64"
+  #define PartyOpsOutputBase "PartyOps_1.4.5-rc.6_windows_amd64"
 #endif
 
 [Setup]
@@ -54,7 +54,7 @@ WizardSmallImageFile={#BuildRoot}\partyops-1024.png
 Name: "chinesesimp"; MessagesFile: "{#SourcePath}\languages\ChineseSimplified.isl"
 
 [Messages]
-BeveledLabel=PartyOps 1.4.5-rc.4 · 未签名候选版
+BeveledLabel=PartyOps 1.4.5-rc.6 · 未签名候选版
 #ifdef PartyOpsLegacy
 WinVersionTooLowError=此 Windows 7 专用安装包要求 Windows 7 SP1 或更高版本。请先安装 SP1 后重试。
 #else
@@ -613,7 +613,7 @@ begin
   InAppServiceUpdate := CompareText(
     ExpandConstant('{param:INAPPUPDATE|0}'), '1'
   ) = 0;
-  WizardForm.Caption := '党建智办 PartyOps 1.4.5-rc.4 安装向导';
+  WizardForm.Caption := '党建智办 PartyOps 1.4.5-rc.6 安装向导';
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     '选择 PartyOps 业务数据目录',
@@ -1442,7 +1442,7 @@ begin
     RUNTIME_PERMISSION_DENIED。 }
   if (not ExecAsOriginalUser(
     ExpandConstant('{app}\PartyOps.exe'),
-    '--startup-user-permission-self-test',
+    '--startup-desktop-user-self-test',
     ExpandConstant('{app}'),
     SW_HIDE,
     ewWaitUntilTerminated,
@@ -1451,9 +1451,9 @@ begin
   begin
     ServiceSetupFailed := True;
     RaiseException(
-      '[PACKAGE_USER_RUNTIME_PERMISSION_SELFTEST_FAILED] 原桌面账号无法读取、执行 ' +
-      'PartyOps 安装资源或写入用户临时目录。安装已回滚；请检查终端安全策略、' +
-      '杀毒软件和所选程序目录。退出码：' + IntToStr(ResultCode)
+      '[PACKAGE_DESKTOP_RUNTIME_STARTUP_SELFTEST_FAILED] 原桌面账号未能完整启动 ' +
+      'PartyOps 个人进程、SQLite/FTS5、数据库迁移、健康端点或首页。安装已回滚；' +
+      '请检查终端安全策略、杀毒软件和所选程序目录。退出码：' + IntToStr(ResultCode)
     );
   end;
 end;
@@ -1609,7 +1609,19 @@ begin
 end;
 
 procedure CommitPostInstallTransactions;
+var
+  InstallRootLines: TArrayOfString;
 begin
+  { 给旧版配置向导一个受控的当前安装根路径；升级后从旧快捷方式进入时，
+    PartyOps 仍能找到新版本 PartyOpsLauncher.exe。该标记只含本机路径，
+    不包含用户数据、凭据或网络地址。 }
+  SetArrayLength(InstallRootLines, 1);
+  InstallRootLines[0] := ExpandConstant('{app}');
+  SaveStringsToUTF8File(
+    ExpandConstant('{commonappdata}\PartyOps\install-root.txt'),
+    InstallRootLines,
+    False
+  );
   DeleteFile(InstallerCachePreviousPath);
   DeleteFile(InstallerCacheIncomingPath);
   DeleteFile(InstallerCacheHashPreviousPath);

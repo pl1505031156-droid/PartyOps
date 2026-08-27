@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date as dt_date
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -42,6 +42,39 @@ from .enums import (
 # ``datetime.UTC`` 仅在 Python 3.11+ 提供。Win7 专用运行时仍使用受维护的
 # CPython 3.8 安全回移环境，因此统一复用跨版本等价常量。
 UTC = timezone.utc
+# 中国大陆业务界面统一使用北京时间。SQLite 的 DateTime 列不携带时区，
+# 因此只在“请求边界”解释无时区输入，数据库和接口内部仍保存/输出 UTC。
+BEIJING_TIMEZONE = timezone(timedelta(hours=8), "Asia/Shanghai")
+
+
+def _normalize_request_datetime(value: Any, field_name: str) -> Any:
+    """把用户输入的墙上时间转换成 UTC，避免 18:00 被当成 UTC 产生次日偏移。
+
+    仅处理明确表示瞬时点的 *_at 字段；birth_date/document_date 等业务日期
+    不在此处加时区，防止日期型字段被错误挪动。
+    """
+
+    if not field_name.endswith("_at"):
+        return value
+    parsed: datetime | None = None
+    # ORM/SQLite 返回的无时区 datetime 是既有内部 UTC 约定，不能在响应
+    # 校验阶段再次当成北京时间平移。浏览器 JSON 输入必然是字符串，因此
+    # 只在字符串请求边界解释“无时区墙上时间”；datetime 交给序列化器处理。
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value.strip():
+        text = value.strip()
+        if text.endswith(("Z", "z")):
+            text = text[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return value
+    if parsed is None:
+        return value
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=BEIJING_TIMEZONE)
+    return parsed.astimezone(UTC)
 
 
 def serialize_api_datetime(value: datetime) -> str:
@@ -52,6 +85,11 @@ def serialize_api_datetime(value: datetime) -> str:
 
 
 class BaseModel(PydanticBaseModel):
+    @field_validator("*", mode="before", check_fields=False)
+    @classmethod
+    def normalize_request_datetimes(cls, value: Any, info) -> Any:
+        return _normalize_request_datetime(value, str(info.field_name))
+
     @field_serializer("*", when_used="json", check_fields=False)
     def serialize_datetime_fields(self, value: Any) -> Any:
         return serialize_api_datetime(value) if isinstance(value, datetime) else value
@@ -1269,6 +1307,68 @@ class AIQueryRequest(BaseModel):
     confirm_sensitive: bool = False
 
 
+class AIOrchestrationCreate(BaseModel):
+    """创建智能编排会话；只接收目标和业务对象 ID。"""
+
+    goal: str = Field(min_length=1, max_length=10_000)
+    context_scope: dict[str, Any] = Field(default_factory=dict)
+    external_consent: bool = False
+
+
+class AIOrchestrationReplan(BaseModel):
+    goal: str | None = Field(default=None, min_length=1, max_length=10_000)
+    context_scope: dict[str, Any] | None = None
+
+
+class AIOrchestrationApprovalRequest(BaseModel):
+    approved: bool = False
+    scope_sha256: str = Field(default="", min_length=0, max_length=64)
+
+
+class AIOrchestrationStepOut(BaseModel):
+    id: str
+    step_order: int
+    tool_name: str
+    arguments: dict[str, Any]
+    reason: str
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    confidence: float
+    risk_level: str
+    requires_confirmation: bool
+    status: str
+    result_summary: dict[str, Any] = Field(default_factory=dict)
+    error_code: str = ""
+    version: int
+    scope_sha256: str = ""
+
+
+class AIOrchestrationOut(BaseModel):
+    id: str
+    goal_summary: str
+    input_sha256: str
+    state: str
+    model_id: str
+    external_consented: bool
+    risk_level: str
+    context_scope: dict[str, Any]
+    plan: dict[str, Any]
+    unresolved: list[dict[str, Any]] = Field(default_factory=list)
+    expires_at: datetime
+    version: int
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    steps: list[AIOrchestrationStepOut] = Field(default_factory=list)
+
+
+class AIOrchestrationCapabilitiesOut(BaseModel):
+    release: str
+    planner: dict[str, Any]
+    components: list[dict[str, Any]]
+    tools: list[dict[str, Any]]
+    external_models: dict[str, Any]
+
+
 class AIDraftOut(ORMModel):
     id: str
     capability: AiCapability
@@ -1386,6 +1486,7 @@ class ModelRecommendationOut(BaseModel):
     id: str
     name: str
     kind: str = Field(pattern=r"^(embedding|llm|intent_router)$")
+    role: str = ""
     tier: str
     summary: str
     official_url: str
@@ -2092,6 +2193,7 @@ class LedgerImportProfilePatch(BaseModel):
 
 class LedgerImportValidateRequest(BaseModel):
     version: int = Field(ge=1)
+    derived_year: int | None = Field(default=None, ge=1900, le=2200)
     row_actions: dict[str, str] = Field(default_factory=dict, max_length=50_000)
 
 
@@ -2099,6 +2201,8 @@ class LedgerImportCommitRequest(BaseModel):
     version: int = Field(ge=1)
     confirm_shared_storage: bool = False
     confirm_new_fields: bool = False
+    confirm_derived_candidates: bool = False
+    derived_year: int | None = Field(default=None, ge=1900, le=2200)
     row_actions: dict[str, str] = Field(default_factory=dict, max_length=50_000)
 
 

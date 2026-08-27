@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "partyops"
-version = "1.4.5rc4"
+version = "1.4.5rc6"
 description = "党建智办：基层党建工作闭环协同系统"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -57,3 +57,8 @@ skip_covered = true
 # 行覆盖率与分支覆盖率由 scripts/verify-coverage.py 按 95% / 92% 分别校验；coverage.py
 # 的单一 fail_under 会在 branch=true 时混合两个指标，无法表达发布门禁语义。
 fail_under = 0
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+]

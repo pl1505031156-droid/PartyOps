@@ -228,7 +228,7 @@ def test_period_report_journal_templates_and_status(
     assert status.status_code == 200, status.text
     body = status.json()
     assert body["app_version"] == get_settings().app_version
-    assert body["schema_revision"] == "0024"
+    assert body["schema_revision"] == "0026"
     assert "sse_clients" in body["service"]
 
 

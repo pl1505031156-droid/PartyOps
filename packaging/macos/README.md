@@ -1,11 +1,11 @@
-# PartyOps 1.4.5-rc.4 macOS 原生构建与验收
+# PartyOps 1.4.5-rc.6 macOS 原生构建与验收
 
 macOS 制品不使用 Docker，也不在 Windows/Linux 上交叉冻结。Apple Silicon 和 Intel 必须分别在对应架构的真实 Mac 上构建，防止 Rosetta、Python wheel、OCR 和 llama.cpp 混入错误架构。
 
 ## 目标制品
 
-- `PartyOps_1.4.5-rc.4_macos_arm64.pkg`：macOS 11+ Apple Silicon。
-- `PartyOps_1.4.5-rc.4_macos_x86_64.pkg`：macOS 11+ Intel。
+- `PartyOps_1.4.5-rc.6_macos_arm64-UNSIGNED-UNNOTARIZED-CANDIDATE.pkg`：macOS 11+ Apple Silicon 未签名候选。
+- `PartyOps_1.4.5-rc.6_macos_x86_64-UNSIGNED-UNNOTARIZED-CANDIDATE.pkg`：macOS 11+ Intel 未签名候选。
 
 ## 构建前提
 
@@ -13,13 +13,15 @@ macOS 制品不使用 Docker，也不在 Windows/Linux 上交叉冻结。Apple S
 2. Xcode Command Line Tools、Python 3.11、`uv`、Node.js 和 Corepack。
 3. 当前架构的可审计 OCR 运行时，必须包含 `bin/tesseract` 和 `tessdata/chi_sim.traineddata`。
 4. 当前架构的 llama.cpp 运行时，必须包含 `llama-server`。
-5. 正式构建需要 Developer ID Application、Developer ID Installer 证书以及 `notarytool` 钥匙串配置。
+5. 当前架构且经过许可审计的 LibreOffice headless 运行时，必须包含 `program/soffice`、`program/soffice.bin`、`SOURCE.json` 和 `licenses/`。该闭包只用于本机 DOC/WPS 转换，构建脚本会拒绝符号链接越界和错误架构。
+6. 正式构建需要 Developer ID Application、Developer ID Installer 证书以及 `notarytool` 钥匙串配置。
 
 ## 正式构建
 
 ```bash
 export PARTYOPS_MACOS_OCR_RUNTIME=/absolute/path/to/ocr-runtime
 export PARTYOPS_MACOS_LLAMA_RUNTIME=/absolute/path/to/llama-runtime
+export PARTYOPS_MACOS_OFFICE_RUNTIME=/absolute/path/to/libreoffice-headless-runtime
 export PARTYOPS_MACOS_APPLICATION_IDENTITY='Developer ID Application: ...'
 export PARTYOPS_MACOS_INSTALLER_IDENTITY='Developer ID Installer: ...'
 export PARTYOPS_MACOS_NOTARY_PROFILE='partyops-notary'
@@ -33,11 +35,11 @@ export PARTYOPS_MACOS_NOTARY_PROFILE='partyops-notary'
 
 ## 无证书测试候选
 
-仓库提供只允许手动触发的 `.github/workflows/build-macos-1.4.5-rc.4.yml`。它分别使用 GitHub 原生 `macos-15` Apple Silicon 与 `macos-15-intel` runner，从包含产品修复与原生门禁的冻结提交 `30fb1c29af794121925728ad78e64d566224f15e` 构建 OCR 和 llama.cpp，再生成逐架构 PKG。任务只上传待人工审核的 workflow artifact，不会自动写入 Release 或官网。
+macOS 必须分别在原生 Apple Silicon 与 Intel Darwin 环境手动构建。构建任务只生成待人工审核的候选制品，不会自动写入 Release 或官网；冻结提交和验证结果在 rc.6 发布记录中登记，不能复用 rc.5 的提交或制品。
 
-没有 Apple Developer 证书时可使用 `--unsigned-candidate`：应用内所有 Mach-O 使用 ad-hoc 签名，旁边生成机器可读 attestation，明确记录 `developer_id_signed=false`、`notarized=false` 和 `real_device_validation=false`。这种包只能作为 1.4.5-rc.4 未签名公开候选，必须在下载页显著提示“未签名、未公证、未用户真机验证”，不能称为已签名或已通过用户实机验收。
+没有 Apple Developer 证书时可使用 `--unsigned-candidate`：应用内所有 Mach-O 使用 ad-hoc 签名，旁边生成机器可读 attestation，明确记录 `developer_id_signed=false`、`notarized=false` 和 `real_device_validation=false`。这种包只能作为 1.4.5-rc.6 未签名候选，必须在下载页显著提示“未签名、未公证、未用户真机验证”，不能称为已签名或已通过用户实机验收。
 
-手动触发时必须输入 `BUILD-UNSIGNED-145-RC4`。工作流固定检出 `1.4.5-rc.4` 的产品源码冻结提交，不随默认分支漂移；固定提交以工作流 `actions/checkout` 的 `ref` 为唯一依据。两个原生任务都会在最终冻结主程序上执行真实 `0023→0024` 覆盖升级，校验管理员、附件、备份包和健康接口。Intel 构建还会从官方固定哈希源码生成 macOS 11 基线的 OpenSSL 3.5 LTS 静态闭包，并拒绝 `cryptography` 继续动态依赖 Runner 的 `libssl/libcrypto`。构建成功后仍要下载两个 workflow artifact，在本机比对 SHA-256 与 attestation，再人工上传；构建任务没有 Release 写权限。
+两个原生任务都必须在最终冻结主程序上执行真实 `0023→0026` 与 `0025→0026` 覆盖升级，校验管理员、附件、备份包、编排审计表和健康接口。Intel 构建还要从官方固定哈希源码生成 macOS 11 基线的 OpenSSL 3.5 LTS 静态闭包，并拒绝 `cryptography` 动态依赖构建机的 `libssl/libcrypto`。构建成功后在本机比对 SHA-256 与 attestation，再按固化流程人工上传。
 
 PKG 不把 `.app` 目录直接交给 `pkgbuild` 组件分析。PyInstaller 内嵌的 `Python.framework` 会被 Installer 识别为第二个可重定位组件，在部分系统上破坏 Bundle。构建脚本改为携带经过 ZIP 往返校验的原始 App；`postinstall` 完整解包并验证 Bundle ID、主程序权限和代码签名后，才事务式替换 `/Applications/PartyOps.app`。升级失败会恢复旧 App，用户业务数据不参与该事务。
 

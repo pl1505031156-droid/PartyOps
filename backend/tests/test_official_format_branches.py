@@ -250,13 +250,23 @@ def test_local_office_conversion_branches(tmp_path: Path, monkeypatch: pytest.Mo
     executable.write_bytes(b"binary")
     monkeypatch.setattr(formatter, "_office_candidates", lambda: [executable])
 
-    def successful_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+    observed: dict[str, object] = {}
+
+    def successful_run(*args: object, **kwargs: object) -> SimpleNamespace:
+        observed["command"] = args[0]
+        observed["environment"] = kwargs["env"]
         (workspace / "source.docx").write_bytes(_docx_bytes(tmp_path, "标题"))
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(formatter.subprocess, "run", successful_run)
     assert formatter._convert_with_libreoffice(source, workspace) == workspace / "source.docx"
     assert os.environ.get("HTTP_PROXY") != ""
+    command = observed["command"]
+    environment = observed["environment"]
+    assert isinstance(command, list) and "--safe-mode" in command
+    assert isinstance(environment, dict)
+    assert environment["HTTP_PROXY"] == "http://127.0.0.1:9"
+    assert environment["NO_PROXY"] == "127.0.0.1,localhost"
 
     (workspace / "source.docx").unlink()
     monkeypatch.setattr(formatter.subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(returncode=1))

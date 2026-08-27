@@ -66,7 +66,7 @@ case "$PACKAGE" in
 esac
 
 RUNTIME="$ROOT/opt/partyops"
-[[ "$(cat "$RUNTIME/VERSION" 2>/dev/null || true)" == "1.4.5-rc.4" ]] || {
+[[ "$(cat "$RUNTIME/VERSION" 2>/dev/null || true)" == "1.4.5-rc.6" ]] || {
   echo "成品缺少正确的冻结版本标识。" >&2
   exit 2
 }
@@ -235,7 +235,7 @@ grep -q '\[START_COMMAND_FAILED\]' "$CONFIG_ROOT/startup-diagnostic.txt" || {
   exit 8
 }
 
-# 用同一最终 DEB/RPM 中的冻结主程序执行真实 0023→0024 覆盖升级。
+# 用同一最终 DEB/RPM 中的冻结主程序执行真实 0023→0026 覆盖升级。
 # 构建机 Python 仅负责按仓库 Alembic 历史生成真实旧库和读回结果，迁移
 # 本身完全由待发布二进制完成。
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -282,7 +282,7 @@ for _attempt in $(seq 1 180); do
 done
 if [[ "$UPGRADE_READY" != 1 ]]; then
   tail -n 160 "$TEST_ROOT/upgrade-server.log" >&2 || true
-  echo "[NATIVE_0023_UPGRADE_FAILED] 最终成品未完成 0023→0024 健康启动。" >&2
+  echo "[NATIVE_0023_UPGRADE_FAILED] 最终成品未完成 0023→0026 健康启动。" >&2
   exit 9
 fi
 revision="$("$UPGRADE_VENV/bin/python" -c \
@@ -291,7 +291,7 @@ revision="$("$UPGRADE_VENV/bin/python" -c \
 display_name="$("$UPGRADE_VENV/bin/python" -c \
   'import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute("select display_name from users where id=?", ("rc4-native-upgrade-admin",)).fetchone()[0])' \
   "$UPGRADE_DATA/partyops.db")"
-[[ "$revision" == 0024 && "$display_name" == 原生覆盖升级管理员 ]] || {
+[[ "$revision" == 0026 && "$display_name" == 原生覆盖升级管理员 ]] || {
   echo "覆盖升级后的迁移版本或管理员记录不一致。" >&2
   exit 9
 }

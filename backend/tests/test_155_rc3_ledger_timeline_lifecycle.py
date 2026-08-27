@@ -310,9 +310,9 @@ def test_0024_migration_round_trip(tmp_path: Path) -> None:
 
 
 def test_empty_database_can_replay_full_migration_chain(tmp_path: Path) -> None:
-    """历史 0001 使用动态元数据，后续迁移仍必须能幂等重放到 rc.3。"""
+    """历史 0001 使用动态元数据，后续迁移仍必须能幂等重放到 rc.6。"""
 
-    database = tmp_path / "empty-to-0024.sqlite3"
+    database = tmp_path / "empty-to-0026.sqlite3"
     engine = create_engine(f"sqlite:///{database.as_posix()}")
     backend_root = Path(__file__).resolve().parents[1]
     config = Config(str(backend_root / "alembic.ini"))
@@ -325,7 +325,7 @@ def test_empty_database_can_replay_full_migration_chain(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "0024"
+        ).scalar_one() == "0026"
     with engine.begin() as connection:
         config.attributes["connection"] = connection
         command.downgrade(config, "base")

@@ -20,7 +20,7 @@ import ObjectContextPanel from "../components/ObjectContextPanel.vue";
 import PageHelp from "../components/PageHelp.vue";
 import BusinessUploadQueue from "../components/BusinessUploadQueue.vue";
 import { useUploadQueue } from "../composables/useUploadQueue";
-import { formatServerTime } from "../utils/datetime";
+import { formatServerTime, utcToLocalInput } from "../utils/datetime";
 import { fieldLabel, localizeEmbeddedCodes } from "../utils/labels";
 import { useSessionStore } from "../stores/session";
 
@@ -261,10 +261,10 @@ function openEdit() {
     source: task.value.source,
     owner_id: task.value.owner_id,
     reviewer_id: task.value.reviewer_id || "",
-    formal_due_at: task.value.formal_due_at,
-    internal_due_at: task.value.internal_due_at,
-    planned_start_at: task.value.planned_start_at,
-    planned_end_at: task.value.planned_end_at,
+    formal_due_at: utcToLocalInput(task.value.formal_due_at),
+    internal_due_at: utcToLocalInput(task.value.internal_due_at),
+    planned_start_at: utcToLocalInput(task.value.planned_start_at),
+    planned_end_at: utcToLocalInput(task.value.planned_end_at),
     priority: task.value.priority,
     category: task.value.category,
     work_area: task.value.work_area,
@@ -458,8 +458,8 @@ function openSubtask() {
   Object.assign(subtaskForm, {
     title: "",
     owner_id: task.value.owner_id,
-    formal_due_at: task.value.formal_due_at,
-    internal_due_at: task.value.internal_due_at,
+    formal_due_at: utcToLocalInput(task.value.formal_due_at),
+    internal_due_at: utcToLocalInput(task.value.internal_due_at),
     category: task.value.category,
   });
   subtaskVisible.value = true;
@@ -953,10 +953,10 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
           <a-form-item v-if="canManageTask" label="审核人">
             <a-select v-model="editForm.reviewer_id" allow-clear><a-option v-for="user in users" :key="user.id" :value="user.id">{{ user.display_name }}</a-option></a-select>
           </a-form-item>
-          <a-form-item label="内部完成时间"><a-date-picker v-model="editForm.internal_due_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
-          <a-form-item label="正式截止时间"><a-date-picker v-model="editForm.formal_due_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
-          <a-form-item label="计划开始"><a-date-picker v-model="editForm.planned_start_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
-          <a-form-item label="计划完成"><a-date-picker v-model="editForm.planned_end_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
+          <a-form-item label="内部完成时间"><a-date-picker v-model="editForm.internal_due_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
+          <a-form-item label="正式截止时间"><a-date-picker v-model="editForm.formal_due_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
+          <a-form-item label="计划开始"><a-date-picker v-model="editForm.planned_start_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
+          <a-form-item label="计划完成"><a-date-picker v-model="editForm.planned_end_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
         </div>
       </a-form>
     </a-modal>
@@ -990,7 +990,7 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
       <a-form :model="stepForm" layout="vertical">
         <a-form-item label="步骤名称"><a-input v-model="stepForm.title" /></a-form-item>
         <a-form-item label="责任人"><a-select v-model="stepForm.assignee_id" allow-clear><a-option v-for="user in users" :key="user.id" :value="user.id">{{ user.display_name }}</a-option></a-select></a-form-item>
-        <a-form-item label="节点时间"><a-date-picker v-model="stepForm.due_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
+        <a-form-item label="节点时间"><a-date-picker v-model="stepForm.due_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
       </a-form>
     </a-modal>
 
@@ -1000,8 +1000,8 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
         <div class="two-columns">
           <a-form-item label="责任人"><a-select v-model="subtaskForm.owner_id"><a-option v-for="user in users" :key="user.id" :value="user.id">{{ user.display_name }}</a-option></a-select></a-form-item>
           <a-form-item label="工作类别"><a-input v-model="subtaskForm.category" /></a-form-item>
-          <a-form-item label="内部完成"><a-date-picker v-model="subtaskForm.internal_due_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
-          <a-form-item label="正式截止"><a-date-picker v-model="subtaskForm.formal_due_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width: 100%" /></a-form-item>
+          <a-form-item label="内部完成"><a-date-picker v-model="subtaskForm.internal_due_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
+          <a-form-item label="正式截止"><a-date-picker v-model="subtaskForm.formal_due_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
         </div>
       </a-form>
     </a-modal>

@@ -26,17 +26,17 @@ _VALIDATOR_SPEC.loader.exec_module(_VALIDATOR)
 validate_package = _VALIDATOR.validate_package
 
 
-VERSION = "1.4.5-rc.4"
+VERSION = "1.4.5-rc.6"
 PLATFORMS = {
-    ("windows", "amd64"): "PartyOps_1.4.5-rc.4_windows_amd64.exe",
-    ("windows7", "amd64"): "PartyOps_1.4.5-rc.4_windows7_amd64.exe",
-    ("windows7", "x86"): "PartyOps_1.4.5-rc.4_windows7_x86.exe",
-    ("linux-deb", "amd64"): "PartyOps_1.4.5-rc.4_linux_amd64.deb",
-    ("linux-deb", "arm64"): "PartyOps_1.4.5-rc.4_linux_arm64.deb",
-    ("linux-rpm", "amd64"): "PartyOps-1.4.5-0.rc.4.1.x86_64.rpm",
-    ("linux-rpm", "arm64"): "PartyOps-1.4.5-0.rc.4.1.aarch64.rpm",
-    ("macos", "amd64"): "PartyOps_1.4.5-rc.4_macos_x86_64.pkg",
-    ("macos", "arm64"): "PartyOps_1.4.5-rc.4_macos_arm64.pkg",
+    ("windows", "amd64"): "PartyOps_1.4.5-rc.6_windows_amd64.exe",
+    ("windows7", "amd64"): "PartyOps_1.4.5-rc.6_windows7_amd64.exe",
+    ("windows7", "x86"): "PartyOps_1.4.5-rc.6_windows7_x86.exe",
+    ("linux-deb", "amd64"): "PartyOps_1.4.5-rc.6_linux_amd64.deb",
+    ("linux-deb", "arm64"): "PartyOps_1.4.5-rc.6_linux_arm64.deb",
+    ("linux-rpm", "amd64"): "PartyOps-1.4.5-0.rc.6.1.x86_64.rpm",
+    ("linux-rpm", "arm64"): "PartyOps-1.4.5-0.rc.6.1.aarch64.rpm",
+    ("macos", "amd64"): "PartyOps_1.4.5-rc.6_macos_x86_64.pkg",
+    ("macos", "arm64"): "PartyOps_1.4.5-rc.6_macos_arm64.pkg",
 }
 RELEASE_NOTES = [
     "公文规范排版改为系统内嵌流程，文件只在当前电脑诊断、排版、复检和导出",
@@ -109,7 +109,7 @@ def _signed_manifest(
         # rc.2 已显式轮换客户端信任根。rc.1 及更早客户端不能直接验证
         # rc.3 更新包，必须先使用 rc.2 或 rc.3 完整安装器原位升级。
         "min_version": "1.4.5-rc.2",
-        "schema_revision": "0024",
+        "schema_revision": "0026",
         "release_title": "台账导入、真实进度与全链路可靠性升级",
         "target_platform": platform_name,
         "target_architecture": architecture,

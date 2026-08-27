@@ -2,14 +2,29 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 import typing
+from datetime import timedelta
 from pathlib import PurePosixPath
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Header, Query, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..ai_orchestrator import (
+    TOOL_REGISTRY,
+    active_planner_info,
+    build_plan,
+    dispatch_step,
+    ensure_session_active,
+    goal_summary,
+    input_digest,
+    sanitize_scope,
+    step_scope_digest,
+    tool_contracts,
+)
 from ..ai_service import (
     call_compatible_model,
     collect_sources,
@@ -43,10 +58,15 @@ from ..model_packs import (
     stage_model_pack_removal,
 )
 from ..models import (
+    AIContextGrant,
     AIDraft,
     AIInvocation,
     AIModelActivation,
     AIModelPack,
+    AIOrchestrationApproval,
+    AIOrchestrationEvent,
+    AIOrchestrationSession,
+    AIOrchestrationStep,
     AIPolicy,
     AIProviderConfig,
     AIRecommendation,
@@ -59,6 +79,11 @@ from ..recommendations import list_recommendations
 from ..schemas import (
     AIDraftOut,
     AIModelPackOut,
+    AIOrchestrationApprovalRequest,
+    AIOrchestrationCapabilitiesOut,
+    AIOrchestrationCreate,
+    AIOrchestrationOut,
+    AIOrchestrationReplan,
     AIPolicyOut,
     AIPolicyPatch,
     AIProviderOut,
@@ -75,6 +100,15 @@ from ..schemas import (
 from ..security import get_current_user, require_admin
 
 router = APIRouter(tags=["ai"])
+
+
+def _highest_risk(steps: list[dict[str, Any]]) -> str:
+    rank = {"low": 0, "medium": 1, "high": 2}
+    return max(
+        (str(item.get("risk", "low")) for item in steps),
+        key=lambda value: rank.get(value, -1),
+        default="low",
+    )
 
 MAX_MODEL_UPLOAD_BYTES = 4 * 1024**3
 
@@ -123,6 +157,414 @@ def parse_version(value: str | None) -> int:
         return int(value.strip('"'))
     except ValueError as exc:
         raise ProblemException(400, "IF_MATCH_INVALID", "版本号无效", "If-Match 必须是整数。") from exc
+
+
+def _orchestration_output(db: Session, session: AIOrchestrationSession) -> AIOrchestrationOut:
+    steps = list(
+        db.scalars(
+            select(AIOrchestrationStep)
+            .where(AIOrchestrationStep.session_id == session.id)
+            .order_by(AIOrchestrationStep.step_order)
+        ).all()
+    )
+    serialized_steps: list[dict[str, Any]] = []
+    for step in steps:
+        serialized = {
+            "id": step.id,
+            "step_order": step.step_order,
+            "tool_name": step.tool_name,
+            "arguments": step.arguments or {},
+            "reason": step.reason,
+            "evidence": step.evidence or [],
+            "confidence": step.confidence,
+            "risk_level": step.risk_level,
+            "requires_confirmation": step.requires_confirmation,
+            "status": step.status,
+            "result_summary": step.result_summary or {},
+            "error_code": step.error_code,
+            "version": step.version,
+            "scope_sha256": step_scope_digest(
+                {
+                    "tool": step.tool_name,
+                    "arguments": step.arguments or {},
+                    "risk": step.risk_level,
+                    "requires_confirmation": step.requires_confirmation,
+                }
+            ),
+        }
+        serialized_steps.append(serialized)
+    return AIOrchestrationOut.model_validate(
+        {
+            "id": session.id,
+            "goal_summary": session.goal_summary,
+            "input_sha256": session.input_sha256,
+            "state": session.state,
+            "model_id": session.model_id,
+            "external_consented": session.external_consented,
+            "risk_level": session.risk_level,
+            "context_scope": session.context_scope or {},
+            "plan": session.plan or {},
+            "unresolved": session.unresolved or [],
+            "expires_at": session.expires_at,
+            "version": session.version,
+            "completed_at": session.completed_at,
+            "created_at": session.created_at,
+            "updated_at": session.updated_at,
+            "steps": serialized_steps,
+        }
+    )
+
+
+def _get_orchestration(db: Session, session_id: str, user: User) -> AIOrchestrationSession:
+    session = db.get(AIOrchestrationSession, session_id)
+    if not session or session.user_id != user.id:
+        raise ProblemException(404, "AI_ORCHESTRATION_NOT_FOUND", "编排会话不存在", "请刷新后重试。")
+    return session
+
+
+@router.get("/ai/capabilities", response_model=AIOrchestrationCapabilitiesOut)
+def get_ai_orchestration_capabilities(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> AIOrchestrationCapabilitiesOut:
+    """展示编排器角色分工；不返回本机路径、提示原文或密钥。"""
+
+    del user
+    return AIOrchestrationCapabilitiesOut.model_validate(
+        {
+            "release": "1.4.5-rc.6",
+            "planner": active_planner_info(db),
+            "components": [
+                {
+                    "id": "deepseek-r1-distill-qwen-1.5b",
+                    "role": "主编排模型",
+                    "state": active_planner_info(db)["state"] if active_planner_info(db)["model_id"] != "rules" else "可选签名包",
+                    "description": "负责中文多步骤计划和候选解释，不直接执行操作。",
+                },
+                {
+                    "id": "needle2-intent",
+                    "role": "安全路由",
+                    "state": "固定白名单",
+                    "description": "识别意图、风险和可用工具，拒绝任意函数调用。",
+                },
+                {
+                    "id": "bge-small-zh-v1.5",
+                    "role": "中文语义检索",
+                    "state": "可启用签名包",
+                    "description": "用于表头匹配、重复检测和资料召回，不负责生成文本。",
+                },
+                {
+                    "id": "qwen3-0.6b-q8_0",
+                    "role": "低配回退",
+                    "state": "可选签名包",
+                    "description": "DeepSeek 不可用时提供轻量中文草稿能力。",
+                },
+                {
+                    "id": "rules",
+                    "role": "最终兜底",
+                    "state": "始终可用",
+                    "description": "模型失败时仍按固定规则生成安全计划。",
+                },
+            ],
+            "tools": tool_contracts(),
+            "external_models": {
+                "enabled_by_default": False,
+                "consent_scope": "逐会话、最小脱敏上下文、只读第二意见",
+            },
+        }
+    )
+
+
+@router.post("/ai/orchestrations", response_model=AIOrchestrationOut, status_code=201)
+def create_ai_orchestration(
+    payload: AIOrchestrationCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> AIOrchestrationOut:
+    context_scope = sanitize_scope(payload.context_scope)
+    plan = build_plan(db, user, payload.goal, context_scope)
+    session = AIOrchestrationSession(
+        user_id=user.id,
+        goal_summary=goal_summary(payload.goal),
+        input_sha256=input_digest(payload.goal),
+        state="awaiting_confirmation",
+        model_id=str(plan.get("model_id", "rules")),
+        # 外部模型必须走单独的显式授权接口，不能通过创建请求隐式打开。
+        external_consented=False,
+        risk_level=_highest_risk(list(plan.get("steps", []))),
+        context_scope=context_scope,
+        plan=plan,
+        unresolved=list(plan.get("unresolved", [])),
+        expires_at=utcnow() + timedelta(minutes=30),
+    )
+    db.add(session)
+    db.flush()
+    for order, item in enumerate(plan.get("steps", []), start=1):
+        tool_name = str(item.get("tool", ""))
+        contract = TOOL_REGISTRY.get(tool_name)
+        if not contract:
+            # build_plan 已经做过校验，这里保留第二道防线。
+            raise ProblemException(422, "AI_TOOL_NOT_ALLOWED", "编排工具未获允许", "计划包含未注册的业务工具。")
+        arguments = dict(item.get("arguments") or {})
+        step = AIOrchestrationStep(
+            session_id=session.id,
+            step_order=order,
+            tool_name=tool_name,
+            arguments=arguments,
+            reason=str(item.get("reason", ""))[:2000],
+            evidence=list(item.get("evidence") or [])[:10],
+            confidence=float(item.get("confidence", 0.0)),
+            risk_level=contract.risk,
+            requires_confirmation=contract.mutates or contract.risk == "high",
+            status="pending",
+            idempotency_key=f"{session.id}:{order}:{input_digest(json.dumps(arguments, ensure_ascii=False, sort_keys=True))[:16]}",
+        )
+        db.add(step)
+    db.add(
+        AIContextGrant(
+            session_id=session.id,
+            user_id=user.id,
+            scope=context_scope,
+            expires_at=session.expires_at,
+        )
+    )
+    db.add(
+        AIOrchestrationEvent(
+            session_id=session.id,
+            event_type="planned",
+            result_code="OK",
+            summary={"model_id": session.model_id, "step_count": len(plan.get("steps", []))},
+            created_by=user.id,
+        )
+    )
+    db.commit()
+    db.refresh(session)
+    return _orchestration_output(db, session)
+
+
+@router.get("/ai/orchestrations/{session_id}", response_model=AIOrchestrationOut)
+def get_ai_orchestration(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> AIOrchestrationOut:
+    return _orchestration_output(db, _get_orchestration(db, session_id, user))
+
+
+@router.post("/ai/orchestrations/{session_id}/replan", response_model=AIOrchestrationOut)
+def replan_ai_orchestration(
+    session_id: str,
+    payload: AIOrchestrationReplan,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> AIOrchestrationOut:
+    session = _get_orchestration(db, session_id, user)
+    ensure_session_active(session)
+    if session.version != parse_version(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "编排计划已更新", "请刷新后重新规划。")
+    goal = payload.goal or session.goal_summary
+    scope = sanitize_scope(payload.context_scope if payload.context_scope is not None else session.context_scope)
+    plan = build_plan(db, user, goal, scope)
+    old_steps = list(db.scalars(select(AIOrchestrationStep).where(AIOrchestrationStep.session_id == session.id)).all())
+    for step in old_steps:
+        if step.status not in {"completed", "running"}:
+            step.status = "obsolete"
+            step.version += 1
+    session.goal_summary = goal_summary(goal)
+    session.input_sha256 = input_digest(goal)
+    session.context_scope = scope
+    session.plan = plan
+    session.model_id = str(plan.get("model_id", "rules"))
+    session.unresolved = list(plan.get("unresolved", []))
+    session.risk_level = _highest_risk(list(plan.get("steps", [])))
+    session.version += 1
+    for order, item in enumerate(plan.get("steps", []), start=1):
+        contract = TOOL_REGISTRY.get(str(item.get("tool", "")))
+        if not contract:
+            raise ProblemException(422, "AI_TOOL_NOT_ALLOWED", "编排工具未获允许", "计划包含未注册的业务工具。")
+        arguments = dict(item.get("arguments") or {})
+        db.add(AIOrchestrationStep(
+            session_id=session.id,
+            step_order=order,
+            tool_name=contract.name,
+            arguments=arguments,
+            reason=str(item.get("reason", ""))[:2000],
+            evidence=list(item.get("evidence") or [])[:10],
+            confidence=float(item.get("confidence", 0.0)),
+            risk_level=contract.risk,
+            requires_confirmation=contract.mutates or contract.risk == "high",
+            status="pending",
+            idempotency_key=f"{session.id}:r{session.version}:{order}:{input_digest(json.dumps(arguments, ensure_ascii=False, sort_keys=True))[:16]}",
+        ))
+    db.add(AIOrchestrationEvent(session_id=session.id, event_type="replanned", result_code="OK", summary={"step_count": len(plan.get("steps", []))}, created_by=user.id))
+    write_audit(db, user, "ai.orchestration_replan", "ai_orchestration", session.id, {"step_count": len(plan.get("steps", []))}, client_ip(request))
+    db.commit()
+    db.refresh(session)
+    return _orchestration_output(db, session)
+
+
+@router.post("/ai/orchestrations/{session_id}/steps/{step_id}/approve", response_model=AIOrchestrationOut)
+def approve_ai_orchestration_step(
+    session_id: str,
+    step_id: str,
+    payload: AIOrchestrationApprovalRequest,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> AIOrchestrationOut:
+    session = _get_orchestration(db, session_id, user)
+    ensure_session_active(session)
+    if session.version != parse_version(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "编排计划已更新", "请刷新后重新确认。")
+    step = db.get(AIOrchestrationStep, step_id)
+    if not step or step.session_id != session.id:
+        raise ProblemException(404, "AI_ORCHESTRATION_STEP_NOT_FOUND", "编排步骤不存在", "请刷新后重试。")
+    contract = TOOL_REGISTRY.get(step.tool_name)
+    if not contract:
+        raise ProblemException(422, "AI_TOOL_NOT_ALLOWED", "编排工具未获允许", "该步骤已被安全策略拒绝。")
+    if str(getattr(user.role, "value", user.role)) not in contract.roles:
+        raise ProblemException(403, "AI_TOOL_PERMISSION_DENIED", "没有执行该步骤的权限", "请由管理员完成高风险操作或调整业务权限。")
+    expected_scope = step_scope_digest({"tool": step.tool_name, "arguments": step.arguments or {}, "risk": step.risk_level, "requires_confirmation": step.requires_confirmation})
+    if payload.approved and payload.scope_sha256 != expected_scope:
+        raise ProblemException(409, "AI_APPROVAL_SCOPE_CHANGED", "确认范围已变化", "计划内容已更新，请重新查看后确认。")
+    step.status = "approved" if payload.approved else "rejected"
+    step.version += 1
+    session.version += 1
+    db.add(AIOrchestrationApproval(session_id=session.id, step_id=step.id, user_id=user.id, approved=payload.approved, scope_sha256=expected_scope if payload.approved else "", device_id=""))
+    db.add(AIOrchestrationEvent(session_id=session.id, step_id=step.id, event_type="approved" if payload.approved else "rejected", result_code="OK", summary={"tool": contract.name}, created_by=user.id))
+    write_audit(db, user, "ai.orchestration_step_approve" if payload.approved else "ai.orchestration_step_reject", "ai_orchestration_step", step.id, {"tool": contract.name}, client_ip(request))
+    db.commit()
+    db.refresh(session)
+    return _orchestration_output(db, session)
+
+
+@router.post("/ai/orchestrations/{session_id}/execute", response_model=AIOrchestrationOut)
+def execute_ai_orchestration(
+    session_id: str,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> AIOrchestrationOut:
+    session = _get_orchestration(db, session_id, user)
+    ensure_session_active(session)
+    if session.version != parse_version(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "编排计划已更新", "请刷新后重试。")
+    steps = list(db.scalars(select(AIOrchestrationStep).where(AIOrchestrationStep.session_id == session.id).order_by(AIOrchestrationStep.step_order)).all())
+    pending = [step for step in steps if step.status in {"pending", "rejected"} and step.requires_confirmation]
+    if pending:
+        raise ProblemException(409, "AI_CONFIRMATION_REQUIRED", "仍有步骤未确认", "请逐项确认写入、归档、删除或网络变更步骤。", extra={"step_ids": [step.id for step in pending]})
+    session.state = "running"
+    session.version += 1
+    for step in steps:
+        if step.status in {"completed", "rejected", "obsolete", "awaiting_business_action"}:
+            continue
+        contract = TOOL_REGISTRY.get(step.tool_name)
+        if not contract:
+            step.status = "failed"
+            step.error_code = "AI_TOOL_NOT_ALLOWED"
+            session.state = "failed"
+            break
+        if str(getattr(user.role, "value", user.role)) not in contract.roles:
+            step.status = "failed"
+            step.error_code = "AI_TOOL_PERMISSION_DENIED"
+            session.state = "failed"
+            break
+        step.status = "running"
+        try:
+            result = dispatch_step(step, contract)
+            step.result_summary = result
+            requires_business_action = result.get("status") == "action_required"
+            step.status = "awaiting_business_action" if requires_business_action else "completed"
+            step.version += 1
+            db.add(
+                AIOrchestrationEvent(
+                    session_id=session.id,
+                    step_id=step.id,
+                    event_type="step_handoff_created" if requires_business_action else "step_completed",
+                    result_code="BUSINESS_ACTION_REQUIRED" if requires_business_action else "OK",
+                    summary={"tool": contract.name, "preview_only": bool(result.get("preview_only"))},
+                    created_by=user.id,
+                )
+            )
+        except Exception:
+            step.status = "failed"
+            step.error_code = "AI_STEP_EXECUTION_FAILED"
+            session.state = "failed"
+            db.add(AIOrchestrationEvent(session_id=session.id, step_id=step.id, event_type="step_failed", result_code=step.error_code, summary={}, created_by=user.id))
+            break
+    if session.state == "running":
+        if any(step.status == "awaiting_business_action" for step in steps):
+            session.state = "awaiting_business_action"
+        else:
+            session.state = "completed"
+            session.completed_at = utcnow()
+    write_audit(db, user, "ai.orchestration_execute", "ai_orchestration", session.id, {"state": session.state}, client_ip(request))
+    db.commit()
+    db.refresh(session)
+    return _orchestration_output(db, session)
+
+
+@router.post("/ai/orchestrations/{session_id}/cancel", response_model=AIOrchestrationOut)
+def cancel_ai_orchestration(
+    session_id: str,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> AIOrchestrationOut:
+    session = _get_orchestration(db, session_id, user)
+    if session.version != parse_version(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "编排计划已更新", "请刷新后重试。")
+    if session.state in {"completed", "failed", "cancelled"}:
+        raise ProblemException(409, "AI_ORCHESTRATION_CLOSED", "编排会话已结束", "不能重复取消。")
+    session.state = "cancelled"
+    session.version += 1
+    db.add(AIOrchestrationEvent(session_id=session.id, event_type="cancelled", result_code="OK", summary={}, created_by=user.id))
+    write_audit(db, user, "ai.orchestration_cancel", "ai_orchestration", session.id, {}, client_ip(request))
+    db.commit()
+    db.refresh(session)
+    return _orchestration_output(db, session)
+
+
+@router.get(
+    "/ai/orchestrations/{session_id}/audit",
+    response_model=typing.List[typing.Dict[str, Any]],
+)
+def audit_ai_orchestration(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> list[dict[str, Any]]:
+    session = _get_orchestration(db, session_id, user)
+    events = list(db.scalars(select(AIOrchestrationEvent).where(AIOrchestrationEvent.session_id == session.id).order_by(AIOrchestrationEvent.created_at)).all())
+    return [{"id": event.id, "step_id": event.step_id, "event_type": event.event_type, "result_code": event.result_code, "summary": event.summary or {}, "created_at": event.created_at} for event in events]
+
+
+@router.post("/ai/orchestrations/{session_id}/external-consent", response_model=AIOrchestrationOut)
+def grant_ai_external_consent(
+    session_id: str,
+    request: Request,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> AIOrchestrationOut:
+    session = _get_orchestration(db, session_id, user)
+    ensure_session_active(session)
+    if session.version != parse_version(if_match):
+        raise ProblemException(409, "VERSION_CONFLICT", "编排会话已更新", "请刷新后重试。")
+    # 这里只记录逐会话授权，不自动发送数据；外部模型调用仍需经过
+    # 脱敏上下文构造和现有 AI 外发确认流程。
+    session.external_consented = True
+    session.version += 1
+    db.add(AIOrchestrationEvent(session_id=session.id, event_type="external_consent", result_code="OK", summary={"scope": "脱敏目标与字段候选"}, created_by=user.id))
+    write_audit(db, user, "ai.orchestration_external_consent", "ai_orchestration", session.id, {"scope": "redacted"}, client_ip(request))
+    db.commit()
+    db.refresh(session)
+    return _orchestration_output(db, session)
 
 
 @router.get("/admin/ai/model-packs", response_model=typing.List[AIModelPackOut])

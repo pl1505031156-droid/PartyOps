@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { IconCalendar, IconCheck, IconDelete, IconPlus } from "@arco-design/web-vue/es/icon";
+import { IconCalendar, IconCheck, IconDelete, IconPlus, IconUpload } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { api } from "../api";
 import type { User } from "../types";
@@ -16,6 +16,10 @@ interface Meeting {
   progress: { done: number; total: number; percent: number }; steps: MeetingStep[]; topics: MeetingTopic[]; archived_topics: MeetingTopic[];
 }
 interface AnnualStats { completed_meetings: number; reviewed_topics: number; confirmed_amount: string; }
+interface MeetingImportDraft {
+  id: string; source_kind: "ooxml" | "ole"; status: string; version: number; warnings: string[];
+  meeting: Record<string, string | boolean | null>; topics: Array<{ title: string; confidence: number; source: string; confirmed: boolean }>;
+}
 
 const meetings = ref<Meeting[]>([]);
 const templates = ref<WorkflowTemplate[]>([]);
@@ -33,10 +37,18 @@ const topicArchiveVisible = ref(false);
 const topicArchiveReason = ref("");
 const topicArchiveTarget = ref<MeetingTopic | null>(null);
 const topicDeletionImpact = ref<{ annual_statistics: boolean; confirmed_amount: boolean } | null>(null);
+const importVisible = ref(false);
+const importFile = ref<File | null>(null);
+const importDraft = ref<MeetingImportDraft | null>(null);
+const importBusy = ref(false);
 const year = ref(new Date().getFullYear());
 const stats = ref<AnnualStats>({ completed_meetings: 0, reviewed_topics: 0, confirmed_amount: "0.00" });
 const form = reactive({ meeting_type: "party_committee", organization: "", title: "", scheduled_at: "", workflow_template_id: "", owner_id: "" });
 const topicForm = reactive({ title: "", review_result: "", amount: "0", reviewed: false, amount_confirmed: false });
+const importForm = reactive({
+  meeting_type: "party_committee", organization: "", title: "", scheduled_at: "", venue: "",
+  host_name: "", attendee_text: "", owner_id: "", topics_text: "",
+});
 const selected = computed(() => meetings.value.find((item) => item.id === selectedId.value) || null);
 const visibleTopics = computed(() => topicLifecycle.value === "active" ? selected.value?.topics || [] : selected.value?.archived_topics || []);
 const userNames = computed(() => Object.fromEntries(users.value.map((item) => [item.id, item.display_name])));
@@ -83,6 +95,83 @@ async function createMeeting() {
     await load();
   } catch (error) {
     Message.error(error instanceof Error ? error.message : "会议创建失败");
+  }
+}
+
+function openMeetingImport() {
+  importFile.value = null;
+  importDraft.value = null;
+  Object.assign(importForm, {
+    meeting_type: "party_committee", organization: "", title: "", scheduled_at: "", venue: "",
+    host_name: "", attendee_text: "", owner_id: users.value.find((item) => item.active)?.id || "", topics_text: "",
+  });
+  importVisible.value = true;
+}
+
+function chooseMeetingFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  importFile.value = input.files?.[0] || null;
+  importDraft.value = null;
+}
+
+async function inspectMeetingFile() {
+  if (!importFile.value) {
+    Message.warning("请先选择 DOCX、DOC 或 WPS 会议文件");
+    return;
+  }
+  importBusy.value = true;
+  try {
+    const body = new FormData();
+    body.append("file", importFile.value);
+    const draft = await api.post<MeetingImportDraft>("/business-meetings/imports/inspect", body);
+    importDraft.value = draft;
+    Object.assign(importForm, {
+      meeting_type: String(draft.meeting.meeting_type || "party_committee"),
+      title: String(draft.meeting.title || ""),
+      scheduled_at: String(draft.meeting.scheduled_at || "").replace("T", " ").slice(0, 19),
+      venue: String(draft.meeting.venue || ""),
+      host_name: String(draft.meeting.host_name || ""),
+      attendee_text: String(draft.meeting.attendee_text || ""),
+      topics_text: draft.topics.map((item) => item.title).join("\n"),
+    });
+    Message.success("候选已生成，请逐项核对后再正式入账");
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "会议文件识别失败");
+  } finally {
+    importBusy.value = false;
+  }
+}
+
+async function commitMeetingImport() {
+  if (!importDraft.value) {
+    Message.warning("请先识别文件并核对候选");
+    return;
+  }
+  if (!importForm.organization.trim() || !importForm.title.trim()) {
+    Message.warning("请确认所属组织和会议标题");
+    return;
+  }
+  importBusy.value = true;
+  try {
+    const topics = importForm.topics_text.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    const confirmed = await api.patch<MeetingImportDraft>(
+      `/business-meetings/imports/${importDraft.value.id}`,
+      { ...importForm, scheduled_at: importForm.scheduled_at || null, topics },
+      { "If-Match": String(importDraft.value.version) },
+    );
+    const result = await api.post<{ meeting: Meeting }>(
+      `/business-meetings/imports/${confirmed.id}/commit`,
+      undefined,
+      { "If-Match": String(confirmed.version) },
+    );
+    selectedId.value = result.meeting.id;
+    importVisible.value = false;
+    Message.success("会议和六步筹备流程已正式建立");
+    await load();
+  } catch (error) {
+    Message.error(error instanceof Error ? error.message : "会议导入失败");
+  } finally {
+    importBusy.value = false;
   }
 }
 
@@ -201,7 +290,7 @@ onMounted(load);
   <div class="page meetings-page">
     <header class="page-header">
       <div><p class="page-kicker">党务 · 其他会议制度化执行</p><h1 class="page-title">其他党建会议</h1><p class="page-description">党委会、主题党日、组织生活会等其他会议在此筹备；三会一课与中心组学习使用各自专属模块。</p></div>
-      <a-space><PageHelp title="其他党建会议" :tips="['按模板建立筹备步骤，并为每一步指定负责人和截止时间。', '有会议创建权限的协同用户可新建、编辑和完成本人负责的步骤。', '年度统计只计已完成会议、已审议议题和已确认金额。']" help-query="业务会议 筹备 协同 年度统计" /><a-select v-model="year" :style="{ width: '120px' }" @change="load"><a-option v-for="value in [year - 1, year, year + 1]" :key="value" :value="value">{{ value }} 年</a-option></a-select><a-button type="primary" @click="createVisible = true"><template #icon><IconPlus /></template>新建会议</a-button></a-space>
+      <a-space><PageHelp title="其他党建会议" :tips="['按模板建立筹备步骤，并为每一步指定负责人和截止时间。', '会议文件先生成可编辑候选；必须人工确认后才会写入正式台账。', '有会议创建权限的协同用户可新建、编辑和完成本人负责的步骤。', '年度统计只计已完成会议、已审议议题和已确认金额。']" help-query="业务会议 文件导入 筹备 协同 年度统计" /><a-select v-model="year" :style="{ width: '120px' }" @change="load"><a-option v-for="value in [year - 1, year, year + 1]" :key="value" :value="value">{{ value }} 年</a-option></a-select><a-button @click="openMeetingImport"><template #icon><IconUpload /></template>导入会议文件</a-button><a-button type="primary" @click="createVisible = true"><template #icon><IconPlus /></template>新建会议</a-button></a-space>
     </header>
 
     <div class="lifecycle-toolbar"><a-radio-group v-model="lifecycle" type="button" @change="load"><a-radio value="active">在办会议</a-radio><a-radio value="archived">已归档</a-radio></a-radio-group><span>归档不删除筹备步骤、议题、材料与年度审计。</span></div>
@@ -228,7 +317,32 @@ onMounted(load);
     </section>
 
     <a-modal v-model:visible="createVisible" title="新建其他党建会议" @ok="createMeeting">
-      <a-form :model="form" layout="vertical"><a-form-item label="会议类型"><a-select v-model="form.meeting_type"><a-option v-for="item in meetingTypes" :key="item[0]" :value="item[0]">{{ item[1] }}</a-option></a-select></a-form-item><a-form-item label="所属组织"><a-input v-model="form.organization" placeholder="例如：中共XX委员会" /></a-form-item><a-form-item label="会议标题"><a-input v-model="form.title" /></a-form-item><a-form-item label="计划时间"><a-date-picker v-model="form.scheduled_at" show-time value-format="YYYY-MM-DDTHH:mm:ssZ" style="width:100%" /></a-form-item><a-form-item label="流程模板"><a-select v-model="form.workflow_template_id"><a-option v-for="item in otherTemplates" :key="item.id" :value="item.id">{{ item.name }}</a-option></a-select></a-form-item><a-form-item label="总负责人"><a-select v-model="form.owner_id"><a-option v-for="item in users.filter((user) => user.active)" :key="item.id" :value="item.id">{{ item.display_name }}</a-option></a-select></a-form-item><a-divider v-if="responsibleRoles.length" orientation="left">按角色指定步骤负责人</a-divider><a-form-item v-for="role in responsibleRoles" :key="role" :label="role"><a-select v-model="assignees[role]" allow-clear placeholder="未指定时使用总负责人"><a-option v-for="item in users.filter((user) => user.active)" :key="item.id" :value="item.id">{{ item.display_name }}</a-option></a-select></a-form-item></a-form>
+      <a-form :model="form" layout="vertical"><a-form-item label="会议类型"><a-select v-model="form.meeting_type"><a-option v-for="item in meetingTypes" :key="item[0]" :value="item[0]">{{ item[1] }}</a-option></a-select></a-form-item><a-form-item label="所属组织"><a-input v-model="form.organization" placeholder="例如：中共XX委员会" /></a-form-item><a-form-item label="会议标题"><a-input v-model="form.title" /></a-form-item><a-form-item label="计划时间"><a-date-picker v-model="form.scheduled_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width:100%" /></a-form-item><a-form-item label="流程模板"><a-select v-model="form.workflow_template_id"><a-option v-for="item in otherTemplates" :key="item.id" :value="item.id">{{ item.name }}</a-option></a-select></a-form-item><a-form-item label="总负责人"><a-select v-model="form.owner_id"><a-option v-for="item in users.filter((user) => user.active)" :key="item.id" :value="item.id">{{ item.display_name }}</a-option></a-select></a-form-item><a-divider v-if="responsibleRoles.length" orientation="left">按角色指定步骤负责人</a-divider><a-form-item v-for="role in responsibleRoles" :key="role" :label="role"><a-select v-model="assignees[role]" allow-clear placeholder="未指定时使用总负责人"><a-option v-for="item in users.filter((user) => user.active)" :key="item.id" :value="item.id">{{ item.display_name }}</a-option></a-select></a-form-item></a-form>
+    </a-modal>
+    <a-modal v-model:visible="importVisible" title="导入党委会议程或记录" :width="760" :footer="false">
+      <a-alert type="warning">系统只生成待确认候选，不会把识别结果直接当作事实。原文件和正文不保存；确认后的结构化会议、议题才进入共享系统。</a-alert>
+      <div class="meeting-import-picker">
+        <input type="file" accept=".docx,.doc,.wps" @change="chooseMeetingFile" />
+        <a-button :loading="importBusy" @click="inspectMeetingFile">识别并生成候选</a-button>
+      </div>
+      <template v-if="importDraft">
+        <a-alert v-for="warning in importDraft.warnings" :key="warning" type="warning">{{ warning }}</a-alert>
+        <p class="import-source">实际容器：{{ importDraft.source_kind === "ole" ? "OLE（DOC/WPS，经本机办公套件转换）" : "OOXML（DOCX）" }}；下列内容均可修改。</p>
+        <a-form :model="importForm" layout="vertical">
+          <div class="import-form-grid">
+            <a-form-item label="会议类型"><a-select v-model="importForm.meeting_type"><a-option v-for="item in meetingTypes" :key="item[0]" :value="item[0]">{{ item[1] }}</a-option></a-select></a-form-item>
+            <a-form-item label="所属组织（必填）"><a-input v-model="importForm.organization" /></a-form-item>
+            <a-form-item label="会议标题（必填）"><a-input v-model="importForm.title" /></a-form-item>
+            <a-form-item label="会议时间（北京时间）"><a-date-picker v-model="importForm.scheduled_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width:100%" /></a-form-item>
+            <a-form-item label="会议地点"><a-input v-model="importForm.venue" /></a-form-item>
+            <a-form-item label="总负责人"><a-select v-model="importForm.owner_id" allow-clear><a-option v-for="item in users.filter((user) => user.active)" :key="item.id" :value="item.id">{{ item.display_name }}</a-option></a-select></a-form-item>
+            <a-form-item label="主持人候选"><a-input v-model="importForm.host_name" /></a-form-item>
+            <a-form-item label="参会人员候选"><a-input v-model="importForm.attendee_text" /></a-form-item>
+          </div>
+          <a-form-item label="会议议题（每行一项，可删除误识别或补充漏项）"><a-textarea v-model="importForm.topics_text" :auto-size="{ minRows: 5, maxRows: 12 }" /></a-form-item>
+        </a-form>
+        <div class="import-actions"><a-button @click="importVisible = false">取消</a-button><a-button type="primary" :loading="importBusy" @click="commitMeetingImport">确认并正式入账</a-button></div>
+      </template>
     </a-modal>
     <a-modal v-model:visible="topicVisible" title="添加会议议题" @ok="addTopic"><a-form :model="topicForm" layout="vertical"><a-form-item label="议题"><a-input v-model="topicForm.title" /></a-form-item><a-form-item label="审议结果"><a-textarea v-model="topicForm.review_result" /></a-form-item><a-form-item label="涉及金额（元）"><a-input v-model="topicForm.amount" /></a-form-item><a-form-item label="统计口径"><a-space><a-checkbox v-model="topicForm.reviewed">已完成审议</a-checkbox><a-checkbox v-model="topicForm.amount_confirmed">金额已确认</a-checkbox></a-space></a-form-item></a-form></a-modal>
     <a-modal v-model:visible="archiveVisible" title="归档会议台账" ok-text="确认归档" @ok="archiveMeeting"><a-alert type="warning">归档会把关联筹备事项从活动列表移除，但不会物理删除任何业务和审计记录。</a-alert><div v-if="deletionImpact" class="impact-grid"><span>步骤 <b>{{ deletionImpact.steps }}</b></span><span>议题 <b>{{ deletionImpact.topics }}</b></span><span>文档 <b>{{ deletionImpact.documents }}</b></span><span>参会 <b>{{ deletionImpact.attendees }}</b></span><span>落实项 <b>{{ deletionImpact.actions }}</b></span></div><a-form-item label="归档原因" required><a-textarea v-model="archiveReason" /></a-form-item></a-modal>
@@ -239,4 +353,5 @@ onMounted(load);
 <style scoped>
 .meetings-page{max-width:1540px}.meeting-ledger{display:grid;grid-template-columns:repeat(3,1fr);margin:18px 0;border:1px solid var(--line);background:var(--line);gap:1px}.meeting-ledger article{padding:22px 26px;background:rgba(255,252,244,.94)}.meeting-ledger span,.meeting-ledger small{display:block;color:var(--muted)}.meeting-ledger strong{display:block;margin:8px 0;color:#4d382c;font-family:Georgia,"Noto Serif SC",serif;font-size:34px}.meeting-ledger .amount strong{color:#9b2b24}.meeting-workspace{display:grid;grid-template-columns:330px minmax(0,1fr);min-height:670px;border:1px solid var(--line);background:rgba(255,252,244,.85)}.meeting-list{border-right:1px solid var(--line)}.meeting-list>button{display:block;width:100%;padding:20px;border:0;border-bottom:1px solid var(--line);background:transparent;text-align:left;cursor:pointer}.meeting-list>button.active{background:#f5ead6;box-shadow:inset 4px 0 #9b2b24}.meeting-list span{color:#9b2b24;font-size:11px}.meeting-list h2{margin:7px 0;color:#493328;font-family:"Noto Serif SC","Songti SC",serif;font-size:17px}.meeting-list p{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:11px}.meeting-list button div{position:relative;height:5px;margin-top:13px;background:#e8ddcc}.meeting-list button i{display:block;height:100%;background:#a1683e}.meeting-list button small{position:absolute;right:0;top:-17px;color:var(--muted)}.meeting-detail{padding:28px}.meeting-detail>header{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:20px}.meeting-detail>header span{color:#9b2b24;font-size:12px}.meeting-detail>header h2{margin:7px 0;color:#493328;font-family:"Noto Serif SC","Songti SC",serif;font-size:27px}.section-title{margin:24px 0 14px}.section-title.inline{display:flex;justify-content:space-between;align-items:end}.section-title h3{margin:0;color:#4d382c}.section-title p{margin:5px 0 0;color:var(--muted);font-size:12px}.step-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.step-grid label{display:grid;grid-template-columns:34px 24px 1fr 20px;align-items:center;min-height:78px;padding:12px;border:1px solid #ded0bc;background:#fffaf0}.step-grid label.done{background:#edf3e8;border-color:#a9bea3}.step-grid label>b{color:#b39a80;font-family:Georgia,serif}.step-grid label span strong,.step-grid label span small{display:block}.step-grid label span small{margin-top:5px;color:var(--muted);font-size:11px}.step-grid label>svg{color:#4c7a5d}.topics-section{margin-top:28px}@media(max-width:1050px){.meeting-workspace{grid-template-columns:1fr}.meeting-list{border-right:0}.step-grid{grid-template-columns:1fr}}@media(max-width:720px){.meeting-ledger{grid-template-columns:1fr}}
 .lifecycle-toolbar{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px;color:var(--muted);font-size:12px}.lifecycle-toolbar+.meeting-ledger{margin-top:0}.impact-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;margin:16px 0;background:var(--line);border:1px solid var(--line)}.impact-grid span{padding:12px;background:#fffaf0;color:var(--muted);font-size:11px}.impact-grid b{display:block;margin-top:4px;color:var(--charcoal);font:22px Georgia,serif}@media(max-width:720px){.impact-grid{grid-template-columns:1fr}.lifecycle-toolbar{align-items:stretch;flex-direction:column;gap:10px}}
+.meeting-import-picker{display:flex;align-items:center;gap:12px;margin:16px 0;padding:14px;border:1px solid var(--line);background:#fffaf0}.meeting-import-picker input{min-width:0;flex:1}.import-source{margin:12px 0;color:var(--muted);font-size:12px}.import-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 18px}.import-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}@media(max-width:720px){.import-form-grid{grid-template-columns:1fr}.meeting-import-picker{align-items:stretch;flex-direction:column}}
 </style>

@@ -15,8 +15,8 @@ if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
   exit 2
 fi
 "$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py" \
-  --root "$ROOT" --expected "1.4.5-rc.4"
-APP_VERSION="1.4.5-rc.4"
+  --root "$ROOT" --expected "1.4.5-rc.6"
+APP_VERSION="1.4.5-rc.6"
 BUILD_PARENT="${PARTYOPS_BUILD_BASE:-$ROOT/.build-uos}"
 mkdir -p "$BUILD_PARENT"
 BUILD_PARENT="$(cd "$BUILD_PARENT" && pwd -P)"
@@ -325,7 +325,7 @@ USER_DOCUMENTS=(
   "installation-checklist.md"
   "backup-restore.md"
   "operations-runbook.md"
-  "release-notes-v1.4.5-rc.4.md"
+  "release-notes-v1.4.5-rc.6.md"
 )
 for document in "${USER_DOCUMENTS[@]}"; do
   [[ -f "$ROOT/docs/$document" ]] || {

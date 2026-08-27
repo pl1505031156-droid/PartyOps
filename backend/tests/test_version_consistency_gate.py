@@ -42,7 +42,7 @@ def _copy_version_inputs(target_root: Path) -> None:
 
 
 def test_repository_versions_are_consistent() -> None:
-    MODULE.verify(ROOT, "1.4.5-rc.4")
+    MODULE.verify(ROOT, "1.4.5-rc.6")
 
 
 def test_independent_website_is_not_required_by_application_freeze(
@@ -50,7 +50,7 @@ def test_independent_website_is_not_required_by_application_freeze(
 ) -> None:
     _copy_version_inputs(tmp_path)
 
-    MODULE.verify(tmp_path, "1.4.5-rc.4")
+    MODULE.verify(tmp_path, "1.4.5-rc.6")
 
 
 def test_python_metadata_mismatch_is_rejected(tmp_path: Path) -> None:
@@ -60,7 +60,7 @@ def test_python_metadata_mismatch_is_rejected(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="Python 项目元数据版本不一致"):
-        MODULE.verify(tmp_path, "1.4.5-rc.4")
+        MODULE.verify(tmp_path, "1.4.5-rc.6")
 
 
 def test_linux_installed_runtime_version_mismatch_is_rejected(tmp_path: Path) -> None:
@@ -68,7 +68,7 @@ def test_linux_installed_runtime_version_mismatch_is_rejected(tmp_path: Path) ->
     selftest = tmp_path / "packaging/linux/post-install-selftest.sh"
     selftest.write_text(
         selftest.read_text(encoding="utf-8").replace(
-            'EXPECTED_VERSION="1.4.5-rc.4"',
+            'EXPECTED_VERSION="1.4.5-rc.6"',
             'EXPECTED_VERSION="1.4.2"',
             1,
         ),
@@ -76,7 +76,7 @@ def test_linux_installed_runtime_version_mismatch_is_rejected(tmp_path: Path) ->
     )
 
     with pytest.raises(ValueError, match="Linux 安装后自检版本不一致"):
-        MODULE.verify(tmp_path, "1.4.5-rc.4")
+        MODULE.verify(tmp_path, "1.4.5-rc.6")
 
 
 @pytest.mark.parametrize(
@@ -94,9 +94,9 @@ def test_linux_package_version_defaults_are_frozen(
     _copy_version_inputs(tmp_path)
     target = tmp_path / relative
     target.write_text(
-        target.read_text(encoding="utf-8").replace("1.4.5~rc.4", "1.4.5~rc.2", 1),
+        target.read_text(encoding="utf-8").replace("1.4.5~rc.6", "1.4.5~rc.2", 1),
         encoding="utf-8",
     )
 
     with pytest.raises(ValueError, match=label):
-        MODULE.verify(tmp_path, "1.4.5-rc.4")
+        MODULE.verify(tmp_path, "1.4.5-rc.6")

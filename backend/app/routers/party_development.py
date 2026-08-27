@@ -36,6 +36,7 @@ from ..models import (
 )
 from ..party_development import (
     NATIONAL_MATERIALS,
+    NODE_LABELS,
     PHASE_LABELS,
     calculate_party_development,
     calculate_reference_plan,
@@ -668,11 +669,11 @@ def get_case_timeline(
             visual_state = "upcoming"
         else:
             visual_state = "planned"
-        timeline.append({**milestone, "actual_at": actual, "progress_event": fact, "visual_state": visual_state, "is_reference": bool(milestone["adjusted_at"] or milestone["plan_kind"] == "reference")})
+        timeline.append({**milestone, "title_zh": NODE_LABELS.get(milestone["milestone_type"], "待确认节点"), "actual_at": actual, "progress_event": fact, "visual_state": visual_state, "is_reference": bool(milestone["adjusted_at"] or milestone["plan_kind"] == "reference")})
     present = {row["milestone_type"] for row in timeline}
     for event_type, fact in facts.items():
         if event_type not in present:
-            timeline.append({"id": f"fact:{fact['id']}", "milestone_type": event_type, "actual_at": fact["actual_at"], "legal_earliest_at": None, "legal_deadline_at": None, "planned_at": None, "adjusted_at": None, "legal_basis": "", "planning_basis": "", "plan_kind": "fact", "reminder_days": [], "version": fact["version"], "progress_event": fact, "visual_state": "completed", "is_reference": False})
+            timeline.append({"id": f"fact:{fact['id']}", "milestone_type": event_type, "title_zh": NODE_LABELS.get(event_type, "待确认节点"), "actual_at": fact["actual_at"], "legal_earliest_at": None, "legal_deadline_at": None, "planned_at": None, "adjusted_at": None, "legal_basis": "", "planning_basis": "", "plan_kind": "fact", "reminder_days": [], "version": fact["version"], "progress_event": fact, "visual_state": "completed", "is_reference": False})
     def sort_key(row: dict[str, typing.Any]) -> float:
         value = row["actual_at"] or row["adjusted_at"] or row["legal_deadline_at"] or row["planned_at"]
         if isinstance(value, str):

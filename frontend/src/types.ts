@@ -967,6 +967,7 @@ export interface ModelRecommendation {
   id: string;
   name: string;
   kind: "embedding" | "llm" | "intent_router";
+  role: string;
   tier: string;
   summary: string;
   official_url: string;
@@ -987,6 +988,50 @@ export interface ModelRecommendation {
   reason: string;
   effective_threads: number;
   effective_context_tokens: number;
+}
+
+export interface AIOrchestrationStep {
+  id: string;
+  step_order: number;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  reason: string;
+  evidence: Array<Record<string, unknown>>;
+  confidence: number;
+  risk_level: "low" | "medium" | "high";
+  requires_confirmation: boolean;
+  status: string;
+  result_summary: Record<string, unknown>;
+  error_code: string;
+  version: number;
+  scope_sha256: string;
+}
+
+export interface AIOrchestration {
+  id: string;
+  goal_summary: string;
+  input_sha256: string;
+  state: string;
+  model_id: string;
+  external_consented: boolean;
+  risk_level: "low" | "medium" | "high";
+  context_scope: Record<string, unknown>;
+  plan: Record<string, unknown>;
+  unresolved: Array<Record<string, unknown>>;
+  expires_at: string;
+  version: number;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  steps: AIOrchestrationStep[];
+}
+
+export interface AIOrchestrationCapabilities {
+  release: string;
+  planner: Record<string, unknown>;
+  components: Array<{ id: string; role: string; state: string; description: string }>;
+  tools: Array<Record<string, unknown>>;
+  external_models: Record<string, unknown>;
 }
 
 export interface LocalAIRuntime {

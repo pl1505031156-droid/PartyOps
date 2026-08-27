@@ -36,6 +36,7 @@ from ..ledger_imports import (
     PARTY_FIELDS,
     PARTY_PROGRESS_FIELDS,
     delete_stage,
+    derive_archive_year_candidates,
     detect_header_row,
     fields_for_target,
     formula_like,
@@ -93,6 +94,16 @@ PARTY_DATE_COLUMNS = {
 ALLOWED_DUPLICATE_ACTIONS = {"new", "skip", "fill"}
 
 
+def _needs_derived_year_confirmation(job: LedgerImportJob) -> bool:
+    """只有源台账没有映射年度列时才要求确认推断候选。"""
+    if job.target_type != "archive" or not getattr(job, "derived_candidates", None):
+        return False
+    return not any(
+        item.get("action") == "map" and item.get("target_field") == "archive_year"
+        for item in list((job.mapping or {}).get("columns") or [])
+    )
+
+
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
@@ -112,6 +123,8 @@ def _job_out(job: LedgerImportJob) -> dict[str, Any]:
         "status": job.status,
         "mapping": job.mapping,
         "profile": job.profile,
+        "derived_candidates": job.derived_candidates or [],
+        "manual_edits": job.manual_edits or {},
         "validation": job.validation,
         "total_rows": job.total_rows,
         "valid_rows": job.valid_rows,
@@ -306,6 +319,12 @@ async def inspect_ledger(
     chosen = visible_names[0] if visible_names else metadata[0]["name"]
     header_row = detect_header_row(sheets[chosen])
     profile = profile_sheet(sheets[chosen], header_row, fields)
+    candidates = (
+        derive_archive_year_candidates(file.filename or "", chosen, sheets[chosen], header_row)
+        if target_type == "archive"
+        else []
+    )
+    profile["derived_candidates"] = candidates
     now = utcnow()
     job = LedgerImportJob(
         target_type=target_type,
@@ -319,6 +338,7 @@ async def inspect_ledger(
             "selected": profile,
             "available_fields": _field_choices(fields),
         },
+        derived_candidates=candidates,
         total_rows=profile["total_rows"],
         expires_at=now + timedelta(hours=24),
         created_by=user.id,
@@ -362,6 +382,12 @@ def patch_profile(
     if rows is None:
         raise ProblemException(422, "LEDGER_SHEET_NOT_FOUND", "工作表不存在", "请重新选择工作表。")
     profile = profile_sheet(rows, payload.header_row, fields)
+    candidates = (
+        derive_archive_year_candidates("", payload.sheet_name, rows, payload.header_row)
+        if job.target_type == "archive"
+        else list(getattr(job, "derived_candidates", None) or [])
+    )
+    profile["derived_candidates"] = candidates
     job.sheet_name = payload.sheet_name
     job.header_row = payload.header_row
     job.profile = {
@@ -369,6 +395,8 @@ def patch_profile(
         "selected": profile,
         "available_fields": _field_choices(fields),
     }
+    if job.target_type == "archive":
+        job.derived_candidates = candidates
     job.mapping = {}
     job.validation = {}
     job.status = "inspected"
@@ -398,6 +426,8 @@ def patch_mapping(
     if rows is None:
         raise ProblemException(422, "LEDGER_SHEET_NOT_FOUND", "工作表不存在", "请重新选择工作表。")
     profile = profile_sheet(rows, payload.header_row, fields)
+    if job.target_type == "archive":
+        profile["derived_candidates"] = list(getattr(job, "derived_candidates", None) or [])
     if profile["duplicate_headers"]:
         raise ProblemException(422, "LEDGER_DUPLICATE_HEADERS", "表头存在重名列", "请先在源台账中为重复列设置不同名称。")
     mapping = _mapping_payload(payload, fields)
@@ -492,6 +522,11 @@ def _validated_rows(
                 normalized[key] = _validate_mapped_value(field_type, value, label)
             except (TypeError, ValueError, OverflowError) as exc:
                 row_errors.append(str(exc))
+        # 重要档案缺少“年度”列时，只使用用户在向导中确认的候选年度；
+        # 候选来源和确认动作均保留在导入任务中，绝不静默猜测。
+        confirmed_year = (getattr(job, "manual_edits", None) or {}).get("archive_year")
+        if job.target_type == "archive" and confirmed_year and normalized.get("archive_year") in (None, "", []):
+            normalized["archive_year"] = int(confirmed_year)
         missing = [field_by_key[key].label for key in required if normalized.get(key) in (None, "", [])]
         if missing:
             row_errors.append("缺少必填字段：" + "、".join(missing))
@@ -533,6 +568,15 @@ def validate_import(
     job = _job(db, job_id, user)
     _assert_version(job, payload.version)
     _ensure_target_permission(db, request, user, job.target_type, job.target_id)
+    if _needs_derived_year_confirmation(job):
+        candidates = {int(item["year"]) for item in job.derived_candidates}
+        if payload.derived_year not in candidates:
+            raise ProblemException(422, "LEDGER_DERIVED_YEAR_CONFIRM_REQUIRED", "年度候选尚未确认", "请选择系统识别出的年度候选后再校验。")
+        job.manual_edits = {
+            **(job.manual_edits or {}),
+            "archive_year": payload.derived_year,
+            "archive_year_confirmed_at": utcnow().isoformat(),
+        }
     _, summary = _validated_rows(db, job, payload.row_actions)
     job.validation = {**summary, "row_actions": payload.row_actions}
     job.valid_rows = summary["valid_rows"]
@@ -934,6 +978,18 @@ def commit_import(
     category = _ensure_target_permission(db, request, user, job.target_type, job.target_id)
     if not payload.confirm_shared_storage:
         raise ProblemException(422, "LEDGER_SHARED_STORAGE_CONFIRM_REQUIRED", "尚未确认共享归档", "请确认台账内容将进入 PartyOps 主机并按权限共享。")
+    if _needs_derived_year_confirmation(job) and not payload.confirm_derived_candidates:
+        years = "、".join(str(item["year"]) for item in job.derived_candidates)
+        raise ProblemException(
+            422,
+            "LEDGER_DERIVED_YEAR_CONFIRM_REQUIRED",
+            "年度候选尚未确认",
+            f"系统从文件证据推断出年度候选：{years}。请在提交前选择正确年度并确认；系统不会把候选当作事实。",
+        )
+    if _needs_derived_year_confirmation(job):
+        candidates = {int(item["year"]) for item in job.derived_candidates}
+        if payload.derived_year not in candidates or (job.manual_edits or {}).get("archive_year") != payload.derived_year:
+            raise ProblemException(422, "LEDGER_DERIVED_YEAR_CONFIRM_REQUIRED", "年度候选尚未确认", "请返回全量校验步骤重新选择并确认年度。")
     mappings = list((job.mapping or {}).get("columns") or [])
     if any(item.get("action") == "create" for item in mappings) and not payload.confirm_new_fields:
         raise ProblemException(422, "LEDGER_NEW_FIELD_CONFIRM_REQUIRED", "尚未确认新增字段", "请确认新增字段的类型和模块影响范围。")

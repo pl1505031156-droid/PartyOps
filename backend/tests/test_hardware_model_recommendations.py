@@ -41,7 +41,7 @@ def test_model_catalog_spans_basic_to_flagship_and_reserves_capacity() -> None:
     assert any(item["kind"] == "intent_router" for item in MODEL_CATALOG)
     results = recommend_models(_profile())
     by_id = {item["id"]: item for item in results}
-    assert by_id["qwen3-0.6b-gguf"]["status"] == "流畅"
+    assert by_id["qwen3-0.6b-q8_0"]["status"] == "流畅"
     assert by_id["qwen3-32b-gguf"]["status"] == "不建议"
     assert by_id["qwen3-235b-a22b-gguf"]["delivery"] == "official"
     low_disk = recommend_models(_profile(model_disk_free_mb=500))

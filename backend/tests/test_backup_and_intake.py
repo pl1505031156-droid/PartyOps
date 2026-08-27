@@ -35,7 +35,7 @@ def test_backup_manifest_pairing_and_admin_download(
     path = get_settings().backups_dir / backup["filename"]
     manifest = verify_backup(path)
     assert manifest["format"] == "partyops-backup"
-    assert manifest["schema_version"] == "0024"
+    assert manifest["schema_version"] == "0026"
 
     admin_download = client.get(f"/api/v1/backups/{backup['id']}/download")
     assert admin_download.status_code == 200
