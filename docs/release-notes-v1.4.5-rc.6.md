@@ -18,10 +18,10 @@
 
 | 组件 | 职责 | rc.6 状态 |
 | --- | --- | --- |
-| DeepSeek-R1-Distill-Qwen-1.5B Q4_K_M | 主编排与中文多步骤规划 | 已登记目录；逐架构制品、签名和真机推理门禁未完成前不标记稳定 |
-| Needle 2 | 安全路由、固定工具白名单、低置信度回退 | 既有原生能力保留；无匹配平台包时安全回退规则 |
-| BGE-small-zh-v1.5 | 中文向量检索、表头匹配、重复检测 | 作为内置检索能力候选；只保存向量与哈希，不保存原文 |
-| Qwen3-0.6B | 低配置规划回退 | 仅在资源和签名门禁通过的平台启用 |
+| DeepSeek-R1-Distill-Qwen-1.5B Q4_K_M | 主编排与中文多步骤规划 | Windows AMD64 正式包验签、导入和真实推理通过；其他平台等待原生验证 |
+| Needle 2 | 安全路由、固定工具白名单、低置信度回退 | Windows AMD64 原生包生命周期通过；无匹配平台包时安全回退规则 |
+| BGE-small-zh-v1.5 | 中文向量检索、表头匹配、重复检测 | 正式包验签及 512 维向量探针通过；只保存向量与哈希，不保存原文 |
+| Qwen3-0.6B | 低配置规划回退 | Windows AMD64 正式包验签、导入和真实推理通过；仅在主模型失败时启用 |
 | 规则编排引擎 | 无模型时的确定性计划 | 所有支持平台始终可用 |
 
 DeepSeek 模型来源为[官方 R1 仓库](https://github.com/deepseek-ai/DeepSeek-R1)及[1.5B 模型卡](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B)，BGE 来源为[官方模型卡](https://huggingface.co/BAAI/bge-small-zh-v1.5)，Needle 来源为[官方仓库](https://github.com/cactus-compute/needle)。许可文件随模型包提供，未通过正式签名或架构验证的包不得进入官网稳定下载。

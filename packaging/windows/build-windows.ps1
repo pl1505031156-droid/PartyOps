@@ -473,8 +473,23 @@ Assert-NativeSuccess "生成嵌入式发布清单"
 if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw "未找到 Inno Setup 6：$InnoCompiler" }
 $env:PARTYOPS_WINDOWS_BUILD_ROOT = $bundleRoot
 $env:PARTYOPS_WINDOWS_OUTPUT_ROOT = $outputRoot
+$installerBase = if ($isLegacy) { "PartyOps_1.4.5-rc.6_windows7_$targetArchitecture" } else { "PartyOps_1.4.5-rc.6_windows_amd64" }
+$installer = Join-Path $outputRoot "$installerBase.exe"
+$hashPath = "$installer.sha256"
+$candidatePath = Join-Path $outputRoot "$installerBase.candidate.json"
+$innoLog = Join-Path $buildRoot "$installerBase.inno.log"
+
+# 每次封装前先让旧发布元数据失效。若 Inno 被中断，新 EXE 不会再与旧哈希、
+# 旧 source_commit 组合成看似可发布的候选包。
+foreach ($generatedPath in @($installer, $hashPath, $candidatePath)) {
+  if (Test-Path -LiteralPath $generatedPath) {
+    Remove-Item -LiteralPath $generatedPath -Force
+  }
+}
+
 $previousEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
+$innoExitCode = 1
 try {
   $innoScript = if (-not $isLegacy) {
     Join-Path $PSScriptRoot "PartyOps.iss"
@@ -483,20 +498,35 @@ try {
   } else {
     Join-Path $PSScriptRoot "PartyOps-Win7-x86.iss"
   }
-  & $InnoCompiler $innoScript
+  # LibreOffice 运行时包含大量文件；完整输出写入可审计日志，避免宿主输出通道
+  # 截断或断开后误以为构建已结束。
+  & $InnoCompiler $innoScript *> $innoLog
+  $innoExitCode = $LASTEXITCODE
 } finally {
   $ErrorActionPreference = $previousEap
 }
-Assert-NativeSuccess "Inno Setup 安装器构建"
-
-$installerBase = if ($isLegacy) { "PartyOps_1.4.5-rc.6_windows7_$targetArchitecture" } else { "PartyOps_1.4.5-rc.6_windows_amd64" }
-$installer = Join-Path $outputRoot "$installerBase.exe"
+if ($innoExitCode -ne 0) {
+  Get-Content -LiteralPath $innoLog -Tail 80 -ErrorAction SilentlyContinue | Write-Host
+  throw "Inno Setup 安装器构建失败（退出码 $innoExitCode）；完整日志：$innoLog"
+}
 if (-not (Test-Path -LiteralPath $installer)) {
   throw "Inno 返回成功但未找到预期安装器：$installer"
 }
+$installerInfo = Get-Item -LiteralPath $installer
+$installerStream = [IO.File]::OpenRead($installer)
+try {
+  $installerHeader0 = $installerStream.ReadByte()
+  $installerHeader1 = $installerStream.ReadByte()
+} finally {
+  $installerStream.Dispose()
+}
+if ($installerInfo.Length -lt 1MB -or $installerHeader0 -ne 0x4D -or $installerHeader1 -ne 0x5A) {
+  throw "Inno 返回成功但安装器长度或 PE 文件头无效：$installer"
+}
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+$hashTemporary = "$hashPath.tmp"
 [System.IO.File]::WriteAllText(
-  "$installer.sha256",
+  $hashTemporary,
   "$hash  $(Split-Path -Leaf $installer)`n",
   (New-Object System.Text.UTF8Encoding($false))
 )
@@ -511,7 +541,7 @@ $candidate = [ordered]@{
   runtime_profile = $runtimeProfile
   signed = $false
   filename = (Split-Path -Leaf $installer)
-  size = (Get-Item -LiteralPath $installer).Length
+  size = $installerInfo.Length
   sha256 = $hash
   sqlite_version = $officialSqliteVersion
   limitations = if (-not $isLegacy) {
@@ -532,9 +562,12 @@ $candidate = [ordered]@{
     )
   }
 }
+$candidateTemporary = "$candidatePath.tmp"
 [System.IO.File]::WriteAllText(
-  (Join-Path $outputRoot "$installerBase.candidate.json"),
+  $candidateTemporary,
   ($candidate | ConvertTo-Json -Depth 5),
   (New-Object System.Text.UTF8Encoding($false))
 )
+Move-Item -LiteralPath $hashTemporary -Destination $hashPath -Force
+Move-Item -LiteralPath $candidateTemporary -Destination $candidatePath -Force
 Write-Host "Windows 安装器已生成：$installer"
