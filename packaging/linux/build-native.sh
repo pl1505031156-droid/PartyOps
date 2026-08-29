@@ -175,14 +175,24 @@ if [[ -f "$PKG/opt/partyops/llama-server" ]]; then
   chmod 0755 "$PKG/opt/partyops/llama-server"
 fi
 # LibreOffice 自带多个受许可约束的本机入口和动态库；在 PartyOps 基础
-# 载荷完成权限收敛后再复制，保留其发行方所需的可执行位与相对布局。
+# 载荷完成权限收敛后再复制，并在下方按内容恢复必要执行位与相对布局。
 cp -a "$OFFICE_RUNTIME" "$PKG/opt/partyops/office-runtime"
-# WSL DrvFS 未启用 metadata 时会把 LibreOffice 的所有普通文件呈现为
-# 0777。可执行入口仍由下方 office-runtime 白名单保留，但共享库本身只
-# 需要读取权限；在封包副本中显式清除其执行位，避免国产系统安全中心把
-# lib*.so 误判成可直接启动程序。不得修改经哈希审计的 vendor 源目录。
-find "$PKG/opt/partyops/office-runtime" -type f -name '*.so*' \
-  -exec chmod 0644 {} +
+# WSL DrvFS 未启用 metadata 时会把 LibreOffice 的普通资源、共享库和真实
+# 程序一律呈现为 0777。RPM 会对每个带执行位的文件运行脚本识别，普通
+# autotext/配置文件因此可能令 rpmbuild 直接失败；国产系统安全中心也会把
+# 这些资源误判为程序。只在封包副本中先收敛全部权限，再按文件内容恢复
+# program 根目录下的 ELF 程序和 shebang 启动脚本，不修改哈希审计的 vendor。
+OFFICE_PACKAGE_RUNTIME="$PKG/opt/partyops/office-runtime"
+find "$OFFICE_PACKAGE_RUNTIME" -type d -exec chmod 0755 {} +
+find "$OFFICE_PACKAGE_RUNTIME" -type f -exec chmod 0644 {} +
+while IFS= read -r -d '' office_candidate; do
+  office_header="$(LC_ALL=C head -c 2 "$office_candidate" 2>/dev/null || true)"
+  office_description="$(LC_ALL=C file -b "$office_candidate")"
+  if [[ "$office_header" == '#!' ]] ||
+    [[ "$office_description" == *ELF* && "$office_description" == *executable* ]]; then
+    chmod 0755 "$office_candidate"
+  fi
+done < <(find "$OFFICE_PACKAGE_RUNTIME/program" -maxdepth 1 -type f -print0)
 EXPECTED_PAYLOAD_PATTERN='x86-64'
 [[ "$ARCH" == arm64 ]] && EXPECTED_PAYLOAD_PATTERN='ARM aarch64'
 file "$PKG/opt/partyops/partyops" | grep -q "$EXPECTED_PAYLOAD_PATTERN" || {
