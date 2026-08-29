@@ -1200,6 +1200,15 @@ def test_linux_native_packages_preserve_frozen_runtime_and_verify_identity() -> 
     assert "rpm -qp --queryformat" in script
     assert "元数据与冻结版本/架构不一致" in script
     assert 'find "$PKG/opt/partyops" -type f -exec chmod 0644 {} +' in script
+    assert (
+        'find "$PKG/opt/partyops/office-runtime" -type f -name \'*.so*\''
+        in script
+    )
+    assert script.index(
+        'cp -a "$OFFICE_RUNTIME" "$PKG/opt/partyops/office-runtime"'
+    ) < script.index(
+        'find "$PKG/opt/partyops/office-runtime" -type f -name \'*.so*\''
+    )
     assert 'find "$PKG/opt/partyops" -type f -perm /111 -print0' in script
     assert "原生包共享库被错误标记为可执行文件" in script
 
