@@ -5,7 +5,7 @@ import { Message } from "@arco-design/web-vue";
 import { api, downloadUrl } from "../api";
 import PageHelp from "../components/PageHelp.vue";
 import type { PeriodReport, PeriodReportItem, PeriodType, ReportSection } from "../types";
-import { dayjs, formatServerTime, localInputToUtc, serverTime } from "../utils/datetime";
+import { beijingNow, formatServerTime, localInputToUtc, serverTime } from "../utils/datetime";
 import { zhLabel } from "../utils/labels";
 
 const reports = ref<PeriodReport[]>([]);
@@ -23,7 +23,7 @@ const createVisible = ref(false);
 const itemVisible = ref(false);
 const reportForm = reactive<{ period_type: PeriodType; anchor_at: string; title: string; template_id: string }>({
   period_type: "week",
-  anchor_at: dayjs().format("YYYY-MM-DD"),
+  anchor_at: beijingNow().format("YYYY-MM-DD"),
   title: "",
   template_id: "",
 });

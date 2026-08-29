@@ -1,30 +1,21 @@
-"""GB/T 9704-2012 公文本机排版工具。
+"""PartyOps 内嵌公文排版本地引擎。
 
-该模块只由 ``partyops-client://official-format/<随机事务号>`` 的本机协议入口
-调用。文档字节、文件名、路径、摘要和排版结果不会进入 PartyOps 主机 API、
-协同链路或数据库。DOCX 直接修改 OOXML；DOC/WPS 仅调用本机办公套件转换。
+文档只在 PartyOps 本机回环服务与临时目录中处理。DOCX 直接修改 OOXML；
+旧格式和渲染能力仅调用安装包内固定版本的无窗口运行时，不启动外部应用。
 """
 
 from __future__ import annotations
 
-import html
-import ipaddress
 import json
 import os
 import re
 import shutil
-import socket
 import subprocess
 import sys
-import tempfile
-import threading
 import time
-import urllib.parse
-import uuid
-import webbrowser
 import zipfile
 from dataclasses import asdict, dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
@@ -35,7 +26,7 @@ MAX_FILE_BYTES = 50 * 1024 * 1024
 MAX_PACKAGE_BYTES = 512 * 1024 * 1024
 MAX_ZIP_RATIO = 200
 IDLE_TIMEOUT_SECONDS = 15 * 60
-SUPPORTED_EXTENSIONS = {".docx", ".doc", ".wps"}
+SUPPORTED_EXTENSIONS = {".docx", ".doc", ".wps", ".rtf", ".pdf"}
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PR = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -865,7 +856,13 @@ def diagnose_docx(path: Path, *, changed_count: int = 0) -> FormatReport:
     return FormatReport(compliant, len(paragraphs), len(tables), changed_count, tuple(issues))
 
 
-def format_docx(source: Path, target: Path) -> FormatReport:
+def format_docx(
+    source: Path,
+    target: Path,
+    *,
+    paragraph_range: tuple[int, int] | None = None,
+    apply_document_layout: bool = True,
+) -> FormatReport:
     """直接改写必要 OOXML 部件，所有未触碰部件逐项复制。"""
 
     with zipfile.ZipFile(source) as package:
@@ -885,21 +882,32 @@ def format_docx(source: Path, target: Path) -> FormatReport:
         body_paragraphs = document.xpath(
             ".//w:body/w:p | .//w:body/w:sdt/w:sdtContent/w:p", namespaces=NS
         )
-        for paragraph, role in _classify_document_paragraphs(body_paragraphs):
+        classified = _classify_document_paragraphs(body_paragraphs)
+        if paragraph_range is not None:
+            start, end = paragraph_range
+            if start < 1 or end < start or start > len(classified):
+                raise OfficialFormatError(
+                    "FORMAT_SCOPE_INVALID",
+                    "排版范围无效",
+                    f"文档共有 {len(classified)} 个可排版段落，请重新选择起止段落。",
+                )
+            classified = classified[start - 1 : min(end, len(classified))]
+        for paragraph, role in classified:
             changed += _format_paragraph(paragraph, role)
-        changed += _format_tables(document)
-        changed += _configure_sections(document)
-        changed += _configure_normal_style(styles)
-        _configure_east_asian_typography(settings)
-        payloads.update(
-            _add_page_footers(
-                document,
-                settings,
-                relationships,
-                content_types,
-                package,
+        if apply_document_layout:
+            changed += _format_tables(document)
+            changed += _configure_sections(document)
+            changed += _configure_normal_style(styles)
+            _configure_east_asian_typography(settings)
+            payloads.update(
+                _add_page_footers(
+                    document,
+                    settings,
+                    relationships,
+                    content_types,
+                    package,
+                )
             )
-        )
         payloads["word/document.xml"] = etree.tostring(document, xml_declaration=True, encoding="UTF-8", standalone=True)
         payloads["word/settings.xml"] = etree.tostring(settings, xml_declaration=True, encoding="UTF-8", standalone=True)
         if styles is not None:
@@ -1044,11 +1052,10 @@ def prepare_docx(source: Path, workspace: Path) -> tuple[Path, bool]:
         return source, False
     converted = _convert_with_libreoffice(source, workspace)
     if converted is None:
-        converted = _convert_with_windows_office(source, workspace)
-    if converted is None:
         raise OfficialFormatError(
-            "OFFICE_SUITE_REQUIRED", "缺少可用的本机办公套件",
-            "DOC/WPS 需要本机已安装的 LibreOffice、Microsoft Office 或 WPS 完成本地转换；当前未检测到可用套件。",
+            "BUNDLED_OFFICE_RUNTIME_MISSING",
+            "内置转换引擎不可用",
+            "PartyOps 安装包中的无窗口转换运行时缺失或损坏；不需要安装 Word、WPS 或其他办公软件，请修复安装 PartyOps。",
         )
     return converted, True
 
@@ -1062,41 +1069,6 @@ def _private_write(path: Path, payload: bytes) -> None:
     except Exception:
         path.unlink(missing_ok=True)
         raise
-
-
-def _install_loopback_only_network_guard() -> Any:
-    """阻止本机助手进程主动连接非回环地址，并返回恢复函数。"""
-
-    original_create_connection = socket.create_connection
-    original_connect = socket.socket.connect
-
-    def is_loopback(host: Any) -> bool:
-        if str(host).lower() == "localhost":
-            return True
-        try:
-            return ipaddress.ip_address(str(host).split("%", 1)[0]).is_loopback
-        except ValueError:
-            return False
-
-    def guarded_create_connection(address: Any, *args: Any, **kwargs: Any) -> Any:
-        if not isinstance(address, tuple) or not address or not is_loopback(address[0]):
-            raise OSError("OFFICIAL_FORMAT_NETWORK_DENIED")
-        return original_create_connection(address, *args, **kwargs)
-
-    def guarded_connect(instance: socket.socket, address: Any) -> Any:
-        if instance.family in {socket.AF_INET, socket.AF_INET6}:
-            if not isinstance(address, tuple) or not address or not is_loopback(address[0]):
-                raise OSError("OFFICIAL_FORMAT_NETWORK_DENIED")
-        return original_connect(instance, address)
-
-    socket.create_connection = guarded_create_connection
-    socket.socket.connect = guarded_connect
-
-    def restore() -> None:
-        socket.create_connection = original_create_connection
-        socket.socket.connect = original_connect
-
-    return restore
 
 
 def _append_stage_log(config_dir: Path, stage: str, started_at: float, code: str) -> None:
@@ -1163,212 +1135,7 @@ def _extract_upload(handler: BaseHTTPRequestHandler) -> tuple[str, bytes]:
     raise OfficialFormatError("UPLOAD_FILE_MISSING", "没有收到文件", "请重新选择文件。")
 
 
-def _escape_issue(issue: FormatIssue) -> str:
-    level = "严重" if issue.severity == "error" else "需复核"
-    return (
-        f'<li class="issue {html.escape(issue.severity)}"><span>{level}</span>'
-        f'<div><strong>{html.escape(issue.title)}</strong><p>{html.escape(issue.detail)}</p>'
-        f'<small>{html.escape(issue.clause)} · {html.escape(issue.code)}</small></div></li>'
-    )
-
-
-def _page(*, token: str, title: str, body: str) -> bytes:
-    return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{html.escape(title)} · PartyOps</title><style>
-*{{box-sizing:border-box}}body{{margin:0;color:#322820;background:#f5efe4;font:14px/1.7 system-ui,"Microsoft YaHei",sans-serif}}main{{width:min(1080px,94vw);margin:4vh auto;background:#fffaf0;border:1px solid #d8c9b5;box-shadow:0 24px 70px #5f39201a}}header{{display:flex;justify-content:space-between;gap:24px;padding:28px 36px;border-bottom:3px solid #a52b23}}header p{{margin:4px 0 0;color:#7d6a5b}}h1,h2{{margin:0;color:#463329;font-family:"Noto Serif SC","Songti SC",serif}}.version{{color:#a52b23;font:700 12px Georgia,serif}}section{{padding:30px 36px}}.security{{margin-bottom:20px;padding:14px 16px;border-left:4px solid #a52b23;background:#f7e9e4;color:#74251f}}.security strong,.security span{{display:block}}.security span{{margin-top:4px;color:#775d52;font-size:12px}}.flow{{display:grid;grid-template-columns:repeat(4,1fr);margin:20px 0;border:1px solid #dacdbb;background:#dacdbb;gap:1px}}.flow div{{padding:14px;background:#faf4e9}}.flow b{{display:block;color:#a52b23;font:700 11px Georgia,serif}}.flow span{{font-size:12px}}input[type=file]{{width:100%;padding:18px;border:1px dashed #bca88e;background:#fffdf8}}button,.button{{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-top:16px;padding:0 22px;border:0;color:#fff;background:#a52b23;text-decoration:none;font-weight:700;cursor:pointer}}.secondary{{margin-left:8px;color:#704c35;background:#eadfce}}.summary{{display:grid;grid-template-columns:repeat(4,1fr);margin:18px 0;border:1px solid #ded0bd}}.summary div{{padding:15px;border-right:1px solid #ded0bd}}.summary div:last-child{{border:0}}.summary span,.summary strong{{display:block}}.summary span{{color:#857262;font-size:11px}}.summary strong{{margin-top:5px;font:700 22px Georgia,serif}}ul.issues{{display:grid;gap:8px;padding:0;list-style:none}}.issue{{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:14px;border:1px solid #ddcfbc;background:#fffdf8}}.issue>span{{color:#9a2c25;font-weight:700}}.issue strong,.issue p,.issue small{{display:block;margin:0}}.issue p,.issue small{{color:#7b6859}}.issue small{{margin-top:4px;font-size:11px}}.ok{{padding:16px;border-left:4px solid #4d7656;background:#edf3e9;color:#31593b}}footer{{padding:18px 36px;border-top:1px solid #ded0bd;color:#76675d;background:#f3eadc;font-size:12px}}@media(max-width:700px){{header{{display:block}}section,header{{padding:22px}}.flow,.summary{{grid-template-columns:1fr}}.summary div{{border-right:0;border-bottom:1px solid #ded0bd}}}}
-</style></head><body><main><header><div><h1>{html.escape(title)}</h1><p>GB/T 9704-2012 单一预设 · 本机一次性处理</p></div><span class="version">PartyOps {VERSION}</span></header><section>{body}</section><footer>普通删除不等同于取证级擦除。工具在导出、取消、异常退出或空闲 15 分钟后清理本次临时副本。</footer></main></body></html>""".encode("utf-8")
-
-
-def _start_body(token: str) -> str:
-    return f"""<div class="security"><strong>不建议在涉密、敏感电脑上使用本功能，也不得使用 PartyOps 处理涉密文件。</strong><span>文件只发送到当前电脑的 127.0.0.1 临时助手，不进入主机、协同机、AI 服务或数据库。</span></div>
-<div class="flow"><div><b>01</b><span>选择文件</span></div><div><b>02</b><span>查看诊断</span></div><div><b>03</b><span>一键排版</span></div><div><b>04</b><span>校验并导出</span></div></div>
-<h2>选择待排版公文</h2><p>仅支持 DOCX；DOC/WPS 由本机 WPS、Office 或 LibreOffice 转换。单文件上限 50 MiB，永不覆盖原文件。</p>
-<form method="post" action="/diagnose?t={html.escape(token)}" enctype="multipart/form-data"><input type="file" name="document" accept=".doc,.docx,.wps" required><button type="submit">开始本机诊断</button></form><form method="post" action="/cancel?t={html.escape(token)}"><button class="secondary" type="submit">退出并清理本次临时文件</button></form>"""
-
-
-def _report_body(token: str, document_id: str, report: FormatReport, *, formatted: bool) -> str:
-    issue_html = "".join(_escape_issue(item) for item in report.issues)
-    if not issue_html:
-        issue_html = '<div class="ok">未发现阻断性版式问题；仍应由公文责任人对内容和特殊版式进行最终复核。</div>'
-    status = "可导出，仍需人工终审" if report.compliant else "存在阻断项，不得标记为符合标准"
-    actions = (
-        f'<a class="button" href="/download/{document_id}?t={html.escape(token)}">下载“公文规范版”DOCX</a>'
-        if formatted
-        else f'<form method="post" action="/format/{document_id}?t={html.escape(token)}"><button type="submit">按 GB/T 9704-2012 一键排版</button></form>'
-    )
-    return f"""<div class="security"><strong>{html.escape(status)}</strong><span>系统只校验版式，不判断公文内容、政治表述或审批程序。</span></div>
-<div class="summary"><div><span>正文段落</span><strong>{report.paragraph_count}</strong></div><div><span>表格</span><strong>{report.table_count}</strong></div><div><span>本次调整</span><strong>{report.changed_count}</strong></div><div><span>问题</span><strong>{len(report.issues)}</strong></div></div>
-<h2>{'排版后复核' if formatted else '排版前诊断'}</h2><ul class="issues">{issue_html}</ul>{actions}<a class="button secondary" href="/?t={html.escape(token)}">重新选择</a><form method="post" action="/cancel?t={html.escape(token)}"><button class="secondary" type="submit">退出并清理</button></form>"""
-
-
-def run_official_format_tool(
-    transaction_id: str,
-    *,
-    open_browser: bool,
-    config_dir: Path,
-) -> int:
-    """运行单次回环工具；协议参数只允许 UUID，不接受路径或文件信息。"""
-
-    try:
-        token = str(uuid.UUID(transaction_id))
-    except (ValueError, AttributeError) as exc:
-        raise OfficialFormatError("FORMAT_TRANSACTION_INVALID", "排版事务无效", "请从 PartyOps 公文规范排版页面重新发起。") from exc
-
-    workspace = Path(tempfile.mkdtemp(prefix="partyops-official-format-"))
-    if os.name != "nt":
-        workspace.chmod(0o700)
-    documents: dict[str, LocalDocument] = {}
-    last_activity = time.monotonic()
-
-    def clear_documents() -> None:
-        for item in documents.values():
-            for path in (item.source, item.output):
-                if path is not None and path.is_file() and workspace in path.parents:
-                    path.unlink(missing_ok=True)
-        documents.clear()
-
-    class Handler(BaseHTTPRequestHandler):
-        server_version = "PartyOpsLocalFormatter/1"
-
-        def _authorized(self) -> bool:
-            nonlocal last_activity
-            host = self.headers.get("Host", "")
-            expected = f"127.0.0.1:{self.server.server_address[1]}"
-            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-            authorized = host == expected and query.get("t") == [token]
-            if authorized:
-                last_activity = time.monotonic()
-            return authorized
-
-        def _send(self, status: int, body: bytes, content_type: str = "text/html; charset=utf-8") -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store, max-age=0")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("X-Frame-Options", "DENY")
-            self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
-            self.end_headers()
-            self.wfile.write(body)
-
-        def _failure(self, error: OfficialFormatError) -> None:
-            detail = f'<div class="security"><strong>{html.escape(error.title)}</strong><span>{html.escape(error.detail)} · {html.escape(error.code)}</span></div><a class="button secondary" href="/?t={html.escape(token)}">返回重新选择</a>'
-            self._send(422, _page(token=token, title="公文排版未完成", body=detail))
-
-        def do_GET(self) -> None:  # noqa: N802
-            if not self._authorized():
-                self._send(403, b"forbidden", "text/plain; charset=utf-8")
-                return
-            path = urllib.parse.urlsplit(self.path).path
-            if path == "/":
-                self._send(200, _page(token=token, title="公文规范排版", body=_start_body(token)))
-                return
-            match = re.fullmatch(r"/download/([0-9a-f]{32})", path)
-            if not match or match.group(1) not in documents:
-                self._send(404, b"not found", "text/plain; charset=utf-8")
-                return
-            item = documents[match.group(1)]
-            if item.output is None or not item.output.is_file():
-                self._send(410, b"gone", "text/plain; charset=utf-8")
-                return
-            payload = item.output.read_bytes()
-            filename = urllib.parse.quote(f"{item.original_stem}-公文规范版.docx")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
-            self.send_header("Content-Length", str(len(payload)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.end_headers()
-            self.wfile.write(payload)
-            _append_stage_log(config_dir, "download", last_activity, "OK")
-            threading.Thread(target=self.server.shutdown, daemon=True).start()
-
-        def do_POST(self) -> None:  # noqa: N802
-            if not self._authorized():
-                self._send(403, b"forbidden", "text/plain; charset=utf-8")
-                return
-            path = urllib.parse.urlsplit(self.path).path
-            try:
-                if path == "/cancel":
-                    clear_documents()
-                    self._send(200, _page(token=token, title="临时文件已清理", body='<div class="ok">本次临时副本已删除，可以关闭此页面。</div>'))
-                    _append_stage_log(config_dir, "cancel", last_activity, "OK")
-                    threading.Thread(target=self.server.shutdown, daemon=True).start()
-                    return
-                if path == "/diagnose":
-                    started = time.monotonic()
-                    filename, payload = _extract_upload(self)
-                    document_id = uuid.uuid4().hex
-                    source = workspace / f"{document_id}{Path(filename).suffix.lower()}"
-                    _private_write(source, payload)
-                    prepared, converted = prepare_docx(source, workspace)
-                    report = diagnose_docx(prepared)
-                    clear_documents()
-                    documents[document_id] = LocalDocument(prepared, _safe_stem(filename), converted, report=report)
-                    _append_stage_log(config_dir, "diagnose", started, "OK")
-                    self._send(200, _page(token=token, title="排版前诊断", body=_report_body(token, document_id, report, formatted=False)))
-                    return
-                match = re.fullmatch(r"/format/([0-9a-f]{32})", path)
-                if match and match.group(1) in documents:
-                    started = time.monotonic()
-                    item = documents[match.group(1)]
-                    output = workspace / f"{match.group(1)}-formatted.docx"
-                    report = format_docx(item.source, output)
-                    item.output = output
-                    item.report = report
-                    _append_stage_log(config_dir, "format", started, "OK")
-                    self._send(200, _page(token=token, title="排版后复核", body=_report_body(token, match.group(1), report, formatted=True)))
-                    return
-                self._send(404, b"not found", "text/plain; charset=utf-8")
-            except OfficialFormatError as exc:
-                _append_stage_log(config_dir, "process", last_activity, exc.code)
-                self._failure(exc)
-            except (OSError, ValueError, etree.Error) as exc:
-                _append_stage_log(config_dir, "process", last_activity, "FORMAT_PROCESS_FAILED")
-                self._failure(OfficialFormatError("FORMAT_PROCESS_FAILED", "本机排版未完成", f"文档结构或本机办公套件返回异常：{type(exc).__name__}。原文件未改变。"))
-
-        def log_message(self, _format: str, *_args: object) -> None:
-            return
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    restore_network = _install_loopback_only_network_guard()
-    url = f"http://127.0.0.1:{server.server_address[1]}/?t={token}"
-    marker = config_dir / "official-format.url"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    marker.write_text(url + "\n", encoding="utf-8")
-    if os.name != "nt":
-        marker.chmod(0o600)
-
-    def idle_watch() -> None:
-        while time.monotonic() - last_activity < IDLE_TIMEOUT_SECONDS:
-            time.sleep(5)
-        server.shutdown()
-
-    watcher = threading.Thread(target=idle_watch, daemon=True)
-    watcher.start()
-    try:
-        _append_stage_log(config_dir, "start", time.monotonic(), "OK")
-        if open_browser and not webbrowser.open(url, new=1):
-            raise OfficialFormatError("BROWSER_OPEN_FAILED", "无法打开本机排版页面", "请检查系统默认浏览器关联后重试。")
-        server.serve_forever(poll_interval=0.5)
-        return 0
-    finally:
-        server.server_close()
-        restore_network()
-        try:
-            if marker.read_text(encoding="utf-8").strip() == url:
-                marker.unlink(missing_ok=True)
-        except OSError:
-            pass
-        _append_stage_log(config_dir, "cleanup", last_activity, "OK")
-        shutil.rmtree(workspace, ignore_errors=True)
-
-
 __all__ = [
     "FormatIssue", "FormatReport", "OfficialFormatError", "diagnose_docx",
     "format_docx", "normalize_chinese_punctuation", "prepare_docx",
-    "run_official_format_tool",
 ]

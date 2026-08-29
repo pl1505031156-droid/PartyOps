@@ -104,6 +104,7 @@ from ..schemas import (
 )
 from ..security import get_current_user, hash_token, require_admin
 from ..task_service import can_edit_task
+from ..time_utils import beijing_iso
 from ..workspace import resolve_workspace_path, store_managed_path
 from ..workspace_access import (
     DEVICE_GRANT_CAPABILITIES,
@@ -988,7 +989,7 @@ def delete_managed_device(
         metadata = dict(device.device_metadata or {})
         metadata.update(
             {
-                "deleted_at": deleted_at.isoformat(),
+                "deleted_at": beijing_iso(deleted_at),
                 "deleted_by": admin.id,
                 "original_name": original_name,
             }

@@ -304,9 +304,6 @@ launch_browser_tool() {
         partyops-client://reconfigure|partyops-client://reconfigure/)
           marker_name="wizard.url"
           ;;
-        partyops-client://official-format/*)
-          marker_name="official-format.url"
-          ;;
       esac
     done
   fi

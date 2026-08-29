@@ -4,7 +4,6 @@ param(
   [string]$SqliteSha256 = "",
   [string]$InnoCompiler = "",
   [string]$OfficeRuntime = "",
-  [ValidateSet("bundled", "external")][string]$OfficeRuntimeMode = "bundled",
   [ValidateSet("", "amd64", "x86")][string]$LegacyArchitecture = ""
 )
 
@@ -13,6 +12,8 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
 $releaseVersion = "1.4.5-rc.6"
 $releaseTag = "v1.4.5-rc.6"
+& $Python (Join-Path $repoRoot "scripts\verify-full-function-gate.py") verify --root $repoRoot
+if ($LASTEXITCODE -ne 0) { throw "全功能测试门禁失败，拒绝生成 Windows 安装包。" }
 & $Python (Join-Path $repoRoot "scripts\verify-version-consistency.py") `
   --root $repoRoot --expected $releaseVersion
 if ($LASTEXITCODE -ne 0) { throw "版本一致性门禁失败，拒绝冻结 Windows 制品。" }
@@ -21,40 +22,41 @@ $targetArchitecture = if ($isLegacy) { $LegacyArchitecture } else { "amd64" }
 $runtimeProfile = if (-not $isLegacy) { "full" } elseif ($targetArchitecture -eq "amd64") { "legacy-smart" } else { "legacy-core" }
 $platformFamily = if ($isLegacy) { "windows7" } else { "windows" }
 $artifactSuffix = if ($isLegacy) { "windows7-$targetArchitecture" } else { "windows-amd64" }
-$OfficeRuntime = if ($OfficeRuntimeMode -eq "bundled") {
-  if ($OfficeRuntime) { (Resolve-Path -LiteralPath $OfficeRuntime).Path } else {
-    Join-Path $repoRoot "vendor\windows\libreoffice-headless-$targetArchitecture"
+$OfficeRuntime = if ($OfficeRuntime) { (Resolve-Path -LiteralPath $OfficeRuntime).Path } else {
+  $runtimeName = if ($isLegacy -and $targetArchitecture -eq "amd64") {
+    "libreoffice-headless-win7-amd64"
+  } else {
+    "libreoffice-headless-$targetArchitecture"
   }
-} else { "" }
-if ($OfficeRuntimeMode -eq "bundled") {
-  $officeExecutable = Join-Path $OfficeRuntime "program\soffice.exe"
-  $officeSource = Join-Path $OfficeRuntime "SOURCE.json"
-  $officeLicenses = Join-Path $OfficeRuntime "licenses"
-  if (-not (Test-Path -LiteralPath $officeExecutable) -or
-      -not (Test-Path -LiteralPath $officeSource) -or
-      -not (Test-Path -LiteralPath $officeLicenses -PathType Container)) {
-    throw "[OFFICE_RUNTIME_MISSING] 缺少 $targetArchitecture 经许可审计的 LibreOffice headless 运行时、来源清单或许可证。"
-  }
-  if (Get-ChildItem -LiteralPath $OfficeRuntime -Recurse -Force | Where-Object {
-      $_.Attributes -band [IO.FileAttributes]::ReparsePoint
-    } | Select-Object -First 1) {
-    throw "[OFFICE_RUNTIME_REPARSE_POINT] LibreOffice 运行时不得包含联接、符号链接或其它重解析点。"
-  }
-  $officeBytes = [IO.File]::ReadAllBytes($officeExecutable)
-  if ($officeBytes.Length -lt 64 -or $officeBytes[0] -ne 0x4D -or $officeBytes[1] -ne 0x5A) {
-    throw "[OFFICE_RUNTIME_PE_INVALID] LibreOffice soffice.exe 不是有效 PE 文件。"
-  }
-  $peOffset = [BitConverter]::ToInt32($officeBytes, 0x3C)
-  if ($peOffset -lt 0 -or $peOffset + 6 -gt $officeBytes.Length -or
-      $officeBytes[$peOffset] -ne 0x50 -or $officeBytes[$peOffset + 1] -ne 0x45 -or
-      $officeBytes[$peOffset + 2] -ne 0 -or $officeBytes[$peOffset + 3] -ne 0) {
-    throw "[OFFICE_RUNTIME_PE_INVALID] LibreOffice soffice.exe 的 PE 头越界或签名无效。"
-  }
-  $machine = [BitConverter]::ToUInt16($officeBytes, $peOffset + 4)
-  $expectedMachine = if ($targetArchitecture -eq "amd64") { 0x8664 } else { 0x014C }
-  if ($machine -ne $expectedMachine) {
-    throw "[OFFICE_RUNTIME_ARCH_MISMATCH] LibreOffice PE 架构与 $targetArchitecture 不一致。"
-  }
+  Join-Path $repoRoot "vendor\windows\$runtimeName"
+}
+$officeExecutable = Join-Path $OfficeRuntime "program\soffice.exe"
+$officeSource = Join-Path $OfficeRuntime "SOURCE.json"
+$officeLicenses = Join-Path $OfficeRuntime "licenses"
+if (-not (Test-Path -LiteralPath $officeExecutable) -or
+    -not (Test-Path -LiteralPath $officeSource) -or
+    -not (Test-Path -LiteralPath $officeLicenses -PathType Container)) {
+  throw "[OFFICE_RUNTIME_MISSING] 缺少 $targetArchitecture 经许可审计的 LibreOffice headless 运行时、来源清单或许可证。"
+}
+if (Get-ChildItem -LiteralPath $OfficeRuntime -Recurse -Force | Where-Object {
+    $_.Attributes -band [IO.FileAttributes]::ReparsePoint
+  } | Select-Object -First 1) {
+  throw "[OFFICE_RUNTIME_REPARSE_POINT] LibreOffice 运行时不得包含联接、符号链接或其它重解析点。"
+}
+$officeBytes = [IO.File]::ReadAllBytes($officeExecutable)
+if ($officeBytes.Length -lt 64 -or $officeBytes[0] -ne 0x4D -or $officeBytes[1] -ne 0x5A) {
+  throw "[OFFICE_RUNTIME_PE_INVALID] LibreOffice soffice.exe 不是有效 PE 文件。"
+}
+$peOffset = [BitConverter]::ToInt32($officeBytes, 0x3C)
+if ($peOffset -lt 0 -or $peOffset + 6 -gt $officeBytes.Length -or
+    $officeBytes[$peOffset] -ne 0x50 -or $officeBytes[$peOffset + 1] -ne 0x45 -or
+    $officeBytes[$peOffset + 2] -ne 0 -or $officeBytes[$peOffset + 3] -ne 0) {
+  throw "[OFFICE_RUNTIME_PE_INVALID] LibreOffice soffice.exe 的 PE 头越界或签名无效。"
+}
+$machine = [BitConverter]::ToUInt16($officeBytes, $peOffset + 4)
+$expectedMachine = if ($targetArchitecture -eq "amd64") { 0x8664 } else { 0x014C }
+if ($machine -ne $expectedMachine) {
+  throw "[OFFICE_RUNTIME_ARCH_MISMATCH] LibreOffice PE 架构与 $targetArchitecture 不一致。"
 }
 $ucrtArchitecture = if ($targetArchitecture -eq "amd64") { "x64" } else { "x86" }
 $ucrtRoot = Join-Path $repoRoot "vendor\windows\ucrt-10.0.19041.0-$ucrtArchitecture"
@@ -99,6 +101,38 @@ $siteCustomizeRoot = Join-Path $repoRoot ".build-windows\sitecustomize"
 $installPathValidator = Join-Path $PSScriptRoot "validate-install-path.ps1"
 function Assert-NativeSuccess([string]$Stage) {
   if ($LASTEXITCODE -ne 0) { throw "$Stage 失败，退出码：$LASTEXITCODE" }
+}
+
+function Remove-LegacyOfficeInstallerArtifacts([string]$RuntimeRoot) {
+  # LibreOffice 官方 MSI 会同时展开安装器专用的 System/System64 VC 运行库、
+  # .NET UNO 桥接程序集、distutils 安装器和扫描仪兼容程序。这些文件不会被
+  # PartyOps 的无界面文档转换链路加载；其中还包含与主程序不同架构的 PE，
+  # 保留它们既扩大离线包，也会让 Win7 架构门禁无法证明实际运行闭包纯净。
+  foreach ($installerDirectory in @("System", "System64")) {
+    $path = Join-Path $RuntimeRoot $installerDirectory
+    if (Test-Path -LiteralPath $path) {
+      Remove-Item -LiteralPath $path -Recurse -Force
+    }
+  }
+  $programRoot = Join-Path $RuntimeRoot "program"
+  foreach ($pattern in @(
+      "cli_*.config",
+      "cli_*.dll",
+      "policy.*.cli_*.dll",
+      "spsupp_x86.dll",
+      "twain32shim.exe"
+    )) {
+    Get-ChildItem -LiteralPath $programRoot -File -Filter $pattern |
+      Remove-Item -Force
+  }
+  Get-ChildItem -LiteralPath $programRoot -Directory -Filter "python-core-*" |
+    ForEach-Object {
+      $distutilsCommand = Join-Path $_.FullName "lib\distutils\command"
+      if (Test-Path -LiteralPath $distutilsCommand) {
+        Get-ChildItem -LiteralPath $distutilsCommand -File -Filter "wininst-*.exe" |
+          Remove-Item -Force
+      }
+    }
 }
 $validatorBytes = [IO.File]::ReadAllBytes($installPathValidator)
 if ($validatorBytes.Length -lt 3 -or
@@ -434,13 +468,10 @@ if ($isLegacy) {
     -Destination (Join-Path $bundleRoot "vc-runtime-source.json") -Force
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\uos\update-public-key.txt") -Destination $bundleRoot -Force
-if ($OfficeRuntimeMode -eq "bundled") {
-  Copy-Item -LiteralPath $OfficeRuntime -Destination (Join-Path $bundleRoot "office-runtime") -Recurse -Force
-} else {
-  [ordered]@{
-    mode = "external"
-    reason = "该候选平台没有满足当前安全基线的可再分发 LibreOffice 运行时；DOC/WPS 需使用用户已安装且已更新的办公套件。"
-  } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $bundleRoot "office-runtime-status.json") -Encoding UTF8
+$bundledOfficeRuntime = Join-Path $bundleRoot "office-runtime"
+Copy-Item -LiteralPath $OfficeRuntime -Destination $bundledOfficeRuntime -Recurse -Force
+if ($isLegacy) {
+  Remove-LegacyOfficeInstallerArtifacts -RuntimeRoot $bundledOfficeRuntime
 }
 Copy-Item -LiteralPath $brandIcon -Destination (Join-Path $bundleRoot "partyops.ico") -Force
 Copy-Item -LiteralPath $brandImage -Destination (Join-Path $bundleRoot "partyops-1024.png") -Force

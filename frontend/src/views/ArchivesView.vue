@@ -19,6 +19,7 @@ import BusinessUploadQueue from "../components/BusinessUploadQueue.vue";
 import LedgerImportWizard from "../components/LedgerImportWizard.vue";
 import { useUploadQueue } from "../composables/useUploadQueue";
 import { useSessionStore } from "../stores/session";
+import { beijingNow } from "../utils/datetime";
 import type {
   ArchiveAttachment,
   ArchiveAccessGrant,
@@ -37,7 +38,7 @@ const session = useSessionStore();
 const categories = ref<ArchiveCategory[]>([]);
 const years = ref<ArchiveYearSummary[]>([]);
 const records = ref<ArchiveRecord[]>([]);
-const selectedYear = ref(new Date().getFullYear());
+const selectedYear = ref(beijingNow().year());
 const selectedCategoryId = ref("");
 const keyword = ref("");
 const statusFilter = ref<"active" | "voided">("active");
@@ -98,7 +99,7 @@ watch(archiveUploadQueue.pending, async (pending, previous) => {
 
 const recordForm = reactive({
   category_id: "",
-  archive_year: new Date().getFullYear(),
+  archive_year: beijingNow().year(),
   sequence_no: undefined as number | undefined,
   document_no: "",
   title: "",

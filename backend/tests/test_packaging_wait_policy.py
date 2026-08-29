@@ -989,6 +989,33 @@ def test_win7_pins_vc142_instead_of_collecting_build_host_runtime() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_win7_prunes_inert_mixed_architecture_office_installer_payloads() -> None:
+    """Win7 运行闭包不得携带 LibreOffice MSI 的跨架构安装辅助程序。"""
+
+    build = (ROOT / "packaging" / "windows" / "build-windows.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "function Remove-LegacyOfficeInstallerArtifacts" in build
+    assert 'foreach ($installerDirectory in @("System", "System64"))' in build
+    for pattern in (
+        '"cli_*.dll"',
+        '"policy.*.cli_*.dll"',
+        '"spsupp_x86.dll"',
+        '"twain32shim.exe"',
+        '"wininst-*.exe"',
+    ):
+        assert pattern in build
+    copy_index = build.index(
+        "Copy-Item -LiteralPath $OfficeRuntime -Destination $bundledOfficeRuntime"
+    )
+    prune_index = build.index(
+        "Remove-LegacyOfficeInstallerArtifacts -RuntimeRoot $bundledOfficeRuntime"
+    )
+    manifest_index = build.index("generate-release-manifest.py")
+    assert copy_index < prune_index < manifest_index
+
+
 def test_linux_wizard_freeze_includes_tcl_runtime_and_entrypoint_smoke() -> None:
     """数据目录选择器依赖 Tcl/Tk，不能只验证主机服务就发布。"""
 
@@ -1364,3 +1391,5 @@ def test_windows_build_requires_audited_architecture_matched_office_runtime() ->
     assert "[OFFICE_RUNTIME_ARCH_MISMATCH]" in build
     assert 'Join-Path $bundleRoot "office-runtime"' in build
     assert "-OfficeRuntime $OfficeRuntime" in legacy
+    assert "OfficeRuntimeMode" not in build
+    assert "OfficeRuntimeMode" not in legacy

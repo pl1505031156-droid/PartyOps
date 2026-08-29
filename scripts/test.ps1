@@ -1,3 +1,7 @@
+param(
+  [string]$DocumentFormatterSource = $env:PARTYOPS_DOCUMENT_FORMATTER_SOURCE
+)
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -11,6 +15,14 @@ if (-not $corepackCommand) {
 }
 $corepack = $corepackCommand.Source
 
+if ([string]::IsNullOrWhiteSpace($DocumentFormatterSource)) {
+  $DocumentFormatterSource = "E:\paiban\PartyOps.DocumentFormatter.Source"
+}
+$formatterBuild = Join-Path $DocumentFormatterSource "tools\Build-Windows.ps1"
+if (-not (Test-Path -LiteralPath $formatterBuild)) {
+  throw "缺少新排版工具唯一功能规格：$DocumentFormatterSource。打包门禁要求先完成其 x64/x86 源码构建与功能回归。"
+}
+
 function Invoke-Checked {
   param(
     [Parameter(Mandatory = $true)][scriptblock]$Command,
@@ -21,6 +33,11 @@ function Invoke-Checked {
     throw "$Name 失败，退出码：$LASTEXITCODE"
   }
 }
+
+# 先重新构建并运行用户提供的新工具原始 x64/x86 功能契约，避免仅验证迁移后的
+# 自有测试而漏掉规格源中的能力变化。此步骤不会发布或启动外部产品窗口。
+Invoke-Checked { & $formatterBuild -Configuration Release -Platform x64 } "新排版工具 Release|x64 源码构建与功能回归"
+Invoke-Checked { & $formatterBuild -Configuration Release -Platform x86 } "新排版工具 Release|x86 源码构建与功能回归"
 
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "frontend") audit --prod --audit-level high } "前端生产依赖审计"
 Invoke-Checked { & $corepack pnpm --dir (Join-Path $root "website") audit --prod --audit-level high } "官网生产依赖审计"
@@ -56,3 +73,8 @@ try {
 finally {
     Pop-Location
 }
+
+# 只有前述全量功能、覆盖率、安全与生产构建全部通过，才写入平台打包门禁。
+Invoke-Checked {
+  & $python (Join-Path $root "scripts\verify-full-function-gate.py") record --root $root
+} "记录全功能测试门禁"

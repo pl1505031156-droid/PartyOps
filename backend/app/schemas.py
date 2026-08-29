@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date as dt_date
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -38,13 +38,7 @@ from .enums import (
     TaskType,
     UserRole,
 )
-
-# ``datetime.UTC`` 仅在 Python 3.11+ 提供。Win7 专用运行时仍使用受维护的
-# CPython 3.8 安全回移环境，因此统一复用跨版本等价常量。
-UTC = timezone.utc
-# 中国大陆业务界面统一使用北京时间。SQLite 的 DateTime 列不携带时区，
-# 因此只在“请求边界”解释无时区输入，数据库和接口内部仍保存/输出 UTC。
-BEIJING_TIMEZONE = timezone(timedelta(hours=8), "Asia/Shanghai")
+from .time_utils import BEIJING_TIMEZONE, UTC, beijing_iso
 
 
 def _normalize_request_datetime(value: Any, field_name: str) -> Any:
@@ -78,10 +72,9 @@ def _normalize_request_datetime(value: Any, field_name: str) -> Any:
 
 
 def serialize_api_datetime(value: datetime) -> str:
-    """所有接口时间统一输出 RFC 3339 UTC，旧库无时区值按 UTC 解释。"""
+    """所有接口时间统一输出带 ``+08:00`` 的 RFC 3339 北京时间。"""
 
-    aware = value.replace(tzinfo=UTC) if value.tzinfo is None else value
-    return aware.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return beijing_iso(value)
 
 
 class BaseModel(PydanticBaseModel):

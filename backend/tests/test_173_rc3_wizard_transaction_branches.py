@@ -9,7 +9,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 from pathlib import Path
 
 import pytest
@@ -318,26 +317,16 @@ def test_setup_wizard_main_privilege_and_protocol_validation(
     monkeypatch.setattr(setup_wizard, "windows_is_admin", lambda: True)
     monkeypatch.setattr(setup_wizard.os, "name", "nt")
     assert "缺少 --data-dir" in run("--privileged-host-config")
-    assert "无效的公文排版事务地址" in run(
+    assert "无效的本机共享操作地址" in run(
         "--manage-shared-roots",
         "--action-uri",
         "partyops-client://official-format/not-a-uuid?unsafe=1",
     )
-    assert "公文排版事务标识无效" in run(
+    assert "无效的本机共享操作地址" in run(
         "--manage-shared-roots",
         "--action-uri",
         "partyops-client://official-format/not-a-uuid",
     )
-    valid_id = str(uuid.uuid4())
-    monkeypatch.setattr(
-        "app.official_format.run_official_format_tool",
-        lambda transaction_id, **_kwargs: 7 if transaction_id == valid_id else 9,
-    )
-    assert run(
-        "--manage-shared-roots",
-        "--action-uri",
-        f"partyops-client://official-format/{valid_id}",
-    ) == "7"
     assert "无效的重新配置地址" in run(
         "--manage-shared-roots",
         "--action-uri",

@@ -183,7 +183,7 @@ class JsonLogFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, object] = {
-            "time": datetime.fromtimestamp(record.created).astimezone().isoformat(),
+            "time": serialize_api_datetime(datetime.fromtimestamp(record.created)),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

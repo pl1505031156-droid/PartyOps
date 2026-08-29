@@ -186,7 +186,7 @@ def test_period_report_journal_templates_and_status(
     assert journal.status_code == 201, journal.text
     assert journal.json()["actor_name"] == admin["display_name"]
     assert journal.json()["actor_role_label"] == "管理员"
-    assert journal.json()["created_at"].endswith("Z")
+    assert journal.json()["created_at"].endswith("+08:00")
     changed = client.patch(
         f"/api/v1/work-journal/{journal.json()['id']}",
         headers={"If-Match": str(journal.json()["version"])},

@@ -69,6 +69,7 @@ from ..schemas import (
 )
 from ..security import get_current_user, require_admin
 from ..spreadsheet_security import safe_spreadsheet_row
+from ..time_utils import beijing_iso
 from .router_utils import client_ip, parse_if_match
 
 router = APIRouter(tags=["party-development"])
@@ -440,7 +441,7 @@ def create_case(
         "name": profile.name,
         "version": profile.version,
         "assumptions": dict(profile.assumptions),
-        "captured_at": utcnow().isoformat(),
+        "captured_at": beijing_iso(utcnow()),
     }
     item = PartyDevelopmentCase(
         party_committee=payload.party_committee.strip(),
@@ -615,7 +616,7 @@ def create_case_from_calculation(
             "name": profile.name,
             "version": profile.version,
             "assumptions": dict(profile.assumptions),
-            "captured_at": utcnow().isoformat(),
+            "captured_at": beijing_iso(utcnow()),
         },
         created_by=user.id,
     )

@@ -184,7 +184,7 @@ def test_meeting_import_is_draft_first_and_requires_exact_confirmation(client, a
     )
     assert confirmed.status_code == 200, confirmed.text
     updated = confirmed.json()
-    assert updated["meeting"]["scheduled_at"] == "2026-08-28T10:00:00+00:00"
+    assert updated["meeting"]["scheduled_at"] == "2026-08-28T18:00:00+08:00"
     assert all(item["source"] == "用户人工确认" for item in updated["topics"])
 
     committed = client.post(

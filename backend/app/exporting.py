@@ -26,6 +26,7 @@ from .schemas import serialize_api_datetime
 from .spreadsheet_security import safe_spreadsheet_row
 from .storage import resolve_blob_path
 from .task_service import can_view_task, task_to_out, visible_tasks
+from .time_utils import beijing_now, to_beijing
 
 STATUS_LABELS = {
     "pending_receipt": "待接收",
@@ -40,7 +41,7 @@ STATUS_LABELS = {
 
 
 def _stamp() -> str:
-    return datetime.now().strftime("%Y%m%d-%H%M%S")
+    return beijing_now().strftime("%Y%m%d-%H%M%S")
 
 
 def _safe_name(value: str) -> str:
@@ -173,16 +174,16 @@ def export_tasks_xlsx(db: Session, user: User, kind: str = "台账") -> Path:
                     task.task_type.value,
                     STATUS_LABELS[task.status.value],
                     users.get(task.owner_id, "未知"),
-                    task.formal_due_at.isoformat(sep=" ", timespec="minutes")
+                    to_beijing(task.formal_due_at).isoformat(sep=" ", timespec="minutes")
                     if task.formal_due_at
                     else "",
-                    task.internal_due_at.isoformat(sep=" ", timespec="minutes")
+                    to_beijing(task.internal_due_at).isoformat(sep=" ", timespec="minutes")
                     if task.internal_due_at
                     else "",
                     task.source,
                     output.missing_required_materials,
                     task.experience_notes,
-                    task.updated_at.isoformat(sep=" ", timespec="minutes"),
+                    to_beijing(task.updated_at).isoformat(sep=" ", timespec="minutes"),
                 ])
             )
     for index, width in enumerate(widths, 1):
@@ -211,7 +212,7 @@ def export_tasks_docx(db: Session, user: User, kind: str = "周工作清单") ->
     run.bold = True
     run.font.size = Pt(20)
     run.font.name = "Noto Sans CJK SC"
-    meta = document.add_paragraph(f"生成时间：{datetime.now():%Y-%m-%d %H:%M}")
+    meta = document.add_paragraph(f"生成时间（北京时间）：{beijing_now():%Y-%m-%d %H:%M}")
     meta.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     tasks = _tasks_for_kind(db, user, kind)
     users = {item.id: item.display_name for item in db.scalars(select(User)).all()}
@@ -233,8 +234,8 @@ def export_tasks_docx(db: Session, user: User, kind: str = "周工作清单") ->
             task.category,
             users.get(task.owner_id, "未知"),
             STATUS_LABELS[task.status.value],
-            task.internal_due_at.strftime("%m-%d %H:%M") if task.internal_due_at else "",
-            task.formal_due_at.strftime("%m-%d %H:%M") if task.formal_due_at else "",
+            to_beijing(task.internal_due_at).strftime("%m-%d %H:%M") if task.internal_due_at else "",
+            to_beijing(task.formal_due_at).strftime("%m-%d %H:%M") if task.formal_due_at else "",
             "齐全" if output.missing_required_materials == 0 else f"缺 {output.missing_required_materials} 项",
         ]
         for cell, value in strict_zip(cells, values):

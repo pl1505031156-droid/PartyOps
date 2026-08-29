@@ -41,6 +41,7 @@ from .recommendations import index_semantic_batch, refresh_rule_recommendations
 from .recurrence import run_due_rules
 from .routers.business import generate_due_recurring_meetings
 from .storage import purge_expired_deleted_attachments
+from .time_utils import beijing_now
 
 
 def cleanup_transfer_storage(db, settings) -> int:
@@ -450,7 +451,7 @@ async def scheduler_loop(stop_event: asyncio.Event) -> None:
             last_backup_day = await to_thread(
                 _run_scheduler_cycle,
                 settings,
-                datetime.now(),
+                beijing_now(),
                 last_backup_day,
             )
         except Exception:

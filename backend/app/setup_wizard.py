@@ -31,7 +31,6 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 import webbrowser
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -54,6 +53,7 @@ from .client_agent import (
 )
 from .networking import discover_lan_addresses
 from .startup_diagnostics import public_startup_message
+from .time_utils import beijing_iso
 from .windows_host_status import (
     CHILD_EXITED,
     HEALTH_TIMEOUT,
@@ -2119,7 +2119,7 @@ def _record_windows_autostart_warning(message: str) -> None:
         path = config_root() / "autostart-warning.log"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as stream:
-            stream.write(f"{datetime.now(timezone.utc).isoformat()} {message}\n")
+            stream.write(f"{beijing_iso(datetime.now(timezone.utc))} {message}\n")
     except OSError:
         pass
 
@@ -3780,7 +3780,7 @@ def _record_wizard_failure(exc: Exception) -> str:
     diagnostic_id = secrets.token_hex(6)
     log_path = config_root() / "wizard-errors.log"
     entry = (
-        f"\n[{datetime.now(timezone.utc).isoformat()}] {diagnostic_id} "
+        f"\n[{beijing_iso(datetime.now(timezone.utc))}] {diagnostic_id} "
         f"{type(exc).__name__}\n{traceback.format_exc()}"
     )
     try:
@@ -4991,29 +4991,6 @@ def main() -> None:
         action_token = ""
         if args.action_uri:
             parsed = urllib.parse.urlparse(args.action_uri)
-            if parsed.scheme == "partyops-client" and parsed.netloc == "official-format":
-                if parsed.query or parsed.fragment:
-                    raise SystemExit("无效的公文排版事务地址")
-                transaction_id = parsed.path.strip("/")
-                try:
-                    transaction_id = str(uuid.UUID(transaction_id))
-                except (ValueError, AttributeError) as exc:
-                    raise SystemExit("公文排版事务标识无效") from exc
-                from .official_format import (
-                    OfficialFormatError,
-                    run_official_format_tool,
-                )
-
-                try:
-                    raise SystemExit(
-                        run_official_format_tool(
-                            transaction_id,
-                            open_browser=not args.no_browser,
-                            config_dir=config_root(),
-                        )
-                    )
-                except OfficialFormatError as exc:
-                    raise SystemExit(f"[{exc.code}] {exc.title}：{exc.detail}") from exc
             if parsed.scheme == "partyops-client" and parsed.netloc == "reconfigure":
                 if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
                     raise SystemExit("无效的重新配置地址")

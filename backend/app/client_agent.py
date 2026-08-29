@@ -38,6 +38,7 @@ from cryptography.x509.oid import NameOID
 from .enrollment_codes import normalize_enrollment_code as _normalize_enrollment_code
 from .platform_info import detect_platform_info
 from .schemas import serialize_api_datetime
+from .time_utils import beijing_iso
 
 AGENT_VERSION = "1.4.5-rc.6"
 AGENT_PROTOCOL_VERSION = 2
@@ -92,7 +93,7 @@ def _record_agent_failure(
     status = getattr(exc, "code", None)
     logger.warning("operation_failed operation=%s type=%s status=%s", operation, type(exc).__name__, status or "")
     config["last_agent_error"] = operation
-    config["last_agent_error_at"] = datetime.now(timezone.utc).isoformat()
+    config["last_agent_error_at"] = beijing_iso()
     authentication_failed = (
         isinstance(exc, urllib.error.HTTPError) and exc.code in {401, 403}
     )

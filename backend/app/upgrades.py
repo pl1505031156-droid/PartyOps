@@ -7,7 +7,6 @@ import os
 import tempfile
 import zipfile
 from contextlib import closing
-from datetime import datetime
 from pathlib import Path
 
 from .backups import (
@@ -21,6 +20,7 @@ from .backups import (
 from .config import get_settings
 from .database import db_runtime
 from .models import UpgradeRecord, utcnow
+from .time_utils import beijing_iso, beijing_now
 
 UPGRADE_TRANSACTION_FILENAME = "upgrade-transaction.json"
 ACTIVE_UPGRADE_STATES = frozenset({"backup_verified", "migrating", "validating"})
@@ -97,7 +97,7 @@ def write_upgrade_transaction_state(
         "target_revision": SCHEMA_VERSION,
         "backup_filename": backup_filename,
         "detail_code": detail_code,
-        "updated_at": datetime.now().astimezone().isoformat(),
+        "updated_at": beijing_iso(),
     }
     target = upgrade_transaction_path()
     descriptor, temporary_name = tempfile.mkstemp(
@@ -192,7 +192,7 @@ def restore_database_from_upgrade_backup(path: Path) -> None:
         db_runtime.dispose()
         failed = settings.database_path.with_name(
             f"{settings.database_path.stem}.upgrade-failed-"
-            f"{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
+            f"{beijing_now().strftime('%Y%m%d-%H%M%S-%f')}"
             f"{settings.database_path.suffix}"
         )
         moved_companions: list[tuple[Path, Path]] = []

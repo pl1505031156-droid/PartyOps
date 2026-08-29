@@ -6,7 +6,7 @@ import { api, downloadUrl } from "../api";
 import PageHelp from "../components/PageHelp.vue";
 import type { SavedView, Task, TaskStatus, User } from "../types";
 import TaskStatusTag from "../components/TaskStatusTag.vue";
-import { dayjs, formatServerTime, localInputToUtc, serverTime } from "../utils/datetime";
+import { beijingNow, formatServerTime, localInputToUtc, serverTime } from "../utils/datetime";
 
 const loading = ref(false);
 const tasks = ref<Task[]>([]);
@@ -33,7 +33,7 @@ const batchForm = reactive({
   note: "",
 });
 const viewMode = ref<"table" | "board" | "calendar" | "timeline">("table");
-const calendarAnchor = ref(dayjs().startOf("month"));
+const calendarAnchor = ref(beijingNow().startOf("month"));
 const statusOptions = [
   ["", "全部状态"],
   ["pending_receipt", "待接收"],
@@ -65,7 +65,7 @@ const calendarTaskMap = computed(() => {
   for (const task of tasks.value) {
     const date = task.planned_start_at || task.internal_due_at || task.formal_due_at;
     if (!date) continue;
-    const key = dayjs(date).format("YYYY-MM-DD");
+    const key = serverTime(date).format("YYYY-MM-DD");
     (result[key] ||= []).push(task);
   }
   return result;
@@ -350,7 +350,7 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
         <a-button size="small" @click="shiftCalendar(-1)">上个月</a-button>
         <h2>{{ calendarAnchor.format("YYYY 年 M 月") }}</h2>
         <a-space>
-          <a-button size="small" @click="calendarAnchor = dayjs().startOf('month')">本月</a-button>
+          <a-button size="small" @click="calendarAnchor = beijingNow().startOf('month')">本月</a-button>
           <a-button size="small" @click="shiftCalendar(1)">下个月</a-button>
         </a-space>
       </header>
@@ -361,7 +361,7 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
         <article
           v-for="cell in calendarCells"
           :key="cell.key"
-          :class="{ muted: !cell.currentMonth, today: cell.key === dayjs().format('YYYY-MM-DD') }"
+          :class="{ muted: !cell.currentMonth, today: cell.key === beijingNow().format('YYYY-MM-DD') }"
         >
           <time>{{ cell.date.date() }}</time>
           <RouterLink

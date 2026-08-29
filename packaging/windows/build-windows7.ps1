@@ -6,8 +6,7 @@ param(
   [string]$SqliteDll = "",
   [string]$SqliteSha256 = "",
   [string]$InnoCompiler = "",
-  [string]$OfficeRuntime = "",
-  [ValidateSet("bundled", "external")][string]$OfficeRuntimeMode = "external"
+  [string]$OfficeRuntime = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -91,7 +90,6 @@ $env:PARTYOPS_LEGACY_EVIDENCE_ROOT = $evidencePath
   -SqliteSha256 $SqliteSha256 `
   -InnoCompiler $InnoCompiler `
   -OfficeRuntime $OfficeRuntime `
-  -OfficeRuntimeMode $OfficeRuntimeMode `
   -LegacyArchitecture $Architecture
 if ($LASTEXITCODE -ne 0) { throw "Win7 $Architecture 冻结或安装器构建失败。" }
 

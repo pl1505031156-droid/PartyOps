@@ -1,4 +1,5 @@
 import type { RuntimeContext } from "./types";
+import { beijingNowIso } from "./utils/datetime";
 
 export type MemoKind = "note" | "checklist";
 export type MemoColor = "paper" | "cinnabar" | "pine" | "ochre" | "ink";
@@ -81,7 +82,7 @@ export class MemoStorageError extends Error {
 }
 
 function nowIso(): string {
-  return new Date().toISOString();
+  return beijingNowIso();
 }
 
 function randomId(): string {

@@ -15,7 +15,7 @@ import type {
   CalendarPreference,
   User,
 } from "../types";
-import { dayjs, formatServerTime } from "../utils/datetime";
+import { beijingNow, formatServerTime, localInputToUtc, serverTime } from "../utils/datetime";
 import { zhLabel } from "../utils/labels";
 import { useSessionStore } from "../stores/session";
 import PageHelp from "../components/PageHelp.vue";
@@ -24,8 +24,8 @@ import { orientalDateLabel } from "../utils/lunar";
 type CalendarViewMode = "week" | "month" | "year";
 
 const session = useSessionStore();
-const anchor = ref(dayjs());
-const selectedDate = ref(dayjs().format("YYYY-MM-DD"));
+const anchor = ref(beijingNow());
+const selectedDate = ref(beijingNow().format("YYYY-MM-DD"));
 const mode = ref<CalendarViewMode>("week");
 const events = ref<CalendarEvent[]>([]);
 const preference = ref<CalendarPreference | null>(null);
@@ -40,7 +40,7 @@ const selectedTopics = ref<string[]>([]);
 const selectedWorkAreas = ref<string[]>([]);
 const knownWorkAreas = ref<string[]>([]);
 const workdayForm = reactive({
-  date_key: dayjs().format("YYYY-MM-DD"),
+  date_key: beijingNow().format("YYYY-MM-DD"),
   title: "",
   kind: "holiday",
   is_workday: false,
@@ -58,7 +58,7 @@ const eventTypeOptions: Array<{ value: CalendarEventType; label: string }> = [
   { value: "adjusted_workday", label: "调休工作日" },
 ];
 
-function mondayOf(value: ReturnType<typeof dayjs>) {
+function mondayOf(value: ReturnType<typeof beijingNow>) {
   return value.subtract((value.day() + 6) % 7, "day").startOf("day");
 }
 
@@ -89,18 +89,18 @@ const yearMonths = computed(() =>
 );
 const selectedEvents = computed(() =>
   events.value
-    .filter((item) => dayjs(item.start_at).format("YYYY-MM-DD") === selectedDate.value)
+    .filter((item) => serverTime(item.start_at).format("YYYY-MM-DD") === selectedDate.value)
     .sort((left, right) => left.start_at.localeCompare(right.start_at)),
 );
 
 function eventsFor(dateKey: string) {
   return events.value.filter(
-    (item) => dayjs(item.start_at).format("YYYY-MM-DD") === dateKey,
+    (item) => serverTime(item.start_at).format("YYYY-MM-DD") === dateKey,
   );
 }
 
 function monthEventCount(month: number) {
-  return events.value.filter((item) => dayjs(item.start_at).month() === month).length;
+  return events.value.filter((item) => serverTime(item.start_at).month() === month).length;
 }
 
 function typeClass(type: CalendarEventType) {
@@ -117,8 +117,8 @@ async function load() {
       visibleTypes.value = [...preference.value.visible_event_types];
     }
     const query = new URLSearchParams({
-      start: range.value.start.toISOString(),
-      end: range.value.end.toISOString(),
+      start: localInputToUtc(range.value.start),
+      end: localInputToUtc(range.value.end),
     });
     visibleTypes.value.forEach((value) => query.append("event_type", value));
     selectedOwners.value.forEach((value) => query.append("owner_id", value));
@@ -177,12 +177,12 @@ function move(direction: number) {
 }
 
 function goToday() {
-  anchor.value = dayjs();
-  selectedDate.value = dayjs().format("YYYY-MM-DD");
+  anchor.value = beijingNow();
+  selectedDate.value = beijingNow().format("YYYY-MM-DD");
   load();
 }
 
-function selectDay(value: ReturnType<typeof dayjs>) {
+function selectDay(value: ReturnType<typeof beijingNow>) {
   selectedDate.value = value.format("YYYY-MM-DD");
 }
 
@@ -286,7 +286,7 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
             :key="date.format('YYYY-MM-DD')"
             type="button"
             class="week-day"
-            :class="{ selected: selectedDate === date.format('YYYY-MM-DD'), today: date.isSame(dayjs(), 'day') }"
+            :class="{ selected: selectedDate === date.format('YYYY-MM-DD'), today: date.isSame(beijingNow(), 'day') }"
             @click="selectDay(date)"
           >
             <header><span>{{ date.format("ddd") }}</span><strong>{{ date.format("DD") }}</strong></header>
@@ -306,7 +306,7 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
         </div>
         <aside class="agenda">
           <div class="agenda-heading">
-            <IconCalendar /><div><span>当日日程</span><h2>{{ dayjs(selectedDate).format("MM月DD日 dddd") }}</h2></div>
+            <IconCalendar /><div><span>当日日程</span><h2>{{ serverTime(`${selectedDate}T00:00:00+08:00`).format("MM月DD日 dddd") }}</h2></div>
           </div>
           <RouterLink v-for="event in selectedEvents" :key="event.id" :to="event.route || '/calendar'" class="agenda-item">
             <i :class="typeClass(event.event_type)"></i>
@@ -323,7 +323,7 @@ onBeforeUnmount(() => window.removeEventListener("partyops:refresh", load));
           :key="date.format('YYYY-MM-DD')"
           type="button"
           class="month-day"
-          :class="{ outside: date.month() !== anchor.month(), selected: selectedDate === date.format('YYYY-MM-DD'), today: date.isSame(dayjs(), 'day') }"
+          :class="{ outside: date.month() !== anchor.month(), selected: selectedDate === date.format('YYYY-MM-DD'), today: date.isSame(beijingNow(), 'day') }"
           @click="selectDay(date)"
         >
           <strong>{{ date.date() }}</strong>

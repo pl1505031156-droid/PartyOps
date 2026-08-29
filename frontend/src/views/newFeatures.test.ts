@@ -78,157 +78,325 @@ beforeEach(() => {
 });
 
 describe("1.4.3 新增页面", () => {
-  it("公文排版页在本页兑换设备票据并完成本机诊断", async () => {
-    apiMocks.post.mockResolvedValueOnce({
+  it("公文排版页以内嵌朱批案台载入六类二十五项能力", async () => {
+    const catalog = {
+      capability_count: 25,
+      external_office_required: false,
+      features: [
+        { id: "format", display_name: "一键排版", notes: "排版", accepts: [".docx"], capabilities: Array.from({ length: 5 }, (_, index) => ({ capability_id: `format.${index}`, description: "能力" })) },
+        { id: "replace", display_name: "一键替换", notes: "替换", accepts: [".docx"], capabilities: Array.from({ length: 5 }, (_, index) => ({ capability_id: `replace.${index}`, description: "能力" })) },
+        { id: "redheader", display_name: "一键套红", notes: "套红", accepts: [".docx"], capabilities: Array.from({ length: 4 }, (_, index) => ({ capability_id: `redheader.${index}`, description: "能力" })) },
+        { id: "rename", display_name: "一键命名", notes: "命名", accepts: [".docx"], capabilities: Array.from({ length: 3 }, (_, index) => ({ capability_id: `rename.${index}`, description: "能力" })) },
+        { id: "convert", display_name: "一键转换", notes: "转换", accepts: [".docx", ".pdf"], capabilities: Array.from({ length: 4 }, (_, index) => ({ capability_id: `convert.${index}`, description: "能力" })) },
+        { id: "pdf-to-word", display_name: "PDF 转 Word", notes: "重建", accepts: [".pdf"], capabilities: Array.from({ length: 4 }, (_, index) => ({ capability_id: `pdf.${index}`, description: "能力" })) },
+      ],
+    };
+    apiMocks.post.mockResolvedValue({
       ticket: "signed-ticket",
       expires_at: now,
       local_base_url: "http://127.0.0.1:18768",
     });
     const fetchMock = vi.spyOn(window, "fetch")
       .mockResolvedValueOnce(new Response(JSON.stringify({ service: "official-format", status: "ready" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ session_id: "selftest-session", session_token: "selftest-token", expires_in_seconds: 900 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(catalog), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ feature_count: 6, capability_count: 25, external_office_required: false }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ service: "official-format", status: "ready" }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ session_id: "session-1", session_token: "local-token", expires_in_seconds: 900 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(catalog), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ document_id: "document-1" }), { status: 201 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        converted: false,
-        document_id: "document-1",
-        report: { compliant: false, paragraph_count: 3, table_count: 1, changed_count: 0, issues: [{ code: "TITLE_REVIEW", severity: "warning", title: "标题需复核", detail: "请确认标题层级", clause: "7.3" }] },
+        id: "job-1", feature_id: "format", state: "completed", progress: 100, message: "排版完成",
+        items: [], outputs: [{ id: "output-1", document_id: "document-1", filename: "基层通知-排版后.docx", content_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", downloaded: false }],
+      }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: "job-1", feature_id: "format", state: "completed", progress: 100, message: "排版完成",
+        items: [{ document_id: "document-1", filename: "基层通知.docx", state: "completed", progress: 100, message: "完成", error_code: "", report: { compliant: true, paragraph_count: 3, table_count: 1, changed_count: 6, issues: [] } }],
+        outputs: [{ id: "output-1", document_id: "document-1", filename: "基层通知-排版后.docx", content_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", downloaded: false }],
       }), { status: 200 }));
     const wrapper = await mount(OfficialFormatView as typeof MemoView, "/official-format");
     const vm = state(wrapper);
-    vm.selectedFile = new File(["docx"], "基层通知.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-    await vm.diagnose();
+    expect(vm.selfTestText).toBe("6 项功能 / 25 项能力已就绪");
+    expect(wrapper.text()).toContain("朱批案台");
+
+    vm.addFiles([new File(["docx"], "基层通知.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })]);
+    await vm.startJob();
     await flushPromises();
     expect(apiMocks.post).toHaveBeenCalledWith("/official-format/local-ticket", { origin: window.location.origin });
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
-      "http://127.0.0.1:18768/health",
-      "http://127.0.0.1:18768/v1/sessions",
-      "http://127.0.0.1:18768/v1/sessions/session-1/diagnose",
-    ]);
-    expect(vm.stage).toBe("diagnosed");
-    expect(wrapper.text()).toContain("标题需复核");
-    expect(wrapper.text()).toContain("不得使用 PartyOps 处理涉密文件");
-    expect(wrapper.text()).toContain("服务端存储");
+    expect(vm.activeJob.state).toBe("completed");
+    expect(wrapper.text()).toContain("基层通知-排版后.docx");
+    expect(wrapper.text()).toContain("全部过程仅在当前电脑");
     expect(wrapper.text()).not.toContain("启动本机排版助手");
     wrapper.unmount();
     fetchMock.mockRestore();
   });
 
-  it("公文排版本机服务未启动时显示精确诊断而不是静默无反应", async () => {
+  it("公文排版本机引擎未启动时显示精确诊断且不打开外部窗口", async () => {
     apiMocks.post.mockResolvedValueOnce({
       ticket: "signed-ticket",
       expires_at: now,
       local_base_url: "http://127.0.0.1:18768",
     });
     const fetchMock = vi.spyOn(window, "fetch").mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
     const wrapper = await mount(OfficialFormatView as typeof MemoView, "/official-format");
     const vm = state(wrapper);
-    vm.selectedFile = new File(["docx"], "基层通知.docx");
-    await vm.diagnose();
-    await flushPromises();
     expect(vm.errorCode).toBe("LOCAL_HELPER_UNREACHABLE");
-    expect(wrapper.text()).toContain("公文排版服务未启动");
-    expect(wrapper.text()).toContain("official-format.log");
+    expect(vm.selfTestText).toBe("内置引擎自检失败");
+    expect(wrapper.text()).toContain("当前电脑的内置公文引擎未启动");
+    expect(openMock).not.toHaveBeenCalled();
     wrapper.unmount();
     fetchMock.mockRestore();
+    openMock.mockRestore();
   });
 
-  it("公文排版覆盖文件边界、异常响应、排版复检、导出与本机清理", async () => {
-    apiMocks.post.mockResolvedValue({
-      ticket: "signed-ticket",
-      expires_at: now,
-      local_base_url: "http://127.0.0.1:18768",
-    });
+  it("公文排版覆盖批量边界、方案、异常响应、取消、导出与清理", async () => {
+    apiMocks.post.mockRejectedValueOnce(new Error("ticket offline"));
+    const fetchMock = vi.spyOn(window, "fetch");
     const wrapper = await mount(OfficialFormatView as typeof MemoView, "/official-format");
     const vm = state(wrapper);
 
-    await vm.diagnose();
-    vm.selectedFile = new File([new Uint8Array(51 * 1024 * 1024)], "过大.docx");
-    await vm.diagnose();
-    expect(vm.errorCode).toBe("FILE_SIZE_LIMIT");
+    vm.addFiles([]);
+    vm.addFiles([new File([], "空.docx")]);
+    vm.addFiles([new File(["pdf"], "错误.pdf")]);
+    expect(vm.files).toHaveLength(0);
     vm.showFailure(null);
-    expect(vm.errorDetail).toContain("本机排版未完成");
+    expect(vm.errorDetail).toContain("本机处理未完成");
 
     const click = vi.fn();
     vm.fileInput = { click };
-    vm.chooseFile();
+    vm.chooseFiles();
     expect(click).toHaveBeenCalledOnce();
-    await vm.onFileChange({ target: { files: [], value: "x" } } as unknown as Event);
+    vm.onFileChange({ target: { files: [new File(["docx"], "材料.docx")], value: "x" } } as unknown as Event);
+    expect(vm.files).toHaveLength(1);
+    vm.onDrop({ dataTransfer: { files: [new File(["docx"], "第二份.docx")] } } as unknown as DragEvent);
+    expect(vm.files).toHaveLength(2);
+    vm.removeFile(1);
+    expect(vm.files).toHaveLength(1);
 
-    vm.localBaseUrl = "http://127.0.0.1:18768";
-    vm.localSessionId = "old-session";
-    vm.localSessionToken = "old-token";
-    let fetchMock = vi.spyOn(window, "fetch").mockResolvedValueOnce(new Response(null, { status: 204 }));
-    await vm.onFileChange({ target: { files: [new File(["docx"], ".docx")], value: "x" } } as unknown as Event);
-    expect(vm.safeOutputName).toBe("公文-公文规范版.docx");
-    fetchMock.mockRestore();
+    vm.options.plan_name = "";
+    vm.saveReplacePlan();
+    vm.options.plan_name = "机关名称替换";
+    vm.options.rules = [{ mode: "text", find: "旧称", replace: "新称", case_sensitive: false }];
+    vm.saveReplacePlan();
+    expect(vm.savedReplacePlans).toHaveLength(1);
+    vm.options.rules[0].replace = "另一个值";
+    vm.loadReplacePlan("机关名称替换");
+    expect(vm.options.rules[0].replace).toBe("新称");
+    vm.deleteReplacePlan();
+    expect(vm.savedReplacePlans).toHaveLength(0);
+    vm.deleteReplacePlan();
 
-    vm.selectedFile = new File(["docx"], "基层通知.docx");
-    fetchMock = vi.spyOn(window, "fetch")
-      .mockResolvedValueOnce(new Response("unhealthy", { status: 503 }));
-    await vm.diagnose();
-    expect(vm.errorCode).toBe("LOCAL_HELPER_HEALTH_FAILED");
-    fetchMock.mockRestore();
-
-    fetchMock = vi.spyOn(window, "fetch")
-      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
-      .mockResolvedValueOnce(new Response("not-json", { status: 500 }));
-    await vm.diagnose();
-    expect(vm.errorCode).toBe("LOCAL_HELPER_RESPONSE_INVALID");
-    fetchMock.mockRestore();
-    await expect(vm.parseLocalResponse(new Response(JSON.stringify({ title: "明确失败" }), { status: 400 }))).rejects.toMatchObject({
-      code: "LOCAL_FORMAT_FAILED",
-      message: "明确失败",
+    await expect(vm.parseLocalResponse(new Response("not-json", { status: 500 }))).rejects.toMatchObject({
+      code: "LOCAL_HELPER_RESPONSE_INVALID",
+    });
+    await expect(vm.parseLocalResponse(new Response(JSON.stringify({ code: "DOWNLOAD_DENIED", detail: "导出授权失效" }), { status: 403 }))).rejects.toMatchObject({
+      code: "DOWNLOAD_DENIED",
+      message: "导出授权失效",
     });
 
-    fetchMock = vi.spyOn(window, "fetch")
-      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ session_id: "session-2", session_token: "token-2", expires_in_seconds: 900 }), { status: 201 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        converted: true,
-        document_id: "document-2",
-        report: { compliant: true, paragraph_count: 0, table_count: 0, changed_count: 0, issues: [] },
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        document_id: "document-2",
-        report: { compliant: false, paragraph_count: 4, table_count: 1, changed_count: 3, issues: [{ code: "FONT_MISSING", severity: "error", title: "字体缺失", detail: "请安装方正小标宋", clause: "5.2.2" }] },
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response("formatted-docx", { status: 200 }));
-    await vm.diagnose();
-    await flushPromises();
-    expect(wrapper.text()).toContain("原文件已由本机办公套件转换为 DOCX");
-    expect(wrapper.text()).toContain("未发现阻断性版式问题");
-    await vm.formatDocument();
-    await flushPromises();
-    expect(wrapper.text()).toContain("字体缺失");
-    expect(wrapper.text()).toContain("仍有需要人工处理的阻断项");
-    await vm.downloadResult();
-    expect(saveBlobDownload).toHaveBeenCalledWith(expect.any(Blob), "基层通知-公文规范版.docx");
-    fetchMock.mockRestore();
+    vm.localBaseUrl = "http://127.0.0.1:18768";
+    vm.localSessionId = "session-download";
+    vm.localSessionToken = "token-download";
+    vm.activeJob = {
+      id: "job-1", feature_id: "format", state: "completed", progress: 100, message: "完成", items: [],
+      outputs: [{ id: "output-1", document_id: "document-1", filename: "结果.docx", content_type: "application/octet-stream", downloaded: false }],
+    };
+    fetchMock.mockResolvedValueOnce(new Response("docx", { status: 200 }));
+    await vm.downloadOutput(vm.activeJob.outputs[0]);
+    expect(saveBlobDownload).toHaveBeenCalledWith(expect.any(Blob), "结果.docx");
 
-    await vm.formatDocument();
-    await vm.downloadResult();
-    vm.localBaseUrl = "http://127.0.0.1:18768";
-    vm.localSessionId = "session-errors";
-    vm.localSessionToken = "token-errors";
-    vm.documentId = "document-errors";
-    fetchMock = vi.spyOn(window, "fetch")
-      .mockRejectedValueOnce(new TypeError("format offline"))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "DOWNLOAD_DENIED", detail: "导出授权失效" }), { status: 403 }));
-    await vm.formatDocument();
-    expect(vm.errorCode).toBe("LOCAL_FORMAT_FAILED");
-    await vm.downloadResult();
-    expect(vm.errorCode).toBe("DOWNLOAD_DENIED");
-    fetchMock.mockRestore();
-    vm.localBaseUrl = "http://127.0.0.1:18768";
+    vm.busy = true;
+    vm.activeJob.state = "running";
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 202 }));
+    await vm.cancelJob();
+    expect(fetchMock.mock.calls.at(-1)?.[1]).toMatchObject({ method: "POST" });
+
     vm.localSessionId = "session-cleanup";
     vm.localSessionToken = "token-cleanup";
-    fetchMock = vi.spyOn(window, "fetch").mockRejectedValueOnce(new TypeError("closed"));
+    fetchMock.mockRejectedValueOnce(new TypeError("closed"));
     await vm.cleanupLocalSession();
     expect(vm.localSessionId).toBe("");
-    fetchMock.mockRestore();
-    await vm.reset();
-    expect(vm.stage).toBe("select");
+    vm.busy = false;
+    vm.clearFiles();
+    expect(vm.files).toHaveLength(0);
     wrapper.unmount();
+    fetchMock.mockRestore();
   });
+
+  it("公文排版覆盖六类参数、目录保存、能力降级与五十文件边界", async () => {
+    apiMocks.post.mockRejectedValueOnce(new Error("skip automatic self test"));
+    const fetchMock = vi.spyOn(window, "fetch");
+    const wrapper = await mount(OfficialFormatView as typeof MemoView, "/official-format");
+    const vm = state(wrapper);
+
+    await vm.startJob();
+    const optionSnapshots: Record<string, Record<string, unknown>> = {};
+    for (const feature of ["format", "replace", "redheader", "rename", "convert", "pdf-to-word"]) {
+      vm.selectedFeature = feature;
+      await flushPromises();
+      optionSnapshots[feature] = vm.requestOptions();
+    }
+    expect(optionSnapshots.format).toMatchObject({ template: "GB/T 9704-2012", scope: "full" });
+    expect(optionSnapshots.replace.rules).toHaveLength(1);
+    expect(optionSnapshots.redheader).toMatchObject({ document_type: "down", agency: "中共××委员会" });
+    expect(optionSnapshots.rename.parts).toEqual(["title", "document_number"]);
+    expect(optionSnapshots.convert).toMatchObject({ target_format: "pdf", page_selection: "all", dpi: 200 });
+    expect(optionSnapshots["pdf-to-word"]).toMatchObject({ normalize_punctuation: true, reconstruct_tables: true });
+
+    const write = vi.fn().mockResolvedValue(undefined);
+    const close = vi.fn().mockResolvedValue(undefined);
+    const getFileHandle = vi.fn().mockResolvedValue({ createWritable: vi.fn().mockResolvedValue({ write, close }) });
+    const picker = vi.fn().mockResolvedValue({ name: "公文输出", getFileHandle });
+    Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: picker });
+    await vm.selectOutputDirectory();
+    expect(vm.outputLocationLabel).toBe("公文输出");
+
+    vm.localBaseUrl = "http://127.0.0.1:18768";
+    vm.localSessionId = "session-directory";
+    vm.localSessionToken = "token-directory";
+    vm.activeJob = {
+      id: "job-directory", feature_id: "format", state: "completed", progress: 100, message: "完成", items: [],
+      outputs: [{ id: "output-directory", document_id: "document-directory", filename: "目录结果.docx", content_type: "application/octet-stream", downloaded: false }],
+    };
+    fetchMock.mockResolvedValueOnce(new Response("docx", { status: 200 }));
+    await vm.downloadOutput(vm.activeJob.outputs[0]);
+    expect(getFileHandle).toHaveBeenCalledWith("目录结果.docx", { create: true });
+    expect(write).toHaveBeenCalledWith(expect.any(Blob));
+    expect(close).toHaveBeenCalledOnce();
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ feature_count: 5, capability_count: 24, external_office_required: true }), { status: 200 }));
+    await vm.runSelfTest();
+    expect(vm.selfTestText).toContain("能力清单不完整");
+
+    vm.clearFiles();
+    vm.selectedFeature = "format";
+    const batch = Array.from({ length: 51 }, (_, index) => new File(["x"], `批量-${index}.docx`));
+    vm.addFiles(batch);
+    expect(vm.files).toHaveLength(50);
+    vm.busy = true;
+    vm.removeFile(0);
+    vm.clearFiles();
+    expect(vm.files).toHaveLength(50);
+    vm.busy = false;
+    vm.clearFiles();
+
+    while (vm.options.rules.length < 100) vm.addReplaceRule();
+    vm.addReplaceRule();
+    expect(vm.options.rules).toHaveLength(100);
+
+    wrapper.unmount();
+    fetchMock.mockRestore();
+    Reflect.deleteProperty(window, "showDirectoryPicker");
+  });
+
+  it("公文排版覆盖本机协议异常、自愈方案与非主路径状态", async () => {
+    apiMocks.post.mockRejectedValueOnce(new Error("skip automatic self test"));
+    const fetchMock = vi.spyOn(window, "fetch");
+    const wrapper = await mount(OfficialFormatView as typeof MemoView, "/official-format");
+    const vm = state(wrapper);
+
+    const originalFeatures = vm.features;
+    vm.selectedFeature = "missing-feature";
+    expect(vm.currentFeature.id).toBe("format");
+    vm.features = [{ id: "format", display_name: "排版", notes: "", accepts: [".docx"] }];
+    expect(vm.currentCapabilities).toEqual([]);
+    vm.features = originalFeatures;
+    vm.selectedFeature = "format";
+    expect(vm.fileExtension("README")).toBe("");
+
+    localStorage.setItem("partyops.document-formatter.replace-plans.v1", "{broken");
+    vm.loadSavedReplacePlans();
+    expect(vm.savedReplacePlans).toEqual([]);
+    localStorage.setItem("partyops.document-formatter.replace-plans.v1", JSON.stringify([null, { name: 2 }, { name: "有效", rules: [] }]));
+    vm.loadSavedReplacePlans();
+    expect(vm.savedReplacePlans).toHaveLength(1);
+    const storageFailure = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => { throw new Error("quota"); });
+    vm.persistReplacePlans();
+    storageFailure.mockRestore();
+
+    vm.options.plan_name = "有效";
+    vm.options.rules = [{ mode: "text", find: "甲", replace: "乙", case_sensitive: false }];
+    vm.saveReplacePlan();
+    expect(vm.savedReplacePlans[0].rules[0].replace).toBe("乙");
+    vm.savedReplacePlans = Array.from({ length: 30 }, (_, index) => ({ name: `方案${index}`, rules: [] }));
+    vm.options.plan_name = "第三十一套";
+    vm.saveReplacePlan();
+    expect(vm.savedReplacePlans).toHaveLength(30);
+    vm.loadReplacePlan("不存在");
+
+    vm.files = [];
+    vm.addFiles([new File(["x"], "无后缀")]);
+    vm.onFileChange({ target: { files: null, value: "x" } } as unknown as Event);
+    vm.onDrop({} as DragEvent);
+    expect(vm.files).toHaveLength(0);
+
+    await expect(vm.parseLocalResponse(new Response(JSON.stringify({ title: "标题错误" }), { status: 422 }))).rejects.toMatchObject({
+      code: "LOCAL_FORMAT_FAILED", message: "标题错误",
+    });
+    await expect(vm.parseLocalResponse(new Response(JSON.stringify({}), { status: 422 }))).rejects.toMatchObject({
+      code: "LOCAL_FORMAT_FAILED", message: "本机处理未完成",
+    });
+
+    apiMocks.post.mockResolvedValueOnce({ ticket: "bad-health", expires_at: now, local_base_url: "http://127.0.0.1:18768" });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 503 }));
+    await expect(vm.ensureLocalSession()).rejects.toMatchObject({ code: "LOCAL_HELPER_HEALTH_FAILED" });
+
+    Reflect.deleteProperty(window, "showDirectoryPicker");
+    await vm.selectOutputDirectory();
+    Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: vi.fn().mockRejectedValueOnce({ name: "AbortError" }).mockRejectedValueOnce(new Error("denied")) });
+    await vm.selectOutputDirectory();
+    await vm.selectOutputDirectory();
+
+    vm.features = [{ id: "format", display_name: "排版", notes: "", accepts: [".docx"], capabilities: [] }];
+    vm.selectedFeature = "format";
+    vm.addFiles([new File(["x"], "待处理.docx")]);
+    apiMocks.post.mockRejectedValueOnce(new Error("ticket unavailable"));
+    await vm.startJob();
+    expect(vm.busy).toBe(false);
+
+    vm.activeJob = null;
+    await vm.pollJob();
+    vm.localSessionId = "state-session";
+    vm.localSessionToken = "state-token";
+    vm.activeJob = { id: "state-job", feature_id: "format", state: "running", progress: 30, message: "处理中", items: [], outputs: [] };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ...vm.activeJob, state: "running", progress: 50 }), { status: 200 }));
+    await vm.pollJob();
+    window.clearTimeout(vm.pollTimer);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ...vm.activeJob, state: "completed_with_errors", progress: 100, message: "部分失败" }), { status: 200 }));
+    await vm.pollJob();
+    fetchMock.mockRejectedValueOnce(new Error("poll failed"));
+    await vm.pollJob();
+
+    vm.activeJob = null;
+    vm.busy = false;
+    await vm.cancelJob();
+    vm.activeJob = { id: "cancel-job", feature_id: "format", state: "running", progress: 50, message: "处理中", items: [], outputs: [] };
+    vm.busy = true;
+    fetchMock.mockRejectedValueOnce(new Error("cancel failed"));
+    await vm.cancelJob();
+    vm.busy = false;
+
+    vm.activeJob = null;
+    await vm.downloadOutput({ id: "none" });
+    vm.activeJob = { id: "download-job", feature_id: "format", state: "completed", progress: 100, message: "完成", items: [], outputs: [] };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ code: "OUTPUT_DENIED", detail: "输出已失效" }), { status: 410 }));
+    await vm.downloadOutput({ id: "expired", filename: "过期.docx" });
+    expect(vm.errorCode).toBe("OUTPUT_DENIED");
+
+    vm.files = [{ key: "pdf", file: new File(["pdf"], "材料.pdf"), documentId: "", state: "ready", progress: 0, message: "等待" }];
+    vm.selectedFeature = "replace";
+    await flushPromises();
+    vm.busy = true;
+    vm.selectedFeature = "format";
+    await flushPromises();
+
+    wrapper.unmount();
+    fetchMock.mockRestore();
+    Reflect.deleteProperty(window, "showDirectoryPicker");
+  });
+
 
   it("发展党员材料页区分标准异常与非标准异常", async () => {
     apiMocks.get.mockRejectedValueOnce(new Error("材料服务离线"));

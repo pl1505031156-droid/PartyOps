@@ -307,26 +307,6 @@ def main() -> int:
                 value.rstrip("/") == "partyops-client://reconfigure"
                 for value in sys.argv[1:]
             )
-            official_format_uri = next(
-                (
-                    value
-                    for value in sys.argv[1:]
-                    if value.startswith("partyops-client://official-format/")
-                ),
-                "",
-            )
-            if official_format_uri:
-                _append_log("启动本机公文规范排版事务")
-                subprocess.Popen(  # noqa: S603 - 固定随包入口，参数为后端再次验证的随机 UUID。
-                    [
-                        str(_runtime_root() / "partyops-wizard"),
-                        "--manage-shared-roots",
-                        "--action-uri",
-                        official_format_uri,
-                    ],
-                    close_fds=True,
-                )
-                return 0
             force_reconfigure = (
                 not background
                 and (deep_link_reconfigure or _consume_reconfigure_request())

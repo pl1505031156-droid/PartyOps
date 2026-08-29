@@ -5,11 +5,19 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from app import intake
+from app.time_utils import (
+    BEIJING_TIMEZONE,
+    beijing_iso,
+    beijing_now,
+    ensure_aware_utc,
+    to_beijing,
+)
 
 from .conftest import create_task
 
@@ -78,18 +86,18 @@ def test_all_file_types_are_kept_without_reading_content(
     assert by_name["资料.zip"]["archive_member_count"] == 0
 
 
-def test_legacy_naive_utc_is_serialized_with_z(client: TestClient, admin: dict) -> None:
+def test_legacy_naive_utc_is_serialized_as_beijing_time(client: TestClient, admin: dict) -> None:
     response = client.post(
         "/api/v1/work-journal",
-        json={"title": "时区契约", "content": "验证接口统一返回 UTC 标记。"},
+        json={"title": "时区契约", "content": "验证接口统一返回北京时间偏移。"},
     )
     assert response.status_code == 201, response.text
     payload = response.json()
-    assert payload["created_at"].endswith("Z")
-    assert payload["occurred_at"].endswith("Z")
+    assert payload["created_at"].endswith("+08:00")
+    assert payload["occurred_at"].endswith("+08:00")
 
 
-def test_dictionary_aggregate_times_also_use_utc_z(
+def test_dictionary_aggregate_times_also_use_beijing_offset(
     client: TestClient,
     admin: dict,
 ) -> None:
@@ -103,7 +111,7 @@ def test_dictionary_aggregate_times_also_use_utc_z(
     )
     workbench = client.get("/api/v1/workbench")
     assert workbench.status_code == 200, workbench.text
-    assert workbench.json()["updated_at"].endswith("Z")
+    assert workbench.json()["updated_at"].endswith("+08:00")
 
     searched = client.get(
         "/api/v1/global-search",
@@ -111,7 +119,20 @@ def test_dictionary_aggregate_times_also_use_utc_z(
     )
     assert searched.status_code == 200, searched.text
     item = next(result for result in searched.json()["items"] if result["id"] == task["id"])
-    assert item["updated_at"].endswith("Z")
+    assert item["updated_at"].endswith("+08:00")
+
+
+def test_shared_time_boundary_preserves_instant_and_beijing_offset() -> None:
+    naive_utc = datetime(2026, 8, 29, 0, 30, 45)
+    assert ensure_aware_utc(naive_utc).tzinfo is timezone.utc
+    aware_utc = datetime(2026, 8, 29, 0, 30, 45, tzinfo=timezone.utc)
+    assert ensure_aware_utc(aware_utc) == aware_utc
+    converted = to_beijing(naive_utc)
+    assert converted.tzinfo is BEIJING_TIMEZONE
+    assert converted.isoformat() == "2026-08-29T08:30:45+08:00"
+    assert beijing_iso(aware_utc) == "2026-08-29T08:30:45+08:00"
+    assert beijing_iso().endswith("+08:00")
+    assert beijing_now().utcoffset().total_seconds() == 8 * 60 * 60
 
 
 def test_update_format_v1_is_rejected_without_exposing_internals(

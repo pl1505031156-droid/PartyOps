@@ -8,7 +8,6 @@ import re
 import ssl
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +21,7 @@ from .startup_diagnostics import (
     SQLITE_RUNTIME_FAILED,
     UPGRADE_BACKUP_FAILED,
 )
+from .time_utils import beijing_iso
 
 SERVICE_MISSING = "SERVICE_MISSING"
 SERVICE_STOPPED = "SERVICE_STOPPED"
@@ -167,7 +167,7 @@ def write_service_status(
     path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, Any] = {
         "format_version": 1,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": beijing_iso(),
         "stage": stage,
         "code": code,
         "detail": detail[-2000:],

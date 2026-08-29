@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { Message } from "@arco-design/web-vue";
 import { useRoute } from "vue-router";
 import PageHelp from "../components/PageHelp.vue";
+import { beijingNow, beijingNowIso, formatServerTime } from "../utils/datetime";
 import { useSessionStore } from "../stores/session";
 import {
   LocalMemoRepository,
@@ -135,7 +136,7 @@ function removeChecklistItem(index: number) {
 async function softDelete() {
   if (!draft.value || !scope.value) return;
   if (saveTimer) window.clearTimeout(saveTimer);
-  const deleted = { ...cloneMemo(draft.value), deletedAt: new Date().toISOString() };
+  const deleted = { ...cloneMemo(draft.value), deletedAt: beijingNowIso() };
   try {
     const saved = await repository.save(scope.value, deleted);
     replaceMemo(saved);
@@ -205,7 +206,7 @@ async function confirmBackup() {
       const url = URL.createObjectURL(new Blob([encoded], { type: "application/json" }));
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `PartyOps-本机备忘录-${new Date().toISOString().slice(0, 10)}.partyops-memos`;
+      anchor.download = `PartyOps-本机备忘录-${beijingNow().format("YYYY-MM-DD")}.partyops-memos`;
       anchor.click();
       URL.revokeObjectURL(url);
       Message.success("加密备份已导出，请妥善保管密码");
@@ -300,7 +301,7 @@ onBeforeUnmount(() => {
           >
             <span class="memo-card-title"><b v-if="memo.pinned">置顶</b>{{ memoDisplayTitle(memo) }}</span>
             <span class="memo-card-preview">{{ memo.kind === 'checklist' ? `${memo.checklist.filter((item) => item.done).length}/${memo.checklist.length} 项完成` : (memo.body || '还没有正文') }}</span>
-            <span class="memo-card-meta">{{ new Date(memo.updatedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}</span>
+            <span class="memo-card-meta">{{ formatServerTime(memo.updatedAt, 'MM-DD HH:mm') }} 北京时间</span>
           </button>
         </div>
         <a-empty v-else :description="showingTrash ? '回收站是空的' : '还没有备忘，按 Ctrl+Alt+M 快速新建'" />

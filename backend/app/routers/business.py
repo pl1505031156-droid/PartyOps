@@ -42,6 +42,7 @@ from ..models import (
 )
 from ..problems import ProblemException
 from ..security import get_current_user, require_admin
+from ..time_utils import beijing_iso
 from .router_utils import client_ip, parse_if_match
 
 router = APIRouter(tags=["business-workflows"])
@@ -635,7 +636,7 @@ def confirm_meeting_import_candidates(
         "meeting_type": payload.meeting_type,
         "organization": payload.organization.strip(),
         "title": payload.title.strip(),
-        "scheduled_at": scheduled_at.isoformat() if scheduled_at else None,
+        "scheduled_at": beijing_iso(scheduled_at) if scheduled_at else None,
         "venue": payload.venue.strip(),
         "host_name": payload.host_name.strip(),
         "attendee_text": payload.attendee_text.strip(),

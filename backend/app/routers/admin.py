@@ -104,6 +104,7 @@ from ..security import (
     require_admin,
 )
 from ..spreadsheet_security import safe_spreadsheet_row
+from ..time_utils import beijing_iso
 from .events import active_stream_count
 
 router = APIRouter(tags=["admin"])
@@ -1169,7 +1170,7 @@ def patch_network_configuration(
     pending_value = {
         "previous": old_value,
         "requested": new_value,
-        "requested_at": utcnow().isoformat(),
+        "requested_at": beijing_iso(utcnow()),
         "requested_by": admin.id,
         "transaction_id": transaction_id,
         "migration_grace_hours": max(1, min(168, int(payload.get("migration_grace_hours", 24)))),
@@ -1195,7 +1196,7 @@ def patch_network_configuration(
                         settings.agent_port,
                         tls_enabled=settings.tls_enabled,
                     ),
-                    "expires_at": migration_expires_at.isoformat(),
+                    "expires_at": beijing_iso(migration_expires_at),
                 },
             )
         )
@@ -1282,7 +1283,7 @@ def confirm_network_transaction(
     value = {
         **value,
         "state": "active",
-        "activated_at": utcnow().isoformat(),
+        "activated_at": beijing_iso(utcnow()),
         "activated_by": admin.id,
         "health": health,
     }
@@ -1335,7 +1336,7 @@ def rollback_network_transaction(
                         settings.agent_port,
                         tls_enabled=settings.tls_enabled,
                     ),
-                    "expires_at": rollback_expires_at.isoformat(),
+                    "expires_at": beijing_iso(rollback_expires_at),
                 },
             )
         )
@@ -1343,7 +1344,7 @@ def rollback_network_transaction(
     value = {
         **value,
         "state": "rolled_back",
-        "rolled_back_at": utcnow().isoformat(),
+        "rolled_back_at": beijing_iso(utcnow()),
         "rolled_back_by": admin.id,
         "rollback_notifications": rollback_notifications,
     }

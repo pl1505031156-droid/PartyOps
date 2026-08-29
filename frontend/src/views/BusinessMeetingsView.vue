@@ -4,7 +4,7 @@ import { IconCalendar, IconCheck, IconDelete, IconPlus, IconUpload } from "@arco
 import { Message } from "@arco-design/web-vue";
 import { api } from "../api";
 import type { User } from "../types";
-import { formatServerTime } from "../utils/datetime";
+import { beijingNow, formatServerTime } from "../utils/datetime";
 import PageHelp from "../components/PageHelp.vue";
 
 interface WorkflowTemplate { id: string; name: string; business_type: string; steps: Array<{ title: string; responsible_role: string }>; }
@@ -41,7 +41,7 @@ const importVisible = ref(false);
 const importFile = ref<File | null>(null);
 const importDraft = ref<MeetingImportDraft | null>(null);
 const importBusy = ref(false);
-const year = ref(new Date().getFullYear());
+const year = ref(beijingNow().year());
 const stats = ref<AnnualStats>({ completed_meetings: 0, reviewed_topics: 0, confirmed_amount: "0.00" });
 const form = reactive({ meeting_type: "party_committee", organization: "", title: "", scheduled_at: "", workflow_template_id: "", owner_id: "" });
 const topicForm = reactive({ title: "", review_result: "", amount: "0", reviewed: false, amount_confirmed: false });

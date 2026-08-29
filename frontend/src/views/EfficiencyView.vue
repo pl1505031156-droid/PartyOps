@@ -13,7 +13,7 @@ import type {
   WorkJournal,
   WorkspaceFile,
 } from "../types";
-import { dayjs, formatServerTime } from "../utils/datetime";
+import { beijingNow, formatServerTime } from "../utils/datetime";
 import { zhLabel } from "../utils/labels";
 
 interface TopicSpace {
@@ -131,7 +131,7 @@ const ruleForm = reactive({
   tags: "",
 });
 const calendarForm = reactive({
-  date_key: dayjs().format("YYYY-MM-DD"),
+  date_key: beijingNow().format("YYYY-MM-DD"),
   title: "",
   kind: "holiday",
   is_workday: false,
@@ -200,7 +200,7 @@ async function load() {
       rules.value = await api.get<AutomationRule[]>("/automation-rules");
     } else if (activeTab.value === "calendar") {
       calendar.value = await api.get<CalendarEntry[]>(
-        `/work-calendar?year=${dayjs().year()}`,
+        `/work-calendar?year=${beijingNow().year()}`,
       );
     } else if (activeTab.value === "documents") {
       const [fileResult, comparisonResult, duplicateResult] = await Promise.all([
@@ -512,12 +512,12 @@ onMounted(load);
 
       <a-tab-pane key="calendar" title="工作日历">
         <div class="section-toolbar">
-          <div><h2>{{ dayjs().year() }} 年工作日历</h2><p>正式时限不变；内部提前节点遇节假日会向前调整到最近工作日。</p></div>
+          <div><h2>{{ beijingNow().year() }} 年工作日历</h2><p>正式时限不变；内部提前节点遇节假日会向前调整到最近工作日。</p></div>
           <a-button v-if="session.user?.role === 'admin'" type="primary" @click="calendarVisible = true">添加节假日/调休</a-button>
         </div>
         <div class="calendar-list">
           <article v-for="entry in calendar" :key="entry.id">
-            <time>{{ dayjs(entry.date_key).format("MM月DD日") }}</time>
+            <time>{{ formatServerTime(`${entry.date_key}T00:00:00+08:00`, "MM月DD日") }}</time>
             <span :class="{ workday: entry.is_workday }">{{ entry.is_workday ? "调休工作日" : "休息日" }}</span>
             <div><strong>{{ entry.title }}</strong><small>{{ entry.note }}</small></div>
             <a-button v-if="session.user?.role === 'admin'" type="text" status="danger" @click="deleteCalendarEntry(entry)">删除</a-button>

@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-from datetime import timezone
-
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -20,10 +18,9 @@ from ..official_format_service import (
     normalize_origin,
 )
 from ..problems import ProblemException
+from ..schemas import serialize_api_datetime
 from ..security import get_current_user
 from .workspace import is_host_local_request
-
-UTC = timezone.utc
 
 router = APIRouter(tags=["official-format"])
 
@@ -104,7 +101,7 @@ def create_local_format_ticket(
     )
     db.commit()
     return {
-        "expires_at": expires_at.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+        "expires_at": serialize_api_datetime(expires_at),
         "local_base_url": f"http://127.0.0.1:{get_settings().official_format_port}",
         "ticket": ticket,
     }

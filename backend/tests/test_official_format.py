@@ -200,20 +200,5 @@ def test_official_formatter_never_imports_remote_http_clients() -> None:
     assert "requests." not in source
     assert "urllib.request" not in source
     assert "httpx" not in source
-    assert "partyops-client://official-format" in source
-
-
-def test_local_formatter_process_guard_denies_non_loopback_connections() -> None:
-    import socket
-
-    from app.official_format import _install_loopback_only_network_guard
-
-    restore = _install_loopback_only_network_guard()
-    try:
-        with pytest.raises(OSError, match="OFFICIAL_FORMAT_NETWORK_DENIED"):
-            socket.create_connection(("203.0.113.8", 443), timeout=0.01)
-        with pytest.raises(OSError) as local:
-            socket.create_connection(("127.0.0.1", 9), timeout=0.01)
-        assert "OFFICIAL_FORMAT_NETWORK_DENIED" not in str(local.value)
-    finally:
-        restore()
+    assert "partyops-client://official-format" not in source
+    assert not hasattr(official_format, "run_official_format_tool")

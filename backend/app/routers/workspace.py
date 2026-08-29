@@ -61,6 +61,7 @@ from ..schemas import (
 )
 from ..security import get_current_user, hash_token, require_admin
 from ..task_service import can_view_task
+from ..time_utils import beijing_iso
 from ..work_journal import record_system_entry
 from ..workspace import (
     file_to_out,
@@ -306,7 +307,7 @@ def create_local_share_action(
         "workspace.local_share_action_create",
         "device",
         device.id,
-        {"expires_at": expires_at.isoformat()},
+        {"expires_at": beijing_iso(expires_at)},
         client_ip(request),
     )
     db.commit()
@@ -1214,7 +1215,7 @@ def create_local_open_link(
     return {
         "grant_id": grant.id,
         "open_uri": f"partyops-file://open/{token}",
-        "expires_at": expires_at.isoformat(),
+        "expires_at": beijing_iso(expires_at),
         "expires_in_seconds": 300,
         "open_method": "local_helper",
         "status": "created",
@@ -1234,10 +1235,10 @@ def _open_grant_status(grant: FileOpenGrant) -> dict[str, object]:
         "status": status,
         "result_code": grant.result_code,
         "result_detail": grant.result_detail,
-        "expires_at": expires_at.isoformat(),
-        "redeemed_at": grant.redeemed_at.isoformat() if grant.redeemed_at else None,
-        "opened_at": grant.opened_at.isoformat() if grant.opened_at else None,
-        "completed_at": grant.completed_at.isoformat() if grant.completed_at else None,
+        "expires_at": beijing_iso(expires_at),
+        "redeemed_at": beijing_iso(grant.redeemed_at) if grant.redeemed_at else None,
+        "opened_at": beijing_iso(grant.opened_at) if grant.opened_at else None,
+        "completed_at": beijing_iso(grant.completed_at) if grant.completed_at else None,
     }
 
 

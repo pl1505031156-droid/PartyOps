@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -211,6 +212,117 @@ def test_local_service_rejects_wrong_origin_and_session_token(tmp_path: Path) ->
             headers={"X-PartyOps-Local-Token": "wrong"},
         )
         assert status == 422 and _json(payload)["code"] == "LOCAL_SESSION_INVALID"
+    finally:
+        service.close()
+
+
+def test_local_service_exposes_six_features_batch_job_progress_and_result(tmp_path: Path) -> None:
+    service = OfficialFormatLocalService(secret=SECRET, config_dir=tmp_path, port=0).start()
+    try:
+        status, _, payload = _request(service, "GET", "/v1/capabilities")
+        catalog = _json(payload)
+        assert status == 200
+        assert len(catalog["features"]) == 6
+        assert catalog["capability_count"] == 25
+        assert catalog["external_office_required"] is False
+
+        status, _, payload = _request(service, "GET", "/v1/self-test")
+        self_test = _json(payload)
+        assert status == 200
+        assert self_test["feature_count"] == 6
+        assert self_test["capability_count"] == 25
+
+        ticket, _ = issue_local_format_ticket(
+            SECRET,
+            origin=ORIGIN,
+            user_id="user-1",
+            device_id="device-1",
+        )
+        status, _, payload = _request(
+            service,
+            "POST",
+            "/v1/sessions",
+            headers={"Authorization": f"Bearer {ticket}"},
+        )
+        assert status == 201
+        session = _json(payload)
+        session_id = session["session_id"]
+        local_token = session["session_token"]
+
+        boundary = "PartyOpsBatch"
+        document = _docx_bytes()
+        upload_body = (
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; filename=\"批量 文档.docx\"\r\n"
+            "Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\n"
+        ).encode() + document + f"\r\n--{boundary}--\r\n".encode()
+        status, _, payload = _request(
+            service,
+            "POST",
+            f"/v1/sessions/{session_id}/documents",
+            body=upload_body,
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Content-Length": str(len(upload_body)),
+                "X-PartyOps-Local-Token": local_token,
+            },
+        )
+        assert status == 201
+        document_id = _json(payload)["document_id"]
+
+        job_request = json.dumps(
+            {
+                "feature_id": "replace",
+                "document_ids": [document_id],
+                "options": {
+                    "plan_name": "本机批量方案",
+                    "rules": [{"mode": "text", "find": "认真", "replace": "逐项"}],
+                },
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        status, _, payload = _request(
+            service,
+            "POST",
+            f"/v1/sessions/{session_id}/jobs",
+            body=job_request,
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(job_request)),
+                "X-PartyOps-Local-Token": local_token,
+            },
+        )
+        assert status == 202
+        job_id = _json(payload)["id"]
+
+        job = None
+        for _ in range(100):
+            status, _, payload = _request(
+                service,
+                "GET",
+                f"/v1/sessions/{session_id}/jobs/{job_id}",
+                headers={"X-PartyOps-Local-Token": local_token},
+            )
+            assert status == 200
+            job = _json(payload)
+            if job["state"] not in {"queued", "running"}:
+                break
+            time.sleep(0.02)
+        assert job is not None and job["state"] == "completed"
+        assert job["progress"] == 100
+        assert job["items"][0]["state"] == "completed"
+        assert len(job["outputs"]) == 1
+
+        output_id = job["outputs"][0]["id"]
+        status, headers, payload = _request(
+            service,
+            "GET",
+            f"/v1/sessions/{session_id}/jobs/{job_id}/outputs/{output_id}",
+            headers={"X-PartyOps-Local-Token": local_token},
+        )
+        assert status == 200 and payload.startswith(b"PK")
+        assert "%E6%9B%BF%E6%8D%A2%E5%90%8E" in headers["content-disposition"]
+        output = Document(BytesIO(payload))
+        assert "逐项落实" in output.paragraphs[1].text
     finally:
         service.close()
 

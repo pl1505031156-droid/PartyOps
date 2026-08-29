@@ -5,7 +5,7 @@ import { Message } from "@arco-design/web-vue";
 import { api, saveBlobDownload } from "../api";
 import PageHelp from "../components/PageHelp.vue";
 import { useSessionStore } from "../stores/session";
-import { formatServerTime, localInputToUtc, localNowInput } from "../utils/datetime";
+import { beijingNow, formatServerTime, localInputToUtc, localNowInput } from "../utils/datetime";
 import type { User } from "../types";
 
 interface Topic {
@@ -53,7 +53,7 @@ interface StudySession {
 
 const sessionStore = useSessionStore();
 const isAdmin = computed(() => sessionStore.user?.role === "admin");
-const year = ref(new Date().getFullYear());
+const year = ref(beijingNow().year());
 const organization = ref("");
 const loading = ref(false);
 const lifecycle = ref<"active" | "archived">("active");
@@ -84,8 +84,8 @@ const sessionArchiveTarget = ref<StudySession | null>(null);
 const sessionArchiveReason = ref("");
 const sessionDeletionImpact = ref<{ steps: number; topics: number; documents: number; attendees: number; actions: number } | null>(null);
 
-const planForm = reactive({ organization: "", year: new Date().getFullYear(), title: "", group_leader_id: "", secretary_id: "", notes: "" });
-const editPlanForm = reactive({ organization: "", year: new Date().getFullYear(), title: "", group_leader_id: "", secretary_id: "", status: "draft", notes: "" });
+const planForm = reactive({ organization: "", year: beijingNow().year(), title: "", group_leader_id: "", secretary_id: "", notes: "" });
+const editPlanForm = reactive({ organization: "", year: beijingNow().year(), title: "", group_leader_id: "", secretary_id: "", status: "draft", notes: "" });
 const topicForm = reactive({ quarter: 1, title: "", learning_materials_text: "", research_topic: "", conversion_goal: "", sort_order: 0 });
 const editTopicForm = reactive({ quarter: 1, title: "", learning_materials_text: "", research_topic: "", conversion_goal: "", sort_order: 0 });
 const sessionForm = reactive({ organization: "", title: "", scheduled_at: localNowInput(), host_id: "", recorder_id: "", venue: "" });

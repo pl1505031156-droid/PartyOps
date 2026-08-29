@@ -11,7 +11,7 @@ import ctypes
 import json
 import os
 import threading
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +21,7 @@ from .enums import ModelPackStatus
 from .intent_preview import preview_intent
 from .model_packs import active_model_pack, model_pack_root, verify_installed_pack
 from .models import AIModelPack
+from .time_utils import beijing_now
 
 INTENT_TOOLS: list[dict[str, Any]] = [
     {
@@ -277,7 +278,7 @@ def preview_intent_with_needle(
 ) -> dict[str, Any]:
     """优先使用已激活的 Needle；任何不确定性都安全回退到规则结果。"""
 
-    current = today or datetime.now().astimezone().date()
+    current = today or beijing_now().date()
     base = preview_intent(text, today=current)
     if {"PROMPT_INJECTION", "NEGATED"} & set(base["flags"]):
         return base

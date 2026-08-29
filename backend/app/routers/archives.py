@@ -90,6 +90,7 @@ from ..schemas import (
 )
 from ..security import get_current_user, require_admin
 from ..storage import normalize_client_upload_id
+from ..time_utils import beijing_iso
 
 router = APIRouter(tags=["important-archives"])
 
@@ -1010,7 +1011,7 @@ def delete_archive_attachment(
         {
             "record_id": record.id,
             "reason": attachment.delete_reason,
-            "purge_after": attachment.purge_after.isoformat(),
+            "purge_after": beijing_iso(attachment.purge_after),
         },
         client_ip(request),
     )

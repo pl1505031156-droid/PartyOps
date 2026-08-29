@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -264,29 +263,11 @@ def test_main_dispatches_privileged_shared_root_and_normal_wizard(monkeypatch, t
     )
     assert valid.code == 7 and managed == [(False, "x" * 43)]
 
-    from app import official_format
-
-    format_calls: list[tuple[str, bool, Path]] = []
-    monkeypatch.setattr(setup_wizard, "config_root", lambda: tmp_path / "config")
-    monkeypatch.setattr(
-        official_format,
-        "run_official_format_tool",
-        lambda transaction_id, *, open_browser, config_dir: (
-            format_calls.append((transaction_id, open_browser, config_dir)) or 9
-        ),
-    )
-    transaction_id = str(uuid.uuid4())
-    formatted = _run_main(
-        monkeypatch,
-        ["--manage-shared-roots", "--no-browser", "--action-uri", f"partyops-client://official-format/{transaction_id}"],
-    )
-    assert formatted.code == 9
-    assert format_calls == [(transaction_id, False, tmp_path / "config")]
-    invalid_format = _run_main(
+    removed_external_formatter = _run_main(
         monkeypatch,
         ["--manage-shared-roots", "--action-uri", "partyops-client://official-format/not-a-uuid"],
     )
-    assert "事务标识无效" in str(invalid_format)
+    assert "无效的本机共享操作地址" in str(removed_external_formatter)
 
     launched: list[tuple[bool, str, bool]] = []
     monkeypatch.setattr(

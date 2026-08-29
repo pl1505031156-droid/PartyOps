@@ -75,6 +75,7 @@ from ..schemas import (
     LedgerImportValidateRequest,
 )
 from ..security import get_current_user
+from ..time_utils import beijing_iso
 
 UTC = timezone.utc
 from .router_utils import client_ip
@@ -575,7 +576,7 @@ def validate_import(
         job.manual_edits = {
             **(job.manual_edits or {}),
             "archive_year": payload.derived_year,
-            "archive_year_confirmed_at": utcnow().isoformat(),
+            "archive_year_confirmed_at": beijing_iso(utcnow()),
         }
     _, summary = _validated_rows(db, job, payload.row_actions)
     job.validation = {**summary, "row_actions": payload.row_actions}
@@ -598,13 +599,13 @@ def _party_snapshot(item: PartyDevelopmentCase) -> dict[str, Any]:
         "ethnicity": item.ethnicity,
         "birth_date": item.birth_date.isoformat() if item.birth_date else None,
         "education": item.education,
-        "application_at": item.application_at.isoformat(),
-        "activist_at": item.activist_at.isoformat() if item.activist_at else None,
+        "application_at": beijing_iso(item.application_at),
+        "activist_at": beijing_iso(item.activist_at) if item.activist_at else None,
         "training_contacts": item.training_contacts or [],
         "introducers": item.introducers or [],
-        "development_object_at": item.development_object_at.isoformat() if item.development_object_at else None,
-        "probationary_at": item.probationary_at.isoformat() if item.probationary_at else None,
-        "converted_at": item.converted_at.isoformat() if item.converted_at else None,
+        "development_object_at": beijing_iso(item.development_object_at) if item.development_object_at else None,
+        "probationary_at": beijing_iso(item.probationary_at) if item.probationary_at else None,
+        "converted_at": beijing_iso(item.converted_at) if item.converted_at else None,
         "stage": item.stage,
         "status": item.status,
         "extra_fields": item.extra_fields or {},
@@ -868,7 +869,7 @@ def _create_or_update_party(
             stage=_next_stage(values),
             rule_version=str(rule_metadata()["version"]),
             planning_profile_id=profile.id,
-            planning_profile_snapshot={"system_key": profile.system_key, "name": profile.name, "version": profile.version, "assumptions": dict(profile.assumptions), "captured_at": utcnow().isoformat()},
+            planning_profile_snapshot={"system_key": profile.system_key, "name": profile.name, "version": profile.version, "assumptions": dict(profile.assumptions), "captured_at": beijing_iso(utcnow())},
             extra_fields={key: value for key, value in values.items() if key not in CORE_PARTY_KEYS},
             import_batch_id=job.id,
             created_by=user.id,

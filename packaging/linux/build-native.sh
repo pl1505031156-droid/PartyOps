@@ -23,6 +23,7 @@ fi
 
 "$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py" \
   --root "$ROOT" --expected "1.4.5-rc.6"
+"$PYTHON_BIN" "$ROOT/scripts/verify-full-function-gate.py" verify --root "$ROOT"
 
 [[ "$FORMAT" == "deb" || "$FORMAT" == "rpm" ]] || {
   echo "用法：build-native.sh deb|rpm（通过 PARTYOPS_BUILD_ARCH 指定 amd64/arm64）" >&2
@@ -43,31 +44,24 @@ EXPECTED_MACHINE=x86_64
 [[ "$ARCH" == arm64 ]] && EXPECTED_MACHINE=aarch64
 EXPECTED_OFFICE_PATTERN='x86-64|x86_64'
 [[ "$ARCH" == arm64 ]] && EXPECTED_OFFICE_PATTERN='aarch64|ARM64'
-OFFICE_RUNTIME_MODE="${PARTYOPS_OFFICE_RUNTIME_MODE:-bundled}"
-[[ "$OFFICE_RUNTIME_MODE" == bundled || "$OFFICE_RUNTIME_MODE" == external ]] || {
-  echo "PARTYOPS_OFFICE_RUNTIME_MODE 仅支持 bundled/external。" >&2
-  exit 2
-}
 OFFICE_RUNTIME="${PARTYOPS_OFFICE_RUNTIME:-$ROOT/vendor/linux/libreoffice-headless-$ARCH}"
 OFFICE_BINARY="$OFFICE_RUNTIME/program/soffice.bin"
-if [[ "$OFFICE_RUNTIME_MODE" == bundled ]]; then
-  if [[ ! -x "$OFFICE_RUNTIME/program/soffice" || ! -f "$OFFICE_BINARY" ||
-    ! -f "$OFFICE_RUNTIME/SOURCE.json" || ! -d "$OFFICE_RUNTIME/licenses" ]]; then
-    echo "[OFFICE_RUNTIME_MISSING] 缺少 $ARCH 经许可审计的 LibreOffice headless 运行时、来源清单或许可证。" >&2
-    exit 2
-  fi
-  file "$OFFICE_BINARY" | grep -Eq "$EXPECTED_OFFICE_PATTERN" || {
-    echo "[OFFICE_RUNTIME_ARCH_MISMATCH] LibreOffice 运行时与 $ARCH 不一致。" >&2
-    exit 2
-  }
-  while IFS= read -r -d '' link; do
-    resolved="$(readlink -f -- "$link" 2>/dev/null || true)"
-    case "$resolved" in
-      "$OFFICE_RUNTIME"/*) ;;
-      *) echo "[OFFICE_RUNTIME_SYMLINK_INVALID] LibreOffice 运行时包含越界或损坏链接：$link" >&2; exit 2 ;;
-    esac
-  done < <(find "$OFFICE_RUNTIME" -type l -print0)
+if [[ ! -x "$OFFICE_RUNTIME/program/soffice" || ! -f "$OFFICE_BINARY" ||
+  ! -f "$OFFICE_RUNTIME/SOURCE.json" || ! -d "$OFFICE_RUNTIME/licenses" ]]; then
+  echo "[OFFICE_RUNTIME_MISSING] 缺少 $ARCH 经许可审计的 LibreOffice headless 运行时、来源清单或许可证。" >&2
+  exit 2
 fi
+file "$OFFICE_BINARY" | grep -Eq "$EXPECTED_OFFICE_PATTERN" || {
+  echo "[OFFICE_RUNTIME_ARCH_MISMATCH] LibreOffice 运行时与 $ARCH 不一致。" >&2
+  exit 2
+}
+while IFS= read -r -d '' link; do
+  resolved="$(readlink -f -- "$link" 2>/dev/null || true)"
+  case "$resolved" in
+    "$OFFICE_RUNTIME"/*) ;;
+    *) echo "[OFFICE_RUNTIME_SYMLINK_INVALID] LibreOffice 运行时包含越界或损坏链接：$link" >&2; exit 2 ;;
+  esac
+done < <(find "$OFFICE_RUNTIME" -type l -print0)
 [[ "$(uname -s)" == Linux ]] || {
   echo "原生包只能在 Linux manylinux2014 构建环境生成。" >&2
   exit 2
@@ -182,13 +176,7 @@ if [[ -f "$PKG/opt/partyops/llama-server" ]]; then
 fi
 # LibreOffice 自带多个受许可约束的本机入口和动态库；在 PartyOps 基础
 # 载荷完成权限收敛后再复制，保留其发行方所需的可执行位与相对布局。
-if [[ "$OFFICE_RUNTIME_MODE" == bundled ]]; then
-  cp -a "$OFFICE_RUNTIME" "$PKG/opt/partyops/office-runtime"
-else
-  printf '%s\n' \
-    '{"mode":"external","reason":"该候选平台没有满足当前安全基线的可再分发 LibreOffice 运行时；DOC/WPS 需使用用户已安装且已更新的办公套件。"}' \
-    >"$PKG/opt/partyops/office-runtime-status.json"
-fi
+cp -a "$OFFICE_RUNTIME" "$PKG/opt/partyops/office-runtime"
 EXPECTED_PAYLOAD_PATTERN='x86-64'
 [[ "$ARCH" == arm64 ]] && EXPECTED_PAYLOAD_PATTERN='ARM aarch64'
 file "$PKG/opt/partyops/partyops" | grep -q "$EXPECTED_PAYLOAD_PATTERN" || {

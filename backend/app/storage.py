@@ -28,6 +28,7 @@ from .models import (
 )
 from .problems import ProblemException
 from .task_service import can_edit_task, can_manage_task
+from .time_utils import beijing_iso
 from .work_journal import record_system_entry
 
 
@@ -405,7 +406,7 @@ def delete_attachment_version(
                 "material_id": material.id,
                 "was_final": was_final,
                 "reason": normalized_reason,
-                "purge_after": version.purge_after.isoformat(),
+                "purge_after": beijing_iso(version.purge_after),
             },
             ip,
         )

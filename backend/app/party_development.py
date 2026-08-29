@@ -10,7 +10,7 @@ import calendar
 import re
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -38,6 +38,7 @@ from .schemas import (
     PartyDevelopmentNodeOut,
     PartyDevelopmentResultOut,
 )
+from .time_utils import beijing_now
 
 RULE_VERSION = "2026.05"
 RULE_ISSUED_AT = date(2026, 5, 11)
@@ -482,7 +483,7 @@ def calculate_party_development(
     *,
     today: date | None = None,
 ) -> PartyDevelopmentResultOut:
-    today = today or datetime.now(timezone.utc).date()
+    today = today or beijing_now().date()
     actual = payload.actual_dates
     calendar_rows = list(calendar_entries)
     workdays = WorkdayCalendar(calendar_rows)

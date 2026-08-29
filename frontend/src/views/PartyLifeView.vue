@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { IconCheck, IconDelete, IconDownload, IconPlus, IconRefresh, IconUserGroup } from "@arco-design/web-vue/es/icon";
 import { Message } from "@arco-design/web-vue";
 import { api, saveBlobDownload } from "../api";
-import { formatServerTime, localInputToUtc, localNowInput } from "../utils/datetime";
+import { beijingNow, formatServerTime, localInputToUtc, localNowInput } from "../utils/datetime";
 import type { User } from "../types";
 import PageHelp from "../components/PageHelp.vue";
 
@@ -64,7 +64,7 @@ interface MeetingAction {
   version: number;
 }
 
-const year = ref(new Date().getFullYear());
+const year = ref(beijingNow().year());
 const organization = ref("");
 const loading = ref(false);
 const lifecycle = ref<"active" | "archived">("active");

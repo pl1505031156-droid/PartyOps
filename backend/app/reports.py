@@ -19,6 +19,7 @@ from .models import PeriodReport, PeriodReportItem, Task, User
 from .schemas import PeriodReportItemOut, PeriodReportOut
 from .spreadsheet_security import safe_spreadsheet_row
 from .task_service import visible_tasks
+from .time_utils import beijing_iso
 
 LOCAL_TIMEZONE = timezone(timedelta(hours=8))
 SECTION_LABELS = {
@@ -257,7 +258,7 @@ def report_snapshot(db: Session, report: PeriodReport) -> dict[str, object]:
         "period_key": report.period_key,
         "title": report.title,
         "summary": report.summary,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": beijing_iso(),
         "items": [
             {
                 "id": item.id,

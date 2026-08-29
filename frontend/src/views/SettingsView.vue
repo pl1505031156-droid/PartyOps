@@ -21,7 +21,7 @@ import type {
   User,
   WorkspaceRoot,
 } from "../types";
-import { formatServerTime } from "../utils/datetime";
+import { beijingNowIso, formatServerTime } from "../utils/datetime";
 import { auditActionLabel, auditEntityLabel, zhLabel } from "../utils/labels";
 import PageHelp from "../components/PageHelp.vue";
 
@@ -622,7 +622,7 @@ async function prepareOnlineUpdate() {
       JSON.stringify({
         packageId: prepared.id,
         version: prepared.version,
-        startedAt: new Date().toISOString(),
+        startedAt: beijingNowIso(),
       }),
     );
     onlineUpdatePollFailures = 0;
@@ -716,7 +716,7 @@ function scheduleUpdatePoll(delay = 3000) {
 function startUpdateMonitor(packageId: string, version: string, includeHost: boolean) {
   localStorage.setItem(
     UPDATE_TASK_KEY,
-    JSON.stringify({ packageId, version, includeHost, startedAt: new Date().toISOString() }),
+    JSON.stringify({ packageId, version, includeHost, startedAt: beijingNowIso() }),
   );
   updatePollFailures = 0;
   updateMissingPolls = 0;

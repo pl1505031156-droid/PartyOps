@@ -6,7 +6,6 @@ import hashlib
 import json
 import re
 import zipfile
-from datetime import datetime, timezone
 from pathlib import Path
 
 from docx import Document
@@ -21,6 +20,7 @@ from .backups import SCHEMA_VERSION
 from .config import get_settings
 from .models import ArchiveAttachment, ArchiveCategory, ArchiveRecord, FileBlob, User
 from .spreadsheet_security import safe_spreadsheet_row
+from .time_utils import beijing_iso, beijing_now
 
 
 def _sha256(path: Path) -> str:
@@ -76,7 +76,7 @@ def export_archive_package(
 ) -> Path:
     settings = get_settings()
     rows = _rows(db, user, archive_year, category_id, keyword, device_id)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    timestamp = beijing_now().strftime("%Y%m%d%H%M%S")
     output = settings.exports_dir / f"党建智办-{archive_year}年重要档案包-{timestamp}.zip"
     manifest_files: list[dict[str, object]] = []
     workbook = Workbook()
@@ -180,7 +180,7 @@ def export_archive_package(
         "format": "partyops-important-archive",
         "version": 1,
         "archive_year": archive_year,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": beijing_iso(),
         "generated_by": user.id,
         "database_schema_version": SCHEMA_VERSION,
         "record_count": len(rows),

@@ -47,8 +47,7 @@ def test_macos_python_entrypoints_parse_and_use_native_user_paths() -> None:
     assert "app_version" in launcher and "payload.get(\"mode\")" in launcher
     assert "_consume_reconfigure_request" in launcher
     assert "partyops-client://reconfigure" in launcher
-    assert "partyops-client://official-format/" in launcher
-    assert 'str(_runtime_root() / "partyops-wizard")' in launcher
+    assert "partyops-client://official-format/" not in launcher
     assert "os.execve" in agent
     assert 'not key.startswith("PARTYOPS_")' in agent
     assert ".partyops-personal-process.json" in agent
