@@ -288,6 +288,10 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "-DSTRICT_CONF=ON" in runtimes
     assert "add_library(CMath::CMath INTERFACE IMPORTED GLOBAL)" in static_targets
     assert "INTERFACE_LINK_LIBRARIES m" in static_targets
+    assert "if(NOT _partyops_ocr_try_compile AND NOT TARGET CMath::CMath)" in (
+        static_targets
+    )
+    assert "if(_partyops_ocr_try_compile)" in static_targets
     assert "CMAKE_TRY_COMPILE_PLATFORM_VARIABLES CMAKE_PROJECT_INCLUDE_BEFORE" in (
         static_targets
     )

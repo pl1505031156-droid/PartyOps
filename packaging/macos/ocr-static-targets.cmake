@@ -1,21 +1,26 @@
-# libtiff 的静态导出目标会引用 CMath::CMath，但该辅助目标不会随安装结果
-# 一同导出。先补齐系统数学库目标，避免 Leptonica 配置阶段依赖构建机
-# 私有 CMake 模块。
-if(NOT TARGET CMath::CMath)
-  add_library(CMath::CMath INTERFACE IMPORTED GLOBAL)
-  set_property(TARGET CMath::CMath PROPERTY INTERFACE_LINK_LIBRARIES m)
-endif()
-
 # CMake 默认不会把项目注入文件传给 try_compile。把本文件显式列入平台
 # 变量传播清单，确保临时工程也能恢复下方锁定依赖目标。
 list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES CMAKE_PROJECT_INCLUDE_BEFORE)
 list(REMOVE_DUPLICATES CMAKE_TRY_COMPILE_PLATFORM_VARIABLES)
 
+set(_partyops_ocr_try_compile FALSE)
+if(CMAKE_BINARY_DIR MATCHES "CMakeScratch[/\\\\]TryCompile-")
+  set(_partyops_ocr_try_compile TRUE)
+endif()
+
+# libtiff 的静态导出目标会引用 CMath::CMath，但该辅助目标不会随安装结果
+# 一同导出。只在正常主工程补齐该目标；try_compile 会把主工程的 CMath
+# 导入目标写入临时 Targets 文件，提前重复创建反而会造成名称冲突。
+if(NOT _partyops_ocr_try_compile AND NOT TARGET CMath::CMath)
+  add_library(CMath::CMath INTERFACE IMPORTED GLOBAL)
+  set_property(TARGET CMath::CMath PROPERTY INTERFACE_LINK_LIBRARIES m)
+endif()
+
 # Tesseract 会用 try_compile 验证 Leptonica 的 TIFF 能力。CMake 生成的
 # 临时工程只复制 Leptonica 导入目标，不复制其 ZLIB/PNG/JPEG/TIFF 目标，
 # 因而必须在临时工程中从锁定前缀恢复同一组静态依赖。正常主工程仍由
 # find_package 读取真实包配置，不覆盖上游目标。
-if(CMAKE_BINARY_DIR MATCHES "CMakeScratch[/\\\\]TryCompile-")
+if(_partyops_ocr_try_compile)
   set(_partyops_ocr_prefix "$ENV{PARTYOPS_OCR_PREFIX}")
   if(_partyops_ocr_prefix STREQUAL "")
     message(FATAL_ERROR "PARTYOPS_OCR_PREFIX is required for OCR try_compile")
