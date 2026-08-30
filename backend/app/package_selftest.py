@@ -44,6 +44,17 @@ def _ocr_runtime(runtime: Path) -> tuple[Path, Path, Path]:
     return _native_executable(runtime, "ocr/bin/tesseract"), root / "tessdata", root / "lib"
 
 
+def _office_executable(runtime: Path) -> Path:
+    """定位安装包自带的无窗口公文转换器，不回退到系统 Office。"""
+
+    suffix = ".exe" if os.name == "nt" else ""
+    for root in (runtime, _runtime_contents(runtime)):
+        candidate = root / "office-runtime" / "program" / f"soffice{suffix}"
+        if candidate.is_file():
+            return candidate
+    return runtime / "office-runtime" / "program" / f"soffice{suffix}"
+
+
 def _native_child_environment(runtime: Path, library: Path | None = None) -> dict[str, str]:
     """为随包原生助手构造不受冻结引导器污染的环境。"""
 
@@ -151,6 +162,24 @@ def run_selftest(runtime: Path) -> dict[str, object]:
     if llama_result.returncode != 0:
         raise RuntimeError("本地 LLM 运行时无法启动")
 
+    office = _office_executable(runtime)
+    if not office.is_file():
+        raise RuntimeError("公文转换运行时缺失")
+    office_result = subprocess.run(
+        [str(office), "--headless", "--version"],
+        check=False,
+        capture_output=True,
+        env=_native_child_environment(runtime),
+        timeout=120,
+    )
+    if office_result.returncode != 0:
+        raise RuntimeError("公文转换运行时无法启动")
+
+    from app.official_format_features import FEATURE_DEFINITIONS, PRODUCT_CAPABILITIES
+
+    if len(FEATURE_DEFINITIONS) != 6 or len(PRODUCT_CAPABILITIES) != 25:
+        raise RuntimeError("公文排版能力清单不完整")
+
     return {
         "passed": True,
         "architecture": os.uname().machine if hasattr(os, "uname") else "windows",
@@ -160,6 +189,11 @@ def run_selftest(runtime: Path) -> dict[str, object]:
         "smart_runtime": smart_versions,
         "crypto": "tls-ed25519-passed",
         "llama": "passed",
+        "document_formatter": {
+            "features": len(FEATURE_DEFINITIONS),
+            "capabilities": len(PRODUCT_CAPABILITIES),
+            "office_runtime": "passed",
+        },
     }
 
 

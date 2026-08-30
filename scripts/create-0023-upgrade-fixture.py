@@ -1,7 +1,7 @@
-"""为原生制品覆盖升级门禁创建真实 PartyOps 0023 数据目录。
+"""为原生制品覆盖升级门禁创建真实 PartyOps 0023/0025 数据目录。
 
 该工具只允许写入调用方提供的全新空目录。它先用当前迁移链建立 0026，
-写入可核验的管理员记录，再通过 Alembic 真实降级到 0023，避免手写近似
+写入可核验的管理员记录，再通过 Alembic 真实降级到指定旧版本，避免手写近似
 表结构掩盖迁移兼容问题。输出仅包含测试标识、版本和完整性摘要。
 """
 
@@ -33,6 +33,12 @@ def main() -> int:
     parser.add_argument("--data-root", required=True, type=Path)
     parser.add_argument(
         "--repo-root", type=Path, default=Path(__file__).resolve().parents[1]
+    )
+    parser.add_argument(
+        "--target-revision",
+        choices=("0023", "0025"),
+        default="0023",
+        help="建立的真实旧数据库版本；默认保持既有 0023 契约。",
     )
     args = parser.parse_args()
     data_root = args.data_root.resolve()
@@ -69,7 +75,12 @@ def main() -> int:
     config = runtime._alembic_config()
     with runtime.engine.begin() as connection:
         config.attributes["connection"] = connection
+        # create_schema 会建立当前 ORM 覆盖的表并标记为 0026，但某些纯迁移
+        # 审计表不属于 ORM。先真实降到 0023，再按需前向执行 0024/0025，
+        # 才能得到包含北京时间迁移审计的真实 0025，而不是近似结构。
         command.downgrade(config, "0023")
+        if args.target_revision == "0025":
+            command.upgrade(config, "0025")
     settings.attachments_dir.mkdir(parents=True, exist_ok=True)
     attachment = settings.attachments_dir / "preserved.txt"
     attachment.write_text(FIXTURE_ATTACHMENT, encoding="utf-8")
@@ -80,11 +91,29 @@ def main() -> int:
             "SELECT version_num FROM alembic_version"
         ).fetchone()[0]
         quick_check = database.execute("PRAGMA quick_check").fetchone()[0]
-        columns = {
+        backup_columns = {
             row[1] for row in database.execute("PRAGMA table_info(backup_runs)")
         }
-    if revision != "0023" or quick_check != "ok" or "deleted_at" in columns:
-        raise SystemExit("[UPGRADE_FIXTURE_INVALID] 未建立真实 0023 基线。")
+        tables = {
+            row[0]
+            for row in database.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+    version_shape_ok = (
+        args.target_revision == "0023"
+        and "deleted_at" not in backup_columns
+        and "timezone_migration_audits" not in tables
+    ) or (
+        args.target_revision == "0025"
+        and "deleted_at" in backup_columns
+        and "timezone_migration_audits" in tables
+        and "ai_orchestration_sessions" not in tables
+    )
+    if revision != args.target_revision or quick_check != "ok" or not version_shape_ok:
+        raise SystemExit(
+            f"[UPGRADE_FIXTURE_INVALID] 未建立真实 {args.target_revision} 基线。"
+        )
     print(
         json.dumps(
             {

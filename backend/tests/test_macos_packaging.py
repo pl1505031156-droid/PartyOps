@@ -6,8 +6,9 @@ import ast
 import base64
 import hashlib
 import importlib.util
+import json
 import plistlib
-import re
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -238,8 +239,11 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     runtimes = (MACOS / "build-native-runtimes.sh").read_text(encoding="utf-8")
     validation = (MACOS / "validate-bundle.sh").read_text(encoding="utf-8")
     workflow = (
-        ROOT / ".github" / "workflows" / "build-macos-1.4.5-rc.4.yml"
+        ROOT / ".github" / "workflows" / "build-macos-1.4.5-rc.6.yml"
     ).read_text(encoding="utf-8")
+    office = (ROOT / "scripts" / "prepare-libreoffice-macos.sh").read_text(
+        encoding="utf-8"
+    )
 
     assert "--unsigned-candidate" in build
     assert "setup.py build_static bdist_wheel" in build
@@ -271,15 +275,19 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "push:" not in workflow and "pull_request:" not in workflow
     assert "contents: read" in workflow
     assert "macos-15-intel" in workflow and "macos-15" in workflow
-    assert "BUILD-UNSIGNED-145-RC4" in workflow
-    assert "ref: 30fb1c29af794121925728ad78e64d566224f15e" in workflow
-    assert "建立真实 0023 覆盖升级基线" in workflow
+    assert "BUILD-UNSIGNED-145-RC6" in workflow
+    assert "ref: ${{ github.sha }}" in workflow
+    assert "建立真实 0023/0025 覆盖升级基线" in workflow
     assert "MACOS_0023_UPGRADE_FAILED" in workflow
-    assert "test \"$revision\" = '0024'" in workflow
+    assert "MACOS_0025_UPGRADE_FAILED" in workflow
+    assert "test \"$revision\" = '0026'" in workflow
     assert "rc4-native-upgrade-admin" in workflow
     assert "PartyOps-pre-upgrade-*.partyops-backup" in workflow
     assert "verify_backup" in workflow
-    assert re.search(r"ref: [0-9a-f]{40}", workflow)
+    assert "scripts/prepare-libreoffice-macos.sh" in workflow
+    assert "PARTYOPS_MACOS_OFFICE_RUNTIME" in workflow
+    assert "office-${{ matrix.architecture }}" in workflow
+    assert "macOS 11" in workflow
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1
     assert workflow.count("install_package") == 3
@@ -325,6 +333,49 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     ]
     assert action_lines
     assert all(len(line.rsplit("@", 1)[-1]) == 40 for line in action_lines)
+
+    assert "VERSION='26.2.5.2'" in office
+    assert "c99fb4fe574437fc4cb820a4ca15271bca325920861f7139858b36d7f9df78ad" in office
+    assert "e26180298685274b54aa7fe6e1101c65465a372f457a6748ebd642720811db36" in office
+    assert "downloadarchive.documentfoundation.org" in office
+    assert "hdiutil attach -readonly -nobrowse" in office
+    assert "/bin/ln -s MacOS \"$RUNTIME/program\"" in office
+    assert "--headless" in office and "--version" in office
+
+
+@pytest.mark.parametrize("target_revision", ["0023", "0025"])
+def test_macos_upgrade_fixture_builds_both_real_baselines(
+    tmp_path: Path, target_revision: str
+) -> None:
+    data_root = tmp_path / f"upgrade-{target_revision}"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "create-0023-upgrade-fixture.py"),
+            "--repo-root",
+            str(ROOT),
+            "--data-root",
+            str(data_root),
+            "--target-revision",
+            target_revision,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=120,
+    )
+    payload = json.loads(completed.stdout)
+    assert payload["schema_revision"] == target_revision
+    with sqlite3.connect(data_root / "partyops.db") as database:
+        tables = {
+            row[0]
+            for row in database.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+    assert ("timezone_migration_audits" in tables) is (target_revision == "0025")
+    assert "ai_orchestration_sessions" not in tables
 
 
 def test_macos_is_present_in_platform_release_contracts() -> None:

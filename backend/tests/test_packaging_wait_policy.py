@@ -1204,7 +1204,7 @@ def test_linux_native_packages_preserve_frozen_runtime_and_verify_identity() -> 
     assert 'find "$OFFICE_PACKAGE_RUNTIME" -type d -exec chmod 0755 {} +' in script
     assert 'find "$OFFICE_PACKAGE_RUNTIME" -type f -exec chmod 0644 {} +' in script
     assert 'find "$OFFICE_PACKAGE_RUNTIME/program" -maxdepth 1 -type f -print0' in script
-    assert '[[ "$office_header" == \'#!\' ]]' in script
+    assert '[[ "$office_candidate" != *.so* && "$office_header" == \'#!\' ]]' in script
     assert '"$office_description" == *ELF*' in script
     assert script.index(
         'cp -a "$OFFICE_RUNTIME" "$PKG/opt/partyops/office-runtime"'

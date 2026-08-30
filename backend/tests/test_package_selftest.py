@@ -27,6 +27,10 @@ def _runtime(tmp_path: Path) -> Path:
     (runtime / "ocr" / "bin" / f"tesseract{executable_suffix}").write_bytes(b"binary")
     (runtime / "ocr" / "tessdata" / "chi_sim.traineddata").write_bytes(b"data")
     (runtime / f"llama-server{executable_suffix}").write_bytes(b"binary")
+    (runtime / "office-runtime" / "program").mkdir(parents=True)
+    (runtime / "office-runtime" / "program" / f"soffice{executable_suffix}").write_bytes(
+        b"binary"
+    )
     return runtime
 
 
@@ -166,6 +170,48 @@ def test_selftest_validates_smart_runtime_and_llama(
         package_selftest.run_selftest(runtime)
 
 
+def test_selftest_rejects_missing_or_unusable_office_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path)
+    monkeypatch.setattr(
+        db_runtime,
+        "validate_capabilities",
+        lambda: {"safe_version": True, "fts5": True},
+    )
+    monkeypatch.setattr(
+        package_selftest.importlib,
+        "import_module",
+        lambda _name: SimpleNamespace(__version__="1.0"),
+    )
+    executable_suffix = ".exe" if os.name == "nt" else ""
+    office = runtime / "office-runtime" / "program" / f"soffice{executable_suffix}"
+    office.unlink()
+    monkeypatch.setattr(
+        package_selftest.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0, stdout="eng\nchi_sim\n"
+        ),
+    )
+    with pytest.raises(RuntimeError, match="公文转换运行时缺失"):
+        package_selftest.run_selftest(runtime)
+
+    office.write_bytes(b"binary")
+    results = iter(
+        [
+            SimpleNamespace(returncode=0, stdout="eng\nchi_sim\n"),
+            SimpleNamespace(returncode=0, stdout=""),
+            SimpleNamespace(returncode=1, stdout=""),
+        ]
+    )
+    monkeypatch.setattr(
+        package_selftest.subprocess, "run", lambda *_args, **_kwargs: next(results)
+    )
+    with pytest.raises(RuntimeError, match="公文转换运行时无法启动"):
+        package_selftest.run_selftest(runtime)
+
+
 def test_selftest_and_cli_success_and_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -186,6 +232,7 @@ def test_selftest_and_cli_success_and_failure(
         [
             SimpleNamespace(returncode=0, stdout="eng\nchi_sim\n"),
             SimpleNamespace(returncode=0, stdout=""),
+            SimpleNamespace(returncode=0, stdout=""),
         ]
     )
     calls: list[dict[str, object]] = []
@@ -204,6 +251,11 @@ def test_selftest_and_cli_success_and_failure(
         "tokenizers": "1.0",
     }
     assert result["crypto"] == "tls-ed25519-passed"
+    assert result["document_formatter"] == {
+        "features": 6,
+        "capabilities": 25,
+        "office_runtime": "passed",
+    }
     ocr_environment = calls[0]["env"]
     assert isinstance(ocr_environment, dict)
     assert ocr_environment["TESSDATA_PREFIX"] == str(runtime / "ocr" / "tessdata")
@@ -211,6 +263,7 @@ def test_selftest_and_cli_success_and_failure(
         runtime / "ocr" / "lib"
     )
     assert calls[1]["timeout"] == 30
+    assert calls[2]["timeout"] == 120
 
     monkeypatch.setattr(package_selftest, "run_selftest", lambda _runtime: result)
     assert package_selftest.main(runtime) == 0

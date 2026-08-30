@@ -1,11 +1,11 @@
-"""rc.4 macOS 原生发布门禁的兼容性回归测试。"""
+"""rc.6 macOS 原生发布门禁的兼容性回归测试。"""
 
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = ROOT / ".github" / "workflows" / "build-macos-1.4.5-rc.4.yml"
+WORKFLOW = ROOT / ".github" / "workflows" / "build-macos-1.4.5-rc.6.yml"
 
 
 def test_macos_upgrade_backup_gate_supports_system_bash_32() -> None:

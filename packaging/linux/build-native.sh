@@ -188,7 +188,11 @@ find "$OFFICE_PACKAGE_RUNTIME" -type f -exec chmod 0644 {} +
 while IFS= read -r -d '' office_candidate; do
   office_header="$(LC_ALL=C head -c 2 "$office_candidate" 2>/dev/null || true)"
   office_description="$(LC_ALL=C file -b "$office_candidate")"
-  if [[ "$office_header" == '#!' ]] ||
+  # LibreOffice 随包携带 libpython*.so.*-gdb.py。它虽然带 shebang，但只是
+  # 调试器加载的辅助脚本，不是运行入口；若按 shebang 恢复执行位，后续
+  # 共享库权限门禁会正确拒绝这个形似 .so 的文件。所有 *.so* 名称一律
+  # 保持 0644，只恢复普通命名的启动脚本和真正的 ELF 可执行文件。
+  if [[ "$office_candidate" != *.so* && "$office_header" == '#!' ]] ||
     [[ "$office_description" == *ELF* && "$office_description" == *executable* ]]; then
     chmod 0755 "$office_candidate"
   fi
