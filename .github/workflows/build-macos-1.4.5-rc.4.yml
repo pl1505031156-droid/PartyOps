@@ -1,0 +1,21 @@
+name: 转接 macOS 1.4.5-rc.6 原生构建
+
+# GitHub 只允许手动触发默认分支已经登记的 workflow 文件。rc.4 的历史
+# 文件名已在默认分支登记，因此保留一个只负责转接的兼容入口；实际构建、
+# 双架构矩阵和全部门禁均来自触发 ref 中的 rc.6 可复用工作流。
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 输入 BUILD-UNSIGNED-145-RC6，确认只生成未公证测试候选
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  macos-rc6:
+    uses: ./.github/workflows/build-macos-1.4.5-rc.6.yml
+    with:
+      confirmation: ${{ inputs.confirmation }}

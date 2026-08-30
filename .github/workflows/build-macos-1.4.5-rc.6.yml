@@ -7,6 +7,12 @@ on:
         description: 输入 BUILD-UNSIGNED-145-RC6，确认只生成未公证测试候选
         required: true
         type: string
+  workflow_call:
+    inputs:
+      confirmation:
+        description: 由默认分支兼容入口传入的 rc.6 构建确认短语
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,7 +23,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.event.inputs.confirmation == 'BUILD-UNSIGNED-145-RC6'
+    if: inputs.confirmation == 'BUILD-UNSIGNED-145-RC6'
     name: ${{ matrix.architecture }} 原生构建
     timeout-minutes: 240
     strategy:
