@@ -116,10 +116,13 @@ sign_bundle_code() {
   # 调用方在签名阶段先生成候选清单，避免把根可执行文件和嵌套入口
   # 混在同一次签名中；清单本身也作为制品审计证据留在构建临时目录。
   done <"$MACHO_CANDIDATE_LIST"
+  /usr/bin/find "$APP/Contents" -depth \
+    \( -name '*.framework' -o -name '*.app' -o -name '*.xpc' -o -name '*.bundle' -o -name '*.plugin' \) \
+    -type d -print0 >"$BUNDLE_DIRECTORY_LIST"
   while IFS= read -r -d '' bundle; do
     [[ "$bundle" == "$APP" ]] && continue
     codesign --force "${timestamp_args[@]}" --options runtime --sign "$identity" "$bundle"
-  done < <(/usr/bin/find "$APP/Contents" -depth \( -name '*.framework' -o -name '*.app' -o -name '*.xpc' -o -name '*.bundle' -o -name '*.plugin' \) -type d -print0)
+  done <"$BUNDLE_DIRECTORY_LIST"
 }
 
 verify_team_ids() {
@@ -139,7 +142,7 @@ verify_team_ids() {
       printf '[MACOS_TEAM_ID_MISMATCH] 未签名候选仍含非空 Team ID：%s=%s。\n' "$candidate" "$team" >&2
       exit 2
     fi
-  done < <(/usr/bin/find "$APP/Contents" -type f -print0)
+  done <"$ALL_BUNDLE_FILE_LIST"
 }
 
 if [[ "$MODE" == 'release' ]]; then
@@ -354,6 +357,8 @@ export PARTYOPS_MACOS_TARGET_ARCH="$TARGET_ARCH"
   --distpath "$BUILD_ROOT/dist" --workpath "$BUILD_ROOT/work" \
   "$SCRIPT_DIR/partyops.spec"
 APP="$BUILD_ROOT/dist/PartyOps.app"
+PYINSTALLER_FILE_LIST="$BUILD_ROOT/pyinstaller-files.bin"
+/usr/bin/find "$APP/Contents" -type f -print0 >"$PYINSTALLER_FILE_LIST"
 # Intel cryptography 必须把固定 OpenSSL 静态收入 Rust 扩展；如果这里仍出现
 # libssl/libcrypto 动态依赖，用户电脑就可能再次遇到构建库与随包库不一致。
 CRYPTOGRAPHY_RUST_BINDING="$(
@@ -385,7 +390,7 @@ if [[ -f "$LEGACY_OPENSSL_PROVIDER" ]]; then
       legacy_inbound_dependency="$candidate"
       break
     fi
-  done < <(/usr/bin/find "$APP/Contents" -type f -print0)
+  done <"$PYINSTALLER_FILE_LIST"
   if [[ -n "$legacy_inbound_dependency" ]]; then
     printf '[MACOS_OPENSSL_LEGACY_PROVIDER_REFERENCED] %s 仍依赖 legacy.dylib。\n' \
       "$legacy_inbound_dependency" >&2
@@ -444,8 +449,22 @@ fi
   printf '%s\n' '[MACOS_UPDATE_TRUST_ROOT_COPY_FAILED] 应用内更新根公钥回读不一致。' >&2
   exit 2
 }
+ALL_BUNDLE_FILE_LIST="$BUILD_ROOT/all-bundle-files.bin"
+BUNDLE_DIRECTORY_LIST="$BUILD_ROOT/bundle-directories.bin"
+/usr/bin/find "$APP/Contents" -type f -print0 >"$ALL_BUNDLE_FILE_LIST"
+OCR_BUNDLE_STDERR="$BUILD_ROOT/tesseract-bundle.stderr"
 TESSDATA_PREFIX="$APP/Contents/Resources/ocr/tessdata" \
-  "$APP/Contents/MacOS/tesseract" --list-langs | /usr/bin/grep -qx 'chi_sim'
+  "$APP/Contents/MacOS/tesseract" --list-langs \
+  2>"$OCR_BUNDLE_STDERR" | /usr/bin/grep -qx 'chi_sim' || {
+    printf '%s\n' '[MACOS_OCR_BUNDLE_SELFTEST_FAILED] App 内中文 OCR 运行时无法加载。' >&2
+    /bin/cat "$OCR_BUNDLE_STDERR" >&2
+    exit 2
+  }
+if /usr/bin/grep -Eq 'Error in pixReadMem(Tiff)?|function not present' "$OCR_BUNDLE_STDERR"; then
+  printf '%s\n' '[MACOS_OCR_BUNDLE_DECODER_INCOMPLETE] App 内 OCR 缺少 TIFF 解码能力。' >&2
+  /bin/cat "$OCR_BUNDLE_STDERR" >&2
+  exit 2
+fi
 # Intel 首次加载嵌入的 Metal 运行时在原生 Runner 上实测可能超过 30 秒；
 # 使用 120 秒有界探测，既不把正确程序误判为失败，也不允许构建无限挂死。
 "$VENV/bin/python" - "$APP/Contents/MacOS/llama-server" <<'PY'

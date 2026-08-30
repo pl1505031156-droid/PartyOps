@@ -56,7 +56,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for command in python3.11 cmake ninja clang clang++ curl tar shasum file otool strip; do
+for command in python3.11 cmake ninja clang clang++ curl tar shasum file otool strip sips; do
   if ! command -v "$command" >/dev/null 2>&1; then
     printf '[MACOS_RUNTIME_TOOL_MISSING] 缺少工具：%s\n' "$command" >&2
     exit 2
@@ -109,6 +109,10 @@ TESSERACT_VERSION='5.5.3'
 TESSERACT_SHA256='9218e62793116d42a9f6d14cd9348518b27f382096eea3d0f2d1a24616bb5884'
 LEPTONICA_VERSION='1.87.0'
 LEPTONICA_SHA256='c73363397f96eb1295602bf44d708a994ad42046c791bf03ea0505d829bdb6a7'
+LIBJPEG_TURBO_VERSION='3.1.3'
+LIBJPEG_TURBO_SHA256='075920b826834ac4ddf97661cc73491047855859affd671d52079c6867c1c6c0'
+LIBTIFF_VERSION='4.7.1'
+LIBTIFF_SHA256='f698d94f3103da8ca7438d84e0344e453fe0ba3b7486e04c5bf7a9a3fabe9b69'
 LIBPNG_VERSION='1.6.58'
 LIBPNG_SHA256='a9d4df463d36a6e5f9c29bd6f4967312d17e996c1854f3511f833924eb1993cf'
 ZLIB_VERSION='1.3.2'
@@ -123,6 +127,12 @@ download_locked "tesseract-${TESSERACT_VERSION}.tar.gz" \
 download_locked "leptonica-${LEPTONICA_VERSION}.tar.gz" \
   "https://github.com/DanBloomberg/leptonica/releases/download/${LEPTONICA_VERSION}/leptonica-${LEPTONICA_VERSION}.tar.gz" \
   "$LEPTONICA_SHA256"
+download_locked "libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" \
+  "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/${LIBJPEG_TURBO_VERSION}/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" \
+  "$LIBJPEG_TURBO_SHA256"
+download_locked "tiff-${LIBTIFF_VERSION}.tar.gz" \
+  "https://download.osgeo.org/libtiff/tiff-${LIBTIFF_VERSION}.tar.gz" \
+  "$LIBTIFF_SHA256"
 download_locked "libpng-${LIBPNG_VERSION}.tar.gz" \
   "https://github.com/pnggroup/libpng/archive/refs/tags/v${LIBPNG_VERSION}.tar.gz" \
   "$LIBPNG_SHA256"
@@ -137,6 +147,8 @@ download_locked 'eng.traineddata' \
 
 validate_archive "$INPUTS/tesseract-${TESSERACT_VERSION}.tar.gz" "tesseract-${TESSERACT_VERSION}"
 validate_archive "$INPUTS/leptonica-${LEPTONICA_VERSION}.tar.gz" "leptonica-${LEPTONICA_VERSION}"
+validate_archive "$INPUTS/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" "libjpeg-turbo-${LIBJPEG_TURBO_VERSION}"
+validate_archive "$INPUTS/tiff-${LIBTIFF_VERSION}.tar.gz" "tiff-${LIBTIFF_VERSION}"
 validate_archive "$INPUTS/libpng-${LIBPNG_VERSION}.tar.gz" "libpng-${LIBPNG_VERSION}"
 validate_archive "$INPUTS/zlib-${ZLIB_VERSION}.tar.gz" "zlib-${ZLIB_VERSION}"
 
@@ -145,6 +157,8 @@ mkdir -p "$OCR_BUILD"
 for archive in \
   "tesseract-${TESSERACT_VERSION}.tar.gz" \
   "leptonica-${LEPTONICA_VERSION}.tar.gz" \
+  "libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" \
+  "tiff-${LIBTIFF_VERSION}.tar.gz" \
   "libpng-${LIBPNG_VERSION}.tar.gz" \
   "zlib-${ZLIB_VERSION}.tar.gz"; do
   tar -xzf "$INPUTS/$archive" -C "$OCR_BUILD" --no-same-owner --no-same-permissions
@@ -175,10 +189,28 @@ cmake -S "$OCR_BUILD/libpng-${LIBPNG_VERSION}" -B "$OCR_BUILD/libpng-build" \
 cmake --build "$OCR_BUILD/libpng-build" -j "$JOBS"
 cmake --install "$OCR_BUILD/libpng-build"
 
+cmake -S "$OCR_BUILD/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}" \
+  -B "$OCR_BUILD/libjpeg-turbo-build" \
+  "${COMMON_FLAGS[@]}" -DENABLE_SHARED=OFF -DENABLE_STATIC=ON \
+  -DWITH_TURBOJPEG=OFF -DWITH_TOOLS=OFF -DWITH_TESTS=OFF -DWITH_SIMD=OFF
+cmake --build "$OCR_BUILD/libjpeg-turbo-build" -j "$JOBS"
+cmake --install "$OCR_BUILD/libjpeg-turbo-build"
+
+# Leptonica 内置字库和用户常见扫描件都会经过 TIFF/JPEG 解码。必须把
+# 两个解码器静态收入 tesseract；仅支持 PNG 会令 --list-langs 本身出现
+# pixReadMemTiff 错误，也会使 JPG/TIFF 公文扫描件在用户电脑上无法识别。
+cmake -S "$OCR_BUILD/tiff-${LIBTIFF_VERSION}" -B "$OCR_BUILD/libtiff-build" \
+  "${COMMON_FLAGS[@]}" -DCMAKE_PREFIX_PATH="$PREFIX" -DBUILD_SHARED_LIBS=OFF \
+  -Dtiff-static=ON -Dtiff-tools=OFF -Dtiff-tests=OFF -Dtiff-contrib=OFF -Dtiff-docs=OFF \
+  -Djpeg=ON -Dzlib=ON -Dlibdeflate=OFF -Dlzma=OFF -Djbig=OFF \
+  -Dwebp=OFF -Dzstd=OFF
+cmake --build "$OCR_BUILD/libtiff-build" -j "$JOBS"
+cmake --install "$OCR_BUILD/libtiff-build"
+
 cmake -S "$OCR_BUILD/leptonica-${LEPTONICA_VERSION}" -B "$OCR_BUILD/leptonica-build" \
   "${COMMON_FLAGS[@]}" -DCMAKE_PREFIX_PATH="$PREFIX" -DBUILD_SHARED_LIBS=OFF \
   -DBUILD_PROG=OFF -DSW_BUILD=OFF -DENABLE_ZLIB=ON -DENABLE_PNG=ON \
-  -DENABLE_GIF=OFF -DENABLE_JPEG=OFF -DENABLE_TIFF=OFF \
+  -DENABLE_GIF=OFF -DENABLE_JPEG=ON -DENABLE_TIFF=ON \
   -DENABLE_WEBP=OFF -DENABLE_OPENJPEG=OFF
 cmake --build "$OCR_BUILD/leptonica-build" -j "$JOBS"
 cmake --install "$OCR_BUILD/leptonica-build"
@@ -186,7 +218,7 @@ cmake --install "$OCR_BUILD/leptonica-build"
 cmake -S "$OCR_BUILD/tesseract-${TESSERACT_VERSION}" -B "$OCR_BUILD/tesseract-build" \
   "${COMMON_FLAGS[@]}" -DCMAKE_PREFIX_PATH="$PREFIX" -DBUILD_SHARED_LIBS=OFF \
   -DOPENMP_BUILD=OFF -DGRAPHICS_DISABLED=ON -DDISABLED_LEGACY_ENGINE=ON \
-  -DBUILD_TRAINING_TOOLS=OFF -DBUILD_TESTS=OFF -DDISABLE_TIFF=ON \
+  -DBUILD_TRAINING_TOOLS=OFF -DBUILD_TESTS=OFF -DDISABLE_TIFF=OFF \
   -DDISABLE_ARCHIVE=ON -DDISABLE_CURL=ON -DENABLE_NATIVE=OFF \
   -DENABLE_LTO=OFF -DENABLE_CCACHE=OFF -DINSTALL_CONFIGS=OFF \
   -DCMAKE_EXE_LINKER_FLAGS='-Wl,-dead_strip'
@@ -198,12 +230,36 @@ cp "$OCR_BUILD/tesseract-build/bin/tesseract" "$OCR_RUNTIME/bin/tesseract"
 cp "$INPUTS/chi_sim.traineddata" "$INPUTS/eng.traineddata" "$OCR_RUNTIME/tessdata/"
 cp "$OCR_BUILD/tesseract-${TESSERACT_VERSION}/LICENSE" "$OCR_RUNTIME/licenses/tesseract-LICENSE"
 cp "$OCR_BUILD/leptonica-${LEPTONICA_VERSION}/leptonica-license.txt" "$OCR_RUNTIME/licenses/leptonica-LICENSE"
+cp "$OCR_BUILD/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}/LICENSE.md" \
+  "$OCR_RUNTIME/licenses/libjpeg-turbo-LICENSE.md"
+cp "$OCR_BUILD/tiff-${LIBTIFF_VERSION}/LICENSE.md" \
+  "$OCR_RUNTIME/licenses/libtiff-LICENSE.md"
 strip -x "$OCR_RUNTIME/bin/tesseract"
 chmod 0755 "$OCR_RUNTIME/bin/tesseract"
 assert_thin_architecture "$OCR_RUNTIME/bin/tesseract"
 assert_system_dependencies_only "$OCR_RUNTIME/bin/tesseract"
-TESSDATA_PREFIX="$OCR_RUNTIME/tessdata" "$OCR_RUNTIME/bin/tesseract" --list-langs | \
-  grep -qx 'chi_sim'
+OCR_PROBE_STDERR="$BUILD_BASE/tesseract-probe.stderr"
+TESSDATA_PREFIX="$OCR_RUNTIME/tessdata" \
+  "$OCR_RUNTIME/bin/tesseract" --list-langs 2>"$OCR_PROBE_STDERR" | grep -qx 'chi_sim'
+if grep -Eq 'Error in pixReadMem(Tiff)?|function not present' "$OCR_PROBE_STDERR"; then
+  printf '%s\n' '[MACOS_OCR_DECODER_INCOMPLETE] OCR 运行时缺少内置字库需要的 TIFF 解码能力。' >&2
+  cat "$OCR_PROBE_STDERR" >&2
+  exit 2
+fi
+# 使用仓库真实图标生成 JPEG/TIFF 探针，验证静态解码器确实可在没有
+# Homebrew 的独立运行时中工作；识别结果可为空，但解码与推理必须成功。
+for image_format in jpeg tiff; do
+  probe_image="$BUILD_BASE/ocr-probe.$image_format"
+  sips -s format "$image_format" "$ROOT/packaging/windows/partyops-1024.png" \
+    --out "$probe_image" >/dev/null
+  TESSDATA_PREFIX="$OCR_RUNTIME/tessdata" \
+    "$OCR_RUNTIME/bin/tesseract" "$probe_image" stdout -l eng \
+    >/dev/null 2>"$BUILD_BASE/tesseract-$image_format.stderr" || {
+      printf '[MACOS_OCR_FORMAT_SELFTEST_FAILED] OCR 无法读取 %s 探针。\n' "$image_format" >&2
+      cat "$BUILD_BASE/tesseract-$image_format.stderr" >&2
+      exit 2
+    }
+done
 
 LLAMA_TAG='b10331'
 LLAMA_SHA256='73bfa7e5b56a818db7c9b3de5ab1156095eee6063efbb68d338c6a197ddac584'

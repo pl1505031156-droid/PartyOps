@@ -13,6 +13,17 @@ if [[ ! -d "$APP_PATH/Contents/MacOS" ]] ||
   exit 2
 fi
 
+# 先把扫描目标固化到普通文件。Darwin find 通过进程替换向提前退出的
+# while 写入时会用“stdout: Undefined error: 0”掩盖真正失败点；固定清单
+# 既避免 EPIPE，也让架构、依赖、签名三项检查针对完全相同的文件集合。
+SCAN_LIST="$(/usr/bin/mktemp "${TMPDIR:-/tmp}/partyops-bundle-files.XXXXXX")"
+WIZARD_REPORT="${SCAN_LIST}.wizard.json"
+cleanup() {
+  /bin/rm -f "$SCAN_LIST" "$WIZARD_REPORT"
+}
+trap cleanup EXIT
+/usr/bin/find "$APP_PATH/Contents" -type f -print0 >"$SCAN_LIST"
+
 required=(partyops-desktop partyops-desktop-bin partyops partyops-client partyops-wizard partyops-launch-agent partyops-updater)
 casefold_names='|'
 for name in "${required[@]}"; do
@@ -96,22 +107,19 @@ while IFS= read -r -d '' candidate; do
     bad_deployment_target="${candidate}: min macOS ${deployment_target} (发布基线为 11.0)"
     break
   fi
-done < <(/usr/bin/find "$APP_PATH/Contents" -type f -print0)
-
-# 逐个检查嵌套 Mach-O 的签名身份，避免 Python.framework、扩展和主入口
-# 混用 Team ID。未签名候选允许 ad-hoc（TeamIdentifier=not set），正式
-# 构建则要求由调用方在签名后执行同样的统一身份检查。
-while IFS= read -r -d '' candidate; do
-  description="$(/usr/bin/file -b "$candidate" 2>/dev/null || true)"
-  [[ "$description" == *Mach-O* ]] || continue
-  identity="$(/usr/bin/codesign --display --verbose=4 "$candidate" 2>&1 | /usr/bin/awk -F= '/TeamIdentifier=/{print $2; exit}')"
+  # 逐个检查嵌套 Mach-O 的签名身份，避免 Python.framework、扩展和主入口
+  # 混用 Team ID。未签名候选允许 ad-hoc（TeamIdentifier=not set）。
+  identity="$(
+    /usr/bin/codesign --display --verbose=4 "$candidate" 2>&1 |
+      /usr/bin/awk -F= '/TeamIdentifier=/{print $2; exit}' || true
+  )"
   if [[ -n "$identity" && "$identity" != 'not set' ]]; then
     if [[ -z "$team_ids" ]]; then team_ids="$identity"; elif [[ "$team_ids" != "$identity" ]]; then
       printf '[MACOS_TEAM_ID_MISMATCH] %s 的 Team ID 为 %s，已发现 %s。\n' "$candidate" "$identity" "$team_ids" >&2
       exit 2
     fi
   fi
-done < <(/usr/bin/find "$APP_PATH/Contents" -type f -print0)
+done <"$SCAN_LIST"
 
 if [[ -n "$bad_architecture" ]]; then
   printf '[MACOS_ARCH_MISMATCH] 应用包混入错误架构：%s\n' "$bad_architecture" >&2
@@ -126,8 +134,30 @@ if [[ -n "$bad_deployment_target" ]]; then
   exit 2
 fi
 
-"$APP_PATH/Contents/MacOS/partyops-desktop" --self-test
-"$APP_PATH/Contents/MacOS/partyops-launch-agent" --mode personal --self-test
-"$APP_PATH/Contents/MacOS/partyops-wizard" --self-test
-"$APP_PATH/Contents/MacOS/partyops" --package-self-test
+run_bundle_selftest() {
+  local error_code="$1" label="$2"
+  shift 2
+  printf '[MACOS_SELFTEST_BEGIN] %s\n' "$label"
+  if "$@"; then
+    printf '[MACOS_SELFTEST_PASSED] %s\n' "$label"
+    return 0
+  else
+    local status=$?
+    printf '[%s] %s失败，退出码 %s。\n' "$error_code" "$label" "$status" >&2
+    return "$status"
+  fi
+}
+
+run_bundle_selftest MACOS_DESKTOP_SELFTEST_FAILED '桌面启动器自检' \
+  "$APP_PATH/Contents/MacOS/partyops-desktop" --self-test
+run_bundle_selftest MACOS_LAUNCH_AGENT_SELFTEST_FAILED 'LaunchAgent 自检' \
+  "$APP_PATH/Contents/MacOS/partyops-launch-agent" --mode personal --self-test
+if ! run_bundle_selftest MACOS_WIZARD_SELFTEST_FAILED '配置向导图形运行时自检' \
+  /usr/bin/env "PARTYOPS_WIZARD_SELFTEST_REPORT=$WIZARD_REPORT" \
+  "$APP_PATH/Contents/MacOS/partyops-wizard" --self-test; then
+  [[ ! -s "$WIZARD_REPORT" ]] || /bin/cat "$WIZARD_REPORT" >&2
+  exit 2
+fi
+run_bundle_selftest MACOS_PACKAGE_SELFTEST_FAILED '完整随包运行时自检' \
+  "$APP_PATH/Contents/MacOS/partyops" --package-self-test
 printf 'PartyOps macOS %s 应用包原生自检通过。\n' "$EXPECTED_ARCH"

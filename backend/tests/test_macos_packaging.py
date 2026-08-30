@@ -272,6 +272,16 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     # libpng 在 Apple 平台默认生成 framework；必须显式关闭，避免 OCR
     # 运行时在用户电脑上依赖构建机路径中的 png.framework。
     assert "-DPNG_FRAMEWORK=OFF" in runtimes
+    # OCR 必须能在无 Homebrew 的用户电脑上读取 JPG/TIFF 扫描件；源码、
+    # 哈希、静态构建参数和真实格式探针全部进入同一构建契约。
+    assert "LIBJPEG_TURBO_VERSION='3.1.3'" in runtimes
+    assert "075920b826834ac4ddf97661cc73491047855859affd671d52079c6867c1c6c0" in runtimes
+    assert "LIBTIFF_VERSION='4.7.1'" in runtimes
+    assert "f698d94f3103da8ca7438d84e0344e453fe0ba3b7486e04c5bf7a9a3fabe9b69" in runtimes
+    assert "-DENABLE_JPEG=ON -DENABLE_TIFF=ON" in runtimes
+    assert "-DDISABLE_TIFF=OFF" in runtimes
+    assert "MACOS_OCR_FORMAT_SELFTEST_FAILED" in runtimes
+    assert "for image_format in jpeg tiff" in runtimes
     assert "chi_sim.traineddata" in runtimes
     assert "llama-server" in runtimes
 
@@ -353,6 +363,60 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert 'codesign --verify --deep --strict --verbose=2 "$SOURCE_APP"' in office
     assert "subprocess.run(" not in office
     assert '"--headless", "--version"' in package_selftest
+    # 未签名的新增 Mach-O 在首次校验时 codesign --display 会返回非零；
+    # 校验器必须把“未签名”当成允许状态，而不是让 pipefail 静默中止。
+    assert 'done <"$SCAN_LIST"' in validation
+    assert "done < <(/usr/bin/find" not in validation
+    assert "/usr/bin/awk -F= '/TeamIdentifier=/" in validation
+    assert "|| true" in validation
+    assert "MACOS_WIZARD_SELFTEST_FAILED" in validation
+    assert "MACOS_PACKAGE_SELFTEST_FAILED" in validation
+    assert "PARTYOPS_WIZARD_SELFTEST_REPORT" in validation
+
+
+def test_macos_wizard_gui_selftest_writes_auditable_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """无控制台 GUI 入口也必须留下成功或失败原因，不能只返回退出码 1。"""
+
+    module_spec = importlib.util.spec_from_file_location(
+        "partyops_wizard_selftest", ROOT / "packaging" / "uos" / "wizard_entrypoint.py"
+    )
+    assert module_spec and module_spec.loader
+    wizard = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(wizard)
+    report = tmp_path / "wizard-selftest.json"
+    monkeypatch.setenv("PARTYOPS_WIZARD_SELFTEST_REPORT", str(report))
+
+    class FakeRoot:
+        def __init__(self) -> None:
+            self.tk = SimpleNamespace(call=lambda *_args: "8.6.14")
+
+        def withdraw(self) -> None:
+            return None
+
+        def update_idletasks(self) -> None:
+            return None
+
+        def destroy(self) -> None:
+            return None
+
+    monkeypatch.setitem(sys.modules, "tkinter", SimpleNamespace(Tk=FakeRoot))
+    assert wizard._frozen_gui_self_test() == 0
+    assert json.loads(report.read_text(encoding="utf-8")) == {
+        "passed": True,
+        "tcl_tk": "8.6.14",
+    }
+
+    def fail_tk() -> None:
+        raise RuntimeError("Tk 框架无法加载")
+
+    monkeypatch.setitem(sys.modules, "tkinter", SimpleNamespace(Tk=fail_tk))
+    assert wizard._frozen_gui_self_test() == 2
+    failure = json.loads(report.read_text(encoding="utf-8"))
+    assert failure["passed"] is False
+    assert failure["code"] == "PACKAGE_WIZARD_GUI_SELFTEST_FAILED"
+    assert failure["error"] == "Tk 框架无法加载"
 
 
 @pytest.mark.parametrize("target_revision", ["0023", "0025"])

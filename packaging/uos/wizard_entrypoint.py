@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import threading
@@ -13,16 +14,41 @@ from pathlib import Path
 def _frozen_gui_self_test() -> int:
     """在不写配置、不启动服务的前提下核验冻结 GUI 运行时。"""
 
-    import tkinter
-
-    root = tkinter.Tk()
+    report_text = os.getenv("PARTYOPS_WIZARD_SELFTEST_REPORT", "").strip()
+    report_path = Path(report_text).resolve() if report_text else None
     try:
-        root.withdraw()
-        root.update_idletasks()
-        tcl_version = root.tk.call("info", "patchlevel")
-        print(f"PartyOps 配置向导图形运行时正常（Tcl/Tk {tcl_version}）。")
-    finally:
-        root.destroy()
+        import tkinter
+
+        root = tkinter.Tk()
+        try:
+            root.withdraw()
+            root.update_idletasks()
+            tcl_version = str(root.tk.call("info", "patchlevel"))
+        finally:
+            root.destroy()
+    except Exception as exc:
+        payload = {
+            "passed": False,
+            "code": "PACKAGE_WIZARD_GUI_SELFTEST_FAILED",
+            "error": str(exc)[-4000:],
+        }
+        if report_path is not None:
+            report_path.write_text(
+                json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        print(
+            f"[PACKAGE_WIZARD_GUI_SELFTEST_FAILED] 配置向导图形运行时失败：{exc}",
+            file=sys.stderr,
+        )
+        return 2
+    payload = {"passed": True, "tcl_tk": tcl_version}
+    if report_path is not None:
+        report_path.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    print(f"PartyOps 配置向导图形运行时正常（Tcl/Tk {tcl_version}）。")
     return 0
 
 
