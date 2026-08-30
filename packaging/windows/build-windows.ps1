@@ -31,9 +31,11 @@ $OfficeRuntime = if ($OfficeRuntime) { (Resolve-Path -LiteralPath $OfficeRuntime
   Join-Path $repoRoot "vendor\windows\$runtimeName"
 }
 $officeExecutable = Join-Path $OfficeRuntime "program\soffice.exe"
+$officeCliExecutable = Join-Path $OfficeRuntime "program\soffice.com"
 $officeSource = Join-Path $OfficeRuntime "SOURCE.json"
 $officeLicenses = Join-Path $OfficeRuntime "licenses"
 if (-not (Test-Path -LiteralPath $officeExecutable) -or
+    -not (Test-Path -LiteralPath $officeCliExecutable) -or
     -not (Test-Path -LiteralPath $officeSource) -or
     -not (Test-Path -LiteralPath $officeLicenses -PathType Container)) {
   throw "[OFFICE_RUNTIME_MISSING] 缺少 $targetArchitecture 经许可审计的 LibreOffice headless 运行时、来源清单或许可证。"
@@ -43,20 +45,44 @@ if (Get-ChildItem -LiteralPath $OfficeRuntime -Recurse -Force | Where-Object {
   } | Select-Object -First 1) {
   throw "[OFFICE_RUNTIME_REPARSE_POINT] LibreOffice 运行时不得包含联接、符号链接或其它重解析点。"
 }
-$officeBytes = [IO.File]::ReadAllBytes($officeExecutable)
-if ($officeBytes.Length -lt 64 -or $officeBytes[0] -ne 0x4D -or $officeBytes[1] -ne 0x5A) {
-  throw "[OFFICE_RUNTIME_PE_INVALID] LibreOffice soffice.exe 不是有效 PE 文件。"
-}
-$peOffset = [BitConverter]::ToInt32($officeBytes, 0x3C)
-if ($peOffset -lt 0 -or $peOffset + 6 -gt $officeBytes.Length -or
-    $officeBytes[$peOffset] -ne 0x50 -or $officeBytes[$peOffset + 1] -ne 0x45 -or
-    $officeBytes[$peOffset + 2] -ne 0 -or $officeBytes[$peOffset + 3] -ne 0) {
-  throw "[OFFICE_RUNTIME_PE_INVALID] LibreOffice soffice.exe 的 PE 头越界或签名无效。"
-}
-$machine = [BitConverter]::ToUInt16($officeBytes, $peOffset + 4)
 $expectedMachine = if ($targetArchitecture -eq "amd64") { 0x8664 } else { 0x014C }
-if ($machine -ne $expectedMachine) {
-  throw "[OFFICE_RUNTIME_ARCH_MISMATCH] LibreOffice PE 架构与 $targetArchitecture 不一致。"
+foreach ($officeEntry in @($officeExecutable, $officeCliExecutable)) {
+  $officeBytes = [IO.File]::ReadAllBytes($officeEntry)
+  if ($officeBytes.Length -lt 64 -or $officeBytes[0] -ne 0x4D -or $officeBytes[1] -ne 0x5A) {
+    throw "[OFFICE_RUNTIME_PE_INVALID] LibreOffice $([IO.Path]::GetFileName($officeEntry)) 不是有效 PE 文件。"
+  }
+  $peOffset = [BitConverter]::ToInt32($officeBytes, 0x3C)
+  if ($peOffset -lt 0 -or $peOffset + 6 -gt $officeBytes.Length -or
+      $officeBytes[$peOffset] -ne 0x50 -or $officeBytes[$peOffset + 1] -ne 0x45 -or
+      $officeBytes[$peOffset + 2] -ne 0 -or $officeBytes[$peOffset + 3] -ne 0) {
+    throw "[OFFICE_RUNTIME_PE_INVALID] LibreOffice $([IO.Path]::GetFileName($officeEntry)) 的 PE 头越界或签名无效。"
+  }
+  $machine = [BitConverter]::ToUInt16($officeBytes, $peOffset + 4)
+  if ($machine -ne $expectedMachine) {
+    throw "[OFFICE_RUNTIME_ARCH_MISMATCH] LibreOffice $([IO.Path]::GetFileName($officeEntry)) 与 $targetArchitecture 不一致。"
+  }
+}
+$officeEvidence = Get-Content -LiteralPath $officeSource -Raw | ConvertFrom-Json
+if ($officeEvidence.architecture -ne $targetArchitecture -or
+    $officeEvidence.platform -ne $platformFamily -or
+    $officeEvidence.authenticode.status -ne "Valid") {
+  throw "[OFFICE_RUNTIME_SOURCE_INVALID] LibreOffice 来源清单的平台、架构或签名状态不匹配。"
+}
+$officeExpectedHashes = @{
+  $officeExecutable = [string]$officeEvidence.soffice_sha256
+  $officeCliExecutable = [string]$officeEvidence.soffice_cli_sha256
+}
+foreach ($officeEntry in $officeExpectedHashes.Keys) {
+  $expectedHash = $officeExpectedHashes[$officeEntry].ToUpperInvariant()
+  $actualHash = (Get-FileHash -LiteralPath $officeEntry -Algorithm SHA256).Hash
+  if (-not $expectedHash -or $actualHash -ne $expectedHash) {
+    throw "[OFFICE_RUNTIME_HASH_MISMATCH] LibreOffice $([IO.Path]::GetFileName($officeEntry)) 与来源清单不一致。"
+  }
+  $signature = Get-AuthenticodeSignature -LiteralPath $officeEntry
+  if ($signature.Status -ne "Valid" -or
+      $signature.SignerCertificate.Thumbprint -ne $officeEvidence.authenticode.certificate_thumbprint) {
+    throw "[OFFICE_RUNTIME_SIGNATURE_INVALID] LibreOffice $([IO.Path]::GetFileName($officeEntry)) 的签名无效或证书不一致。"
+  }
 }
 $ucrtArchitecture = if ($targetArchitecture -eq "amd64") { "x64" } else { "x86" }
 $ucrtRoot = Join-Path $repoRoot "vendor\windows\ucrt-10.0.19041.0-$ucrtArchitecture"

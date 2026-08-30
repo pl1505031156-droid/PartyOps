@@ -47,12 +47,16 @@ def _ocr_runtime(runtime: Path) -> tuple[Path, Path, Path]:
 def _office_executable(runtime: Path) -> Path:
     """定位安装包自带的无窗口公文转换器，不回退到系统 Office。"""
 
-    suffix = ".exe" if os.name == "nt" else ""
+    # Windows 官方 LibreOffice 同时提供 GUI 子系统入口 soffice.exe 与
+    # 控制台入口 soffice.com。冻结程序会捕获子进程输出；此时 26.x 的
+    # .exe 入口可能长期等待，.com 才是可观测且会确定退出的 headless CLI。
+    names = ("soffice.com", "soffice.exe") if os.name == "nt" else ("soffice",)
     for root in (runtime, _runtime_contents(runtime)):
-        candidate = root / "office-runtime" / "program" / f"soffice{suffix}"
-        if candidate.is_file():
-            return candidate
-    return runtime / "office-runtime" / "program" / f"soffice{suffix}"
+        for name in names:
+            candidate = root / "office-runtime" / "program" / name
+            if candidate.is_file():
+                return candidate
+    return runtime / "office-runtime" / "program" / names[0]
 
 
 def _native_child_environment(runtime: Path, library: Path | None = None) -> dict[str, str]:

@@ -1457,6 +1457,9 @@ def test_windows_build_requires_audited_architecture_matched_office_runtime() ->
     assert "[OFFICE_RUNTIME_REPARSE_POINT]" in build
     assert "PE 头越界或签名无效" in build
     assert "[OFFICE_RUNTIME_ARCH_MISMATCH]" in build
+    assert "soffice.com" in build
+    assert "[OFFICE_RUNTIME_HASH_MISMATCH]" in build
+    assert "[OFFICE_RUNTIME_SIGNATURE_INVALID]" in build
     assert 'Join-Path $bundleRoot "office-runtime"' in build
     assert "-OfficeRuntime $OfficeRuntime" in legacy
     assert "OfficeRuntimeMode" not in build

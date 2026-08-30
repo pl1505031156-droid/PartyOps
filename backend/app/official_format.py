@@ -953,15 +953,22 @@ def _office_candidates() -> list[Path]:
         values.extend(
             [
                 str(executable_root / "office-runtime" / "program" / "soffice"),
+                # Windows 的 soffice.exe 使用 GUI 子系统；被无窗口父进程捕获
+                # stdout/stderr 时，官方 26.x 启动器可能一直等待。soffice.com
+                # 是同一套件提供的控制台入口，应优先用于确定性的 headless
+                # 转换。保留 .exe 仅用于旧版 LibreOffice 兼容回退。
+                str(executable_root / "office-runtime" / "program" / "soffice.com"),
                 str(executable_root / "office-runtime" / "program" / "soffice.exe"),
                 str(executable_root.parent / "Resources" / "office-runtime" / "program" / "soffice"),
                 str(module_root / "office-runtime" / "program" / "soffice"),
+                str(module_root / "office-runtime" / "program" / "soffice.com"),
                 str(module_root / "office-runtime" / "program" / "soffice.exe"),
             ]
         )
     if os.name == "nt":
         for root in (os.getenv("PROGRAMFILES"), os.getenv("PROGRAMFILES(X86)")):
             if root:
+                values.append(str(Path(root) / "LibreOffice" / "program" / "soffice.com"))
                 values.append(str(Path(root) / "LibreOffice" / "program" / "soffice.exe"))
     seen: set[str] = set()
     candidates: list[Path] = []

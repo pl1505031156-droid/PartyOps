@@ -46,6 +46,21 @@ def test_runtime_contents_supports_onefile_and_onedir(tmp_path: Path) -> None:
     )
 
 
+def test_windows_office_selftest_prefers_console_entry(tmp_path: Path) -> None:
+    """Windows 捕获输出时必须使用会确定退出的 soffice.com。"""
+
+    runtime = _runtime(tmp_path)
+    program = runtime / "office-runtime" / "program"
+    if os.name == "nt":
+        console = program / "soffice.com"
+        console.write_bytes(b"console")
+        assert package_selftest._office_executable(runtime) == console
+        console.unlink()
+        assert package_selftest._office_executable(runtime) == program / "soffice.exe"
+    else:
+        assert package_selftest._office_executable(runtime) == program / "soffice"
+
+
 def test_macos_ocr_uses_standard_bundle_resource_layout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

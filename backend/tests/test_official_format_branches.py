@@ -280,11 +280,14 @@ def test_office_candidate_and_windows_com_conversion_matrix(tmp_path: Path, monk
     installed = program_files / "LibreOffice" / "program" / "soffice.exe"
     installed.parent.mkdir(parents=True)
     installed.write_bytes(b"binary")
+    installed_cli = installed.with_suffix(".com")
+    installed_cli.write_bytes(b"console")
     monkeypatch.setattr(formatter.shutil, "which", lambda name: str(executable) if name == "soffice" else None)
     monkeypatch.setenv("PROGRAMFILES", str(program_files))
     monkeypatch.delenv("PROGRAMFILES(X86)", raising=False)
     candidates = formatter._office_candidates()
-    assert executable in candidates and installed in candidates
+    assert executable in candidates and installed in candidates and installed_cli in candidates
+    assert candidates.index(installed_cli) < candidates.index(installed)
     with monkeypatch.context() as patcher:
         patcher.setattr(formatter.os, "name", "posix")
         patcher.setattr(formatter.shutil, "which", lambda _name: None)
