@@ -1386,6 +1386,63 @@ def test_linux_native_packaging_accepts_only_explicit_validated_cross_payload() 
     assert 'zstd -dc -- "$PORTABLE_COPY"' in native
 
 
+def test_linux_office_runtime_is_dual_arch_private_and_conversion_tested() -> None:
+    """国产 Linux 公文转换必须同源、自包含并真实覆盖 PDF/DOC。"""
+
+    prepare = (ROOT / "scripts" / "prepare-libreoffice-linux.sh").read_text(
+        encoding="utf-8"
+    )
+    sysroot = (
+        ROOT / "scripts" / "prepare-libreoffice-private-sysroot.sh"
+    ).read_text(encoding="utf-8")
+    collector = (
+        ROOT / "scripts" / "collect-linux-private-runtime.py"
+    ).read_text(encoding="utf-8")
+    native = (ROOT / "packaging" / "linux" / "build-native.sh").read_text(
+        encoding="utf-8"
+    )
+    arm64 = (ROOT / "scripts" / "build-linux-arm64-chroot.sh").read_text(
+        encoding="utf-8"
+    )
+    readme = (ROOT / "packaging" / "linux" / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "VERSION=25.8.7.2" in prepare
+    assert "a893a4f37a8b3fe110da92bb0135f488f8d695cd40cb7ce59c65bb525849bb67" in prepare
+    assert "a47d693dce67d5f5e15ee6f7ed2faaba5a2234fd21c3cd0227cf0567e63f95a4" in prepare
+    assert "The Document Foundation official archive" in prepare
+    assert "--seed-name libsoftokn3.so" in prepare
+    assert "--seed-name libnssckbi.so" in prepare
+    assert "--copy-name libsoftokn3.chk" in prepare
+    assert "libavmediaqt6.so" in prepare and "libofficebean.so" in prepare
+    assert "--convert-to \"$target_format\"" in prepare
+    assert "test -s \"$TEST_ROOT/output/北京时间公文转换验证.pdf\"" in prepare
+    assert "test -s \"$TEST_ROOT/output/北京时间公文转换验证.doc\"" in prepare
+    assert 'if [[ "\\$status" -eq 81 ]]' in prepare
+
+    assert "manylinux_2_34_x86_64@sha256:224ae18" in sysroot
+    assert "manylinux_2_34_aarch64@sha256:b3f10ce" in sysroot
+    assert "dd5ddb478f8863533b48baf2273411ab7c110f4609a74590223f7d9716dcb6cb" in sysroot
+    assert "82b2b3b8c65cc1fcd369b86b0ca0b3b3ed675304898354b8f15143ba57365e90" in sysroot
+    assert "glibc 2.34" in sysroot
+    assert "tree_root / str(target).lstrip" in collector
+    assert '"--seed-name"' in collector and "必须复制并纳入 ELF" in collector
+    assert '"--copy-name"' in collector and "必须复制但无需解析 ELF" in collector
+
+    assert "OFFICE_SOURCE_MISMATCH" in native
+    assert "OFFICE_DLOPEN_RUNTIME_MISSING" in native
+    assert "OFFICE_PRIVATE_RUNTIME_HASH_MISMATCH" in native
+    assert "OFFICE_PRIVATE_PACKAGES_HASH_MISMATCH" in native
+    assert 'chmod 0755 "$OFFICE_PACKAGE_RUNTIME/private-runtime/$OFFICE_LOADER_NAME"' in native
+    assert '! -path "$OFFICE_PACKAGE_RUNTIME/private-runtime/$OFFICE_LOADER_NAME"' in native
+    assert "--convert-to pdf" in arm64
+    assert "--convert-to 'doc:MS Word 97'" in arm64
+    assert "glibc >= 2.17" in native
+    assert "不替换系统 glibc" in readme
+    assert "PRIVATE_RUNTIME_LIBS.txt" in readme
+
+
 def test_windows_build_requires_audited_architecture_matched_office_runtime() -> None:
     """Windows 不能把未知来源或错误架构的办公转换器封进安装包。"""
 

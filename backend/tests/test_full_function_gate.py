@@ -38,9 +38,10 @@ def test_gate_requires_record_and_invalidates_after_source_change(tmp_path: Path
     payload = json.loads(
         (tmp_path / ".release-gates" / "full-function-tests.json").read_text(encoding="utf-8")
     )
-    assert payload["schema"] == 2
+    assert payload["schema"] == 3
     assert payload["status"] == "passed"
     assert payload["timezone"] == "Asia/Shanghai"
+    assert payload["fingerprint_canonicalization"] == "text-lf-v1"
     assert payload["tested_at"].endswith("+08:00")
     assert payload["source_fingerprints"]["package"]["file_count"] == 1
     assert payload["source_fingerprints"]["website"]["file_count"] == 1
@@ -57,6 +58,29 @@ def test_gate_requires_record_and_invalidates_after_source_change(tmp_path: Path
     assert stale.returncode == 2
     assert "FULL_FUNCTION_GATE_STALE:package" in stale.stderr
     assert _run(tmp_path, "verify", "website").returncode == 0
+
+
+def test_gate_treats_text_line_endings_as_equivalent_but_not_binary_bytes(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "backend" / "app" / "sample.py"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"VALUE = 1\r\nSECOND = 2\r\n")
+    binary = tmp_path / "backend" / "app" / "fixture.png"
+    binary.write_bytes(b"\x89PNG\r\n\x1a\nfixture\r\n")
+    website = tmp_path / "website" / "src" / "site.js"
+    website.parent.mkdir(parents=True)
+    website.write_bytes(b"export const value = 1;\r\n")
+
+    assert _run(tmp_path, "record").returncode == 0
+    source.write_bytes(b"VALUE = 1\nSECOND = 2\n")
+    website.write_bytes(b"export const value = 1;\n")
+    assert _run(tmp_path, "verify", "full").returncode == 0
+
+    binary.write_bytes(b"\x89PNG\r\n\x1a\nchanged\r\n")
+    stale = _run(tmp_path, "verify", "package")
+    assert stale.returncode == 2
+    assert "FULL_FUNCTION_GATE_STALE:package" in stale.stderr
 
 
 def test_every_platform_builder_verifies_full_function_gate() -> None:

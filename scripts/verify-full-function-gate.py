@@ -55,6 +55,37 @@ EXCLUDED_PARTS = {
     "dist",
     "artifacts",
 }
+TEXT_SUFFIXES = {
+    ".c",
+    ".cmake",
+    ".css",
+    ".desktop",
+    ".example",
+    ".iss",
+    ".isl",
+    ".js",
+    ".json",
+    ".jsx",
+    ".lock",
+    ".md",
+    ".mjs",
+    ".plist",
+    ".policy",
+    ".ps1",
+    ".py",
+    ".service",
+    ".sh",
+    ".spec",
+    ".svg",
+    ".toml",
+    ".ts",
+    ".txt",
+    ".vue",
+    ".yaml",
+    ".yml",
+}
+TEXT_FILENAMES = {"postinstall", "preinstall"}
+FINGERPRINT_CANONICALIZATION = "text-lf-v1"
 
 
 def _candidate_files(
@@ -77,13 +108,27 @@ def _candidate_files(
     return sorted(files, key=lambda item: item.relative_to(root).as_posix())
 
 
+def _canonical_payload(path: Path) -> bytes:
+    """规范源码文本换行，二进制仍按原始字节冻结。
+
+    Git 在 Windows 的 ``core.autocrlf`` 会把工作树文本改为 CRLF，而 macOS
+    原生检出保持 LF。两者语义相同，不应让已通过的测试门禁在另一平台误报；
+    图片、DOCX 等二进制则必须继续逐字节校验。
+    """
+
+    payload = path.read_bytes()
+    if path.suffix.lower() in TEXT_SUFFIXES or path.name in TEXT_FILENAMES:
+        return payload.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return payload
+
+
 def _fingerprint(root: Path, files: list[Path]) -> tuple[str, int]:
     digest = hashlib.sha256()
     for path in files:
         relative = path.relative_to(root).as_posix().encode("utf-8")
         digest.update(len(relative).to_bytes(4, "big"))
         digest.update(relative)
-        payload = path.read_bytes()
+        payload = _canonical_payload(path)
         digest.update(len(payload).to_bytes(8, "big"))
         digest.update(payload)
     return digest.hexdigest(), len(files)
@@ -127,10 +172,11 @@ def record(root: Path) -> int:
     target = root / GATE_RELATIVE_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema": 2,
+        "schema": 3,
         "status": "passed",
         "tested_at": datetime.now(BEIJING).isoformat(timespec="seconds"),
         "timezone": "Asia/Shanghai",
+        "fingerprint_canonicalization": FINGERPRINT_CANONICALIZATION,
         "source_fingerprints": source_fingerprints,
         "suite": "scripts/test.ps1",
         "scope": [
@@ -163,8 +209,11 @@ def verify(root: Path, scope: str) -> int:
     except (OSError, ValueError) as exc:
         print(f"[FULL_FUNCTION_GATE_INVALID] 门禁记录不可读：{exc}", file=sys.stderr)
         return 2
-    if payload.get("schema") != 2 or payload.get("status") != "passed":
+    if payload.get("schema") != 3 or payload.get("status") != "passed":
         print("[FULL_FUNCTION_GATE_INVALID] 门禁版本或状态无效。", file=sys.stderr)
+        return 2
+    if payload.get("fingerprint_canonicalization") != FINGERPRINT_CANONICALIZATION:
+        print("[FULL_FUNCTION_GATE_INVALID] 门禁指纹规范化版本无效。", file=sys.stderr)
         return 2
     fingerprints = payload.get("source_fingerprints")
     expected = fingerprints.get(scope) if isinstance(fingerprints, dict) else None

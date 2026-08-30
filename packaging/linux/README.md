@@ -19,6 +19,26 @@ SHA-256，以静态 libstdc++/libgcc、关闭 OpenSSL 的方式生成 CPU 运行
 冻结载荷、systemd 单元、桌面入口和安装后自检；`packaging/uos` 仅保留旧版
 兼容入口。
 
+## 公文转换私有运行时
+
+Linux AMD64/ARM64 均固定使用 The Document Foundation 官方 LibreOffice
+`25.8.7.2` 归档。`scripts/prepare-libreoffice-linux.sh` 只提取 Writer、Draw、
+图形及 XSLT 转换所需 RPM，并移除 Qt/GTK 媒体入口、LibreOfficeKit GTK 前端
+和 Java office bean，确保 PartyOps 仅在内嵌排版页面调用无界面转换。
+
+LibreOffice 本体需要比国产系统基线更新的 glibc，因此安装包携带从固定
+manylinux_2_34 镜像收集的最小私有 ELF 加载器与依赖闭包。包装器直接执行
+包内加载器，不替换系统 glibc，也不把私有库写入全局 `LD_LIBRARY_PATH`；宿主
+依赖仍保持 `glibc >= 2.17`。除普通 ELF `NEEDED` 依赖外，NSS 通过 `dlopen`
+加载的 softokn/freebl/信任模块及 `.chk` 完整性文件也必须显式进入闭包。
+每个文件的来源路径和 SHA-256 写入 `PRIVATE_RUNTIME_LIBS.txt`，原生包构建前
+会逐项复核来源版本、架构、哈希、外部界面禁用状态以及首次配置返回码 81 的
+单次重试契约。
+
+双架构运行时必须用真实中文 DOCX 同时完成 PDF 和 Word 97 DOC 输出验证；
+ARM64 还需运行 `scripts/build-linux-arm64-chroot.sh test-office`，由目标架构
+二进制在 glibc 2.17 根文件系统中执行，不能用文件存在检查代替。
+
 正式构建必须在对应架构的 manylinux2014（glibc 2.17）工具链中完成，并先由
 `scripts/validate-uos-wheelhouse.py` 验证唯一包名、完整依赖闭包、架构标签、
 `cryptography==50.0.0` 和完整本地智能运行时。任何失败都不得生成该架构制品。

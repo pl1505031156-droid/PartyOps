@@ -135,17 +135,25 @@ chroot "$ROOTFS" /bin/bash -lc "
     test-office)
       runtime=vendor/linux/libreoffice-headless-arm64
       input=artifacts/rc5-office-input/公文格式模板.docx
-      output=/tmp/partyops-office-arm64-output
-      profile=/tmp/partyops-office-arm64-profile
+      test_root=\$(mktemp -d /tmp/partyops-office-arm64.XXXXXX)
+      output=\$test_root/output
+      profile=\$test_root/profile
       test -x "\$runtime/program/soffice"
       test -s "\$input"
       mkdir -p "\$output"
       "\$runtime/program/soffice" \
         --headless --nologo --nodefault --nolockcheck --nofirststartwizard \
         -env:UserInstallation=file://"\$profile" \
+        --convert-to pdf --outdir "\$output" "\$input"
+      "\$runtime/program/soffice" \
+        --headless --nologo --nodefault --nolockcheck --nofirststartwizard \
+        -env:UserInstallation=file://"\$profile" \
         --convert-to 'doc:MS Word 97' --outdir "\$output" "\$input"
+      test -s "\$output/公文格式模板.pdf"
       test -s "\$output/公文格式模板.doc"
+      file "\$output/公文格式模板.pdf"
       file "\$output/公文格式模板.doc"
+      sha256sum "\$output/公文格式模板.pdf"
       sha256sum "\$output/公文格式模板.doc"
       ;;
   esac

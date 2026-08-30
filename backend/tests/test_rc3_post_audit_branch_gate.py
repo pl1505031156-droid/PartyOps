@@ -487,6 +487,12 @@ def test_personal_and_client_rollbacks_restore_previous_autostart(
         json.dumps({"format_version": 1, "mode": "client"}), encoding="utf-8"
     )
     (config / "client.json").write_text("{}", encoding="utf-8")
+    # 此用例只验证事务回滚；显式固定容量，避免构建机临时盘状态改变断言路径。
+    monkeypatch.setattr(
+        setup_wizard.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(free=4 * 1024**3),
+    )
     monkeypatch.setattr(setup_wizard, "config_root", lambda: config)
     monkeypatch.setattr(
         setup_wizard, "deactivate_windows_host_for_user_mode", lambda: False

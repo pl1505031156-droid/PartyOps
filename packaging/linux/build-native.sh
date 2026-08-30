@@ -43,11 +43,21 @@ fi
 EXPECTED_MACHINE=x86_64
 [[ "$ARCH" == arm64 ]] && EXPECTED_MACHINE=aarch64
 EXPECTED_OFFICE_PATTERN='x86-64|x86_64'
-[[ "$ARCH" == arm64 ]] && EXPECTED_OFFICE_PATTERN='aarch64|ARM64'
+OFFICE_LOADER_NAME=ld-linux-x86-64.so.2
+EXPECTED_OFFICE_ARCHIVE_SHA=a893a4f37a8b3fe110da92bb0135f488f8d695cd40cb7ce59c65bb525849bb67
+EXPECTED_OFFICE_PACKAGES_SHA=dd5ddb478f8863533b48baf2273411ab7c110f4609a74590223f7d9716dcb6cb
+if [[ "$ARCH" == arm64 ]]; then
+  EXPECTED_OFFICE_PATTERN='aarch64|ARM64'
+  OFFICE_LOADER_NAME=ld-linux-aarch64.so.1
+  EXPECTED_OFFICE_ARCHIVE_SHA=a47d693dce67d5f5e15ee6f7ed2faaba5a2234fd21c3cd0227cf0567e63f95a4
+  EXPECTED_OFFICE_PACKAGES_SHA=82b2b3b8c65cc1fcd369b86b0ca0b3b3ed675304898354b8f15143ba57365e90
+fi
 OFFICE_RUNTIME="${PARTYOPS_OFFICE_RUNTIME:-$ROOT/vendor/linux/libreoffice-headless-$ARCH}"
 OFFICE_BINARY="$OFFICE_RUNTIME/program/soffice.bin"
 if [[ ! -x "$OFFICE_RUNTIME/program/soffice" || ! -f "$OFFICE_BINARY" ||
-  ! -f "$OFFICE_RUNTIME/SOURCE.json" || ! -d "$OFFICE_RUNTIME/licenses" ]]; then
+  ! -f "$OFFICE_RUNTIME/SOURCE.json" || ! -d "$OFFICE_RUNTIME/licenses" ||
+  ! -f "$OFFICE_RUNTIME/private-runtime/$OFFICE_LOADER_NAME" ||
+  ! -f "$OFFICE_RUNTIME/PRIVATE_RUNTIME_LIBS.txt" ]]; then
   echo "[OFFICE_RUNTIME_MISSING] 缺少 $ARCH 经许可审计的 LibreOffice headless 运行时、来源清单或许可证。" >&2
   exit 2
 fi
@@ -55,6 +65,95 @@ file "$OFFICE_BINARY" | grep -Eq "$EXPECTED_OFFICE_PATTERN" || {
   echo "[OFFICE_RUNTIME_ARCH_MISMATCH] LibreOffice 运行时与 $ARCH 不一致。" >&2
   exit 2
 }
+file "$OFFICE_RUNTIME/private-runtime/$OFFICE_LOADER_NAME" |
+  grep -Eq "$EXPECTED_OFFICE_PATTERN" || {
+  echo "[OFFICE_PRIVATE_LOADER_ARCH_MISMATCH] LibreOffice 私有加载器与 $ARCH 不一致。" >&2
+  exit 2
+}
+# SOURCE.json、私有依赖清单及 dlopen 模块均属于安装包供应链边界。
+# 逐文件复核哈希，避免构建机系统库或未固定的新版本悄悄混入制品。
+"$PYTHON_BIN" - "$OFFICE_RUNTIME" "$ARCH" "$EXPECTED_OFFICE_ARCHIVE_SHA" \
+  "$OFFICE_LOADER_NAME" "$EXPECTED_OFFICE_PACKAGES_SHA" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+runtime = pathlib.Path(sys.argv[1])
+architecture = sys.argv[2]
+archive_sha256 = sys.argv[3]
+loader_name = sys.argv[4]
+packages_sha256 = sys.argv[5]
+source = json.loads((runtime / "SOURCE.json").read_text(encoding="utf-8"))
+expected_source = {
+    "version": "25.8.7.2",
+    "architecture": architecture,
+    "origin": "The Document Foundation official archive",
+    "archive_sha256": archive_sha256,
+    "private_runtime_glibc": "2.34",
+    "minimum_host_glibc": "2.17",
+    "private_runtime_packages_sha256": packages_sha256,
+}
+for key, expected in expected_source.items():
+    if source.get(key) != expected:
+        raise SystemExit(
+            f"[OFFICE_SOURCE_MISMATCH] {key}={source.get(key)!r}，预期 {expected!r}"
+        )
+
+manifest = runtime / "PRIVATE_RUNTIME_LIBS.txt"
+packages_manifest = runtime / "PRIVATE_RUNTIME_PACKAGES.txt"
+if hashlib.sha256(packages_manifest.read_bytes()).hexdigest() != packages_sha256:
+    raise SystemExit("[OFFICE_PRIVATE_PACKAGES_HASH_MISMATCH]")
+seen: set[str] = set()
+for number, raw_line in enumerate(manifest.read_text(encoding="utf-8").splitlines(), 1):
+    fields = raw_line.split("\t")
+    if len(fields) != 3:
+        raise SystemExit(f"[OFFICE_PRIVATE_MANIFEST_INVALID] 第 {number} 行格式错误")
+    name, _source_path, expected_sha256 = fields
+    if name in seen:
+        raise SystemExit(f"[OFFICE_PRIVATE_MANIFEST_INVALID] 重复文件：{name}")
+    seen.add(name)
+    target = runtime / "private-runtime" / name
+    if not target.is_file():
+        raise SystemExit(f"[OFFICE_PRIVATE_RUNTIME_MISSING] {name}")
+    actual = hashlib.sha256(target.read_bytes()).hexdigest()
+    if actual != expected_sha256:
+        raise SystemExit(f"[OFFICE_PRIVATE_RUNTIME_HASH_MISMATCH] {name}")
+
+required = {
+    loader_name,
+    "libfreebl3.chk",
+    "libfreebl3.so",
+    "libfreeblpriv3.chk",
+    "libfreeblpriv3.so",
+    "libnssckbi.so",
+    "libnsssysinit.so",
+    "libsoftokn3.chk",
+    "libsoftokn3.so",
+}
+missing = sorted(required - seen)
+if missing:
+    raise SystemExit(f"[OFFICE_DLOPEN_RUNTIME_MISSING] {', '.join(missing)}")
+
+for name in (
+    "libavmediaqt6.so",
+    "libavmediagtk.so",
+    "libavmediagst.so",
+    "liblibreofficekitgtk.so",
+    "libofficebean.so",
+):
+    if (runtime / "program" / name).exists():
+        raise SystemExit(f"[OFFICE_EXTERNAL_UI_FORBIDDEN] {name}")
+
+wrapper = (runtime / "program" / "soffice").read_text(encoding="utf-8")
+for contract in (
+    "../private-runtime",
+    "--library-path",
+    'if [[ "$status" -eq 81 ]]',
+):
+    if contract not in wrapper:
+        raise SystemExit(f"[OFFICE_WRAPPER_CONTRACT_MISSING] {contract}")
+PY
 while IFS= read -r -d '' link; do
   resolved="$(readlink -f -- "$link" 2>/dev/null || true)"
   case "$resolved" in
@@ -197,6 +296,9 @@ while IFS= read -r -d '' office_candidate; do
     chmod 0755 "$office_candidate"
   fi
 done < <(find "$OFFICE_PACKAGE_RUNTIME/program" -maxdepth 1 -type f -print0)
+# 私有 ELF 加载器是唯一允许带执行位的 *.so* 文件；它是 PartyOps 直接
+# exec 的启动入口，其余共享库继续保持 0644。
+chmod 0755 "$OFFICE_PACKAGE_RUNTIME/private-runtime/$OFFICE_LOADER_NAME"
 EXPECTED_PAYLOAD_PATTERN='x86-64'
 [[ "$ARCH" == arm64 ]] && EXPECTED_PAYLOAD_PATTERN='ARM aarch64'
 file "$PKG/opt/partyops/partyops" | grep -q "$EXPECTED_PAYLOAD_PATTERN" || {
@@ -266,7 +368,9 @@ while IFS= read -r -d '' executable; do
       ;;
   esac
 done < <(find "$PKG/opt/partyops" -type f -perm /111 -print0)
-if find "$PKG/opt/partyops" -type f -name '*.so*' -perm /111 -print -quit | grep -q .; then
+if find "$PKG/opt/partyops" -type f -name '*.so*' -perm /111 \
+  ! -path "$OFFICE_PACKAGE_RUNTIME/private-runtime/$OFFICE_LOADER_NAME" \
+  -print -quit | grep -q .; then
   echo "原生包共享库被错误标记为可执行文件，拒绝封装。" >&2
   exit 2
 fi

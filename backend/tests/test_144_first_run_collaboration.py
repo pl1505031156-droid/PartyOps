@@ -287,6 +287,12 @@ def test_windows_host_role_uses_uac_helper_for_protected_config(
     monkeypatch.setenv("PARTYOPS_ENVIRONMENT", "production")
     monkeypatch.setenv("PROGRAMDATA", str(program_data))
     monkeypatch.setenv("USERPROFILE", r"D:\Profiles\Fixture")
+    # 此用例验证 UAC 角色隔离，不应受运行测试机器临时盘剩余空间影响。
+    monkeypatch.setattr(
+        setup_wizard.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(free=4 * 1024**3),
+    )
     monkeypatch.setattr(setup_wizard, "config_root", lambda: local_config)
     monkeypatch.setattr(
         setup_wizard,
