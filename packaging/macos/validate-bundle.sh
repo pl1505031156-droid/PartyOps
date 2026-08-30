@@ -80,9 +80,21 @@ while IFS= read -r -d '' candidate; do
     bad_architecture="$candidate: $description"
     break
   fi
-  dependencies="$(/usr/bin/otool -L "$candidate" 2>/dev/null || true)"
-  if printf '%s\n' "$dependencies" | /usr/bin/grep -E '(/opt/homebrew|/usr/local|/Users/|\.build-macos)' >/dev/null; then
-    bad_dependency="$candidate"
+  # otool -L 会把 LC_ID_DYLIB 也列为“依赖”。LibreOfficePython.framework
+  # 的上游 ID 带构建目录，但 ID 本身不会在加载当前文件时访问该目录；把它
+  # 当作外部依赖会误拒绝可重定位的官方 App。直接解析加载命令，只检查真正
+  # 会参与运行时解析的 dylib 和 rpath，同时把命中的具体路径写入诊断。
+  external_dependency="$(
+    /usr/bin/otool -l "$candidate" 2>/dev/null | /usr/bin/awk '
+      $1 == "cmd" { command = $2; next }
+      command == "LC_RPATH" && $1 == "path" { print $2; command = ""; next }
+      command ~ /^LC_(LOAD|LOAD_WEAK|REEXPORT|LAZY_LOAD|LOAD_UPWARD)_DYLIB$/ &&
+        $1 == "name" { print $2; command = ""; next }
+    ' | /usr/bin/grep -E '(/opt/homebrew|/usr/local|/Users/|\.build-macos)' |
+      /usr/bin/head -n 1 || true
+  )"
+  if [[ -n "$external_dependency" ]]; then
+    bad_dependency="$candidate -> $external_dependency"
     break
   fi
   deployment_target="$(/usr/bin/otool -l "$candidate" 2>/dev/null | /usr/bin/awk '

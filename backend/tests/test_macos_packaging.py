@@ -309,10 +309,20 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
         )
     assert "-DENABLE_JPEG=ON -DENABLE_TIFF=ON" in runtimes
     assert "-DDISABLE_TIFF=OFF" in runtimes
+    assert 'export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"' in runtimes
+    assert "-DCMAKE_IGNORE_PREFIX_PATH='/usr/local;/opt/homebrew'" in runtimes
+    assert '-DJPEG_INCLUDE_DIR="$PREFIX/include"' in runtimes
+    assert '-DJPEG_LIBRARY="$PREFIX/lib/libjpeg.a"' in runtimes
+    assert runtimes.count('"${LOCKED_OCR_FIND_FLAGS[@]}"') == 2
     assert "MACOS_OCR_FORMAT_SELFTEST_FAILED" in runtimes
     assert "for image_format in jpeg tiff" in runtimes
     assert "chi_sim.traineddata" in runtimes
     assert "llama-server" in runtimes
+    # 动态依赖门禁必须读取真实 LC_LOAD/LC_RPATH；otool -L 同时包含
+    # LC_ID_DYLIB，会把上游框架自己的安装名误判成外部依赖。
+    assert '/usr/bin/otool -l "$candidate"' in validation
+    assert "LC_(LOAD|LOAD_WEAK|REEXPORT|LAZY_LOAD|LOAD_UPWARD)_DYLIB" in validation
+    assert 'bad_dependency="$candidate -> $external_dependency"' in validation
 
     assert "workflow_dispatch:" in workflow
     assert "push:" not in workflow and "pull_request:" not in workflow

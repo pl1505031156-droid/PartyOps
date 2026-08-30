@@ -208,8 +208,33 @@ cmake -S "$OCR_BUILD/tiff-${LIBTIFF_VERSION}" -B "$OCR_BUILD/libtiff-build" \
 cmake --build "$OCR_BUILD/libtiff-build" -j "$JOBS"
 cmake --install "$OCR_BUILD/libtiff-build"
 
+# Intel runner 的 /usr/local 预装了另一套 JPEG 头文件；若 CMake/pkg-config
+# 在静态 libjpeg 之外拾取该头文件，最终二进制会在用户电脑上报
+# “caller expects 80, library is 62”。把发现范围和每个缓存变量锁到本次
+# 构建前缀，Apple Silicon/Intel 因而使用完全相同的头文件与静态库闭包。
+export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
+export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
+LOCKED_OCR_FIND_FLAGS=(
+  -DCMAKE_PREFIX_PATH="$PREFIX"
+  -DCMAKE_IGNORE_PREFIX_PATH='/usr/local;/opt/homebrew'
+  -DCMAKE_IGNORE_PATH='/usr/local/include;/usr/local/lib;/opt/homebrew/include;/opt/homebrew/lib'
+  -DZLIB_ROOT="$PREFIX"
+  -DZLIB_LIBRARY_RELEASE="$PREFIX/lib/libz.a"
+  -DZLIB_LIBRARY="$PREFIX/lib/libz.a"
+  -DZLIB_INCLUDE_DIR="$PREFIX/include"
+  -DPNG_PNG_INCLUDE_DIR="$PREFIX/include"
+  -DPNG_LIBRARY_RELEASE="$PREFIX/lib/libpng16.a"
+  -DPNG_LIBRARY="$PREFIX/lib/libpng16.a"
+  -DJPEG_INCLUDE_DIR="$PREFIX/include"
+  -DJPEG_LIBRARY_RELEASE="$PREFIX/lib/libjpeg.a"
+  -DJPEG_LIBRARY="$PREFIX/lib/libjpeg.a"
+  -DTIFF_INCLUDE_DIR="$PREFIX/include"
+  -DTIFF_LIBRARY_RELEASE="$PREFIX/lib/libtiff.a"
+  -DTIFF_LIBRARY="$PREFIX/lib/libtiff.a"
+)
+
 cmake -S "$OCR_BUILD/leptonica-${LEPTONICA_VERSION}" -B "$OCR_BUILD/leptonica-build" \
-  "${COMMON_FLAGS[@]}" -DCMAKE_PREFIX_PATH="$PREFIX" \
+  "${COMMON_FLAGS[@]}" "${LOCKED_OCR_FIND_FLAGS[@]}" \
   -DCMAKE_PROJECT_INCLUDE_BEFORE="$SCRIPT_DIR/ocr-static-targets.cmake" \
   -DBUILD_SHARED_LIBS=OFF \
   -DBUILD_PROG=OFF -DSW_BUILD=OFF -DENABLE_ZLIB=ON -DENABLE_PNG=ON \
@@ -219,7 +244,7 @@ cmake --build "$OCR_BUILD/leptonica-build" -j "$JOBS"
 cmake --install "$OCR_BUILD/leptonica-build"
 
 cmake -S "$OCR_BUILD/tesseract-${TESSERACT_VERSION}" -B "$OCR_BUILD/tesseract-build" \
-  "${COMMON_FLAGS[@]}" -DCMAKE_PREFIX_PATH="$PREFIX" \
+  "${COMMON_FLAGS[@]}" "${LOCKED_OCR_FIND_FLAGS[@]}" \
   -DCMAKE_PROJECT_INCLUDE_BEFORE="$SCRIPT_DIR/ocr-static-targets.cmake" \
   -DBUILD_SHARED_LIBS=OFF \
   -DOPENMP_BUILD=OFF -DGRAPHICS_DISABLED=ON -DDISABLED_LEGACY_ENGINE=ON \
