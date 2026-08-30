@@ -278,12 +278,29 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "075920b826834ac4ddf97661cc73491047855859affd671d52079c6867c1c6c0" in runtimes
     assert "LIBTIFF_VERSION='4.7.1'" in runtimes
     assert "f698d94f3103da8ca7438d84e0344e453fe0ba3b7486e04c5bf7a9a3fabe9b69" in runtimes
-    cmath_target = (MACOS / "cmath-target.cmake").read_text(encoding="utf-8")
+    static_targets = (MACOS / "ocr-static-targets.cmake").read_text(
+        encoding="utf-8"
+    )
     assert runtimes.count(
-        '-DCMAKE_PROJECT_INCLUDE_BEFORE="$SCRIPT_DIR/cmath-target.cmake"'
+        '-DCMAKE_PROJECT_INCLUDE_BEFORE="$SCRIPT_DIR/ocr-static-targets.cmake"'
     ) == 2
-    assert "add_library(CMath::CMath INTERFACE IMPORTED GLOBAL)" in cmath_target
-    assert "INTERFACE_LINK_LIBRARIES m" in cmath_target
+    assert 'export PARTYOPS_OCR_PREFIX="$PREFIX"' in runtimes
+    assert "-DSTRICT_CONF=ON" in runtimes
+    assert "add_library(CMath::CMath INTERFACE IMPORTED GLOBAL)" in static_targets
+    assert "INTERFACE_LINK_LIBRARIES m" in static_targets
+    assert "CMAKE_TRY_COMPILE_PLATFORM_VARIABLES CMAKE_PROJECT_INCLUDE_BEFORE" in (
+        static_targets
+    )
+    assert r"CMakeScratch[/\\\\]TryCompile-" in static_targets
+    for imported_target, archive_name in (
+        ("ZLIB::ZLIB", "libz.a"),
+        ("PNG::PNG", "libpng16.a"),
+        ("JPEG::JPEG", "libjpeg.a"),
+        ("TIFF::TIFF", "libtiff.a"),
+    ):
+        assert f"_partyops_import_ocr_archive({imported_target} {archive_name})" in (
+            static_targets
+        )
     assert "-DENABLE_JPEG=ON -DENABLE_TIFF=ON" in runtimes
     assert "-DDISABLE_TIFF=OFF" in runtimes
     assert "MACOS_OCR_FORMAT_SELFTEST_FAILED" in runtimes
