@@ -16,39 +16,36 @@ if(NOT _partyops_ocr_try_compile AND NOT TARGET CMath::CMath)
   set_property(TARGET CMath::CMath PROPERTY INTERFACE_LINK_LIBRARIES m)
 endif()
 
-# Tesseract 会用 try_compile 验证 Leptonica 的 TIFF 能力。CMake 生成的
-# 临时工程只复制 Leptonica 导入目标，不复制其 ZLIB/PNG/JPEG/TIFF 目标，
-# 因而必须在临时工程中从锁定前缀恢复同一组静态依赖。正常主工程仍由
-# find_package 读取真实包配置，不覆盖上游目标。
-if(_partyops_ocr_try_compile)
-  set(_partyops_ocr_prefix "$ENV{PARTYOPS_OCR_PREFIX}")
-  if(_partyops_ocr_prefix STREQUAL "")
-    message(FATAL_ERROR "PARTYOPS_OCR_PREFIX is required for OCR try_compile")
-  endif()
-
-  function(_partyops_import_ocr_archive target_name archive_name)
-    set(archive_path "${_partyops_ocr_prefix}/lib/${archive_name}")
-    if(NOT EXISTS "${archive_path}")
-      message(FATAL_ERROR "Locked OCR archive is missing: ${archive_path}")
-    endif()
-    if(NOT TARGET "${target_name}")
-      add_library("${target_name}" STATIC IMPORTED GLOBAL)
-      set_target_properties(
-        "${target_name}"
-        PROPERTIES
-          IMPORTED_LOCATION "${archive_path}"
-          INTERFACE_INCLUDE_DIRECTORIES "${_partyops_ocr_prefix}/include"
-      )
-    endif()
-  endfunction()
-
-  _partyops_import_ocr_archive(ZLIB::ZLIB libz.a)
-  _partyops_import_ocr_archive(PNG::PNG libpng16.a)
-  _partyops_import_ocr_archive(JPEG::JPEG libjpeg.a)
-  _partyops_import_ocr_archive(TIFF::TIFF libtiff.a)
-  set_property(TARGET PNG::PNG PROPERTY INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
-  set_property(
-    TARGET TIFF::TIFF
-    PROPERTY INTERFACE_LINK_LIBRARIES "JPEG::JPEG;ZLIB::ZLIB;CMath::CMath"
-  )
+# Leptonica 的静态导出配置只记录目标名，不会主动恢复 ZLIB/PNG/JPEG/TIFF
+# 目标；Tesseract 主工程与其 try_compile 临时工程因此都必须从同一锁定
+# 前缀恢复这些目标。每个目标均带存在性保护，避免覆盖 CMake 已加载目标。
+set(_partyops_ocr_prefix "$ENV{PARTYOPS_OCR_PREFIX}")
+if(_partyops_ocr_prefix STREQUAL "")
+  message(FATAL_ERROR "PARTYOPS_OCR_PREFIX is required for the OCR build")
 endif()
+
+function(_partyops_import_ocr_archive target_name archive_name)
+  set(archive_path "${_partyops_ocr_prefix}/lib/${archive_name}")
+  if(NOT EXISTS "${archive_path}")
+    message(FATAL_ERROR "Locked OCR archive is missing: ${archive_path}")
+  endif()
+  if(NOT TARGET "${target_name}")
+    add_library("${target_name}" STATIC IMPORTED GLOBAL)
+    set_target_properties(
+      "${target_name}"
+      PROPERTIES
+        IMPORTED_LOCATION "${archive_path}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_partyops_ocr_prefix}/include"
+    )
+  endif()
+endfunction()
+
+_partyops_import_ocr_archive(ZLIB::ZLIB libz.a)
+_partyops_import_ocr_archive(PNG::PNG libpng16.a)
+_partyops_import_ocr_archive(JPEG::JPEG libjpeg.a)
+_partyops_import_ocr_archive(TIFF::TIFF libtiff.a)
+set_property(TARGET PNG::PNG PROPERTY INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
+set_property(
+  TARGET TIFF::TIFF
+  PROPERTY INTERFACE_LINK_LIBRARIES "JPEG::JPEG;ZLIB::ZLIB;CMath::CMath"
+)

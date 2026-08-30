@@ -291,7 +291,8 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "if(NOT _partyops_ocr_try_compile AND NOT TARGET CMath::CMath)" in (
         static_targets
     )
-    assert "if(_partyops_ocr_try_compile)" in static_targets
+    assert "if(_partyops_ocr_try_compile)\n" not in static_targets
+    assert "PARTYOPS_OCR_PREFIX is required for the OCR build" in static_targets
     assert "CMAKE_TRY_COMPILE_PLATFORM_VARIABLES CMAKE_PROJECT_INCLUDE_BEFORE" in (
         static_targets
     )
