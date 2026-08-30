@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}/partyops"
@@ -19,26 +20,39 @@ if [[ -z "$CONFIG" ]]; then
   fi
 fi
 
+prepare_launch_environment() {
+  local config="$1" expected_mode="$2" prepared
+  prepared="$(mktemp "${TMPDIR:-/tmp}/partyops-launch-env.$(id -u).XXXXXX")" || {
+    echo "[CONFIG_SANITIZE_FAILED] 无法创建一次性启动环境。" >&2
+    return 2
+  }
+  if ! "$APP_ROOT/partyops-wizard" --prepare-launch-environment \
+    --config-file "$config" --expected-mode "$expected_mode" \
+    --output-file "$prepared"; then
+    rm -f -- "$prepared"
+    return 2
+  fi
+  printf '%s' "$prepared"
+}
+
 migrate_legacy_host_config() {
   local config="$1" configured_port configured_host bind_host advertise_host
-  local agent_port temporary changed
+  local agent_port temporary changed prepared
   [[ -f "$config" && -w "$config" ]] || return 0
-  configured_port="$(
-    set +u
-    # shellcheck disable=SC1090
-    source "$config"
-    printf '%s' "${PARTYOPS_PORT:-18765}"
-  )"
+  prepared="$(prepare_launch_environment "$config" host)" || return 2
+  set -a
+  set +u
+  # shellcheck disable=SC1090
+  source "$prepared"
+  set -u
+  set +a
+  rm -f -- "$prepared"
+  configured_port="${PARTYOPS_PORT:-18765}"
   [[ "$configured_port" =~ ^[0-9]+$ ]] &&
     ((configured_port >= 1024 && configured_port <= 65534)) ||
     configured_port=18765
   agent_port=$((configured_port + 1))
-  configured_host="$(
-    set +u
-    # shellcheck disable=SC1090
-    source "$config"
-    printf '%s' "${PARTYOPS_HOST:-127.0.0.1}"
-  )"
+  configured_host="${PARTYOPS_HOST:-127.0.0.1}"
   case "$configured_host" in
     127.*|localhost|::1) bind_host=127.0.0.1 ;;
     *) bind_host=0.0.0.0 ;;
@@ -87,15 +101,25 @@ if [[ "$CONFIG" != "$PERSONAL_CONFIG" ]]; then
   migrate_legacy_host_config "$CONFIG"
 fi
 if [[ -f "$CONFIG" ]]; then
+  EXPECTED_MODE=host
+  [[ "$CONFIG" == "$PERSONAL_CONFIG" ]] && EXPECTED_MODE=personal
+  PREPARED_CONFIG="$(prepare_launch_environment "$CONFIG" "$EXPECTED_MODE")" || {
+    echo "[CONFIG_INVALID] 配置文件无法安全解析：$CONFIG。请重新打开配置向导修复。" >&2
+    exit 2
+  }
   set -a
   set +u
-  if ! source "$CONFIG"; then
+  # 只引用内置向导生成的一次性白名单环境，原始配置永远不作为 Shell 执行。
+  # shellcheck disable=SC1090
+  if ! source "$PREPARED_CONFIG"; then
     set -u
-    echo "[CONFIG_INVALID] 配置文件无法读取：$CONFIG。请重新打开配置向导修复。" >&2
+    rm -f -- "$PREPARED_CONFIG"
+    echo "[CONFIG_SANITIZE_FAILED] 一次性启动环境无法读取，请执行修复安装。" >&2
     exit 2
   fi
   set -u
   set +a
+  rm -f -- "$PREPARED_CONFIG"
 fi
 export PARTYOPS_ENVIRONMENT="${PARTYOPS_ENVIRONMENT:-production}"
 export PARTYOPS_DATA_DIR="${PARTYOPS_DATA_DIR:-$HOME/.local/share/partyops}"

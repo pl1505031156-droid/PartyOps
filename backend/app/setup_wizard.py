@@ -90,6 +90,39 @@ class HostStartupError(ConnectionError, ValueError):
 ADMIN_POLICY_BLOCKED = "ADMIN_POLICY_BLOCKED"
 
 
+# Linux 桌面入口只能导入这些明确受支持的运行参数。rc.4 直接 ``source``
+# 用户配置，既会把配置截断统一误报成 CONFIG_INVALID，也会把配置内容当成
+# Shell 程序执行。rc.6 由内置向导先解析、校验并重新引用，再交给 Bash。
+LINUX_LAUNCH_ENV_KEYS = (
+    "PARTYOPS_MODE",
+    "PARTYOPS_ENVIRONMENT",
+    "PARTYOPS_HOST",
+    "PARTYOPS_BIND_HOST",
+    "PARTYOPS_ADVERTISE_HOST",
+    "PARTYOPS_PORT",
+    "PARTYOPS_AGENT_PORT",
+    "PARTYOPS_DATA_DIR",
+    "PARTYOPS_STRICT_SQLITE",
+    "PARTYOPS_SEED_DEMO",
+    "PARTYOPS_TLS_ENABLED",
+    "PARTYOPS_BOOTSTRAP_TOKEN",
+    "PARTYOPS_UPDATE_PUBLIC_KEY",
+    "PARTYOPS_MODEL_PACK_PUBLIC_KEY",
+    "PARTYOPS_TLS_CERT_FILE",
+    "PARTYOPS_TLS_KEY_FILE",
+    "PARTYOPS_TLS_CLIENT_CA_FILE",
+    "PARTYOPS_TLS_REQUIRE_CLIENT_CERT",
+    "PARTYOPS_BACKUP_HOUR",
+    "PARTYOPS_BACKUP_MINUTE",
+    "PARTYOPS_BACKUP_DAILY_KEEP",
+    "PARTYOPS_BACKUP_WEEKLY_KEEP",
+)
+LINUX_LAUNCH_REQUIRED_KEYS = {
+    "PARTYOPS_PORT",
+    "PARTYOPS_DATA_DIR",
+}
+
+
 def _windows_policy_blocked(detail: str, returncode: int = 0) -> bool:
     """识别 SRP/AppLocker/WDAC 拒绝执行，不能把组织策略误报成用户取消。"""
 
@@ -2616,6 +2649,139 @@ def load_host_environment(path: Path) -> dict[str, str]:
     return env
 
 
+def _read_linux_launch_environment(path: Path) -> dict[str, str]:
+    """把历史 ``*.env`` 作为数据读取，绝不执行其中的 Shell 语句。"""
+
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("配置不是受控普通文件")
+        if path.stat().st_size > 64 * 1024:
+            raise ValueError("配置超过 64 KiB 上限")
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("配置文件不可读或不是 UTF-8 编码") from exc
+
+    allowed = set(LINUX_LAUNCH_ENV_KEYS)
+    values: dict[str, str] = {}
+    for line_number, raw_line in enumerate(lines, start=1):
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+            continue
+        key, separator, raw_value = raw_line.partition("=")
+        key = key.strip()
+        if not separator or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", key):
+            raise ValueError(f"第 {line_number} 行不是 KEY=VALUE 配置")
+        if key not in allowed:
+            # 旧版或管理员附加的非运行键不会进入服务进程，也不会成为命令。
+            continue
+        if key in values:
+            raise ValueError(f"第 {line_number} 行重复定义 {key}")
+        try:
+            tokens = shlex.split(raw_value, comments=False, posix=True)
+        except ValueError as exc:
+            raise ValueError(f"第 {line_number} 行 {key} 的引号不完整") from exc
+        if raw_value and len(tokens) != 1:
+            raise ValueError(f"第 {line_number} 行 {key} 必须只有一个值")
+        value = tokens[0] if tokens else ""
+        if "\x00" in value or len(value) > 8192:
+            raise ValueError(f"第 {line_number} 行 {key} 的值越界")
+        values[key] = value
+    return values
+
+
+def prepare_linux_launch_environment(
+    config_path: Path,
+    expected_mode: str,
+    output_path: Path,
+) -> Path:
+    """生成只含受支持键的一次性 Shell 环境文件。
+
+    该文件由 PartyOps 自己重新引用，原始个人/主机配置从此不会被 Bash
+    ``source``。所有错误只报告键名和行号，不把令牌或路径内容写入日志。
+    """
+
+    if expected_mode not in {"personal", "host"}:
+        raise ValueError("启动模式必须是 personal 或 host")
+    if output_path == config_path or output_path.is_symlink():
+        raise ValueError("一次性启动环境路径无效")
+
+    values = _read_linux_launch_environment(config_path)
+    missing = sorted(LINUX_LAUNCH_REQUIRED_KEYS.difference(values))
+    if missing:
+        raise ValueError("配置缺少必需项：" + "、".join(missing))
+    values.setdefault("PARTYOPS_MODE", expected_mode)
+    if values["PARTYOPS_MODE"] != expected_mode:
+        raise ValueError(
+            f"配置角色为 {values['PARTYOPS_MODE'] or '空'}，当前入口要求 {expected_mode}"
+        )
+
+    try:
+        port = int(values["PARTYOPS_PORT"])
+    except ValueError as exc:
+        raise ValueError("PARTYOPS_PORT 不是整数") from exc
+    if not 1024 <= port <= 65534:
+        raise ValueError("PARTYOPS_PORT 必须在 1024—65534 之间")
+    values["PARTYOPS_PORT"] = str(port)
+
+    data_dir = Path(values["PARTYOPS_DATA_DIR"]).expanduser()
+    if not data_dir.is_absolute():
+        raise ValueError("PARTYOPS_DATA_DIR 必须是绝对路径")
+    values["PARTYOPS_DATA_DIR"] = str(data_dir)
+
+    values.setdefault("PARTYOPS_TLS_ENABLED", "false")
+    if values["PARTYOPS_TLS_ENABLED"] not in {"true", "false"}:
+        raise ValueError("PARTYOPS_TLS_ENABLED 只能是 true 或 false")
+    if expected_mode == "personal":
+        loopback_values = {"127.0.0.1", "localhost", "::1"}
+        for key in (
+            "PARTYOPS_HOST",
+            "PARTYOPS_BIND_HOST",
+            "PARTYOPS_ADVERTISE_HOST",
+        ):
+            if values.get(key, "127.0.0.1") not in loopback_values:
+                raise ValueError(f"个人模式的 {key} 只能使用本机回环地址")
+            values[key] = "127.0.0.1"
+        if values["PARTYOPS_TLS_ENABLED"] != "false":
+            raise ValueError("个人模式必须使用本机 HTTP，不能启用主机 TLS")
+    else:
+        host = values.get("PARTYOPS_HOST", "127.0.0.1")
+        values.setdefault(
+            "PARTYOPS_BIND_HOST",
+            "127.0.0.1"
+            if host in {"127.0.0.1", "localhost", "::1"}
+            else "0.0.0.0",  # nosec B104 - 主机模式沿用已确认的局域网监听边界。
+        )
+        values.setdefault("PARTYOPS_ADVERTISE_HOST", host)
+
+    values.setdefault("PARTYOPS_ENVIRONMENT", "production")
+    if values["PARTYOPS_ENVIRONMENT"] != "production":
+        raise ValueError("正式安装的 PARTYOPS_ENVIRONMENT 必须是 production")
+    values.setdefault("PARTYOPS_STRICT_SQLITE", "true")
+    values.setdefault("PARTYOPS_SEED_DEMO", "false")
+    for key in ("PARTYOPS_STRICT_SQLITE", "PARTYOPS_SEED_DEMO"):
+        if values[key] not in {"true", "false"}:
+            raise ValueError(f"{key} 只能是 true 或 false")
+
+    raw_agent_port = values.get("PARTYOPS_AGENT_PORT", str(port + 1))
+    try:
+        agent_port = int(raw_agent_port)
+    except ValueError as exc:
+        raise ValueError("PARTYOPS_AGENT_PORT 不是整数") from exc
+    if agent_port != port + 1 or agent_port > 65535:
+        raise ValueError("PARTYOPS_AGENT_PORT 必须等于服务端口加一")
+    values["PARTYOPS_AGENT_PORT"] = str(agent_port)
+
+    content = (
+        "\n".join(
+            f"{key}={shlex.quote(values[key])}"
+            for key in LINUX_LAUNCH_ENV_KEYS
+            if key in values
+        )
+        + "\n"
+    )
+    _write_private(output_path, content)
+    return output_path
+
+
 def _executable(name: str) -> Path:
     roots = _candidate_windows_runtime_roots()
     current_root = roots[0]
@@ -4944,6 +5110,12 @@ def run_wizard(
 def main() -> None:
     parser = argparse.ArgumentParser(description="党建智办主机/终端配置向导")
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--prepare-launch-environment", action="store_true")
+    parser.add_argument("--config-file", default="")
+    parser.add_argument(
+        "--expected-mode", choices=("personal", "host"), default="personal"
+    )
+    parser.add_argument("--output-file", default="")
     parser.add_argument("--manage-shared-roots", action="store_true")
     parser.add_argument("--action-uri", default="")
     parser.add_argument("--reconfigure", action="store_true")
@@ -4959,6 +5131,18 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=18765)
     parser.add_argument("--data-dir", default="")
     args = parser.parse_args()
+    if args.prepare_launch_environment:
+        if not args.config_file or not args.output_file:
+            raise SystemExit("[CONFIG_INVALID] 缺少配置文件或一次性输出路径")
+        try:
+            prepare_linux_launch_environment(
+                Path(args.config_file),
+                args.expected_mode,
+                Path(args.output_file),
+            )
+        except ValueError as exc:
+            raise SystemExit(f"[CONFIG_INVALID] {exc}") from exc
+        raise SystemExit(0)
     if args.privileged_disable_host:
         if os.name != "nt" or not windows_is_admin():
             raise SystemExit("停用 Windows 主机角色需要管理员权限")

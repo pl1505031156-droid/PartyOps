@@ -12,6 +12,12 @@ HEALTH_BODY_FILE="$TEST_ROOT/health-body.json"
 SERVER_PID=""
 
 cleanup() {
+  local status=$?
+  if [[ "$status" -ne 0 ]]; then
+    printf 'Linux 桌面启动回归失败，测试根：%s\n' "$TEST_ROOT" >&2
+    [[ ! -f "$HOME_DIR/.config/partyops/desktop-launch.log" ]] ||
+      tail -n 160 "$HOME_DIR/.config/partyops/desktop-launch.log" >&2
+  fi
   [[ -z "$SERVER_PID" ]] || kill "$SERVER_PID" >/dev/null 2>&1 || true
   pkill -f "$RUNTIME/partyops-wizard" >/dev/null 2>&1 || true
   pkill -f "$RUNTIME/partyops-client" >/dev/null 2>&1 || true
@@ -55,10 +61,30 @@ exit 0
 EOF
 cat >"$RUNTIME/partyops-wizard" <<'EOF'
 #!/usr/bin/env bash
+if [[ "${1:-}" == "--prepare-launch-environment" ]]; then
+  config=""
+  output=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --config-file) config="$2"; shift 2 ;;
+      --output-file) output="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  if ! bash -n "$config" 2>/dev/null; then
+    printf '%s\n' \
+      '[CONFIG_INVALID] 第 4 行 PARTYOPS_DATA_DIR 的引号不完整' >&2
+    exit 2
+  fi
+  cp -- "$config" "$output"
+  chmod 0600 "$output"
+  exit 0
+fi
 marker=wizard.url
 for argument in "$@"; do
   [[ "$argument" == "--manage-shared-roots" ]] && marker=shared-root-manager.url
 done
+printf '%s\n' "$*" >>"$TEST_ROOT/wizard-arguments.log"
 printf '%s\n' "$$" >>"$TEST_ROOT/wizard-starts.log"
 sleep "${FAKE_WIZARD_MARKER_DELAY:-0}"
 config_root="${XDG_CONFIG_HOME:-$HOME/.config}/partyops"
@@ -155,6 +181,25 @@ EOF
 grep -qx "$CONFIG_ROOT/personal.env" "$TEST_ROOT/started-with-config.log"
 grep -Eq "^http://127\\.0\\.0\\.1:$TEST_PORT/\\?partyops_runtime=[0-9]+$" "$OPEN_LOG"
 rm -f "$CONFIG_ROOT/personal.env" "$OPEN_LOG"
+
+# rc.4 损坏配置不得再由 Bash 执行。启动器应留下精确键名/行号，并自动
+# 打开预选原角色的修复向导，业务数据与原配置都不在诊断中展开。
+cat >"$CONFIG_ROOT/personal.env" <<EOF
+PARTYOPS_MODE=personal
+PARTYOPS_PORT=$TEST_PORT
+PARTYOPS_TLS_ENABLED=false
+PARTYOPS_DATA_DIR='$TEST_ROOT/rc4-truncated-data
+EOF
+rm -f "$TEST_ROOT/started-with-config.log" "$TEST_ROOT/wizard-arguments.log"
+"$RUNTIME/desktop-launcher.sh"
+[[ ! -e "$TEST_ROOT/started-with-config.log" ]]
+grep -q '\[CONFIG_INVALID\] 第 4 行 PARTYOPS_DATA_DIR 的引号不完整' \
+  "$CONFIG_ROOT/desktop-launch.log"
+grep -q -- '--reconfigure --initial-role personal' \
+  "$TEST_ROOT/wizard-arguments.log"
+grep -qx "http://127.0.0.1:$TEST_PORT" "$OPEN_LOG"
+pkill -f "$RUNTIME/partyops-wizard" >/dev/null 2>&1 || true
+rm -f "$CONFIG_ROOT/personal.env" "$CONFIG_ROOT/wizard.url" "$OPEN_LOG"
 
 # 主机模式：用户配置同样走受控启动、健康等待和本机地址。
 cat >"$CONFIG_ROOT/mode.json" <<'EOF'

@@ -107,13 +107,13 @@ SOURCE_APP="$MOUNT/LibreOffice.app"
 if [[ ! -e "$RUNTIME/program" ]]; then
   /bin/ln -s MacOS "$RUNTIME/program"
 fi
-[[ -x "$RUNTIME/program/soffice" ]] && [[ -f "$RUNTIME/program/soffice.bin" ]] || {
-  printf '%s\n' '[MACOS_OFFICE_ENTRY_MISSING] 提取后缺少 soffice/soffice.bin。' >&2
+[[ -x "$RUNTIME/program/soffice" ]] || {
+  printf '%s\n' '[MACOS_OFFICE_ENTRY_MISSING] 提取后缺少 macOS 原生 soffice。' >&2
   exit 2
 }
-DESCRIPTION="$(file -b "$RUNTIME/program/soffice.bin")"
+DESCRIPTION="$(file -b "$RUNTIME/program/soffice")"
 if [[ "$DESCRIPTION" != *Mach-O* ]] || [[ "$DESCRIPTION" != *"$ARCHITECTURE"* ]]; then
-  printf '[MACOS_OFFICE_BINARY_ARCH_MISMATCH] soffice.bin 不是 %s Mach-O。\n' \
+  printf '[MACOS_OFFICE_BINARY_ARCH_MISMATCH] soffice 不是 %s Mach-O。\n' \
     "$ARCHITECTURE" >&2
   exit 2
 fi

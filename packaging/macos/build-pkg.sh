@@ -74,7 +74,6 @@ if [[ ! -d "$LLAMA_RUNTIME" ]] || [[ ! -f "$LLAMA_RUNTIME/llama-server" ]]; then
   exit 2
 fi
 if [[ ! -x "$OFFICE_RUNTIME/program/soffice" ]] ||
-  [[ ! -f "$OFFICE_RUNTIME/program/soffice.bin" ]] ||
   [[ ! -f "$OFFICE_RUNTIME/SOURCE.json" ]] ||
   [[ ! -d "$OFFICE_RUNTIME/licenses" ]]; then
   printf '%s\n' '[MACOS_OFFICE_RUNTIME_MISSING] 请提供当前架构、包含来源清单和许可证的 LibreOffice headless 运行时。' >&2
@@ -98,9 +97,9 @@ for binary in "$OCR_RUNTIME/bin/tesseract" "$LLAMA_RUNTIME/llama-server"; do
     exit 2
   fi
 done
-office_description="$(file -b "$OFFICE_RUNTIME/program/soffice.bin")"
+office_description="$(file -b "$OFFICE_RUNTIME/program/soffice")"
 if [[ "$office_description" != *Mach-O* ]] || [[ "$office_description" != *"$TARGET_ARCH"* ]]; then
-  printf '[MACOS_OFFICE_RUNTIME_ARCH_MISMATCH] soffice.bin 不是 %s Mach-O。\n' "$TARGET_ARCH" >&2
+  printf '[MACOS_OFFICE_RUNTIME_ARCH_MISMATCH] soffice 不是 %s Mach-O。\n' "$TARGET_ARCH" >&2
   exit 2
 fi
 

@@ -539,17 +539,36 @@ elif [[ "$MODE" == "host" && -f /etc/partyops/partyops.env ]]; then
   HOST_CONFIG=/etc/partyops/partyops.env
 fi
 if [[ ( "$MODE" == "host" || "$MODE" == "personal" ) && -f "$HOST_CONFIG" ]]; then
+  PREPARED_CONFIG="$(mktemp "$LOG_ROOT/.launch-env.XXXXXX" 2>/dev/null || true)"
+  if [[ -z "$PREPARED_CONFIG" ]] ||
+    ! "$APP_ROOT/partyops-wizard" --prepare-launch-environment \
+      --config-file "$HOST_CONFIG" --expected-mode "$MODE" \
+      --output-file "$PREPARED_CONFIG" >>"$LAUNCH_LOG" 2>&1; then
+    [[ -z "$PREPARED_CONFIG" ]] || rm -f -- "$PREPARED_CONFIG"
+    LAST_HEALTH_ERROR="[CONFIG_INVALID] 原配置没有被执行，精确解析原因见桌面启动日志。"
+    show_launch_failure \
+      "配置文件损坏或权限异常（诊断码 CONFIG_INVALID）。系统将打开修复向导，原业务数据不会删除。"
+    if launch_browser_tool --reconfigure --initial-role "$MODE"; then
+      exit 0
+    fi
+    exit 2
+  fi
   set -a
+  # 只执行内置向导刚生成、权限为 0600 的一次性白名单环境；原始用户配置
+  # 永远只作为数据解析，避免 rc.4 的截断误报与 Shell 执行风险。
   # shellcheck disable=SC1090
   set +u
-  if ! source "$HOST_CONFIG"; then
+  if ! source "$PREPARED_CONFIG"; then
     set -u
     set +a
-    show_launch_failure "配置文件无法读取（诊断码 CONFIG_INVALID），请重新打开配置向导修复。"
+    rm -f -- "$PREPARED_CONFIG"
+    show_launch_failure \
+      "内置向导生成的一次性启动配置未通过 Bash 自检（诊断码 CONFIG_SANITIZE_FAILED），请使用同版本安装包修复安装。"
     exit 2
   fi
   set -u
   set +a
+  rm -f -- "$PREPARED_CONFIG"
   PORT="${PARTYOPS_PORT:-18765}"
   SCHEME="http"
   [[ "${PARTYOPS_TLS_ENABLED:-false}" == "true" ]] && SCHEME="https"

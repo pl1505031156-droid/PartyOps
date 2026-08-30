@@ -287,6 +287,9 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "scripts/prepare-libreoffice-macos.sh" in workflow
     assert "PARTYOPS_MACOS_OFFICE_RUNTIME" in workflow
     assert "office-${{ matrix.architecture }}" in workflow
+    assert 'file -b "$RUNTIME/program/soffice"' in office
+    assert 'program/soffice.bin' not in office
+    assert 'file -b "$OFFICE_RUNTIME/program/soffice"' in build
     assert "macOS 11" in workflow
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1
