@@ -313,6 +313,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "-DCMAKE_IGNORE_PREFIX_PATH='/usr/local;/opt/homebrew'" in runtimes
     assert '-DJPEG_INCLUDE_DIR="$PREFIX/include"' in runtimes
     assert '-DJPEG_LIBRARY="$PREFIX/lib/libjpeg.a"' in runtimes
+    assert runtimes.count('"${LOCKED_OCR_BASE_FIND_FLAGS[@]}"') == 2
     assert runtimes.count('"${LOCKED_OCR_FIND_FLAGS[@]}"') == 2
     assert "MACOS_OCR_FORMAT_SELFTEST_FAILED" in runtimes
     assert "for image_format in jpeg tiff" in runtimes

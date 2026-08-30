@@ -197,24 +197,13 @@ cmake -S "$OCR_BUILD/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}" \
 cmake --build "$OCR_BUILD/libjpeg-turbo-build" -j "$JOBS"
 cmake --install "$OCR_BUILD/libjpeg-turbo-build"
 
-# Leptonica 内置字库和用户常见扫描件都会经过 TIFF/JPEG 解码。必须把
-# 两个解码器静态收入 tesseract；仅支持 PNG 会令 --list-langs 本身出现
-# pixReadMemTiff 错误，也会使 JPG/TIFF 公文扫描件在用户电脑上无法识别。
-cmake -S "$OCR_BUILD/tiff-${LIBTIFF_VERSION}" -B "$OCR_BUILD/libtiff-build" \
-  "${COMMON_FLAGS[@]}" -DCMAKE_PREFIX_PATH="$PREFIX" -DBUILD_SHARED_LIBS=OFF \
-  -Dtiff-static=ON -Dtiff-tools=OFF -Dtiff-tests=OFF -Dtiff-contrib=OFF -Dtiff-docs=OFF \
-  -Djpeg=ON -Dzlib=ON -Dlibdeflate=OFF -Dlzma=OFF -Djbig=OFF \
-  -Dwebp=OFF -Dzstd=OFF
-cmake --build "$OCR_BUILD/libtiff-build" -j "$JOBS"
-cmake --install "$OCR_BUILD/libtiff-build"
-
-# Intel runner 的 /usr/local 预装了另一套 JPEG 头文件；若 CMake/pkg-config
-# 在静态 libjpeg 之外拾取该头文件，最终二进制会在用户电脑上报
-# “caller expects 80, library is 62”。把发现范围和每个缓存变量锁到本次
-# 构建前缀，Apple Silicon/Intel 因而使用完全相同的头文件与静态库闭包。
+# Intel runner 的 /usr/local 预装了另一套 JPEG 头文件；libtiff 本身也会
+# 直接包含 jpeglib.h，因此锁定动作必须发生在 libtiff 配置之前。否则即使
+# Leptonica/Tesseract 找到了本次静态库，libtiff 仍可能用 v8 头文件编译并
+# 在运行时调用 v6 ABI，最终报“caller expects 80, library is 62”。
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
-LOCKED_OCR_FIND_FLAGS=(
+LOCKED_OCR_BASE_FIND_FLAGS=(
   -DCMAKE_PREFIX_PATH="$PREFIX"
   -DCMAKE_IGNORE_PREFIX_PATH='/usr/local;/opt/homebrew'
   -DCMAKE_IGNORE_PATH='/usr/local/include;/usr/local/lib;/opt/homebrew/include;/opt/homebrew/lib'
@@ -228,6 +217,21 @@ LOCKED_OCR_FIND_FLAGS=(
   -DJPEG_INCLUDE_DIR="$PREFIX/include"
   -DJPEG_LIBRARY_RELEASE="$PREFIX/lib/libjpeg.a"
   -DJPEG_LIBRARY="$PREFIX/lib/libjpeg.a"
+)
+
+# Leptonica 内置字库和用户常见扫描件都会经过 TIFF/JPEG 解码。必须把
+# 两个解码器静态收入 tesseract；仅支持 PNG 会令 --list-langs 本身出现
+# pixReadMemTiff 错误，也会使 JPG/TIFF 公文扫描件在用户电脑上无法识别。
+cmake -S "$OCR_BUILD/tiff-${LIBTIFF_VERSION}" -B "$OCR_BUILD/libtiff-build" \
+  "${COMMON_FLAGS[@]}" "${LOCKED_OCR_BASE_FIND_FLAGS[@]}" -DBUILD_SHARED_LIBS=OFF \
+  -Dtiff-static=ON -Dtiff-tools=OFF -Dtiff-tests=OFF -Dtiff-contrib=OFF -Dtiff-docs=OFF \
+  -Djpeg=ON -Dzlib=ON -Dlibdeflate=OFF -Dlzma=OFF -Djbig=OFF \
+  -Dwebp=OFF -Dzstd=OFF
+cmake --build "$OCR_BUILD/libtiff-build" -j "$JOBS"
+cmake --install "$OCR_BUILD/libtiff-build"
+
+LOCKED_OCR_FIND_FLAGS=(
+  "${LOCKED_OCR_BASE_FIND_FLAGS[@]}"
   -DTIFF_INCLUDE_DIR="$PREFIX/include"
   -DTIFF_LIBRARY_RELEASE="$PREFIX/lib/libtiff.a"
   -DTIFF_LIBRARY="$PREFIX/lib/libtiff.a"
