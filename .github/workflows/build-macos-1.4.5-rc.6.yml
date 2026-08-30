@@ -106,13 +106,12 @@ jobs:
           test -x "$ocr"
           test -x "$llama"
           test -x "$office/program/soffice"
-          test -f "$office/program/soffice.bin"
           test -f "$office/SOURCE.json"
           test -n "$(find "$office/licenses" -type f -print -quit)"
           test -s "$RUNNER_TEMP/partyops-runtimes/ocr-${{ matrix.architecture }}/tessdata/chi_sim.traineddata"
           test "$(lipo -archs "$ocr")" = '${{ matrix.architecture }}'
           test "$(lipo -archs "$llama")" = '${{ matrix.architecture }}'
-          test "$(lipo -archs "$office/program/soffice.bin")" = '${{ matrix.architecture }}'
+          test "$(lipo -archs "$office/program/soffice")" = '${{ matrix.architecture }}'
           ! otool -L "$ocr" | awk 'NR > 1 {print $1}' | grep -Ev '^(/usr/lib/|/System/Library/)'
           ! otool -L "$llama" | awk 'NR > 1 {print $1}' | grep -Ev '^(/usr/lib/|/System/Library/)'
           python3.11 scripts/verify-full-function-gate.py verify --root "$PWD"

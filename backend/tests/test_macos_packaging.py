@@ -244,6 +244,10 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     office = (ROOT / "scripts" / "prepare-libreoffice-macos.sh").read_text(
         encoding="utf-8"
     )
+    package_selftest = (ROOT / "backend" / "app" / "package_selftest.py").read_text(
+        encoding="utf-8"
+    )
+    readme = (MACOS / "README.md").read_text(encoding="utf-8")
 
     assert "--unsigned-candidate" in build
     assert "setup.py build_static bdist_wheel" in build
@@ -290,6 +294,9 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert 'file -b "$RUNTIME/program/soffice"' in office
     assert 'program/soffice.bin' not in office
     assert 'file -b "$OFFICE_RUNTIME/program/soffice"' in build
+    assert 'test -f "$office/program/soffice.bin"' not in workflow
+    assert 'lipo -archs "$office/program/soffice"' in workflow
+    assert "不使用 Linux 的 `program/soffice.bin` 布局" in readme
     assert "macOS 11" in workflow
     assert "sudo /usr/sbin/installer" in workflow
     assert workflow.count('sudo /usr/sbin/installer -pkg "$package" -target /') == 1
@@ -343,7 +350,9 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "downloadarchive.documentfoundation.org" in office
     assert "hdiutil attach -readonly -nobrowse" in office
     assert "/bin/ln -s MacOS \"$RUNTIME/program\"" in office
-    assert "--headless" in office and "--version" in office
+    assert 'codesign --verify --deep --strict --verbose=2 "$SOURCE_APP"' in office
+    assert "subprocess.run(" not in office
+    assert '"--headless", "--version"' in package_selftest
 
 
 @pytest.mark.parametrize("target_revision", ["0023", "0025"])

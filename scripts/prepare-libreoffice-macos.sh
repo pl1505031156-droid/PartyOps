@@ -99,6 +99,10 @@ SOURCE_APP="$MOUNT/LibreOffice.app"
   printf '%s\n' '[MACOS_OFFICE_APP_MISSING] 官方 DMG 中未发现 LibreOffice.app。' >&2
   exit 2
 }
+# 先验证上游完整 App 的签名封装。仅复制 Contents 后，代码仍带上游 Team ID，
+# 但已脱离原 Bundle 签名边界；在 PartyOps 统一重签名前启动它，macOS 会以
+# SIGKILL 拒绝映射。实际启动门禁必须在 build-pkg.sh 完成逐层统一签名后执行。
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$SOURCE_APP"
 /usr/bin/ditto "$SOURCE_APP/Contents" "$RUNTIME"
 
 # 官方 macOS Bundle 的程序目录名为 MacOS；PartyOps 跨平台能力契约固定从
@@ -169,25 +173,9 @@ path.write_text(
 )
 PY
 
-# 在仍处于独立闭包位置时执行一次真实无界面启动；正式 App 内还会再次由
-# bundle validator 和 package self-test 验证，避免只检查文件存在。
-python3.11 - "$RUNTIME/program/soffice" "$STAGE/profile" <<'PY'
-import subprocess
-import sys
-
-subprocess.run(
-    [
-        sys.argv[1],
-        "--headless",
-        f"-env:UserInstallation=file://{sys.argv[2]}",
-        "--version",
-    ],
-    check=True,
-    stdout=subprocess.DEVNULL,
-    stderr=subprocess.PIPE,
-    timeout=120,
-)
-PY
+# 此处只冻结来源、架构、许可和上游签名证据。真实 ``--headless --version``
+# 由最终 PartyOps.app 完成逐个 Mach-O 统一签名后，在 package-self-test、
+# 全新安装和覆盖升级三条路径中执行，避免把合法闭包误判为构建失败。
 hdiutil detach "$MOUNT" -quiet
 MOUNTED=0
 /bin/mv "$RUNTIME" "$OUTPUT"
