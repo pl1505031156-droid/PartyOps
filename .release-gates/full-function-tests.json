@@ -1,10 +1,22 @@
 {
-  "schema": 1,
+  "schema": 2,
   "status": "passed",
-  "tested_at": "2026-08-30T12:27:48+08:00",
+  "tested_at": "2026-08-30T13:00:58+08:00",
   "timezone": "Asia/Shanghai",
-  "source_fingerprint": "9aa30e9767b790c0e6fb652349558e001a15cffb946d00e49851672417df2bb9",
-  "source_file_count": 670,
+  "source_fingerprints": {
+    "package": {
+      "sha256": "98bd6980397cc92d7d0589dae62d31bd5c438b8e51aaa367de04451a31e14688",
+      "file_count": 596
+    },
+    "website": {
+      "sha256": "dbce0303fae625e1df9d8d95c17c14db089eef74fea7939c600aa6d30faf435d",
+      "file_count": 74
+    },
+    "full": {
+      "sha256": "7f864ba2c7593c67b8d71e9e296b0ca604c9a51fb4486867aa40583e6a6f532f",
+      "file_count": 670
+    }
+  },
   "suite": "scripts/test.ps1",
   "scope": [
     "document-formatter-source-release-x64-x86-build-and-regression",

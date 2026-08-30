@@ -12,7 +12,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot "prepare-ocr-runtime.ps1")
 $releaseVersion = "1.4.5-rc.6"
 $releaseTag = "v1.4.5-rc.6"
-& $Python (Join-Path $repoRoot "scripts\verify-full-function-gate.py") verify --root $repoRoot
+& $Python (Join-Path $repoRoot "scripts\verify-full-function-gate.py") verify --root $repoRoot --scope package
 if ($LASTEXITCODE -ne 0) { throw "全功能测试门禁失败，拒绝生成 Windows 安装包。" }
 & $Python (Join-Path $repoRoot "scripts\verify-version-consistency.py") `
   --root $repoRoot --expected $releaseVersion

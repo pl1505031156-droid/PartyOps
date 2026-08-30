@@ -56,10 +56,22 @@ case "$PACKAGE" in
     fi
     ;;
   *.rpm)
-    command -v rpm2cpio >/dev/null 2>&1 && command -v cpio >/dev/null 2>&1 || {
-      echo "缺少 rpm2cpio/cpio，无法展开 RPM 成品。" >&2
+    command -v rpm >/dev/null 2>&1 && command -v rpm2cpio >/dev/null 2>&1 && \
+      command -v cpio >/dev/null 2>&1 || {
+      echo "缺少 rpm/rpm2cpio/cpio，无法审计和展开 RPM 成品。" >&2
       exit 2
     }
+    RPM_REQUIRES="$(rpm -qp --requires "$PACKAGE")"
+    printf '%s\n' "$RPM_REQUIRES" | grep -Fxq 'glibc >= 2.17' || {
+      echo "RPM 缺少经审计的 glibc 2.17 最低依赖。" >&2
+      exit 2
+    }
+    if printf '%s\n' "$RPM_REQUIRES" | \
+      grep -E 'GLIBC_|lib(Qt|KF|uno)|\.so(\.|$|\()|^/usr/bin/env$' >/dev/null; then
+      echo "RPM 泄漏了包内运行时的自动宿主依赖：" >&2
+      printf '%s\n' "$RPM_REQUIRES" >&2
+      exit 2
+    fi
     (cd "$ROOT" && rpm2cpio "$PACKAGE" | cpio -idm --quiet --no-absolute-filenames)
     ;;
   *) echo "只接受 DEB/RPM 成品。" >&2; exit 2 ;;

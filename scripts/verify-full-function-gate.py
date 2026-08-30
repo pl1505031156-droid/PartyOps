@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""记录并校验“全功能测试通过后才允许打包”的发布门禁。"""
+"""记录并校验“全功能测试通过后才允许打包/发布”的双范围门禁。
+
+官网源码按既有发布边界不进入 PartyOps 安装包仓库，因此原生构建机的干净
+检出不会携带 ``website``。门禁分别冻结安装包与官网源码指纹：平台构建只
+校验安装包范围，官网发布只校验官网范围，本机最终审查仍校验二者全集。
+"""
 
 from __future__ import annotations
 
@@ -10,21 +15,17 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-
 GATE_RELATIVE_PATH = Path(".release-gates/full-function-tests.json")
 BEIJING = timezone(timedelta(hours=8))
-INCLUDE_ROOTS = (
+PACKAGE_INCLUDE_ROOTS = (
     "backend/app",
     "backend/tests",
     "frontend/src",
     "frontend/tests",
-    "website/src",
-    "website/edge-functions",
-    "website/tests",
     "packaging",
     "scripts",
 )
-INCLUDE_FILES = (
+PACKAGE_INCLUDE_FILES = (
     "backend/pyproject.toml",
     "backend/requirements.txt",
     "backend/requirements-release.txt",
@@ -32,6 +33,13 @@ INCLUDE_FILES = (
     "frontend/package.json",
     "frontend/pnpm-lock.yaml",
     "frontend/vite.config.ts",
+)
+WEBSITE_INCLUDE_ROOTS = (
+    "website/src",
+    "website/edge-functions",
+    "website/tests",
+)
+WEBSITE_INCLUDE_FILES = (
     "website/package.json",
     "website/pnpm-lock.yaml",
     "website/vite.config.js",
@@ -49,25 +57,28 @@ EXCLUDED_PARTS = {
 }
 
 
-def _candidate_files(root: Path) -> list[Path]:
+def _candidate_files(
+    root: Path,
+    include_roots: tuple[str, ...],
+    include_files: tuple[str, ...],
+) -> list[Path]:
     files: set[Path] = set()
-    for relative in INCLUDE_ROOTS:
+    for relative in include_roots:
         base = root / relative
         if not base.is_dir():
             continue
         for path in base.rglob("*"):
             if path.is_file() and not EXCLUDED_PARTS.intersection(path.relative_to(root).parts):
                 files.add(path)
-    for relative in INCLUDE_FILES:
+    for relative in include_files:
         path = root / relative
         if path.is_file():
             files.add(path)
     return sorted(files, key=lambda item: item.relative_to(root).as_posix())
 
 
-def source_fingerprint(root: Path) -> tuple[str, int]:
+def _fingerprint(root: Path, files: list[Path]) -> tuple[str, int]:
     digest = hashlib.sha256()
-    files = _candidate_files(root)
     for path in files:
         relative = path.relative_to(root).as_posix().encode("utf-8")
         digest.update(len(relative).to_bytes(4, "big"))
@@ -78,17 +89,49 @@ def source_fingerprint(root: Path) -> tuple[str, int]:
     return digest.hexdigest(), len(files)
 
 
+def _scope_files(root: Path, scope: str) -> list[Path]:
+    package_files = _candidate_files(root, PACKAGE_INCLUDE_ROOTS, PACKAGE_INCLUDE_FILES)
+    website_files = _candidate_files(root, WEBSITE_INCLUDE_ROOTS, WEBSITE_INCLUDE_FILES)
+    if scope == "package":
+        return package_files
+    if scope == "website":
+        return website_files
+    return sorted(
+        {*package_files, *website_files},
+        key=lambda item: item.relative_to(root).as_posix(),
+    )
+
+
+def source_fingerprint(root: Path, scope: str = "full") -> tuple[str, int]:
+    """返回指定发布范围的稳定内容指纹。"""
+
+    return _fingerprint(root, _scope_files(root, scope))
+
+
+def _fingerprint_record(root: Path, scope: str) -> dict[str, object]:
+    fingerprint, file_count = source_fingerprint(root, scope)
+    return {"sha256": fingerprint, "file_count": file_count}
+
+
 def record(root: Path) -> int:
-    fingerprint, file_count = source_fingerprint(root)
+    source_fingerprints = {
+        scope: _fingerprint_record(root, scope)
+        for scope in ("package", "website", "full")
+    }
+    if any(source_fingerprints[scope]["file_count"] == 0 for scope in ("package", "website")):
+        print(
+            "[FULL_FUNCTION_GATE_SCOPE_MISSING] 安装包或官网源码范围为空，拒绝记录不完整测试门禁。",
+            file=sys.stderr,
+        )
+        return 2
     target = root / GATE_RELATIVE_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema": 1,
+        "schema": 2,
         "status": "passed",
         "tested_at": datetime.now(BEIJING).isoformat(timespec="seconds"),
         "timezone": "Asia/Shanghai",
-        "source_fingerprint": fingerprint,
-        "source_file_count": file_count,
+        "source_fingerprints": source_fingerprints,
         "suite": "scripts/test.ps1",
         "scope": [
             "document-formatter-source-release-x64-x86-build-and-regression",
@@ -99,11 +142,15 @@ def record(root: Path) -> int:
         ],
     }
     target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"[FULL_FUNCTION_GATE_RECORDED] {target} {fingerprint}")
+    print(
+        "[FULL_FUNCTION_GATE_RECORDED] "
+        f"{target} package={source_fingerprints['package']['sha256']} "
+        f"website={source_fingerprints['website']['sha256']}"
+    )
     return 0
 
 
-def verify(root: Path) -> int:
+def verify(root: Path, scope: str) -> int:
     target = root / GATE_RELATIVE_PATH
     if not target.is_file():
         print(
@@ -116,17 +163,26 @@ def verify(root: Path) -> int:
     except (OSError, ValueError) as exc:
         print(f"[FULL_FUNCTION_GATE_INVALID] 门禁记录不可读：{exc}", file=sys.stderr)
         return 2
-    fingerprint, file_count = source_fingerprint(root)
-    if payload.get("status") != "passed" or payload.get("source_fingerprint") != fingerprint:
+    if payload.get("schema") != 2 or payload.get("status") != "passed":
+        print("[FULL_FUNCTION_GATE_INVALID] 门禁版本或状态无效。", file=sys.stderr)
+        return 2
+    fingerprints = payload.get("source_fingerprints")
+    expected = fingerprints.get(scope) if isinstance(fingerprints, dict) else None
+    if not isinstance(expected, dict):
+        print(f"[FULL_FUNCTION_GATE_INVALID] 门禁缺少 {scope} 范围。", file=sys.stderr)
+        return 2
+    fingerprint, file_count = source_fingerprint(root, scope)
+    if expected.get("sha256") != fingerprint or expected.get("file_count") != file_count:
         print(
-            "[FULL_FUNCTION_GATE_STALE] 测试后源码已变化；必须重新运行 scripts/test.ps1，拒绝生成平台安装包。",
+            f"[FULL_FUNCTION_GATE_STALE:{scope}] 测试后源码已变化；必须重新运行 "
+            "scripts/test.ps1，拒绝生成平台安装包或发布官网。",
             file=sys.stderr,
         )
         return 2
-    if payload.get("source_file_count") != file_count or payload.get("timezone") != "Asia/Shanghai":
+    if payload.get("timezone") != "Asia/Shanghai":
         print("[FULL_FUNCTION_GATE_INVALID] 门禁范围或时区记录不一致。", file=sys.stderr)
         return 2
-    print(f"[FULL_FUNCTION_GATE_OK] {payload.get('tested_at')} {fingerprint}")
+    print(f"[FULL_FUNCTION_GATE_OK:{scope}] {payload.get('tested_at')} {fingerprint}")
     return 0
 
 
@@ -134,9 +190,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("record", "verify"))
     parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--scope", choices=("full", "package", "website"), default="full")
     args = parser.parse_args()
     root = args.root.resolve()
-    return record(root) if args.mode == "record" else verify(root)
+    if args.mode == "record":
+        if args.scope != "full":
+            parser.error("record 只能记录 full 范围")
+        return record(root)
+    return verify(root, args.scope)
 
 
 if __name__ == "__main__":

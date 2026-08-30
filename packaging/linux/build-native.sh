@@ -23,7 +23,7 @@ fi
 
 "$PYTHON_BIN" "$ROOT/scripts/verify-version-consistency.py" \
   --root "$ROOT" --expected "1.4.5-rc.6"
-"$PYTHON_BIN" "$ROOT/scripts/verify-full-function-gate.py" verify --root "$ROOT"
+"$PYTHON_BIN" "$ROOT/scripts/verify-full-function-gate.py" verify --root "$ROOT" --scope package
 
 [[ "$FORMAT" == "deb" || "$FORMAT" == "rpm" ]] || {
   echo "用法：build-native.sh deb|rpm（通过 PARTYOPS_BUILD_ARCH 指定 amd64/arm64）" >&2
@@ -333,6 +333,10 @@ Release: %{partyops_release}
 Summary: 党建智办 PartyOps 局域网协同系统
 License: GPL-3.0-or-later AND AGPL-3.0-only
 BuildArch: $RPM_ARCH
+# 依赖只由下方经 glibc 2.17 实机门禁审计的清单定义。包内 Python、OCR、
+# llama.cpp 与 LibreOffice 闭包不应被旧版 rpmbuild 误识别为宿主 Qt/KDE、
+# UNO 或更高 glibc 依赖，否则国产系统会在运行前被错误拒装。
+AutoReqProv: no
 Requires: glibc >= 2.17, bash, systemd, util-linux, coreutils, iproute, curl, xdg-utils, polkit
 Source0: partyops-payload.tar.gz
 

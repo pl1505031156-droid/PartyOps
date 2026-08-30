@@ -53,7 +53,7 @@ export MACOSX_DEPLOYMENT_TARGET='11.0'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 OUTPUT_DIR="$ROOT/artifacts/release-$VERSION-final"
-python3.11 "$ROOT/scripts/verify-full-function-gate.py" verify --root "$ROOT"
+python3.11 "$ROOT/scripts/verify-full-function-gate.py" verify --root "$ROOT" --scope package
 OCR_RUNTIME="${PARTYOPS_MACOS_OCR_RUNTIME:-}"
 LLAMA_RUNTIME="${PARTYOPS_MACOS_LLAMA_RUNTIME:-}"
 OFFICE_RUNTIME="${PARTYOPS_MACOS_OFFICE_RUNTIME:-}"

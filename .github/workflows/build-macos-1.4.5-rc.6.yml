@@ -114,7 +114,7 @@ jobs:
           test "$(lipo -archs "$office/program/soffice")" = '${{ matrix.architecture }}'
           ! otool -L "$ocr" | awk 'NR > 1 {print $1}' | grep -Ev '^(/usr/lib/|/System/Library/)'
           ! otool -L "$llama" | awk 'NR > 1 {print $1}' | grep -Ev '^(/usr/lib/|/System/Library/)'
-          python3.11 scripts/verify-full-function-gate.py verify --root "$PWD"
+          python3.11 scripts/verify-full-function-gate.py verify --root "$PWD" --scope package
 
       - name: 冻结应用并生成未公证候选 PKG
         shell: bash
