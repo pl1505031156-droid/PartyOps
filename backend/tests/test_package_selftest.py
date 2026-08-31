@@ -72,6 +72,28 @@ def test_macos_ocr_uses_standard_bundle_resource_layout(
     assert library == runtime.parent / "Resources" / "ocr" / "lib"
 
 
+def test_macos_office_prefers_complete_nested_app(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """macOS 公文转换必须从完整嵌套 App 启动，不能依赖兼容链接。"""
+
+    runtime = tmp_path / "PartyOps.app" / "Contents" / "MacOS"
+    nested = (
+        runtime.parent
+        / "Resources"
+        / "office-runtime"
+        / "LibreOffice.app"
+        / "Contents"
+        / "MacOS"
+        / "soffice"
+    )
+    nested.parent.mkdir(parents=True)
+    nested.write_bytes(b"native")
+    monkeypatch.setattr(package_selftest.sys, "platform", "darwin")
+
+    assert package_selftest._office_executable(runtime) == nested
+
+
 def test_macos_native_helpers_strip_frozen_loader_state(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

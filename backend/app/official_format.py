@@ -952,6 +952,15 @@ def _office_candidates() -> list[Path]:
     if executable_root is not None and module_root is not None:
         values.extend(
             [
+                str(
+                    executable_root.parent
+                    / "Resources"
+                    / "office-runtime"
+                    / "LibreOffice.app"
+                    / "Contents"
+                    / "MacOS"
+                    / "soffice"
+                ),
                 str(executable_root / "office-runtime" / "program" / "soffice"),
                 # Windows 的 soffice.exe 使用 GUI 子系统；被无窗口父进程捕获
                 # stdout/stderr 时，官方 26.x 启动器可能一直等待。soffice.com

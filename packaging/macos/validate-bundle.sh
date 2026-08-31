@@ -68,6 +68,14 @@ if [[ ! -x "$APP_PATH/Contents/MacOS/tesseract" ]] ||
   printf '%s\n' '[MACOS_NATIVE_RUNTIME_INCOMPLETE] OCR 或本地 LLM 运行时不完整。' >&2
   exit 2
 fi
+OFFICE_APP="$APP_PATH/Contents/Resources/office-runtime/LibreOffice.app"
+OFFICE_ENTRY="$OFFICE_APP/Contents/MacOS/soffice"
+OFFICE_COMPAT_ENTRY="$APP_PATH/Contents/Resources/office-runtime/program/soffice"
+if [[ ! -d "$OFFICE_APP" ]] || [[ ! -f "$OFFICE_APP/Contents/Info.plist" ]] ||
+  [[ ! -x "$OFFICE_ENTRY" ]] || [[ ! -x "$OFFICE_COMPAT_ENTRY" ]]; then
+  printf '%s\n' '[MACOS_OFFICE_BUNDLE_INCOMPLETE] 公文转换运行时未保留完整 LibreOffice.app 签名边界。' >&2
+  exit 2
+fi
 
 bad_architecture=''
 bad_dependency=''
@@ -156,6 +164,16 @@ run_bundle_selftest() {
   else
     local status=$?
     printf '[%s] %s失败，退出码 %s。\n' "$error_code" "$label" "$status" >&2
+    if [[ "$error_code" == 'MACOS_PACKAGE_SELFTEST_FAILED' ]]; then
+      printf '%s\n' '[MACOS_NATIVE_FAILURE_DIAGNOSTICS_BEGIN]' >&2
+      /usr/bin/codesign --verify --deep --strict --verbose=4 "$OFFICE_APP" >&2 || true
+      /usr/bin/codesign --display --verbose=4 --entitlements :- "$OFFICE_ENTRY" >&2 || true
+      /usr/bin/otool -L "$OFFICE_ENTRY" >&2 || true
+      /usr/bin/log show --last 3m --style compact \
+        --predicate 'process == "soffice" OR process == "partyops" OR eventMessage CONTAINS[c] "LibreOffice"' \
+        2>/dev/null | /usr/bin/tail -n 120 >&2 || true
+      printf '%s\n' '[MACOS_NATIVE_FAILURE_DIAGNOSTICS_END]' >&2
+    fi
     return "$status"
   fi
 }

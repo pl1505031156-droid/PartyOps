@@ -99,18 +99,19 @@ SOURCE_APP="$MOUNT/LibreOffice.app"
   printf '%s\n' '[MACOS_OFFICE_APP_MISSING] 官方 DMG 中未发现 LibreOffice.app。' >&2
   exit 2
 }
-# 先验证上游完整 App 的签名封装。仅复制 Contents 后，代码仍带上游 Team ID，
-# 但已脱离原 Bundle 签名边界；在 PartyOps 统一重签名前启动它，macOS 会以
-# SIGKILL 拒绝映射。实际启动门禁必须在 build-pkg.sh 完成逐层统一签名后执行。
+# 先验证上游完整 App 的签名封装。必须保留 LibreOffice.app 这一层代码签名
+# 边界；仅抽取 Contents 即使之后逐文件重签，AppKit/AMFI 在启动 soffice 时
+# 仍可能把它视为脱离宿主 Bundle 的代码，并以 SIGKILL 终止且不产生 stderr。
+# PartyOps 会在最终 App 中由内向外统一重签这个完整的嵌套 App。
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$SOURCE_APP"
-/usr/bin/ditto "$SOURCE_APP/Contents" "$RUNTIME"
+/bin/mkdir -p "$RUNTIME"
+/usr/bin/ditto "$SOURCE_APP" "$RUNTIME/LibreOffice.app"
 
-# 官方 macOS Bundle 的程序目录名为 MacOS；PartyOps 跨平台能力契约固定从
-# office-runtime/program/soffice 启动。使用闭包内相对链接统一布局，不复制
-# 可执行文件，也不改变 LibreOffice 对 Frameworks/Resources 的相对定位。
-if [[ ! -e "$RUNTIME/program" ]]; then
-  /bin/ln -s MacOS "$RUNTIME/program"
-fi
+# 跨平台能力清单继续暴露 office-runtime/program/soffice，但 macOS 实际
+# 执行路径优先使用完整嵌套 App 内的原生入口。此相对链接只提供兼容契约，
+# 不复制 Mach-O，也不会越过运行时根目录。
+/bin/mkdir -p "$RUNTIME/program"
+/bin/ln -s ../LibreOffice.app/Contents/MacOS/soffice "$RUNTIME/program/soffice"
 [[ -x "$RUNTIME/program/soffice" ]] || {
   printf '%s\n' '[MACOS_OFFICE_ENTRY_MISSING] 提取后缺少 macOS 原生 soffice。' >&2
   exit 2
@@ -124,9 +125,9 @@ fi
 
 /bin/mkdir -p "$RUNTIME/licenses"
 for candidate in \
-  "$RUNTIME/Resources/LICENSE" \
-  "$RUNTIME/Resources/LICENSE.html" \
-  "$RUNTIME/Resources/NOTICE"; do
+  "$RUNTIME/LibreOffice.app/Contents/Resources/LICENSE" \
+  "$RUNTIME/LibreOffice.app/Contents/Resources/LICENSE.html" \
+  "$RUNTIME/LibreOffice.app/Contents/Resources/NOTICE"; do
   if [[ -f "$candidate" ]]; then
     /usr/bin/install -m 0644 "$candidate" "$RUNTIME/licenses/$(basename "$candidate")"
   fi

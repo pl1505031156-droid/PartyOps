@@ -13,7 +13,7 @@ macOS 制品不使用 Docker，也不在 Windows/Linux 上交叉冻结。Apple S
 2. Xcode Command Line Tools、Python 3.11、`uv`、Node.js 和 Corepack。
 3. 当前架构的可审计 OCR 运行时，必须包含 `bin/tesseract` 和 `tessdata/chi_sim.traineddata`。
 4. 当前架构的 llama.cpp 运行时，必须包含 `llama-server`。
-5. 当前架构且经过许可审计的 LibreOffice headless 运行时，必须包含 Mach-O 入口 `program/soffice`、`SOURCE.json` 和 `licenses/`。macOS 官方 Bundle 不使用 Linux 的 `program/soffice.bin` 布局；该闭包只用于本机 DOC/WPS 转换，构建脚本会拒绝符号链接越界和错误架构。
+5. 当前架构且经过许可审计的 LibreOffice headless 运行时，必须保留完整 `LibreOffice.app` 签名边界，并包含兼容入口 `program/soffice`、`SOURCE.json` 和 `licenses/`。macOS 官方 Bundle 不使用 Linux 的 `program/soffice.bin` 布局；该闭包只用于本机 DOC/WPS 转换，构建脚本会拒绝符号链接越界和错误架构。
 6. 正式构建需要 Developer ID Application、Developer ID Installer 证书以及 `notarytool` 钥匙串配置。
 
 ## 正式构建
@@ -41,7 +41,7 @@ macOS 必须分别在原生 Apple Silicon 与 Intel Darwin 环境手动构建。
 
 两个原生任务都必须在最终冻结主程序上执行真实 `0023→0026` 与 `0025→0026` 覆盖升级，校验管理员、附件、备份包、编排审计表和健康接口。Intel 构建还要从官方固定哈希源码生成 macOS 11 基线的 OpenSSL 3.5 LTS 静态闭包，并拒绝 `cryptography` 动态依赖构建机的 `libssl/libcrypto`。构建成功后在本机比对 SHA-256 与 attestation，再按固化流程人工上传。
 
-LibreOffice 官方 DMG 的完整 `LibreOffice.app` 会在复制前执行严格签名验证。复制出的运行时在 PartyOps 逐层统一签名前不得提前启动：它已脱离上游 Bundle 签名边界，提前执行会被 macOS 以 `SIGKILL` 拒绝。真实 `--headless --version` 门禁固定放在最终 App 统一签名完成后，并覆盖包级自检、全新安装和覆盖升级三条路径。
+LibreOffice 官方 DMG 的完整 `LibreOffice.app` 会在复制前执行严格签名验证，并作为嵌套 App 原样保留。运行时在 PartyOps 逐层统一签名前不得提前启动；真实 `--headless --version` 门禁固定放在最终 App 统一签名完成后，并覆盖包级自检、全新安装和覆盖升级三条路径。失败时构建日志会附带嵌套 App 的签名、依赖与 macOS 统一日志摘录。
 
 PKG 不把 `.app` 目录直接交给 `pkgbuild` 组件分析。PyInstaller 内嵌的 `Python.framework` 会被 Installer 识别为第二个可重定位组件，在部分系统上破坏 Bundle。构建脚本改为携带经过 ZIP 往返校验的原始 App；`postinstall` 完整解包并验证 Bundle ID、主程序权限和代码签名后，才事务式替换 `/Applications/PartyOps.app`。升级失败会恢复旧 App，用户业务数据不参与该事务。
 

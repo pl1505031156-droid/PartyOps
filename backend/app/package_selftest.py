@@ -51,6 +51,21 @@ def _office_executable(runtime: Path) -> Path:
     # Windows 官方 LibreOffice 同时提供 GUI 子系统入口 soffice.exe 与
     # 控制台入口 soffice.com。冻结程序会捕获子进程输出；此时 26.x 的
     # .exe 入口可能长期等待，.com 才是可观测且会确定退出的 headless CLI。
+    if sys.platform == "darwin":
+        # 保留完整 LibreOffice.app 的签名边界，并直接执行其真实入口。不要
+        # 通过 Resources/office-runtime/program 的兼容链接启动，否则 dyld
+        # 与 AppKit 可能按链接位置推导错误的 Bundle 上下文。
+        nested = (
+            runtime.parent
+            / "Resources"
+            / "office-runtime"
+            / "LibreOffice.app"
+            / "Contents"
+            / "MacOS"
+            / "soffice"
+        )
+        if nested.is_file():
+            return nested
     names = ("soffice.com", "soffice.exe") if os.name == "nt" else ("soffice",)
     for root in (runtime, _runtime_contents(runtime)):
         for name in names:

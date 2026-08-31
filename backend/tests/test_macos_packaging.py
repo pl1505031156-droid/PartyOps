@@ -344,7 +344,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "office-${{ matrix.architecture }}" in workflow
     assert 'file -b "$RUNTIME/program/soffice"' in office
     assert 'program/soffice.bin' not in office
-    assert 'file -b "$OFFICE_RUNTIME/program/soffice"' in build
+    assert 'file -b "$OFFICE_RUNTIME/LibreOffice.app/Contents/MacOS/soffice"' in build
     assert 'test -f "$office/program/soffice.bin"' not in workflow
     assert 'lipo -archs "$office/program/soffice"' in workflow
     assert "不使用 Linux 的 `program/soffice.bin` 布局" in readme
@@ -400,7 +400,8 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "e26180298685274b54aa7fe6e1101c65465a372f457a6748ebd642720811db36" in office
     assert "downloadarchive.documentfoundation.org" in office
     assert "hdiutil attach -readonly -nobrowse" in office
-    assert "/bin/ln -s MacOS \"$RUNTIME/program\"" in office
+    assert '"$SOURCE_APP" "$RUNTIME/LibreOffice.app"' in office
+    assert "/bin/ln -s ../LibreOffice.app/Contents/MacOS/soffice" in office
     assert 'codesign --verify --deep --strict --verbose=2 "$SOURCE_APP"' in office
     assert "subprocess.run(" not in office
     assert '"--headless",' in package_selftest
@@ -417,6 +418,8 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "|| true" in validation
     assert "MACOS_WIZARD_SELFTEST_FAILED" in validation
     assert "MACOS_PACKAGE_SELFTEST_FAILED" in validation
+    assert "MACOS_OFFICE_BUNDLE_INCOMPLETE" in validation
+    assert "MACOS_NATIVE_FAILURE_DIAGNOSTICS_BEGIN" in validation
     assert "PARTYOPS_WIZARD_SELFTEST_REPORT" in validation
 
 
