@@ -1,12 +1,12 @@
 {
   "schema": 3,
   "status": "passed",
-  "tested_at": "2026-08-31T09:25:19+08:00",
+  "tested_at": "2026-08-31T09:52:41+08:00",
   "timezone": "Asia/Shanghai",
   "fingerprint_canonicalization": "text-lf-v1",
   "source_fingerprints": {
     "package": {
-      "sha256": "5d92fac79662f180dadf2ed2d51a75f79d224998b5003b0de575b6bd402faa45",
+      "sha256": "a49eccf46736b121348553306544e854ec0c25af00450647ff2e1ad2115c6bf4",
       "file_count": 600
     },
     "website": {
@@ -14,7 +14,7 @@
       "file_count": 74
     },
     "full": {
-      "sha256": "68788deae077ffa13f037494bcf4cc16955c3465cc66dbe6423ca7c87584daa9",
+      "sha256": "048c4a178d4f7fa2ecac1dffd43e66ae73d0533ac383cf9aec0d612049e85eaf",
       "file_count": 674
     }
   },
