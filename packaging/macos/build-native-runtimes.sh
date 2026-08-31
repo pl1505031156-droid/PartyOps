@@ -193,14 +193,15 @@ cmake --install "$OCR_BUILD/libpng-build"
 cmake -S "$OCR_BUILD/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}" \
   -B "$OCR_BUILD/libjpeg-turbo-build" \
   "${COMMON_FLAGS[@]}" -DENABLE_SHARED=OFF -DENABLE_STATIC=ON \
-  -DWITH_TURBOJPEG=OFF -DWITH_TOOLS=OFF -DWITH_TESTS=OFF -DWITH_SIMD=OFF
+  -DWITH_JPEG8=ON -DWITH_TURBOJPEG=OFF -DWITH_TOOLS=OFF \
+  -DWITH_TESTS=OFF -DWITH_SIMD=OFF
 cmake --build "$OCR_BUILD/libjpeg-turbo-build" -j "$JOBS"
 cmake --install "$OCR_BUILD/libjpeg-turbo-build"
 
-# Intel runner 的 /usr/local 预装了另一套 JPEG 头文件；libtiff 本身也会
-# 直接包含 jpeglib.h，因此锁定动作必须发生在 libtiff 配置之前。否则即使
-# Leptonica/Tesseract 找到了本次静态库，libtiff 仍可能用 v8 头文件编译并
-# 在运行时调用 v6 ABI，最终报“caller expects 80, library is 62”。
+# Intel runner 的 /usr/local 预装了 JPEG v8 头文件；libtiff 本身也会直接
+# 包含 jpeglib.h。除了在 libtiff 配置前锁定查找路径，还把自带静态
+# libjpeg-turbo 编译为 v8 ABI：即使上游 CMake 把系统头文件排在前面，调用方
+# 与最终静态库的 ABI 仍保持一致，避免“caller expects 80, library is 62”。
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
 LOCKED_OCR_BASE_FIND_FLAGS=(

@@ -308,6 +308,7 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
             static_targets
         )
     assert "-DENABLE_JPEG=ON -DENABLE_TIFF=ON" in runtimes
+    assert "-DWITH_JPEG8=ON" in runtimes
     assert "-DDISABLE_TIFF=OFF" in runtimes
     assert 'export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"' in runtimes
     assert "-DCMAKE_IGNORE_PREFIX_PATH='/usr/local;/opt/homebrew'" in runtimes
