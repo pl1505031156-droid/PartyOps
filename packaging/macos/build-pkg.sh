@@ -112,12 +112,17 @@ sign_bundle_code() {
   local timestamp_args=("$@")
   while IFS= read -r -d '' candidate; do
     [[ "$(file -b "$candidate" 2>/dev/null || true)" == *Mach-O* ]] || continue
-    # LibreOffice 等上游原生入口可能依赖 Hardened Runtime 例外权限。重签时
-    # 若丢弃其既有 entitlements，二进制会通过静态签名校验却在启动时被
-    # macOS 拒绝。仅保留每个 Mach-O 自身的 entitlements；身份、时间戳和
-    # runtime 标志仍由 PartyOps 本轮签名重新生成，且不把主 App 权限下放。
-    codesign --force --preserve-metadata=entitlements \
-      "${timestamp_args[@]}" --options runtime --sign "$identity" "$candidate"
+    if [[ "$candidate" == "$APP/Contents/Resources/office-runtime/"* ]]; then
+      # LibreOffice 上游入口和框架使用自身经过验证的 Hardened Runtime 标志
+      # 与权限组合。若统一强加 PartyOps 的 runtime 标志，soffice 会在加载
+      # Frameworks 时被 AMFI 以 SIGKILL 终止。重签身份仍统一，但完整保留
+      # 上游 entitlements 与代码签名 flags。
+      codesign --force --preserve-metadata=entitlements,flags \
+        "${timestamp_args[@]}" --sign "$identity" "$candidate"
+    else
+      codesign --force --preserve-metadata=entitlements \
+        "${timestamp_args[@]}" --options runtime --sign "$identity" "$candidate"
+    fi
   # 调用方在签名阶段先生成候选清单，避免把根可执行文件和嵌套入口
   # 混在同一次签名中；清单本身也作为制品审计证据留在构建临时目录。
   done <"$MACHO_CANDIDATE_LIST"
@@ -126,7 +131,12 @@ sign_bundle_code() {
     -type d -print0 >"$BUNDLE_DIRECTORY_LIST"
   while IFS= read -r -d '' bundle; do
     [[ "$bundle" == "$APP" ]] && continue
-    codesign --force "${timestamp_args[@]}" --options runtime --sign "$identity" "$bundle"
+    if [[ "$bundle" == "$APP/Contents/Resources/office-runtime/"* ]]; then
+      codesign --force --preserve-metadata=entitlements,flags \
+        "${timestamp_args[@]}" --sign "$identity" "$bundle"
+    else
+      codesign --force "${timestamp_args[@]}" --options runtime --sign "$identity" "$bundle"
+    fi
   done <"$BUNDLE_DIRECTORY_LIST"
 }
 
