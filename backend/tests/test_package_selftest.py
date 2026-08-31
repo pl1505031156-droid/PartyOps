@@ -223,8 +223,19 @@ def test_selftest_rejects_missing_or_unusable_office_runtime(
     monkeypatch.setattr(
         package_selftest.subprocess, "run", lambda *_args, **_kwargs: next(results)
     )
-    with pytest.raises(RuntimeError, match="公文转换运行时无法启动"):
+    with pytest.raises(
+        RuntimeError,
+        match=r"公文转换运行时无法启动（退出码 1；stdout=无输出；stderr=无输出）",
+    ):
         package_selftest.run_selftest(runtime)
+
+
+def test_native_failure_detail_is_bounded_and_decodes_bytes() -> None:
+    result = SimpleNamespace(returncode=-9, stdout=b"", stderr=b"x" * 900)
+    detail = package_selftest._native_failure_detail("原生运行时失败", result)
+    assert detail.startswith("原生运行时失败（退出码 -9；stdout=无输出；stderr=")
+    assert detail.endswith("）")
+    assert len(detail) < 900
 
 
 def test_selftest_and_cli_success_and_failure(
@@ -253,7 +264,7 @@ def test_selftest_and_cli_success_and_failure(
     calls: list[dict[str, object]] = []
 
     def fake_run(*_args: object, **kwargs: object) -> SimpleNamespace:
-        calls.append(kwargs)
+        calls.append({"command": _args[0], **kwargs})
         return next(results)
 
     monkeypatch.setattr(package_selftest.subprocess, "run", fake_run)
@@ -279,6 +290,11 @@ def test_selftest_and_cli_success_and_failure(
     )
     assert calls[1]["timeout"] == 30
     assert calls[2]["timeout"] == 120
+    office_command = calls[2]["command"]
+    assert isinstance(office_command, list)
+    assert office_command[1] == "--headless"
+    assert str(office_command[2]).startswith("-env:UserInstallation=file:")
+    assert office_command[3] == "--version"
 
     monkeypatch.setattr(package_selftest, "run_selftest", lambda _runtime: result)
     assert package_selftest.main(runtime) == 0

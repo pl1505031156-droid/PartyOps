@@ -9,6 +9,7 @@ import re
 import ssl
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ASSET_PATTERN = re.compile(r"(?:src|href)=[\"']/?([^\"'#?]+)")
@@ -99,6 +100,24 @@ def _native_runtime_timeout() -> int:
     return 120 if sys.platform == "darwin" else 30
 
 
+def _native_failure_detail(label: str, result: subprocess.CompletedProcess[object]) -> str:
+    """返回有界且可审计的原生运行时错误，避免发布日志只剩模糊摘要。"""
+
+    def excerpt(value: object) -> str:
+        if isinstance(value, bytes):
+            text = value.decode("utf-8", errors="replace")
+        else:
+            text = str(value or "")
+        compact = " ".join(text.split())
+        return compact[:800] or "无输出"
+
+    return (
+        f"{label}（退出码 {result.returncode}；"
+        f"stdout={excerpt(getattr(result, 'stdout', ''))}；"
+        f"stderr={excerpt(getattr(result, 'stderr', ''))}）"
+    )
+
+
 def run_selftest(runtime: Path) -> dict[str, object]:
     """验证冻结资源、数据库、OCR 与本地智能运行时，任一失败即抛错。"""
 
@@ -169,15 +188,24 @@ def run_selftest(runtime: Path) -> dict[str, object]:
     office = _office_executable(runtime)
     if not office.is_file():
         raise RuntimeError("公文转换运行时缺失")
-    office_result = subprocess.run(
-        [str(office), "--headless", "--version"],
-        check=False,
-        capture_output=True,
-        env=_native_child_environment(runtime),
-        timeout=120,
-    )
+    # LibreOffice 会读取用户配置，即使这里只查询版本。使用一次性本地配置
+    # 可隔离构建机上的旧版本、损坏锁文件和并发实例，安装后也不会污染用户
+    # 的系统 LibreOffice 配置。as_uri() 同时正确处理 Windows 盘符和空格。
+    with tempfile.TemporaryDirectory(prefix="partyops-office-selftest-") as profile:
+        office_result = subprocess.run(
+            [
+                str(office),
+                "--headless",
+                f"-env:UserInstallation={Path(profile).resolve().as_uri()}",
+                "--version",
+            ],
+            check=False,
+            capture_output=True,
+            env=_native_child_environment(runtime),
+            timeout=120,
+        )
     if office_result.returncode != 0:
-        raise RuntimeError("公文转换运行时无法启动")
+        raise RuntimeError(_native_failure_detail("公文转换运行时无法启动", office_result))
 
     from app.official_format_features import FEATURE_DEFINITIONS, PRODUCT_CAPABILITIES
 

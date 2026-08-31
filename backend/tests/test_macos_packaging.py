@@ -402,7 +402,10 @@ def test_macos_unsigned_candidate_and_remote_native_builder_are_explicit() -> No
     assert "/bin/ln -s MacOS \"$RUNTIME/program\"" in office
     assert 'codesign --verify --deep --strict --verbose=2 "$SOURCE_APP"' in office
     assert "subprocess.run(" not in office
-    assert '"--headless", "--version"' in package_selftest
+    assert '"--headless",' in package_selftest
+    assert '"--version",' in package_selftest
+    assert '"-env:UserInstallation=' in package_selftest
+    assert "--preserve-metadata=entitlements" in build
     # 未签名的新增 Mach-O 在首次校验时 codesign --display 会返回非零；
     # 校验器必须把“未签名”当成允许状态，而不是让 pipefail 静默中止。
     assert 'done <"$SCAN_LIST"' in validation
